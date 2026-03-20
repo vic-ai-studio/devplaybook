@@ -12,6 +12,10 @@ export interface Product {
 
 const GUMROAD_BASE = 'https://vicnail.gumroad.com/l';
 
+function gumroadLink(slug: string): string {
+  return `${GUMROAD_BASE}/${slug}?utm_source=devplaybook&utm_medium=product_page&utm_campaign=${slug}`;
+}
+
 export const products: Product[] = [
   {
     slug: 'fullstack-boilerplate-collection',
@@ -33,7 +37,7 @@ export const products: Product[] = [
     ],
     tags: ['nextjs', 'react', 'typescript', 'stripe', 'saas', 'boilerplate'],
     icon: '🏗️',
-    gumroadUrl: `${GUMROAD_BASE}/fullstack-boilerplate`,
+    gumroadUrl: gumroadLink('fullstack-boilerplate'),
   },
   {
     slug: 'developer-productivity-bundle',
@@ -55,7 +59,7 @@ export const products: Product[] = [
     ],
     tags: ['automation', 'scripts', 'cli', 'devops', 'ci-cd', 'bash'],
     icon: '⚡',
-    gumroadUrl: `${GUMROAD_BASE}/dev-productivity-bundle`,
+    gumroadUrl: gumroadLink('dev-productivity-bundle'),
   },
   {
     slug: 'ai-prompt-engineering-toolkit',
@@ -77,7 +81,7 @@ export const products: Product[] = [
     ],
     tags: ['ai', 'prompt-engineering', 'llm', 'chatgpt', 'claude', 'openai'],
     icon: '🤖',
-    gumroadUrl: `${GUMROAD_BASE}/ai-prompt-toolkit`,
+    gumroadUrl: gumroadLink('ai-prompt-toolkit'),
   },
   {
     slug: 'mcp-studio-complete',
@@ -99,7 +103,7 @@ export const products: Product[] = [
     ],
     tags: ['mcp', 'claude', 'ai-tools', 'automation', 'api-integration', 'templates'],
     icon: '🔌',
-    gumroadUrl: `${GUMROAD_BASE}/mcp-studio`,
+    gumroadUrl: gumroadLink('mcp-studio'),
   },
   {
     slug: 'claude-code-mastery-guide',
@@ -121,7 +125,7 @@ export const products: Product[] = [
     ],
     tags: ['claude-code', 'anthropic', 'cli', 'ai-coding', 'automation', 'developer-tools'],
     icon: '📘',
-    gumroadUrl: `${GUMROAD_BASE}/claude-code-mastery`,
+    gumroadUrl: gumroadLink('claude-code-mastery'),
   },
   {
     slug: 'developer-productivity-toolkit',
@@ -143,7 +147,7 @@ export const products: Product[] = [
     ],
     tags: ['vscode', 'dotfiles', 'shell', 'git-hooks', 'productivity', 'terminal'],
     icon: '🛠️',
-    gumroadUrl: `${GUMROAD_BASE}/dev-productivity-toolkit`,
+    gumroadUrl: gumroadLink('dev-productivity-toolkit'),
   },
   {
     slug: 'css-animation-library',
@@ -165,7 +169,7 @@ export const products: Product[] = [
     ],
     tags: ['css', 'animations', 'hover-effects', 'loading-spinners', 'ui-ux', 'web-design'],
     icon: '✨',
-    gumroadUrl: `${GUMROAD_BASE}/css-animation-library`,
+    gumroadUrl: gumroadLink('css-animation-library'),
   },
   {
     slug: 'frontend-component-snippets',
@@ -187,7 +191,7 @@ export const products: Product[] = [
     ],
     tags: ['react', 'vue', 'svelte', 'components', 'ui-library', 'frontend', 'typescript'],
     icon: '🧩',
-    gumroadUrl: `${GUMROAD_BASE}/frontend-components`,
+    gumroadUrl: gumroadLink('frontend-components'),
   },
   {
     slug: 'frontend-performance-audit-checklist',
@@ -209,7 +213,7 @@ export const products: Product[] = [
     ],
     tags: ['performance', 'lighthouse', 'core-web-vitals', 'audit', 'optimization', 'frontend'],
     icon: '📊',
-    gumroadUrl: `${GUMROAD_BASE}/performance-audit`,
+    gumroadUrl: gumroadLink('performance-audit'),
   },
   {
     slug: 'api-testing-cheatsheet-pack',
@@ -231,7 +235,7 @@ export const products: Product[] = [
     ],
     tags: ['api-testing', 'rest-api', 'graphql', 'websocket', 'postman', 'cheatsheet'],
     icon: '🧪',
-    gumroadUrl: `${GUMROAD_BASE}/api-testing-cheatsheet`,
+    gumroadUrl: gumroadLink('api-testing-cheatsheet'),
   },
   {
     slug: 'notion-developer-dashboard-template',
@@ -253,7 +257,7 @@ export const products: Product[] = [
     ],
     tags: ['notion', 'project-management', 'sprint-planning', 'kanban', 'developer-dashboard'],
     icon: '📋',
-    gumroadUrl: `${GUMROAD_BASE}/notion-dev-dashboard`,
+    gumroadUrl: gumroadLink('notion-dev-dashboard'),
   },
   {
     slug: 'notion-productivity-templates-for-freelancers',
@@ -275,7 +279,7 @@ export const products: Product[] = [
     ],
     tags: ['notion', 'freelancer', 'productivity', 'project-management', 'invoicing', 'templates'],
     icon: '📒',
-    gumroadUrl: `${GUMROAD_BASE}/notion-freelancer-templates`,
+    gumroadUrl: gumroadLink('notion-freelancer-templates'),
   },
   {
     slug: 'devtoolkit-starter-kit',
@@ -297,7 +301,7 @@ export const products: Product[] = [
     ],
     tags: ['astro', 'developer-tools', 'starter-kit', 'cloudflare', 'tailwind', 'website'],
     icon: '🚀',
-    gumroadUrl: `${GUMROAD_BASE}/devtoolkit-starter-kit`,
+    gumroadUrl: gumroadLink('devtoolkit-starter-kit'),
   },
 ];
 

@@ -311,7 +311,7 @@ function fmt(n: number) {
   return n >= 1000 ? `$${(n / 1000).toFixed(0)}k` : `$${n}`;
 }
 
-const DEVTOOLKIT_URL = 'https://vicnail.gumroad.com/l/devtoolkit-starter-kit';
+const DEVTOOLKIT_URL = 'https://vicnail.gumroad.com/l/devtoolkit-starter-kit?utm_source=devplaybook&utm_medium=tool&utm_campaign=devtoolkit-starter-kit';
 
 export default function TechSalaryCalculator() {
   const [role, setRole] = useState(ROLES[0]);

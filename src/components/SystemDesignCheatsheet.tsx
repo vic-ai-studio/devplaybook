@@ -215,7 +215,7 @@ const TOPICS: Topic[] = [
   },
 ];
 
-const DEVTOOLKIT_URL = 'https://vicnail.gumroad.com/l/devtoolkit-starter-kit';
+const DEVTOOLKIT_URL = 'https://vicnail.gumroad.com/l/devtoolkit-starter-kit?utm_source=devplaybook&utm_medium=tool&utm_campaign=devtoolkit-starter-kit';
 
 export default function SystemDesignCheatsheet() {
   const [search, setSearch] = useState('');
