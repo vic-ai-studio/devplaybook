@@ -10,7 +10,7 @@ export interface Product {
   gumroadUrl: string;
 }
 
-const GUMROAD_BASE = 'https://devtoolkit.gumroad.com/l';
+const GUMROAD_BASE = 'https://vicnail.gumroad.com/l';
 
 export const products: Product[] = [
   {

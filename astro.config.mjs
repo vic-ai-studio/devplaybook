@@ -13,27 +13,30 @@ export default defineConfig({
     sitemap({
       filter: (page) =>
         !page.includes('/api/') &&
-        !page.endsWith('/pro-cancel') &&
-        !page.endsWith('/pro-success'),
+        !page.includes('/pro-cancel') &&
+        !page.includes('/pro-success') &&
+        !page.includes('/pro-dashboard') &&
+        !page.includes('/signin'),
       serialize(item) {
+        const lastmod = new Date().toISOString().split('T')[0];
         // Home page
         if (item.url === 'https://devplaybook.cc/') {
-          return { ...item, changefreq: 'daily', priority: 1.0 };
+          return { ...item, changefreq: 'daily', priority: 1.0, lastmod };
         }
         // Tool pages
         if (item.url.includes('/tools/')) {
-          return { ...item, changefreq: 'monthly', priority: 0.9 };
+          return { ...item, changefreq: 'monthly', priority: 0.9, lastmod };
         }
         // Product pages
         if (item.url.includes('/products/') || item.url.endsWith('/products')) {
-          return { ...item, changefreq: 'weekly', priority: 0.8 };
+          return { ...item, changefreq: 'weekly', priority: 0.8, lastmod };
         }
         // Blog articles
         if (item.url.includes('/blog/')) {
-          return { ...item, changefreq: 'monthly', priority: 0.7 };
+          return { ...item, changefreq: 'monthly', priority: 0.7, lastmod };
         }
         // Default
-        return { ...item, changefreq: 'weekly', priority: 0.6 };
+        return { ...item, changefreq: 'weekly', priority: 0.6, lastmod };
       },
     }),
   ],
