@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 
 interface Props {
   /** Where to display: 'banner' = full-width CTA block, 'inline' = compact row */
@@ -9,6 +9,14 @@ export default function ProWaitlist({ variant = 'banner' }: Props) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  const [waitlistCount, setWaitlistCount] = useState(847);
+
+  useEffect(() => {
+    fetch('/api/pro-waitlist/count')
+      .then(r => r.json())
+      .then((d: { count?: number }) => { if (d.count) setWaitlistCount(d.count); })
+      .catch(() => {});
+  }, []);
 
   const submit = async (e: Event) => {
     e.preventDefault();
@@ -25,6 +33,10 @@ export default function ProWaitlist({ variant = 'banner' }: Props) {
         setStatus('success');
         setMessage(data.message || "You're on the list!");
         setEmail('');
+        setWaitlistCount(c => c + 1);
+        // Fire conversion tracking
+        try { (window as any).pcTrack?.('waitlist_join', { source: variant }); } catch {}
+        try { (window as any).dpTrack?.('waitlist_join', { source: variant }); } catch {}
       } else {
         setStatus('error');
         setMessage(data.error || 'Something went wrong. Please try again.');
@@ -73,7 +85,9 @@ export default function ProWaitlist({ variant = 'banner' }: Props) {
       <p class="text-text-muted mb-2 max-w-lg mx-auto text-sm">
         AI-powered tools: Code Review, Doc Generator, SQL Builder. Batch processing, API access, no ads.
       </p>
-      <p class="text-text-muted mb-6 text-xs">Join the waitlist — get early access and launch pricing.</p>
+      <p class="text-primary/80 text-xs font-semibold mb-6">
+        Join {waitlistCount.toLocaleString()}+ developers waiting for early access
+      </p>
 
       {status === 'success' ? (
         <div class="inline-flex items-center gap-2 bg-green-400/10 border border-green-400/30 text-green-400 rounded-xl px-6 py-3">

@@ -83,6 +83,26 @@ const ogImageUrl = ogImage ? new URL(ogImage, siteUrl).href : `${siteUrl}/og-def
     )}
   </head>
   <body class="bg-bg text-text min-h-screen">
+  <!-- Exit-intent newsletter popup (shown on blog pages when user moves mouse toward top) -->
+  <div id="newsletter-exit-popup" class="fixed inset-0 z-50 hidden" aria-modal="true" role="dialog">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" id="newsletter-popup-backdrop"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-bg-card border border-primary/30 rounded-2xl p-8 shadow-2xl">
+      <button id="newsletter-popup-close" aria-label="Close" class="absolute top-4 right-4 text-text-muted hover:text-text text-2xl leading-none">×</button>
+      <p class="text-xs font-semibold uppercase tracking-widest text-primary mb-2">Before you go</p>
+      <h2 class="text-xl font-bold mb-2">Get weekly developer tips</h2>
+      <p class="text-text-muted text-sm mb-4">Tools, guides & productivity playbooks. No spam. Unsubscribe anytime.</p>
+      <form id="newsletter-popup-form" class="flex flex-col gap-3">
+        <input type="email" placeholder="your@email.com" required
+          class="w-full px-4 py-2.5 rounded-xl bg-bg border border-border text-sm focus:outline-none focus:border-primary transition-colors" />
+        <button type="submit"
+          class="w-full bg-primary hover:bg-primary-dark text-white font-semibold py-2.5 rounded-xl transition-colors text-sm">
+          Subscribe Free
+        </button>
+      </form>
+      <p id="newsletter-popup-msg" class="text-xs mt-2 hidden"></p>
+    </div>
+  </div>
+
   <!-- Exit-intent scroll banner (shown at 80% scroll depth on tool pages) -->
   <div id="exit-banner" class="fixed bottom-0 left-0 right-0 z-50 hidden">
     <div class="bg-bg-card border-t border-primary/40 shadow-2xl px-6 py-4">
@@ -181,6 +201,82 @@ const ogImageUrl = ogImage ? new URL(ogImage, siteUrl).href : `${siteUrl}/og-def
         <p class="text-center pt-4">&copy; {new Date().getFullYear()} DevPlaybook. Free developer tools.</p>
       </div>
     </footer>
+
+    <!-- Exit-intent newsletter popup logic (blog pages only) -->
+    <script is:inline>
+      (function() {
+        var popup = document.getElementById('newsletter-exit-popup');
+        var closeBtn = document.getElementById('newsletter-popup-close');
+        var backdrop = document.getElementById('newsletter-popup-backdrop');
+        var form = document.getElementById('newsletter-popup-form');
+        var msg = document.getElementById('newsletter-popup-msg');
+        if (!popup || !form) return;
+        // Only on blog pages
+        if (!/^\/blog\//.test(location.pathname)) return;
+        // Don't show if already dismissed or subscribed this session
+        try { if (sessionStorage.getItem('newsletter_popup_dismissed')) return; } catch(e) {}
+
+        var shown = false;
+        function showPopup() {
+          if (shown) return;
+          shown = true;
+          popup.classList.remove('hidden');
+        }
+        function hidePopup() {
+          popup.classList.add('hidden');
+          try { sessionStorage.setItem('newsletter_popup_dismissed', '1'); } catch(e) {}
+        }
+
+        // Show on mouse moving toward top (exit-intent)
+        document.addEventListener('mouseleave', function(e) {
+          if (e.clientY <= 20) showPopup();
+        });
+        // Also show at 75% scroll depth as fallback
+        window.addEventListener('scroll', function() {
+          if (shown) return;
+          var pct = (window.scrollY + window.innerHeight) / document.documentElement.scrollHeight;
+          if (pct >= 0.75) showPopup();
+        }, { passive: true });
+
+        if (closeBtn) closeBtn.addEventListener('click', hidePopup);
+        if (backdrop) backdrop.addEventListener('click', hidePopup);
+
+        form.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          var emailInput = form.querySelector('input[type="email"]');
+          var submitBtn = form.querySelector('button[type="submit"]');
+          var email = emailInput.value.trim();
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Subscribing...';
+          try {
+            var res = await fetch('/api/newsletter/subscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: email, source: 'exit_popup' }),
+            });
+            var data = await res.json();
+            if (data.success) {
+              form.innerHTML = '<p class="text-green-400 font-medium text-center">You\'re in! 🎉 Check your inbox soon.</p>';
+              try { window.pcTrack && window.pcTrack('newsletter_signup', { source: 'exit_popup' }); } catch(te) {}
+              try { window.dpTrack && window.dpTrack('newsletter_signup', { source: 'exit_popup' }); } catch(te) {}
+              setTimeout(hidePopup, 2000);
+            } else {
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Subscribe Free';
+              msg.textContent = data.error || 'Something went wrong.';
+              msg.style.color = '#f87171';
+              msg.classList.remove('hidden');
+            }
+          } catch(err) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Subscribe Free';
+            msg.textContent = 'Network error. Please try again.';
+            msg.style.color = '#f87171';
+            msg.classList.remove('hidden');
+          }
+        });
+      })();
+    </script>
 
     <!-- Exit-intent scroll banner logic -->
     <script is:inline>
