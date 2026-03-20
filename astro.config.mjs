@@ -16,7 +16,8 @@ export default defineConfig({
         !page.includes('/pro-cancel') &&
         !page.includes('/pro-success') &&
         !page.includes('/pro-dashboard') &&
-        !page.includes('/signin'),
+        !page.includes('/signin') &&
+        !page.includes('/admin/'),
       serialize(item) {
         const lastmod = new Date().toISOString().split('T')[0];
         // Home page
