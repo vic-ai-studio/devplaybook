@@ -37,7 +37,7 @@ export async function onRequestPost({ request, env }) {
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
   const successUrl = `${origin}/pro-success?session_id={CHECKOUT_SESSION_ID}`;
-  const cancelUrl = `${origin}/?pro_cancelled=1`;
+  const cancelUrl = `${origin}/pro-cancel`;
 
   // Build Stripe Checkout Session payload
   const params = new URLSearchParams({
