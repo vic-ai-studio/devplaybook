@@ -218,6 +218,60 @@ const ogImageUrl = ogImage ? new URL(ogImage, siteUrl).href : `${siteUrl}/og-def
       })();
     </script>
 
+    <!-- Privacy-first localStorage analytics (no external API, VIC-165) -->
+    <script is:inline>
+      (function() {
+        // Helper: append event to pc_events (keeps last 500)
+        window.pcTrack = function(event, props) {
+          try {
+            var evts = JSON.parse(localStorage.getItem('pc_events') || '[]');
+            evts.push({ event: event, props: props || {}, ts: Date.now() });
+            if (evts.length > 500) evts = evts.slice(-500);
+            localStorage.setItem('pc_events', JSON.stringify(evts));
+            console.log('[pc]', event, props);
+          } catch(e) {}
+        };
+
+        // Task 3: page view tracking — store pathname + timestamp
+        (function() {
+          try {
+            var views = JSON.parse(localStorage.getItem('pc_pages_visited') || '[]');
+            views.push({ path: location.pathname, ts: Date.now(), mobile: /Mobi|Android/i.test(navigator.userAgent) });
+            if (views.length > 1000) views = views.slice(-1000);
+            localStorage.setItem('pc_pages_visited', JSON.stringify(views));
+          } catch(e) {}
+        })();
+
+        // Task 1: click event tracking
+        document.addEventListener('click', function(e) {
+          var el = e.target.closest('[data-track]');
+          if (!el) return;
+          var t = el.dataset.track;
+          var props = {};
+          if (el.dataset.productName) props.product_name = el.dataset.productName;
+          if (el.dataset.productPrice) props.product_price = el.dataset.productPrice;
+
+          if (t === 'gumroad_click') {
+            window.pcTrack('gumroad_click', props);
+          } else if (t === 'pro_checkout_click' || t === 'pro_cta_click') {
+            window.pcTrack('pro_cta_click', { source: t });
+          } else if (t === 'bundle_hero_cta' || t === 'bundle_bottom_cta' || t === 'bundle_cta_click' || t === 'exit_banner_cta') {
+            window.pcTrack('pro_cta_click', { source: t });
+          }
+        });
+
+        // Task 1: newsletter submit tracking
+        document.addEventListener('submit', function(e) {
+          var form = e.target.closest('form[data-track-submit]');
+          if (!form) return;
+          var s = form.dataset.trackSubmit || '';
+          if (s.includes('newsletter')) {
+            window.pcTrack('newsletter_submit', { source: s });
+          }
+        });
+      })();
+    </script>
+
     <!-- Core Web Vitals tracking (LCP, CLS, INP, FCP, TTFB via web-vitals v5) -->
     <script>
       import { onLCP, onCLS, onINP, onFCP, onTTFB } from 'web-vitals';
