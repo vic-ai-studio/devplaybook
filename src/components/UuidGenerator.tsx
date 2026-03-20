@@ -1,15 +1,59 @@
 import { useState, useCallback } from 'preact/hooks';
 
-// RFC 4122 v4 UUID implementation (no external deps)
+// RFC 4122 v4 UUID — cryptographically random
 function uuidv4(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
-  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+// RFC 4122 v1 UUID — time-based (simulated: uses current time + random node)
+function uuidv1(): string {
+  // Timestamps in UUID v1 are 100-nanosecond intervals since Oct 15, 1582
+  const now = Date.now();
+  const gregorianOffset = 122192928000000000n; // ms offset to 100ns ticks
+  const timestamp = BigInt(now) * 10000n + gregorianOffset;
+
+  const timeLow = Number(timestamp & 0xffffffffn).toString(16).padStart(8, '0');
+  const timeMid = Number((timestamp >> 32n) & 0xffffn).toString(16).padStart(4, '0');
+  const timeHiVersion = Number((timestamp >> 48n) & 0x0fffn | 0x1000n).toString(16).padStart(4, '0');
+
+  const clockSeq = (Math.random() * 0x3fff | 0x8000).toString(16).padStart(4, '0');
+
+  // Random node (48-bit, multicast bit set to indicate non-IEEE 802 address)
+  const nodeBytes = new Uint8Array(6);
+  crypto.getRandomValues(nodeBytes);
+  nodeBytes[0] |= 0x01; // multicast bit
+  const node = Array.from(nodeBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return `${timeLow}-${timeMid}-${timeHiVersion}-${clockSeq}-${node}`;
+}
+
+// RFC 4122 v5 UUID — SHA-1 name-based (DNS namespace by default)
+async function uuidv5(name: string, namespace: string = '6ba7b810-9dad-11d1-80b4-00c04fd430c8'): Promise<string> {
+  // Parse namespace UUID bytes
+  const nsHex = namespace.replace(/-/g, '');
+  const nsBytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    nsBytes[i] = parseInt(nsHex.slice(i * 2, i * 2 + 2), 16);
+  }
+  const nameBytes = new TextEncoder().encode(name);
+  const combined = new Uint8Array(nsBytes.length + nameBytes.length);
+  combined.set(nsBytes);
+  combined.set(nameBytes, nsBytes.length);
+
+  const hashBuffer = await crypto.subtle.digest('SHA-1', combined);
+  const hash = new Uint8Array(hashBuffer);
+  hash[6] = (hash[6] & 0x0f) | 0x50; // version 5
+  hash[8] = (hash[8] & 0x3f) | 0x80; // variant
+  const h = Array.from(hash.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+type Version = 'v4' | 'v1' | 'v5';
 type Format = 'standard' | 'uppercase' | 'no-hyphens' | 'braces';
 
 function applyFormat(uuid: string, fmt: Format): string {
@@ -32,8 +76,8 @@ function ShareButton() {
     });
   };
 
-  const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent('Free UUID Generator — generate UUID v4 in bulk, multiple formats, instant copy 🔑')}&url=${encodeURIComponent(url)}`;
-  const redditUrl = `https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent('Free UUID Generator — bulk UUID v4 generation with format options, no signup')}`;
+  const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent('Free UUID Generator — v1/v4/v5 bulk UUID generation, multiple formats, instant copy 🔑')}&url=${encodeURIComponent(url)}`;
+  const redditUrl = `https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent('Free UUID Generator — v1/v4/v5 bulk generation with format options, no signup')}`;
 
   return (
     <div class="flex gap-2 flex-wrap">
@@ -54,17 +98,55 @@ function ShareButton() {
   );
 }
 
+const VERSION_INFO: Record<Version, { label: string; desc: string; pattern: string }> = {
+  v4: {
+    label: 'v4 — Random',
+    desc: 'Cryptographically random. Best for most use cases.',
+    pattern: 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx',
+  },
+  v1: {
+    label: 'v1 — Time-based',
+    desc: 'Encodes current timestamp + random node. Sortable by creation time.',
+    pattern: 'tttttttt-tttt-1ttt-yxxx-xxxxxxxxxxxx',
+  },
+  v5: {
+    label: 'v5 — Name-based (SHA-1)',
+    desc: 'Deterministic: same name always produces the same UUID.',
+    pattern: 'xxxxxxxx-xxxx-5xxx-yxxx-xxxxxxxxxxxx',
+  },
+};
+
 export default function UuidGenerator() {
   const [uuids, setUuids] = useState<string[]>(() => [uuidv4()]);
   const [format, setFormat] = useState<Format>('standard');
   const [count, setCount] = useState(1);
+  const [version, setVersion] = useState<Version>('v4');
+  const [v5Name, setV5Name] = useState('example.com');
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [allCopied, setAllCopied] = useState(false);
 
-  const generate = useCallback(() => {
+  const generate = useCallback(async () => {
     const n = Math.min(Math.max(1, count), 100);
-    setUuids(Array.from({ length: n }, () => uuidv4()));
-  }, [count]);
+    if (version === 'v4') {
+      setUuids(Array.from({ length: n }, () => uuidv4()));
+    } else if (version === 'v1') {
+      // Slight delay between v1 UUIDs so timestamps differ
+      const results: string[] = [];
+      for (let i = 0; i < n; i++) {
+        await new Promise(r => setTimeout(r, 1));
+        results.push(uuidv1());
+      }
+      setUuids(results);
+    } else if (version === 'v5') {
+      // v5 with incrementing names for bulk: name, name-2, name-3...
+      const results: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const name = n === 1 ? v5Name : `${v5Name}${i > 0 ? `-${i + 1}` : ''}`;
+        results.push(await uuidv5(name));
+      }
+      setUuids(results);
+    }
+  }, [count, version, v5Name]);
 
   const copyOne = (idx: number) => {
     navigator.clipboard.writeText(applyFormat(uuids[idx], format)).then(() => {
@@ -92,6 +174,39 @@ export default function UuidGenerator() {
     <div class="space-y-5">
       {/* Controls */}
       <div class="bg-gray-900 rounded-xl border border-gray-700 p-5 space-y-4">
+        {/* Version selector */}
+        <div>
+          <label class="block text-sm font-medium text-gray-300 mb-2">UUID Version</label>
+          <div class="flex flex-wrap gap-2">
+            {(Object.keys(VERSION_INFO) as Version[]).map(v => (
+              <button key={v} onClick={() => setVersion(v)}
+                class={`text-sm px-4 py-1.5 rounded-md border transition-colors ${
+                  version === v
+                    ? 'bg-indigo-600 border-indigo-500 text-white'
+                    : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                }`}>
+                {VERSION_INFO[v].label}
+              </button>
+            ))}
+          </div>
+          <p class="text-xs text-gray-500 mt-1.5">{VERSION_INFO[version].desc}</p>
+        </div>
+
+        {/* v5 name input */}
+        {version === 'v5' && (
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1">Name (input string)</label>
+            <input
+              type="text"
+              value={v5Name}
+              onInput={e => setV5Name((e.target as HTMLInputElement).value)}
+              placeholder="e.g. example.com"
+              class="w-full bg-gray-800 text-gray-100 border border-gray-700 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-indigo-500"
+            />
+            <p class="text-xs text-gray-500 mt-1">Namespace: DNS (6ba7b810-9dad-11d1-80b4-00c04fd430c8)</p>
+          </div>
+        )}
+
         <div class="flex flex-wrap gap-4 items-end">
           {/* Count */}
           <div>
@@ -128,7 +243,7 @@ export default function UuidGenerator() {
 
         {/* Format */}
         <div>
-          <label class="block text-sm font-medium text-gray-300 mb-2">Format</label>
+          <label class="block text-sm font-medium text-gray-300 mb-2">Output Format</label>
           <div class="flex flex-wrap gap-2">
             {formats.map(f => (
               <button key={f.value} onClick={() => setFormat(f.value)}
@@ -171,10 +286,13 @@ export default function UuidGenerator() {
       </div>
 
       {/* Info box */}
-      <div class="bg-gray-900/50 rounded-lg border border-gray-800 p-4 text-sm text-gray-400 space-y-1">
-        <p class="font-medium text-gray-300">About UUID v4</p>
-        <p>UUID v4 uses <strong class="text-gray-200">cryptographically secure random</strong> bytes. The probability of collision is astronomically low (about 1 in 5.3 × 10³⁶).</p>
-        <p class="font-mono text-xs text-gray-500">xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx (where y ∈ {8,9,a,b})</p>
+      <div class="bg-gray-900/50 rounded-lg border border-gray-800 p-4 text-sm text-gray-400 space-y-2">
+        <p class="font-medium text-gray-300">UUID Version Guide</p>
+        <div class="space-y-1 text-xs">
+          <p><span class="text-indigo-400 font-medium">v4 (Random)</span> — Best for most use cases. Uses CSPRNG. Pattern: <code class="text-gray-500">xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx</code></p>
+          <p><span class="text-indigo-400 font-medium">v1 (Time-based)</span> — Encodes creation timestamp. Useful when ordering by creation time matters.</p>
+          <p><span class="text-indigo-400 font-medium">v5 (Name-based)</span> — SHA-1 hash of a name. Deterministic: same input = same UUID, every time.</p>
+        </div>
       </div>
 
       {/* Share */}
