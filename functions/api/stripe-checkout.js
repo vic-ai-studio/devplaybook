@@ -53,6 +53,7 @@ export async function onRequestPost({ request, env }) {
     cancel_url: cancelUrl,
     'payment_method_types[0]': 'card',
     'subscription_data[metadata][source]': 'devplaybook_pro',
+    'subscription_data[trial_period_days]': '7',
   });
 
   // Attach email if provided (pre-fills Stripe Checkout form)
