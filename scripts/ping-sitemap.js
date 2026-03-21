@@ -5,7 +5,7 @@
  * Add to deploy pipeline: npm run build && node scripts/ping-sitemap.js
  */
 
-const https = require('https');
+import https from 'https';
 
 const SITEMAP_URL = 'https://devplaybook.cc/sitemap-index.xml';
 
