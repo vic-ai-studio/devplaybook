@@ -121,6 +121,25 @@ const ogImageUrl = ogImage
     {import.meta.env.PUBLIC_ADSENSE_PUBLISHER_ID && (
       <script async src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${import.meta.env.PUBLIC_ADSENSE_PUBLISHER_ID}`} crossorigin="anonymous"></script>
     )}
+
+    <!-- Google Analytics 4 (set PUBLIC_GA4_MEASUREMENT_ID in Cloudflare Pages env vars) -->
+    {import.meta.env.PUBLIC_GA4_MEASUREMENT_ID && (
+      <>
+        <link rel="preconnect" href="https://www.googletagmanager.com" />
+        <link rel="dns-prefetch" href="https://www.google-analytics.com" />
+        <script async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_GA4_MEASUREMENT_ID}`}></script>
+        <script is:inline define:vars={{ ga4Id: import.meta.env.PUBLIC_GA4_MEASUREMENT_ID }}>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', ga4Id, {
+            send_page_view: true,
+            cookie_flags: 'SameSite=None;Secure'
+          });
+          window._ga4Id = ga4Id;
+        </script>
+      </>
+    )}
   </head>
   <body class="bg-bg text-text min-h-screen">
   <!-- Exit-intent newsletter popup (shown on blog pages when user moves mouse toward top) -->
@@ -464,7 +483,7 @@ const ogImageUrl = ogImage
       </script>
     )}
 
-    <!-- Conversion event tracking -->
+    <!-- Conversion event tracking (Zaraz + GA4) -->
     <script is:inline>
       window.dpTrack = function(event, props) {
         if (window.zaraz && window.zaraz.track) {
@@ -472,21 +491,77 @@ const ogImageUrl = ogImage
         }
       };
 
+      // GA4 helper — fires event if gtag is available
+      window.ga4Track = function(eventName, params) {
+        try {
+          if (typeof gtag === 'function') {
+            gtag('event', eventName, params || {});
+          }
+        } catch(e) {}
+      };
+
       document.addEventListener('click', function(e) {
         var el = e.target.closest('[data-track]');
         if (!el) return;
         var props = {};
         if (el.dataset.productName) props.product = el.dataset.productName;
-        if (el.dataset.productPrice) props.price = el.dataset.productPrice;
+        if (el.dataset.productPrice) props.price = Number(el.dataset.productPrice) || el.dataset.productPrice;
         if (el.dataset.formName) props.form = el.dataset.formName;
-        window.dpTrack(el.dataset.track, props);
+        var t = el.dataset.track;
+        window.dpTrack(t, props);
+        // GA4 conversion events
+        if (t === 'pro_checkout_click' || t === 'pro_cta_click' || t === 'bundle_hero_cta' || t === 'bundle_bottom_cta' || t === 'bundle_cta_click' || t === 'exit_banner_cta') {
+          window.ga4Track('pro_cta_click', { source: t, currency: 'USD', value: props.price || 0, item_name: props.product || 'Pro' });
+        } else if (t === 'gumroad_click') {
+          window.ga4Track('begin_checkout', { currency: 'USD', value: props.price || 0, item_name: props.product || '' });
+        } else if (t === 'bmc_click') {
+          window.ga4Track('bmc_click', {});
+        }
       });
 
       document.addEventListener('submit', function(e) {
         var form = e.target.closest('form[data-track-submit]');
         if (!form) return;
-        window.dpTrack(form.dataset.trackSubmit, { form: form.id || '' });
+        var s = form.dataset.trackSubmit || '';
+        window.dpTrack(s, { form: form.id || '' });
+        if (s.includes('newsletter')) {
+          window.ga4Track('newsletter_signup', { source: s });
+        }
       });
+    </script>
+
+    <!-- GA4 article read-time tracking (blog pages only) -->
+    <script is:inline>
+      (function() {
+        if (!/^\/blog\//.test(location.pathname)) return;
+        var start = Date.now();
+        var milestones = [30, 60, 120, 180];
+        var fired = {};
+        var iv = setInterval(function() {
+          var elapsed = Math.round((Date.now() - start) / 1000);
+          for (var i = 0; i < milestones.length; i++) {
+            var m = milestones[i];
+            if (!fired[m] && elapsed >= m) {
+              fired[m] = true;
+              try {
+                if (typeof gtag === 'function') {
+                  gtag('event', 'article_read_time', { seconds: m, path: location.pathname });
+                }
+              } catch(e) {}
+            }
+          }
+          if (fired[180]) clearInterval(iv);
+        }, 10000);
+        // Also fire total read time on page unload
+        window.addEventListener('pagehide', function() {
+          var total = Math.round((Date.now() - start) / 1000);
+          try {
+            if (typeof gtag === 'function') {
+              gtag('event', 'article_exit', { read_seconds: total, path: location.pathname });
+            }
+          } catch(e) {}
+        });
+      })();
     </script>
   </body>
 </html>

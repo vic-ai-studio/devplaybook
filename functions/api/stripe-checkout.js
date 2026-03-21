@@ -36,7 +36,8 @@ export async function onRequestPost({ request, env }) {
   // Derive success/cancel URLs from request origin
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
-  const successUrl = `${origin}/pro-success?session_id={CHECKOUT_SESSION_ID}`;
+  const plan = (body.plan === 'yearly') ? 'yearly' : 'monthly';
+  const successUrl = `${origin}/pro-success?session_id={CHECKOUT_SESSION_ID}&plan=${plan}`;
   const cancelUrl = `${origin}/pro-cancel`;
 
   // Build Stripe Checkout Session payload
