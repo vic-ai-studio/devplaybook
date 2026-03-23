@@ -280,3 +280,6 @@ Add the rest as you encounter use cases. All 10 tools above (plus the honorable 
 ---
 
 *Want to go deeper? Our [Complete HTTP Status Codes Reference](/blog/complete-http-status-codes-reference-rest-api) covers every status code for REST API development. The [Regex Cheat Sheet](/blog/regex-cheat-sheet-complete-guide-developers) has 30+ ready-to-use patterns for common validation tasks.*
+
+
+<div class="affiliate"><p>使用以下連結支持我們：<a href="https://www.cloudflare.com/affiliate/?affiliate=devplaybook">Cloudflare</a> | <a href="https://www.digitalocean.com/?ref=devplaybook">DigitalOcean</a></p></div>

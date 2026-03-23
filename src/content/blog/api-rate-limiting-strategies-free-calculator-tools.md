@@ -590,3 +590,6 @@ app.use(burstLimiter, sustainedLimiter);
 ```
 
 Rate limiting is one of those things that's invisible when it works and catastrophic when it doesn't. The right algorithm, combined with informative headers and well-designed client-side backoff, makes your API resilient without creating friction for legitimate users.
+
+
+<div class="affiliate"><p>使用以下連結支持我們：<a href="https://www.cloudflare.com/affiliate/?affiliate=devplaybook">Cloudflare</a> | <a href="https://www.digitalocean.com/?ref=devplaybook">DigitalOcean</a></p></div>

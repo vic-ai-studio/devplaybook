@@ -352,3 +352,6 @@ API testing tools are a daily-use productivity tool. The right answer depends on
 The trend in 2025 is clear: developers who've adopted Bruno rarely go back. Git-native API collections reduce the cognitive overhead of keeping collections in sync with code, and the pricing is unbeatable. If you're starting a new project or team, Bruno is worth evaluating first.
 
 For quick API testing during development without setting up a full client, try [DevPlaybook's online API tester](https://devplaybook.cc/tools/api-tester) — send requests directly from your browser without installing anything.
+
+
+<div class="affiliate"><p>使用以下連結支持我們：<a href="https://www.cloudflare.com/affiliate/?affiliate=devplaybook">Cloudflare</a> | <a href="https://www.digitalocean.com/?ref=devplaybook">DigitalOcean</a></p></div>

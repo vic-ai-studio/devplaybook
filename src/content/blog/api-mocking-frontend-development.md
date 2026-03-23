@@ -393,3 +393,6 @@ A good rule: use MSW for component tests (fast, isolated), use real API calls fo
 ## Build Faster With the Right Boilerplate
 
 Setting up MSW, TypeScript, and testing infrastructure from scratch takes time. The **[Full-Stack Boilerplate Collection](/products)** includes a React starter with MSW pre-configured for browser and Node.js, Vitest setup, and component test examples — everything wired up so you can start testing immediately.
+
+
+<div class="affiliate"><p>使用以下連結支持我們：<a href="https://www.cloudflare.com/affiliate/?affiliate=devplaybook">Cloudflare</a> | <a href="https://www.digitalocean.com/?ref=devplaybook">DigitalOcean</a></p></div>
