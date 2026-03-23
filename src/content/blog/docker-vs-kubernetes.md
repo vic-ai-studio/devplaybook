@@ -285,7 +285,7 @@ Here are scenarios where Docker (with Compose) is the right choice and adding Ku
 
 You are validating an idea. Speed of iteration matters more than anything. A `docker-compose.yml` with your app, a database, and maybe a message queue is all you need. Ship fast, learn fast.
 
-If you're bootstrapping a new project, our [Fullstack Boilerplate Collection](/products/fullstack-boilerplate-collection) includes Docker Compose setups for popular stacks (Next.js + Postgres, Django + Redis, Go + MongoDB) so you can skip the configuration phase entirely.
+If you're bootstrapping a new project, our [Fullstack Boilerplate Collection](/products) includes Docker Compose setups for popular stacks (Next.js + Postgres, Django + Redis, Go + MongoDB) so you can skip the configuration phase entirely.
 
 ### 2. Internal Tools and Admin Panels
 
@@ -623,4 +623,4 @@ The best infrastructure decision is the one that lets your team ship features in
 
 ---
 
-**Need help setting up your container infrastructure?** Start with our [Docker Compose Generator](/tools/docker-compose-generator) for instant configuration files, grab a production-ready template from the [Fullstack Boilerplate Collection](/products/fullstack-boilerplate-collection), or accelerate your entire workflow with the [Developer Productivity Bundle](/products/developer-productivity-bundle).
+**Need help setting up your container infrastructure?** Start with our [Docker Compose Generator](/tools/docker-compose-generator) for instant configuration files, grab a production-ready template from the [Fullstack Boilerplate Collection](/products), or accelerate your entire workflow with the [Developer Productivity Bundle](/products/developer-productivity-bundle).

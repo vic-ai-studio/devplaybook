@@ -1,6 +1,6 @@
 ---
-title: "Best Developer Portfolio Examples (2025)"
-description: "See what makes a great developer portfolio in 2025 — real examples, what tools they used, and exactly what to copy for your own GitHub pages and personal site."
+title: "Best Developer Portfolio Examples (2026)"
+description: "See what makes a great developer portfolio in 2026 — real examples, what tools they used, and exactly what to copy for your own GitHub pages and personal site."
 date: "2026-03-20"
 author: "DevPlaybook Team"
 tags: ["portfolio", "career", "github", "developer-tools", "job-search"]

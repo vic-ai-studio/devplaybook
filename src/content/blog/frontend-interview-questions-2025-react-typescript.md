@@ -1,11 +1,11 @@
 ---
-title: "Frontend Interview Questions 2025: React, TypeScript & More"
-description: "The most common frontend interview questions in 2025 with detailed answers covering React, TypeScript, performance, accessibility, and system design."
+title: "Frontend Interview Questions 2026: React, TypeScript & More"
+description: "The most common frontend interview questions in 2026 with detailed answers covering React, TypeScript, performance, accessibility, and system design."
 date: "2026-03-21"
 author: "DevPlaybook Team"
 tags: ["interview", "frontend", "react", "typescript", "career"]
 readingTime: "15 min read"
-ogDescription: "The most common frontend interview questions in 2025 with detailed answers covering React, TypeScript, performance, accessibility, and system design."
+ogDescription: "The most common frontend interview questions in 2026 with detailed answers covering React, TypeScript, performance, accessibility, and system design."
 ---
 
 Frontend interviews in 2025 have evolved beyond "how does the event loop work." You'll face React architectural questions, TypeScript type system challenges, performance deep-dives, and often a system design component. This guide covers what's actually being asked and what a strong answer looks like.

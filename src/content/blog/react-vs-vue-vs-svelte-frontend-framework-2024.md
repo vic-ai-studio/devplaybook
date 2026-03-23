@@ -1,5 +1,5 @@
 ---
-title: "React vs Vue vs Svelte: Choosing the Right Frontend Framework in 2024"
+title: "React vs Vue vs Svelte: Choosing the Right Frontend Framework in 2026"
 description: "React vs Vue vs Svelte: detailed comparison of learning curve, performance, ecosystem, and job market to help you pick the right framework for your next project."
 date: "2026-03-21"
 author: "DevPlaybook Team"

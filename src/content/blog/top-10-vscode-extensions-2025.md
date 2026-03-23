@@ -1,6 +1,6 @@
 ---
-title: "Top 10 VS Code Extensions Every Developer Needs in 2025"
-description: "The 10 must-have VS Code extensions in 2025 — with install commands, configuration tips, and direct links. For every developer, regardless of stack."
+title: "Top 10 VS Code Extensions Every Developer Needs in 2026"
+description: "The 10 must-have VS Code extensions in 2026 — with install commands, configuration tips, and direct links. For every developer, regardless of stack."
 date: "2026-03-20"
 author: "DevPlaybook Team"
 tags: ["vscode", "extensions", "developer-tools", "productivity", "ide"]

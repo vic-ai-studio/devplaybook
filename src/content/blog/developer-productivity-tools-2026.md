@@ -50,7 +50,7 @@ AI coding assistants have become the single largest productivity multiplier avai
 
 **Best for:** Developers who want an AI that acts as a true collaborator rather than just an autocomplete engine. Particularly powerful for solo developers and small teams who need to move fast.
 
-For a deep dive into mastering this tool, check out our [Claude Code Mastery Guide](/products/claude-code-mastery-guide), which covers advanced workflows, custom rules, and real-world automation patterns.
+For a deep dive into mastering this tool, check out our [Claude Code Mastery Guide](/products), which covers advanced workflows, custom rules, and real-world automation patterns.
 
 ### Cursor
 

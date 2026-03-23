@@ -1,5 +1,5 @@
 ---
-title: "Best Code Diff Tools Online Free (2024)"
+title: "Best Code Diff Tools Online Free (2026)"
 description: "The best free online code diff tools for comparing files, JSON, and text. Find the right diff tool for code reviews, config changes, and debugging."
 date: "2026-03-20"
 author: "DevPlaybook Team"

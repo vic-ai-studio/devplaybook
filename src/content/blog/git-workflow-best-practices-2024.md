@@ -1,6 +1,6 @@
 ---
-title: "Git Workflow Best Practices: The Developer's Guide for 2024"
-description: "Git workflow best practices for 2024: branching strategies, commit conventions, PR templates, code review tips, and automation that keeps teams productive."
+title: "Git Workflow Best Practices: The Developer's Guide for 2026"
+description: "Git workflow best practices for 2026: branching strategies, commit conventions, PR templates, code review tips, and automation that keeps teams productive."
 date: "2026-03-21"
 author: "DevPlaybook Team"
 tags: ["git", "git-workflow", "version-control", "branching-strategy", "developer-productivity", "2024"]

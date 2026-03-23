@@ -120,7 +120,7 @@ curl -X GET https://api.example.com/api/v1/users/42 \
 
 A critical but often overlooked step: always validate the token on the server side. Do not trust the client's decoded payload -- verify the cryptographic signature against your public key or JWKS endpoint.
 
-For a deeper dive into securing your full stack, check out the [Fullstack Boilerplate Collection](/products/fullstack-boilerplate-collection) which includes pre-configured auth setups for Node.js, Python, and Go.
+For a deeper dive into securing your full stack, check out the [Fullstack Boilerplate Collection](/products) which includes pre-configured auth setups for Node.js, Python, and Go.
 
 ## 4. Request Validation & Input Sanitization
 
@@ -441,7 +441,7 @@ You cannot fix what you cannot see. Production APIs need observability built in 
 
 A health check endpoint is not optional. Without it, your load balancer has no way to route traffic away from an unhealthy instance, and your orchestrator cannot restart a failing container. Keep the health check fast (under 100ms) and avoid heavy computation in it.
 
-For a holistic view of your application's performance beyond the API layer, the [Frontend Performance Audit Checklist](/products/frontend-performance-audit-checklist) covers the client side of the equation.
+For a holistic view of your application's performance beyond the API layer, the [Frontend Performance Audit Checklist](/products) covers the client side of the equation.
 
 ## 11. Security Hardening
 
@@ -588,4 +588,4 @@ Work through this checklist incrementally. Start with the non-negotiables: HTTPS
 
 Every item you check off reduces your operational risk and increases developer trust in your API. That trust is what turns a simple backend service into a platform that teams and partners build on with confidence.
 
-**Ready to put this checklist into practice?** Start by testing your existing endpoints with our [API Request Builder](/tools/api-request-builder), grab the [API Testing Cheatsheet Pack](/products/api-testing-cheatsheet-pack) for ready-made test templates, or scaffold your next project with the [Fullstack Boilerplate Collection](/products/fullstack-boilerplate-collection) that has authentication, validation, and error handling baked in from the start.
+**Ready to put this checklist into practice?** Start by testing your existing endpoints with our [API Request Builder](/tools/api-request-builder), grab the [API Testing Cheatsheet Pack](/products/api-testing-cheatsheet-pack) for ready-made test templates, or scaffold your next project with the [Fullstack Boilerplate Collection](/products) that has authentication, validation, and error handling baked in from the start.

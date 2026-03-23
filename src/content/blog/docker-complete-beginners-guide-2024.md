@@ -1,5 +1,5 @@
 ---
-title: "Docker Complete Guide for Beginners: Containerize Your App in 2024"
+title: "Docker Complete Guide for Beginners: Containerize Your App in 2026"
 description: "Complete Docker beginner guide: understand containers vs VMs, install Docker, write Dockerfiles, use Docker Compose for multi-container apps. With hands-on examples."
 date: "2026-03-21"
 author: "DevPlaybook Team"

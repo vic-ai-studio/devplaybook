@@ -75,7 +75,7 @@ What sets Claude Code apart is its **agentic architecture**. It doesn't just sug
 - **Claude Max**: $100-200/month — significantly higher usage limits for power users
 - **API**: Pay-per-token pricing for programmatic access
 
-If you want to go deeper, our [Claude Code Mastery Guide](/products/claude-code-mastery-guide) covers advanced workflows, CLAUDE.md patterns, MCP integrations, and real-world project setups.
+If you want to go deeper, our [Claude Code Mastery Guide](/products) covers advanced workflows, CLAUDE.md patterns, MCP integrations, and real-world project setups.
 
 ## Cursor: The AI-Native IDE
 
@@ -389,7 +389,7 @@ Answer these questions to find your match:
 
 There is no single "best" tool — only the best tool for your specific workflow.
 
-**Choose Claude Code** if you are a power user who wants an AI that can genuinely take on complex, multi-file tasks autonomously. It has the steepest learning curve but the highest ceiling. Developers who invest in mastering Claude Code — writing great CLAUDE.md files, leveraging sub-agents, setting up MCP integrations — report the largest productivity gains. It is the tool that most feels like having a skilled teammate. Master it with our [Claude Code Mastery Guide](/products/claude-code-mastery-guide).
+**Choose Claude Code** if you are a power user who wants an AI that can genuinely take on complex, multi-file tasks autonomously. It has the steepest learning curve but the highest ceiling. Developers who invest in mastering Claude Code — writing great CLAUDE.md files, leveraging sub-agents, setting up MCP integrations — report the largest productivity gains. It is the tool that most feels like having a skilled teammate. Master it with our [Claude Code Mastery Guide](/products).
 
 **Choose Cursor** if you want the best overall daily coding experience. Tab completions, inline edits, and Composer mode create a fluid workflow that saves time on every task. It is the easiest to love from day one and the most balanced tool in the comparison.
 

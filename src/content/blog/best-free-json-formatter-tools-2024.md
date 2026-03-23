@@ -1,6 +1,6 @@
 ---
-title: "Best Free JSON Formatter Tools 2024 — Format, Validate & Beautify"
-description: "Looking for the best free JSON formatter tools in 2024? Compare top online JSON formatters that validate, beautify, and minify JSON instantly in your browser."
+title: "Best Free JSON Formatter Tools 2026 — Format, Validate & Beautify"
+description: "Looking for the best free JSON formatter tools in 2026? Compare top online JSON formatters that validate, beautify, and minify JSON instantly in your browser."
 date: "2026-03-21"
 author: "DevPlaybook Team"
 tags: ["json", "json-formatter", "developer-tools", "free-tools", "online-tools"]

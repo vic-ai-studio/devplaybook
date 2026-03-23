@@ -114,7 +114,7 @@ MAX_ITERATIONS = 20
 VERBOSE = True
 ```
 
-> **Tip:** Never hard-code API keys. Use environment variables or a secrets manager. For a production-grade config pattern, check our [Fullstack Boilerplate Collection](/products/fullstack-boilerplate-collection) which includes secure credential handling for every major framework.
+> **Tip:** Never hard-code API keys. Use environment variables or a secrets manager. For a production-grade config pattern, check our [Fullstack Boilerplate Collection](/products) which includes secure credential handling for every major framework.
 
 ## Step 2: The Agent Loop
 
@@ -348,7 +348,7 @@ def execute_tool(name: str, inputs: dict) -> str:
 4. **Sandbox execution.** The `run_python` tool above is dangerous in production. Use Docker containers, gVisor, or a managed sandbox like E2B.
 5. **Timeouts on everything.** Network calls hang. Subprocess calls hang. Always set timeouts.
 
-> Production agents often need dozens of tools. Our [MCP Studio Complete](/products/mcp-studio-complete) package includes 40+ pre-built MCP tool servers for databases, APIs, file systems, and cloud services -- ready to plug into any agent.
+> Production agents often need dozens of tools. Our [MCP Studio Complete](/products) package includes 40+ pre-built MCP tool servers for databases, APIs, file systems, and cloud services -- ready to plug into any agent.
 
 ## Step 4: Building a Memory System
 
@@ -619,7 +619,7 @@ Production teams use MCP to:
 - **Manage permissions** -- MCP supports scoped access. A junior agent can read data; a senior agent can write.
 - **Version tools independently** -- Update a tool server without touching agent code.
 
-For a deep dive into building and deploying MCP servers, including authentication, streaming, and advanced resource management, see our [MCP Studio Complete](/products/mcp-studio-complete) guide.
+For a deep dive into building and deploying MCP servers, including authentication, streaming, and advanced resource management, see our [MCP Studio Complete](/products) guide.
 
 ## Step 7: Putting It All Together
 
@@ -859,7 +859,7 @@ You now have a working agent with tools, memory, and planning. Here is where to 
 
 6. **Explore production frameworks.** Once you outgrow your DIY agent, look at LangGraph, CrewAI, or AutoGen for battle-tested orchestration.
 
-For a comprehensive deep-dive into Claude-specific agent patterns, prompt engineering, and advanced tool use, check out our [Claude Code Mastery Guide](/products/claude-code-mastery-guide). It covers everything from basic setup to production multi-agent systems with real-world case studies.
+For a comprehensive deep-dive into Claude-specific agent patterns, prompt engineering, and advanced tool use, check out our [Claude Code Mastery Guide](/products). It covers everything from basic setup to production multi-agent systems with real-world case studies.
 
 ## Resources
 
@@ -879,9 +879,9 @@ For a comprehensive deep-dive into Claude-specific agent patterns, prompt engine
 ### DevPlaybook Resources
 
 - [AI Prompt Engineering Toolkit](/products/ai-prompt-engineering-toolkit) -- Production-ready prompt templates for agents, chains, and evaluations.
-- [MCP Studio Complete](/products/mcp-studio-complete) -- 40+ pre-built MCP tool servers with authentication, streaming, and deployment configs.
-- [Claude Code Mastery Guide](/products/claude-code-mastery-guide) -- From zero to production Claude agents.
-- [Fullstack Boilerplate Collection](/products/fullstack-boilerplate-collection) -- Starter templates for agent backends with FastAPI, Next.js, and more.
+- [MCP Studio Complete](/products) -- 40+ pre-built MCP tool servers with authentication, streaming, and deployment configs.
+- [Claude Code Mastery Guide](/products) -- From zero to production Claude agents.
+- [Fullstack Boilerplate Collection](/products) -- Starter templates for agent backends with FastAPI, Next.js, and more.
 - [Free Developer Tools](/tools) -- Calculators, converters, and utilities for your development workflow.
 
 ---

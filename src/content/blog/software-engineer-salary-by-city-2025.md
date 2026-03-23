@@ -1,11 +1,11 @@
 ---
-title: "Software Engineer Salary by City 2025: Complete Guide"
-description: "Real software engineer salary data by city in 2025. Compare base pay, total comp, and cost-of-living adjustments across 20+ major tech hubs."
+title: "Software Engineer Salary by City 2026: Complete Guide"
+description: "Real software engineer salary data by city in 2026. Compare base pay, total comp, and cost-of-living adjustments across 20+ major tech hubs."
 date: "2026-03-21"
 author: "DevPlaybook Team"
 tags: ["career", "salary", "job-search", "compensation"]
 readingTime: "10 min read"
-ogDescription: "Real software engineer salary data by city in 2025. Compare base pay, total comp, and cost-of-living adjustments across 20+ major tech hubs."
+ogDescription: "Real software engineer salary data by city in 2026. Compare base pay, total comp, and cost-of-living adjustments across 20+ major tech hubs."
 ---
 
 Software engineer salaries vary by 2–3x depending on where you work — and that gap hasn't closed. This guide aggregates real compensation data from Levels.fyi, Glassdoor, and LinkedIn Salary for 2025, with cost-of-living adjustments so you can make accurate comparisons.
