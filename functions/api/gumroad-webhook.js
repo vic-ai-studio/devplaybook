@@ -18,7 +18,7 @@
  *   https://devplaybook.cc/api/gumroad-webhook
  */
 
-const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1475366832318840843/CVbC12YDRk4alloecr41VUfVunGllwOOUemEiihkR_LJ_6_B9VvT49meeobfaCHLgmZJ';
+// Discord webhook URL must be set via env var DISCORD_REPORTS_WEBHOOK in Cloudflare Pages dashboard
 
 /**
  * Get today's total revenue from KV ledger.
@@ -166,12 +166,16 @@ export async function onRequestPost({ request, env }) {
   const dailyStats = await updateDailyStats(kv, priceCents);
 
   // Post to Discord
-  const discordUrl = env.DISCORD_REPORTS_WEBHOOK || DISCORD_WEBHOOK;
-  try {
-    await postToDiscord(discordUrl, sale, dailyStats || { count: 1, totalCents: priceCents });
-  } catch (err) {
-    console.error('[gumroad-webhook] Discord notification failed:', err);
-    // Don't fail the webhook — Gumroad should still get 200
+  const discordUrl = env.DISCORD_REPORTS_WEBHOOK;
+  if (discordUrl) {
+    try {
+      await postToDiscord(discordUrl, sale, dailyStats || { count: 1, totalCents: priceCents });
+    } catch (err) {
+      console.error('[gumroad-webhook] Discord notification failed:', err);
+      // Don't fail the webhook — Gumroad should still get 200
+    }
+  } else {
+    console.warn('[gumroad-webhook] DISCORD_REPORTS_WEBHOOK not set, skipping Discord notification');
   }
 
   console.log(`[gumroad-webhook] Sale processed: ${sale.productName} $${(priceCents / 100).toFixed(2)} from ${sale.email}`);

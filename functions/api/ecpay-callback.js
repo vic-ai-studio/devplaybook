@@ -13,7 +13,7 @@
  *   ANALYTICS - for storing sale records
  */
 
-const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1475366832318840843/CVbC12YDRk4alloecr41VUfVunGllwOOUemEiihkR_LJ_6_B9VvT49meeobfaCHLgmZJ';
+// Discord webhook URL must be set via env var DISCORD_REPORTS_WEBHOOK in Cloudflare Pages dashboard
 
 /**
  * Verify ECPay CheckMacValue
@@ -177,8 +177,12 @@ export async function onRequestPost({ request, env }) {
   await storeSale(kv, sale);
 
   // Discord notification
-  const discordUrl = env.DISCORD_REPORTS_WEBHOOK || DISCORD_WEBHOOK;
-  await postToDiscord(discordUrl, sale);
+  const discordUrl = env.DISCORD_REPORTS_WEBHOOK;
+  if (discordUrl) {
+    await postToDiscord(discordUrl, sale);
+  } else {
+    console.warn('[ecpay-callback] DISCORD_REPORTS_WEBHOOK not set, skipping Discord notification');
+  }
 
   // ECPay requires "1|OK" response to acknowledge
   return new Response('1|OK', {
