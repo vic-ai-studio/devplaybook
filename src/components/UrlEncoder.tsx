@@ -1,4 +1,5 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
+import { isProUser } from '../utils/pro';
 
 type Mode = 'encode' | 'decode';
 
@@ -8,6 +9,15 @@ export default function UrlEncoder() {
   const [fullUrl, setFullUrl] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [pro, setPro] = useState(false);
+  // Batch mode (Pro)
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchInput, setBatchInput] = useState('');
+  const [batchCopied, setBatchCopied] = useState(false);
+
+  useEffect(() => {
+    setPro(isProUser());
+  }, []);
 
   const convert = (value: string, m: Mode, fu: boolean): string => {
     if (!value.trim()) return '';
@@ -33,11 +43,34 @@ export default function UrlEncoder() {
     }
   })();
 
+  const batchOutput = (() => {
+    if (!batchInput.trim()) return '';
+    return batchInput
+      .split('\n')
+      .map(line => {
+        if (!line.trim()) return '';
+        try {
+          return convert(line, mode, fullUrl);
+        } catch {
+          return `[Error: invalid input]`;
+        }
+      })
+      .join('\n');
+  })();
+
   const copy = () => {
     if (!output) return;
     navigator.clipboard.writeText(output).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  const copyBatch = () => {
+    if (!batchOutput) return;
+    navigator.clipboard.writeText(batchOutput).then(() => {
+      setBatchCopied(true);
+      setTimeout(() => setBatchCopied(false), 1500);
     });
   };
 
@@ -152,6 +185,59 @@ export default function UrlEncoder() {
           ))}
         </div>
       </div>
+
+      {/* Batch Mode — Pro only */}
+      <div class={`border rounded-xl p-4 space-y-3 ${pro ? 'border-border' : 'border-border/50'}`}>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold text-text">Batch {mode === 'encode' ? 'Encode' : 'Decode'}</h3>
+            {!pro && (
+              <span class="text-xs bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded-full">Pro</span>
+            )}
+          </div>
+          {pro && (
+            <button
+              onClick={() => setBatchMode(b => !b)}
+              class="text-xs border border-border hover:border-primary text-text-muted hover:text-primary px-3 py-1 rounded-lg transition-colors"
+            >
+              {batchMode ? 'Hide' : 'Open'}
+            </button>
+          )}
+        </div>
+
+        {!pro ? (
+          <div class="flex items-center justify-between">
+            <p class="text-xs text-text-muted">{mode === 'encode' ? 'Encode' : 'Decode'} multiple URLs at once — one per line. Available with Pro.</p>
+            <a href="/pro" class="text-xs text-primary hover:underline shrink-0 ml-2">Unlock with Pro →</a>
+          </div>
+        ) : batchMode ? (
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Input — one {mode === 'encode' ? 'value' : 'encoded string'} per line</label>
+              <textarea
+                class="w-full h-32 bg-bg-card border border-border rounded-lg p-3 font-mono text-sm text-text resize-y focus:outline-none focus:border-primary transition-colors"
+                placeholder={mode === 'encode' ? 'Hello World!\nuser@example.com\nfoo bar baz' : 'Hello%20World%21\nuser%40example.com'}
+                value={batchInput}
+                onInput={(e) => setBatchInput((e.target as HTMLTextAreaElement).value)}
+                spellcheck={false}
+              />
+            </div>
+            {batchOutput && (
+              <div>
+                <div class="flex justify-between items-center mb-1">
+                  <label class="text-xs text-text-muted">Batch output</label>
+                  <button onClick={copyBatch} class="text-xs bg-bg border border-border px-3 py-1 rounded hover:border-primary hover:text-primary transition-colors">
+                    {batchCopied ? '✓ Copied!' : 'Copy All'}
+                  </button>
+                </div>
+                <pre class="w-full bg-bg-card border border-border rounded-lg p-3 font-mono text-sm text-text overflow-x-auto whitespace-pre-wrap break-all">{batchOutput}</pre>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      {pro && <p class="text-xs text-primary text-right">✓ Pro — batch mode enabled</p>}
     </div>
   );
 }

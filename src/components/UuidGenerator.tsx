@@ -1,4 +1,7 @@
-import { useState, useCallback } from 'preact/hooks';
+import { useState, useCallback, useEffect } from 'preact/hooks';
+import { isProUser } from '../utils/pro';
+
+const FREE_COUNT_LIMIT = 10;
 
 // RFC 4122 v4 UUID — cryptographically random
 function uuidv4(): string {
@@ -124,9 +127,22 @@ export default function UuidGenerator() {
   const [v5Name, setV5Name] = useState('example.com');
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [allCopied, setAllCopied] = useState(false);
+  const [pro, setPro] = useState(false);
+  const [showProBanner, setShowProBanner] = useState(false);
+
+  useEffect(() => {
+    setPro(isProUser());
+  }, []);
+
+  const effectiveCount = !pro ? Math.min(count, FREE_COUNT_LIMIT) : Math.min(Math.max(1, count), 100);
 
   const generate = useCallback(async () => {
-    const n = Math.min(Math.max(1, count), 100);
+    const n = effectiveCount;
+    if (!pro && count > FREE_COUNT_LIMIT) {
+      setShowProBanner(true);
+    } else {
+      setShowProBanner(false);
+    }
     if (version === 'v4') {
       setUuids(Array.from({ length: n }, () => uuidv4()));
     } else if (version === 'v1') {
@@ -146,7 +162,7 @@ export default function UuidGenerator() {
       }
       setUuids(results);
     }
-  }, [count, version, v5Name]);
+  }, [count, version, v5Name, pro, effectiveCount]);
 
   const copyOne = (idx: number) => {
     navigator.clipboard.writeText(applyFormat(uuids[idx], format)).then(() => {
@@ -169,6 +185,9 @@ export default function UuidGenerator() {
     { value: 'no-hyphens', label: 'No Hyphens', example: '550e8400e29b41d4a716446655440000' },
     { value: 'braces', label: 'Braces', example: '{550e8400-e29b-41d4-a716-446655440000}' },
   ];
+
+  // Quick-select counts: free users can pick 1-10, Pro gets 25/50/100 too
+  const quickCounts = pro ? [1, 5, 10, 25, 50, 100] : [1, 5, 10];
 
   return (
     <div class="space-y-5">
@@ -210,9 +229,12 @@ export default function UuidGenerator() {
         <div class="flex flex-wrap gap-4 items-end">
           {/* Count */}
           <div>
-            <label class="block text-sm font-medium text-gray-300 mb-1">Count</label>
-            <div class="flex gap-2">
-              {[1, 5, 10, 25, 50].map(n => (
+            <div class="flex items-center gap-2 mb-1">
+              <label class="block text-sm font-medium text-gray-300">Count</label>
+              {!pro && <span class="text-xs text-gray-500">(max {FREE_COUNT_LIMIT} on free plan)</span>}
+            </div>
+            <div class="flex gap-2 flex-wrap">
+              {quickCounts.map(n => (
                 <button key={n} onClick={() => setCount(n)}
                   class={`text-sm px-3 py-1.5 rounded-md border transition-colors ${
                     count === n
@@ -222,12 +244,26 @@ export default function UuidGenerator() {
                   {n}
                 </button>
               ))}
+              {/* Show Pro-gated buttons for free users */}
+              {!pro && [25, 50, 100].map(n => (
+                <a key={n} href="/pro"
+                  class="text-sm px-3 py-1.5 rounded-md border border-gray-700 bg-gray-900 text-gray-600 cursor-pointer relative group"
+                  title="Unlock with Pro">
+                  {n}
+                  <span class="absolute -top-1 -right-1 text-xs bg-primary text-white rounded-full w-4 h-4 flex items-center justify-center leading-none">★</span>
+                </a>
+              ))}
               <input
                 type="number"
                 min={1}
-                max={100}
+                max={pro ? 100 : FREE_COUNT_LIMIT}
                 value={count}
-                onInput={e => setCount(Number((e.target as HTMLInputElement).value))}
+                onInput={e => {
+                  const val = Number((e.target as HTMLInputElement).value);
+                  setCount(val);
+                  if (!pro && val > FREE_COUNT_LIMIT) setShowProBanner(true);
+                  else setShowProBanner(false);
+                }}
                 class="w-20 bg-gray-800 text-gray-100 border border-gray-700 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
                 placeholder="custom"
               />
@@ -259,6 +295,19 @@ export default function UuidGenerator() {
           <p class="text-xs text-gray-500 mt-2 font-mono">{formats.find(f => f.value === format)?.example}</p>
         </div>
       </div>
+
+      {/* Pro upgrade banner */}
+      {showProBanner && (
+        <div class="bg-yellow-500/10 border border-yellow-500/40 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-yellow-400">Free plan: up to {FREE_COUNT_LIMIT} UUIDs per generate</p>
+            <p class="text-xs text-gray-400 mt-0.5">Generated {FREE_COUNT_LIMIT} instead of {count}. Upgrade to Pro for up to 100 at once.</p>
+          </div>
+          <a href="/pro" class="shrink-0 ml-4 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors">
+            Go Pro →
+          </a>
+        </div>
+      )}
 
       {/* Copy all + count header */}
       <div class="flex items-center justify-between">
@@ -293,7 +342,14 @@ export default function UuidGenerator() {
           <p><span class="text-indigo-400 font-medium">v1 (Time-based)</span> — Encodes creation timestamp. Useful when ordering by creation time matters.</p>
           <p><span class="text-indigo-400 font-medium">v5 (Name-based)</span> — SHA-1 hash of a name. Deterministic: same input = same UUID, every time.</p>
         </div>
+        {!pro && (
+          <p class="text-xs text-gray-500 border-t border-gray-800 pt-2 mt-2">
+            Free plan: up to {FREE_COUNT_LIMIT} UUIDs per generate. <a href="/pro" class="text-primary hover:underline">Upgrade to Pro</a> for up to 100 at once.
+          </p>
+        )}
       </div>
+
+      {pro && <p class="text-xs text-primary text-right">✓ Pro — generate up to 100 UUIDs at once</p>}
 
       {/* Share */}
       <div class="border-t border-gray-800 pt-4">

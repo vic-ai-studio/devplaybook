@@ -31,10 +31,15 @@ const CARD_THEMES = [
   { id: 'dracula', label: 'Dracula', bg: '#282a36', text: '#f8f8f2', border: '#44475a', accent: '#bd93f9', sub: '#6272a4' },
 ];
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function generateSVG(stats: StatsResult, theme: typeof CARD_THEMES[0]): string {
   const { user, totalStars, topLanguages } = stats;
-  const displayName = user.name || user.login;
-  const bio = user.bio ? (user.bio.length > 50 ? user.bio.slice(0, 47) + '...' : user.bio) : '';
+  const displayName = escapeHtml(user.name || user.login);
+  const safeLogin = escapeHtml(user.login);
+  const bio = user.bio ? escapeHtml(user.bio.length > 50 ? user.bio.slice(0, 47) + '...' : user.bio) : '';
   const langs = topLanguages.slice(0, 5);
 
   const langDots = langs.map((l, i) => {
@@ -45,9 +50,9 @@ function generateSVG(stats: StatsResult, theme: typeof CARD_THEMES[0]): string {
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="${180 + langs.length * 22}" viewBox="0 0 400 ${180 + langs.length * 22}">
   <rect width="400" height="${180 + langs.length * 22}" rx="10" fill="${theme.bg}" stroke="${theme.border}" stroke-width="1"/>
-  <text x="20" y="35" fill="${theme.text}" font-size="18" font-weight="bold" font-family="monospace">@${user.login}</text>
-  ${displayName !== user.login ? `<text x="20" y="55" fill="${theme.sub}" font-size="13" font-family="monospace">${displayName}</text>` : ''}
-  ${bio ? `<text x="20" y="${displayName !== user.login ? 75 : 55}" fill="${theme.sub}" font-size="11" font-family="monospace">${bio}</text>` : ''}
+  <text x="20" y="35" fill="${theme.text}" font-size="18" font-weight="bold" font-family="monospace">@${safeLogin}</text>
+  ${displayName !== safeLogin ? `<text x="20" y="55" fill="${theme.sub}" font-size="13" font-family="monospace">${displayName}</text>` : ''}
+  ${bio ? `<text x="20" y="${displayName !== safeLogin ? 75 : 55}" fill="${theme.sub}" font-size="11" font-family="monospace">${bio}</text>` : ''}
   <line x1="20" y1="95" x2="380" y2="95" stroke="${theme.border}" stroke-width="1"/>
   <text x="20" y="118" fill="${theme.accent}" font-size="22" font-weight="bold" font-family="monospace">${user.public_repos}</text>
   <text x="20" y="132" fill="${theme.sub}" font-size="11" font-family="monospace">Repos</text>

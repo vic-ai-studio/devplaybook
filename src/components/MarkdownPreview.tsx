@@ -48,7 +48,10 @@ function markdownToHtml(md: string): string {
     // Inline code
     .replace(/`([^`]+)`/g, '<code class="bg-bg-card px-1.5 py-0.5 rounded text-sm font-mono text-primary">$1</code>')
     // Links
-    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-primary underline hover:no-underline" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[(.+?)\]\((.+?)\)/g, (_, text, href) => {
+      const sanitizedHref = /^\s*(javascript|data|vbscript)\s*:/i.test(href) ? '#' : href;
+      return `<a href="${sanitizedHref}" class="text-primary underline hover:no-underline" target="_blank" rel="noopener">${text}</a>`;
+    })
     // Horizontal rule
     .replace(/^---$/gm, '<hr class="border-border my-6" />')
     // Task lists (before normal lists)

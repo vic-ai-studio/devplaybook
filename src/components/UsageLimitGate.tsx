@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 
-const DAILY_LIMIT = 10;
+const DAILY_LIMIT = 3;
 const STORAGE_PREFIX = 'dp_usage_';
 
 function getTodayKey(): string {
@@ -42,9 +42,9 @@ export default function UsageLimitGate({ toolName }: Props) {
     setCount(c);
   }, []);
 
-  // Show soft prompt at 7+, hard prompt at 10+
-  const showSoft = count >= 7 && count < DAILY_LIMIT && !dismissed;
-  const showHard = count >= DAILY_LIMIT && !dismissed;
+  // Show soft prompt at 2 uses, hard gate at 3+ (non-dismissible)
+  const showSoft = count >= 2 && count < DAILY_LIMIT && !dismissed;
+  const showHard = count >= DAILY_LIMIT;
 
   if (!showSoft && !showHard) return null;
 
@@ -67,13 +67,8 @@ export default function UsageLimitGate({ toolName }: Props) {
             >
               Upgrade to Pro — $9/mo
             </a>
-            <button
-              onClick={() => setDismissed(true)}
-              class="text-text-muted text-sm hover:text-text transition-colors py-1"
-            >
-              Continue for free (resets tomorrow)
-            </button>
           </div>
+          <p class="text-text-muted text-xs mt-3">Free limit resets tomorrow.</p>
           <p class="text-text-muted text-xs mt-4">7-day free trial · Cancel anytime</p>
         </div>
       </div>

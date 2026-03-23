@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'preact/hooks';
+import { useState, useMemo, useEffect } from 'preact/hooks';
+import { isProUser, canUse, recordUsage, remainingUses, FREE_DAILY_LIMIT } from '../utils/pro';
 
 // ── Minimal YAML parser (supports scalar, mapping, sequence, nesting) ──────────
 
@@ -310,26 +311,79 @@ settings:
   api_key: "abc123"
 `;
 
+// ── JSON → YAML converter (Pro feature) ───────────────────────────────────────
+
+function jsonToYaml(jsonStr: string, indent: number): { ok: boolean; output?: string; error?: string } {
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return { ok: true, output: formatYaml(parsed, indent) };
+  } catch (e: unknown) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function YamlValidator() {
   const [input, setInput] = useState(EXAMPLE_YAML);
   const [indentSize, setIndentSize] = useState(2);
-  const [mode, setMode] = useState<'validate' | 'format' | 'tojson'>('validate');
+  const [mode, setMode] = useState<'validate' | 'format' | 'tojson' | 'fromjson'>('validate');
   const [copied, setCopied] = useState(false);
+  const [pro, setPro] = useState(false);
+  const [remaining, setRemaining] = useState(FREE_DAILY_LIMIT);
+  const [limitHit, setLimitHit] = useState(false);
+  const [usageRecorded, setUsageRecorded] = useState(false);
+
+  useEffect(() => {
+    setPro(isProUser());
+    setRemaining(remainingUses('yaml-validator'));
+  }, []);
+
+  // For fromjson mode, input is JSON
+  const isFromJson = mode === 'fromjson';
 
   const result = useMemo<ParseResult>(() => {
+    if (isFromJson) return { ok: true, value: null }; // handled separately
     if (!input.trim()) return { ok: true, value: null };
     return parseYaml(input);
-  }, [input]);
+  }, [input, isFromJson]);
+
+  const fromJsonResult = useMemo(() => {
+    if (!isFromJson || !input.trim()) return null;
+    return jsonToYaml(input, indentSize);
+  }, [input, isFromJson, indentSize]);
 
   const output = useMemo(() => {
     if (!input.trim()) return '';
+    if (isFromJson) return fromJsonResult?.ok ? fromJsonResult.output ?? '' : '';
     if (!result.ok) return '';
     if (mode === 'tojson') return JSON.stringify(result.value, null, indentSize);
     if (mode === 'format') return formatYaml(result.value, indentSize);
     return '';
-  }, [result, mode, indentSize, input]);
+  }, [result, fromJsonResult, mode, indentSize, input, isFromJson]);
+
+  const handleModeChange = (m: typeof mode) => {
+    if (m === 'fromjson' && !pro) return; // blocked for non-pro
+    setMode(m);
+    // Reset input to example for fromjson mode
+    if (m === 'fromjson') setInput('{\n  "name": "my-project",\n  "version": "1.0.0",\n  "features": ["auth", "logging"]\n}');
+    if (m !== 'fromjson' && mode === 'fromjson') setInput(EXAMPLE_YAML);
+  };
+
+  const handleAction = () => {
+    if (!input.trim()) return;
+    if (!pro && !canUse('yaml-validator')) {
+      setLimitHit(true);
+      return;
+    }
+    if (!pro && !usageRecorded) {
+      recordUsage('yaml-validator');
+      setRemaining(remainingUses('yaml-validator'));
+      setUsageRecorded(true);
+      setTimeout(() => setUsageRecorded(false), 60000); // allow next usage after 1 min
+    }
+    setLimitHit(false);
+  };
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -340,22 +394,40 @@ export default function YamlValidator() {
 
   const lineCount = input.split('\n').length;
 
+  const inputLabel = isFromJson ? 'JSON Input' : 'YAML Input';
+  const inputPlaceholder = isFromJson ? 'Paste your JSON here...' : 'Paste your YAML here...';
+  const outputLabel = isFromJson ? 'YAML Output' : mode === 'format' ? 'Formatted YAML' : 'JSON Output';
+
   return (
     <div class="space-y-4">
       {/* Toolbar */}
       <div class="flex flex-wrap gap-3 items-center">
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
           {(['validate', 'format', 'tojson'] as const).map((m) => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => handleModeChange(m)}
               class={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mode === m ? 'bg-primary text-white' : 'bg-bg-card border border-border text-text-muted hover:border-primary'}`}
             >
-              {m === 'validate' ? 'Validate' : m === 'format' ? 'Format' : 'To JSON'}
+              {m === 'validate' ? 'Validate' : m === 'format' ? 'Format' : 'YAML → JSON'}
             </button>
           ))}
+          {/* Pro: JSON → YAML */}
+          <button
+            onClick={() => handleModeChange('fromjson')}
+            title={!pro ? 'Pro feature — upgrade to unlock' : undefined}
+            class={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+              mode === 'fromjson' ? 'bg-primary text-white' :
+              !pro ? 'bg-bg-card border border-border text-text-muted/50 cursor-default' :
+              'bg-bg-card border border-border text-text-muted hover:border-primary'
+            }`}
+          >
+            {!pro && <span class="text-xs">🔒</span>}
+            JSON → YAML
+            {!pro && <span class="text-xs bg-primary/10 text-primary border border-primary/30 px-1.5 py-0.5 rounded-full ml-1">Pro</span>}
+          </button>
         </div>
-        <div class="flex items-center gap-2 ml-2">
+        <div class="flex items-center gap-2">
           <label class="text-sm text-text-muted">Indent:</label>
           {[2, 4].map((n) => (
             <button
@@ -368,15 +440,24 @@ export default function YamlValidator() {
           ))}
         </div>
         <button
-          onClick={() => setInput(EXAMPLE_YAML)}
+          onClick={() => setInput(isFromJson ? '{\n  "name": "my-project",\n  "version": "1.0.0"\n}' : EXAMPLE_YAML)}
           class="ml-auto text-xs bg-bg-card border border-border px-3 py-1.5 rounded hover:border-primary hover:text-primary transition-colors"
         >
           Load Example
         </button>
       </div>
 
-      {/* Status bar */}
-      {input.trim() && (
+      {!pro && (
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-text-muted">
+            {remaining > 0 ? `${remaining} free use${remaining !== 1 ? 's' : ''} remaining today` : 'Daily limit reached'}
+          </span>
+          <a href="/pro" class="text-primary hover:underline">Pro: unlimited + JSON→YAML →</a>
+        </div>
+      )}
+
+      {/* Status bar (YAML modes only) */}
+      {!isFromJson && input.trim() && (
         <div class={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${result.ok ? 'bg-green-500/10 border border-green-500/30 text-green-400' : 'bg-red-500/10 border border-red-500/30 text-red-400'}`}>
           <span class="font-mono text-base">{result.ok ? '✓' : '✗'}</span>
           {result.ok
@@ -385,40 +466,43 @@ export default function YamlValidator() {
         </div>
       )}
 
+      {/* Status bar (fromjson mode) */}
+      {isFromJson && input.trim() && fromJsonResult && (
+        <div class={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${fromJsonResult.ok ? 'bg-green-500/10 border border-green-500/30 text-green-400' : 'bg-red-500/10 border border-red-500/30 text-red-400'}`}>
+          <span class="font-mono text-base">{fromJsonResult.ok ? '✓' : '✗'}</span>
+          {fromJsonResult.ok ? 'Valid JSON · converted to YAML' : `JSON parse error: ${fromJsonResult.error}`}
+        </div>
+      )}
+
       <div class={`grid gap-4 ${mode !== 'validate' ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
         {/* Input */}
         <div>
           <div class="flex justify-between items-center mb-2">
-            <label class="block text-sm font-medium text-text-muted">YAML Input</label>
+            <label class="block text-sm font-medium text-text-muted">{inputLabel}</label>
             <button onClick={() => setInput('')} class="text-xs text-text-muted hover:text-primary transition-colors">Clear</button>
           </div>
           <textarea
             class="w-full h-80 bg-bg-card border border-border rounded-lg p-3 font-mono text-sm text-text resize-none focus:outline-none focus:border-primary transition-colors"
-            placeholder="Paste your YAML here..."
+            placeholder={inputPlaceholder}
             value={input}
-            onInput={(e) => setInput((e.target as HTMLTextAreaElement).value)}
+            onInput={(e) => { setInput((e.target as HTMLTextAreaElement).value); handleAction(); }}
             spellcheck={false}
           />
           <div class="flex justify-between mt-1">
             <span class="text-xs text-text-muted">{lineCount} lines · {input.length} chars</span>
-            {result.ok && input.trim() && (
-              <button
-                onClick={() => copy(input)}
-                class="text-xs text-text-muted hover:text-primary transition-colors"
-              >
+            {!isFromJson && result.ok && input.trim() && (
+              <button onClick={() => copy(input)} class="text-xs text-text-muted hover:text-primary transition-colors">
                 Copy input
               </button>
             )}
           </div>
         </div>
 
-        {/* Output (Format / JSON) */}
+        {/* Output */}
         {mode !== 'validate' && (
           <div>
             <div class="flex justify-between items-center mb-2">
-              <label class="block text-sm font-medium text-text-muted">
-                {mode === 'format' ? 'Formatted YAML' : 'JSON Output'}
-              </label>
+              <label class="block text-sm font-medium text-text-muted">{outputLabel}</label>
               <button
                 onClick={() => copy(output)}
                 disabled={!output}
@@ -430,7 +514,7 @@ export default function YamlValidator() {
             <textarea
               readOnly
               class="w-full h-80 bg-bg-card border border-border rounded-lg p-3 font-mono text-sm text-text resize-none focus:outline-none"
-              placeholder={result.ok ? (mode === 'format' ? 'Formatted YAML…' : 'JSON output…') : 'Fix errors first…'}
+              placeholder={isFromJson ? (fromJsonResult?.ok ? 'YAML output…' : 'Fix JSON errors first…') : (result.ok ? (mode === 'format' ? 'Formatted YAML…' : 'JSON output…') : 'Fix errors first…')}
               value={output}
             />
             {output && (
@@ -452,6 +536,19 @@ export default function YamlValidator() {
         </div>
       )}
 
+      {/* Limit hit banner */}
+      {limitHit && (
+        <div class="bg-yellow-500/10 border border-yellow-500/40 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-yellow-400">Daily limit reached ({FREE_DAILY_LIMIT}/{FREE_DAILY_LIMIT} uses today)</p>
+            <p class="text-xs text-text-muted mt-0.5">Upgrade to Pro for unlimited YAML validation + JSON↔YAML conversion.</p>
+          </div>
+          <a href="/pro" class="shrink-0 ml-4 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors">
+            Go Pro →
+          </a>
+        </div>
+      )}
+
       {/* Features */}
       {!input.trim() && (
         <div class="bg-bg-card border border-border rounded-lg p-4 text-sm text-text-muted">
@@ -463,9 +560,12 @@ export default function YamlValidator() {
             <li>Converts YAML to JSON for API/config use</li>
             <li>Supports mappings, sequences, nested structures, and scalars</li>
             <li>Runs entirely in your browser — nothing is sent to a server</li>
+            <li class="text-primary/80">🔒 Pro: JSON → YAML reverse conversion</li>
           </ul>
         </div>
       )}
+
+      {pro && <p class="text-xs text-primary text-right">✓ Pro — unlimited + JSON↔YAML</p>}
     </div>
   );
 }

@@ -1,0 +1,184 @@
+# GitHub Actions Workflow: Automated Lighthouse CI
+# Runs Lighthouse audits on every PR and blocks merge if budgets are exceeded.
+#
+# Setup:
+# 1. Copy this file to .github/workflows/lighthouse-ci.yml
+# 2. Place performance-budget.json in your repo root (or update the path below)
+# 3. Set LHCI_GITHUB_APP_TOKEN secret (optional, for GitHub status checks)
+#    Get token at: https://github.com/apps/lighthouse-ci
+
+name: Lighthouse CI
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Audit multiple pages — customize these URLs
+        url:
+          - /
+          - /about
+          - /products
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Start server
+        run: |
+          npm run start &
+          # Wait for server to be ready
+          npx wait-on http://localhost:3000 --timeout 60000
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          urls: |
+            http://localhost:3000${{ matrix.url }}
+          budgetPath: ./performance-budget.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+          runs: 3  # Run 3 times and take median (reduces noise)
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Verify Performance Budgets
+        if: always()
+        run: |
+          echo "## Lighthouse Results for ${{ matrix.url }}" >> $GITHUB_STEP_SUMMARY
+
+          # Parse results from the Lighthouse CI output
+          if [ -d ".lighthouseci" ]; then
+            for report in .lighthouseci/lhr-*.json; do
+              PERF=$(jq '.categories.performance.score * 100' "$report")
+              A11Y=$(jq '.categories.accessibility.score * 100' "$report")
+              BP=$(jq '.categories["best-practices"].score * 100' "$report")
+              SEO=$(jq '.categories.seo.score * 100' "$report")
+              LCP=$(jq '.audits["largest-contentful-paint"].numericValue' "$report")
+              INP=$(jq '.audits["experimental-interaction-to-next-paint"].numericValue // 0' "$report")
+              CLS=$(jq '.audits["cumulative-layout-shift"].numericValue' "$report")
+              TTFB=$(jq '.audits["server-response-time"].numericValue' "$report")
+              TBT=$(jq '.audits["total-blocking-time"].numericValue' "$report")
+
+              echo "| Metric | Score |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+              echo "| Performance | ${PERF}% |" >> $GITHUB_STEP_SUMMARY
+              echo "| Accessibility | ${A11Y}% |" >> $GITHUB_STEP_SUMMARY
+              echo "| Best Practices | ${BP}% |" >> $GITHUB_STEP_SUMMARY
+              echo "| SEO | ${SEO}% |" >> $GITHUB_STEP_SUMMARY
+              echo "| LCP | ${LCP}ms |" >> $GITHUB_STEP_SUMMARY
+              echo "| CLS | ${CLS} |" >> $GITHUB_STEP_SUMMARY
+              echo "| TBT | ${TBT}ms |" >> $GITHUB_STEP_SUMMARY
+              echo "| TTFB | ${TTFB}ms |" >> $GITHUB_STEP_SUMMARY
+
+              # Fail if performance score is below 80
+              if (( $(echo "$PERF < 80" | bc -l) )); then
+                echo "::error::Performance score ${PERF}% is below threshold (80%)"
+                exit 1
+              fi
+            done
+          fi
+
+  # Separate job for mobile audit
+  lighthouse-mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install and build
+        run: npm ci && npm run build
+
+      - name: Start server
+        run: |
+          npm run start &
+          npx wait-on http://localhost:3000 --timeout 60000
+
+      - name: Run Lighthouse CI (Mobile)
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          urls: http://localhost:3000/
+          budgetPath: ./performance-budget.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+          runs: 3
+          # Mobile is the default Lighthouse config (throttled CPU + network)
+
+      - name: Run Lighthouse CI (Desktop)
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          urls: http://localhost:3000/
+          configPath: ./.lighthouserc-desktop.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+          runs: 3
+
+  # Comment results on PR
+  comment:
+    needs: [lighthouse, lighthouse-mobile]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment PR with results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.body.includes('Lighthouse CI Results')
+            );
+
+            const body = `## Lighthouse CI Results
+
+            Check the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for detailed reports.
+
+            Performance budgets are enforced. If this check fails, review the Lighthouse report for specific items to fix.
+            `;
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

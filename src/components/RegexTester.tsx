@@ -1,4 +1,7 @@
-import { useState, useMemo } from 'preact/hooks';
+import { useState, useMemo, useEffect } from 'preact/hooks';
+import { isProUser } from '../utils/pro';
+
+const FREE_TEST_LIMIT = 5;
 
 interface TestCase {
   id: number;
@@ -98,6 +101,12 @@ export default function RegexTester() {
   const [tests, setTests] = useState<TestCase[]>(DEFAULT_TESTS);
   const [nextId, setNextId] = useState(DEFAULT_TESTS.length + 1);
   const [regexError, setRegexError] = useState<string | null>(null);
+  const [pro, setPro] = useState(false);
+  const [showProBanner, setShowProBanner] = useState(false);
+
+  useEffect(() => {
+    setPro(isProUser());
+  }, []);
 
   const results = useMemo(() => {
     try {
@@ -118,12 +127,22 @@ export default function RegexTester() {
   const passed = results.filter(r => r.passed).length;
   const total = results.length;
 
+  const atFreeLimit = !pro && tests.length >= FREE_TEST_LIMIT;
+
   const addTest = () => {
+    if (!pro && tests.length >= FREE_TEST_LIMIT) {
+      setShowProBanner(true);
+      return;
+    }
     setTests(prev => [...prev, { id: nextId, text: '', expectMatch: true }]);
     setNextId(n => n + 1);
+    setShowProBanner(false);
   };
 
-  const removeTest = (id: number) => setTests(prev => prev.filter(t => t.id !== id));
+  const removeTest = (id: number) => {
+    setTests(prev => prev.filter(t => t.id !== id));
+    setShowProBanner(false);
+  };
 
   const updateTest = (id: number, field: keyof TestCase, value: string | boolean) => {
     setTests(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
@@ -132,8 +151,26 @@ export default function RegexTester() {
   const loadPreset = (p: typeof PRESETS[0]) => {
     setPattern(p.pattern);
     setFlags(p.flags);
-    setTests(p.tests);
-    setNextId(p.tests.length + 1);
+    const cappedTests = !pro && p.tests.length > FREE_TEST_LIMIT ? p.tests.slice(0, FREE_TEST_LIMIT) : p.tests;
+    setTests(cappedTests);
+    setNextId(cappedTests.length + 1);
+    setShowProBanner(false);
+  };
+
+  const exportCsv = () => {
+    if (!pro) return;
+    const header = 'index,test_string,expect_match,matched,passed';
+    const rows = results.map((r, i) =>
+      `${i + 1},"${r.text.replace(/"/g, '""')}",${r.expectMatch},${r.matched},${r.passed}`
+    );
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'regex-test-results.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -181,7 +218,7 @@ export default function RegexTester() {
 
       {/* Summary bar */}
       <div class="flex items-center justify-between">
-        <div class="flex gap-3 text-sm">
+        <div class="flex gap-3 text-sm items-center">
           <span class={`px-3 py-1 rounded-full border font-medium ${
             passed === total ? 'bg-green-900/40 text-green-400 border-green-800' : 'bg-yellow-900/40 text-yellow-400 border-yellow-800'
           }`}>
@@ -192,12 +229,50 @@ export default function RegexTester() {
               {total - passed} failed
             </span>
           )}
+          {!pro && (
+            <span class="text-xs text-gray-500">{tests.length}/{FREE_TEST_LIMIT} test strings</span>
+          )}
         </div>
-        <button onClick={addTest}
-          class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg transition-colors font-medium">
-          + Add Test
-        </button>
+        <div class="flex gap-2">
+          {pro && (
+            <button onClick={exportCsv}
+              class="text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg transition-colors font-medium">
+              Export CSV
+            </button>
+          )}
+          <button
+            onClick={addTest}
+            disabled={atFreeLimit}
+            class={`text-sm px-4 py-1.5 rounded-lg transition-colors font-medium ${
+              atFreeLimit
+                ? 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+            }`}>
+            + Add Test
+          </button>
+        </div>
       </div>
+
+      {/* Pro upgrade banner — shown when free limit reached */}
+      {showProBanner && (
+        <div class="bg-yellow-500/10 border border-yellow-500/40 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-yellow-400">Free limit: {FREE_TEST_LIMIT} test strings max</p>
+            <p class="text-xs text-gray-400 mt-0.5">Upgrade to Pro for unlimited test strings + CSV export.</p>
+          </div>
+          <a href="/pro" class="shrink-0 ml-4 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors">
+            Go Pro →
+          </a>
+        </div>
+      )}
+
+      {/* Free limit indicator */}
+      {!pro && atFreeLimit && !showProBanner && (
+        <div class="flex items-center justify-between text-xs text-gray-500 bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2">
+          <span>Free plan: {FREE_TEST_LIMIT} test strings max</span>
+          <a href="/pro" class="text-primary hover:underline">Upgrade for unlimited + CSV export →</a>
+        </div>
+      )}
 
       {/* Test cases */}
       <div class="space-y-2">
@@ -244,6 +319,19 @@ export default function RegexTester() {
           </div>
         ))}
       </div>
+
+      {/* Pro CSV export info */}
+      {!pro && (
+        <div class="flex items-center justify-between bg-gray-900/30 border border-gray-800 rounded-lg px-4 py-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xs bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded-full">Pro</span>
+            <span class="text-xs text-gray-400">Export test results as CSV — unlimited test strings</span>
+          </div>
+          <a href="/pro" class="text-xs text-primary hover:underline shrink-0 ml-2">Upgrade →</a>
+        </div>
+      )}
+
+      {pro && <p class="text-xs text-primary text-right">✓ Pro — unlimited test strings &amp; CSV export</p>}
 
       {/* Share */}
       <div class="border-t border-gray-800 pt-4">

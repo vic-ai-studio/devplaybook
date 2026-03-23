@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'preact/hooks';
+import { useState, useMemo, useEffect } from 'preact/hooks';
+import { isProUser } from '../utils/pro';
 
 interface StatusCode {
   code: number;
@@ -67,6 +68,13 @@ export default function HttpStatusReference() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<string>('all');
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [pro, setPro] = useState(false);
+  const [exportFmt, setExportFmt] = useState<'csv' | 'json'>('csv');
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  useEffect(() => {
+    setPro(isProUser());
+  }, []);
 
   const filtered = useMemo(() => {
     return STATUS_CODES.filter(s => {
@@ -86,6 +94,28 @@ export default function HttpStatusReference() {
     return g;
   }, [filtered]);
 
+  const exportData = () => {
+    if (!pro) return;
+    if (exportFmt === 'csv') {
+      const header = 'Code,Name,Category,Description,Use Case';
+      const rows = filtered.map(s =>
+        `${s.code},"${s.name}","${s.category}","${s.desc.replace(/"/g, '""')}","${(s.useCase || '').replace(/"/g, '""')}"`
+      );
+      const blob = new Blob([header + '\n' + rows.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'http-status-codes.csv'; a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'http-status-codes.json'; a.click();
+      URL.revokeObjectURL(url);
+    }
+    setShowExportMenu(false);
+  };
+
   return (
     <div class="space-y-5">
       {/* Controls */}
@@ -97,7 +127,7 @@ export default function HttpStatusReference() {
           placeholder="Search by code, name, or description... (e.g. 404, rate limit, redirect)"
           class="w-full bg-gray-800 text-gray-100 border border-gray-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 placeholder-gray-600"
         />
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2 items-center">
           {['all', '1xx', '2xx', '3xx', '4xx', '5xx'].map(cat => (
             <button key={cat} onClick={() => setFilter(cat)}
               class={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
@@ -109,6 +139,39 @@ export default function HttpStatusReference() {
             </button>
           ))}
           <span class="text-xs text-gray-500 self-center ml-auto">{filtered.length} codes</span>
+
+          {/* Export — Pro feature */}
+          {pro ? (
+            <div class="relative">
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                class="text-xs px-3 py-1.5 rounded-md border border-indigo-500 bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/40 transition-colors flex items-center gap-1"
+              >
+                Export ↓
+              </button>
+              {showExportMenu && (
+                <div class="absolute right-0 top-8 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-32">
+                  {(['csv', 'json'] as const).map(fmt => (
+                    <button
+                      key={fmt}
+                      onClick={() => { setExportFmt(fmt); exportData(); }}
+                      class="block w-full text-left px-4 py-2 text-xs text-gray-300 hover:bg-gray-700 transition-colors first:rounded-t-lg last:rounded-b-lg"
+                    >
+                      Export as {fmt.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <a
+              href="/pro"
+              title="Pro feature — export as CSV or JSON"
+              class="text-xs px-3 py-1.5 rounded-md border border-gray-700 bg-gray-800 text-gray-500 flex items-center gap-1 hover:border-indigo-500 hover:text-indigo-400 transition-colors"
+            >
+              🔒 Export <span class="text-xs bg-indigo-900/50 text-indigo-400 border border-indigo-700 px-1.5 py-0.5 rounded-full">Pro</span>
+            </a>
+          )}
         </div>
       </div>
 

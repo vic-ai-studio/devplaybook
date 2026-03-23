@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'preact/hooks';
+import { useState, useMemo, useEffect } from 'preact/hooks';
+import { isProUser, canSavePalette, savePalette, getSavedPalettes, deleteSavedPalette, FREE_SAVE_LIMIT } from '../utils/pro';
 
 // Convert hex to HSL
 function hexToHsl(hex: string): [number, number, number] | null {
@@ -68,6 +69,16 @@ export default function ColorPaletteGenerator() {
   const [inputHex, setInputHex] = useState('#3b82f6');
   const [mode, setMode] = useState<PaletteMode>('shades');
   const [copied, setCopied] = useState<string | null>(null);
+  const [pro, setPro] = useState(false);
+  const [savedPalettes, setSavedPalettes] = useState<ReturnType<typeof getSavedPalettes>>([]);
+  const [saveName, setSaveName] = useState('');
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPro(isProUser());
+    setSavedPalettes(getSavedPalettes());
+  }, []);
 
   const validHex = useMemo(() => {
     const h = inputHex.trim().startsWith('#') ? inputHex.trim() : '#' + inputHex.trim();
@@ -236,7 +247,7 @@ export default function ColorPaletteGenerator() {
                 {MODES.find(m => m.value === mode)?.desc}
               </span>
             </h2>
-            <div class="flex gap-2">
+            <div class="flex gap-2 flex-wrap">
               <button onClick={copyCss}
                 class="text-xs bg-bg border border-border hover:border-primary px-3 py-1.5 rounded-lg transition-colors">
                 {copied === 'css' ? '✓ Copied!' : 'Copy CSS vars'}
@@ -245,6 +256,20 @@ export default function ColorPaletteGenerator() {
                 class="text-xs bg-primary hover:bg-primary/80 text-white px-3 py-1.5 rounded-lg transition-colors">
                 {copied === 'all' ? '✓ Copied!' : 'Copy All'}
               </button>
+              {/* Save palette */}
+              {canSavePalette() || pro ? (
+                <button
+                  onClick={() => setShowSaveForm(!showSaveForm)}
+                  class="text-xs bg-bg border border-border hover:border-primary px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                >
+                  Save Palette
+                  {!pro && <span class="text-text-muted">({FREE_SAVE_LIMIT - savedPalettes.length} left)</span>}
+                </button>
+              ) : (
+                <a href="/pro" class="text-xs bg-bg border border-border text-text-muted/60 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:border-primary hover:text-primary transition-colors">
+                  🔒 Save Palette <span class="text-xs bg-primary/10 text-primary border border-primary/30 px-1.5 py-0.5 rounded-full">Pro</span>
+                </a>
+              )}
             </div>
           </div>
 
@@ -273,6 +298,71 @@ export default function ColorPaletteGenerator() {
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Save form */}
+      {showSaveForm && validHex && (
+        <div class="bg-bg-card border border-primary/30 rounded-xl p-4 flex items-center gap-3">
+          <input
+            type="text"
+            placeholder="Palette name (e.g. Brand Blue)"
+            value={saveName}
+            onInput={(e) => setSaveName((e.target as HTMLInputElement).value)}
+            class="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            maxLength={40}
+          />
+          <button
+            onClick={() => {
+              const name = saveName.trim() || `${mode} ${validHex}`;
+              savePalette(name, validHex!, mode, palette);
+              setSavedPalettes(getSavedPalettes());
+              setSaveName('');
+              setShowSaveForm(false);
+              setSaveMsg('Palette saved!');
+              setTimeout(() => setSaveMsg(null), 2000);
+            }}
+            disabled={!validHex}
+            class="bg-primary text-white text-sm px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-40"
+          >
+            Save
+          </button>
+          <button onClick={() => setShowSaveForm(false)} class="text-text-muted hover:text-text text-sm">✕</button>
+        </div>
+      )}
+      {saveMsg && <p class="text-xs text-green-400 text-center">{saveMsg}</p>}
+
+      {/* Saved palettes */}
+      {savedPalettes.length > 0 && (
+        <div class="bg-bg-card border border-border rounded-xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-semibold">Saved Palettes</h2>
+            {!pro && <span class="text-xs text-text-muted">{savedPalettes.length}/{FREE_SAVE_LIMIT} saved (free)</span>}
+            {pro && <span class="text-xs text-primary">✓ Pro — unlimited saves</span>}
+          </div>
+          <div class="space-y-2">
+            {savedPalettes.map((sp, idx) => (
+              <div key={idx} class="flex items-center gap-3 bg-bg rounded-lg px-3 py-2">
+                <div class="flex gap-1">
+                  {sp.swatches.slice(0, 6).map((sw) => (
+                    <span key={sw.hex} class="w-5 h-5 rounded" style={{ background: sw.hex }} title={sw.hex} />
+                  ))}
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium truncate">{sp.name}</p>
+                  <p class="text-xs text-text-muted">{sp.mode} · {sp.hex}</p>
+                </div>
+                <button
+                  onClick={() => { setInputHex(sp.hex); setMode(sp.mode as PaletteMode); }}
+                  class="text-xs text-primary hover:underline shrink-0"
+                >Load</button>
+                <button
+                  onClick={() => { deleteSavedPalette(idx); setSavedPalettes(getSavedPalettes()); }}
+                  class="text-xs text-text-muted hover:text-red-400 shrink-0"
+                >✕</button>
+              </div>
+            ))}
           </div>
         </div>
       )}

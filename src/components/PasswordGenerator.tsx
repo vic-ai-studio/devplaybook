@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'preact/hooks';
+import { useState, useCallback, useEffect } from 'preact/hooks';
+import { isProUser, canUse, recordUsage, remainingUses, FREE_DAILY_LIMIT } from '../utils/pro';
 
 const CHARS = {
   uppercase: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
@@ -45,11 +46,28 @@ export default function PasswordGenerator() {
   const [copied, setCopied] = useState(false);
   const [bulkCount, setBulkCount] = useState(10);
   const [bulk, setBulk] = useState<string[]>([]);
+  const [pro, setPro] = useState(false);
+  const [remaining, setRemaining] = useState(FREE_DAILY_LIMIT);
+  const [limitHit, setLimitHit] = useState(false);
+
+  useEffect(() => {
+    setPro(isProUser());
+    setRemaining(remainingUses('password-generator'));
+  }, []);
 
   const generate = useCallback(() => {
+    if (!pro && !canUse('password-generator')) {
+      setLimitHit(true);
+      return;
+    }
     setPassword(generatePassword(length, opts));
     setCopied(false);
-  }, [length, opts]);
+    if (!pro) {
+      recordUsage('password-generator');
+      setRemaining(remainingUses('password-generator'));
+    }
+    setLimitHit(false);
+  }, [length, opts, pro]);
 
   const copy = () => {
     if (!password) return;
@@ -60,12 +78,17 @@ export default function PasswordGenerator() {
   };
 
   const generateBulk = () => {
+    if (!pro) return; // Pro only
     const list = Array.from({ length: bulkCount }, () => generatePassword(length, opts));
     setBulk(list);
   };
 
   const toggle = (key: keyof typeof opts) => {
-    setOpts(prev => ({ ...prev, [key]: !prev[key] }));
+    const newOpts = { ...opts, [key]: !opts[key] };
+    setOpts(newOpts);
+    if (pro || canUse('password-generator')) {
+      setPassword(generatePassword(length, newOpts));
+    }
   };
 
   const strength = strengthLabel(password);
@@ -92,7 +115,6 @@ export default function PasswordGenerator() {
           </button>
         </div>
 
-        {/* Strength bar */}
         {password && (
           <div class="mt-3">
             <div class="flex justify-between text-xs text-text-muted mb-1">
@@ -106,6 +128,29 @@ export default function PasswordGenerator() {
         )}
       </div>
 
+      {/* Usage indicator */}
+      {!pro && (
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-text-muted">
+            {remaining > 0 ? `${remaining} free generate${remaining !== 1 ? 's' : ''} remaining today` : 'Daily limit reached'}
+          </span>
+          <a href="/pro" class="text-primary hover:underline">Upgrade for unlimited →</a>
+        </div>
+      )}
+
+      {/* Limit hit banner */}
+      {limitHit && (
+        <div class="bg-yellow-500/10 border border-yellow-500/40 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-yellow-400">Daily limit reached ({FREE_DAILY_LIMIT}/{FREE_DAILY_LIMIT} uses today)</p>
+            <p class="text-xs text-text-muted mt-0.5">Upgrade to Pro for unlimited generation + bulk passwords.</p>
+          </div>
+          <a href="/pro" class="shrink-0 ml-4 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors">
+            Go Pro →
+          </a>
+        </div>
+      )}
+
       {/* Length */}
       <div>
         <div class="flex justify-between mb-2">
@@ -117,7 +162,11 @@ export default function PasswordGenerator() {
           min={4}
           max={128}
           value={length}
-          onInput={(e) => { setLength(Number((e.target as HTMLInputElement).value)); setPassword(generatePassword(Number((e.target as HTMLInputElement).value), opts)); }}
+          onInput={(e) => {
+            const n = Number((e.target as HTMLInputElement).value);
+            setLength(n);
+            if (pro || canUse('password-generator')) setPassword(generatePassword(n, opts));
+          }}
           class="w-full accent-primary"
         />
         <div class="flex justify-between text-xs text-text-muted mt-1">
@@ -138,7 +187,7 @@ export default function PasswordGenerator() {
             <input
               type="checkbox"
               checked={opts[key]}
-              onChange={() => { toggle(key); setPassword(generatePassword(length, { ...opts, [key]: !opts[key] })); }}
+              onChange={() => toggle(key)}
               class="accent-primary"
             />
             <span class="text-sm text-text">{label}</span>
@@ -146,29 +195,43 @@ export default function PasswordGenerator() {
         ))}
       </div>
 
-      {/* Bulk */}
-      <div class="border border-border rounded-xl p-4 space-y-3">
+      {/* Bulk Generate — Pro only */}
+      <div class={`border rounded-xl p-4 space-y-3 ${pro ? 'border-border' : 'border-border/50 opacity-80'}`}>
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-text">Bulk Generate</h3>
           <div class="flex items-center gap-2">
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={bulkCount}
-              onInput={(e) => setBulkCount(Math.max(1, Math.min(100, Number((e.target as HTMLInputElement).value))))}
-              class="w-16 text-sm bg-bg border border-border rounded px-2 py-1 text-text text-center"
-            />
-            <span class="text-sm text-text-muted">passwords</span>
-            <button
-              onClick={generateBulk}
-              class="bg-bg border border-border hover:border-primary text-sm text-text hover:text-primary px-3 py-1.5 rounded-lg transition-colors"
-            >
-              Generate
-            </button>
+            <h3 class="text-sm font-semibold text-text">Bulk Generate</h3>
+            {!pro && (
+              <span class="text-xs bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded-full">Pro</span>
+            )}
           </div>
+          {pro ? (
+            <div class="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={bulkCount}
+                onInput={(e) => setBulkCount(Math.max(1, Math.min(500, Number((e.target as HTMLInputElement).value))))}
+                class="w-16 text-sm bg-bg border border-border rounded px-2 py-1 text-text text-center"
+              />
+              <span class="text-sm text-text-muted">passwords</span>
+              <button
+                onClick={generateBulk}
+                class="bg-bg border border-border hover:border-primary text-sm text-text hover:text-primary px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Generate
+              </button>
+            </div>
+          ) : (
+            <a href="/pro" class="text-xs text-primary hover:underline">Unlock with Pro →</a>
+          )}
         </div>
-        {bulk.length > 0 && (
+
+        {!pro && (
+          <p class="text-xs text-text-muted">Generate up to 500 passwords at once. Available with Pro subscription.</p>
+        )}
+
+        {pro && bulk.length > 0 && (
           <div class="space-y-1 max-h-48 overflow-y-auto">
             {bulk.map((pw, i) => (
               <div key={i} class="flex items-center gap-2 bg-bg rounded px-2 py-1">
@@ -182,6 +245,8 @@ export default function PasswordGenerator() {
           </div>
         )}
       </div>
+
+      {pro && <p class="text-xs text-primary text-right">✓ Pro — unlimited generation</p>}
     </div>
   );
 }
