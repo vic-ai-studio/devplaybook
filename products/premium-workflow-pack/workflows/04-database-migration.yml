@@ -1,0 +1,114 @@
+# CUSTOMIZE: Set your DB migration tool (Prisma, Flyway, Alembic, Liquibase)
+# Safety: Runs migrations with backup + dry-run before applying
+name: Database Migration CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'prisma/migrations/**'
+      - 'db/migrations/**'
+      - 'alembic/versions/**'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run only (no actual migration)'
+        type: boolean
+        default: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  validate-migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      # CUSTOMIZE: Change for your ORM/migration tool
+      - name: Validate migration on test DB
+        env:
+          DATABASE_URL: postgresql://postgres:testpass@localhost:5432/testdb
+        run: |
+          npx prisma migrate deploy
+          npx prisma db seed
+          echo "Migration validation passed"
+
+      - name: Run post-migration tests
+        env:
+          DATABASE_URL: postgresql://postgres:testpass@localhost:5432/testdb
+        run: npm run test:db
+
+  backup-production:
+    needs: validate-migrations
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event.inputs.dry_run != 'true'
+    environment: production
+    steps:
+      - name: Create database backup
+        env:
+          PGPASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+        run: |
+          BACKUP_FILE="backup_$(date +%Y%m%d_%H%M%S).sql"
+          # CUSTOMIZE: Replace with your production DB host/name
+          pg_dump \
+            -h ${{ secrets.PROD_DB_HOST }} \
+            -U ${{ secrets.PROD_DB_USER }} \
+            -d ${{ secrets.PROD_DB_NAME }} \
+            -f "$BACKUP_FILE" \
+            --no-owner \
+            --no-acl
+
+          # Upload backup to S3 or similar storage
+          # aws s3 cp "$BACKUP_FILE" s3://${{ secrets.BACKUP_BUCKET }}/migrations/
+          echo "Backup saved: $BACKUP_FILE"
+
+  migrate-production:
+    needs: backup-production
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ secrets.PRODUCTION_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run migration (or dry-run)
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "DRY RUN: Showing pending migrations"
+            npx prisma migrate status
+          else
+            echo "Applying migrations to production..."
+            npx prisma migrate deploy
+            echo "Migration complete"
+          fi

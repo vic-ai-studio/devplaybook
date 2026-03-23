@@ -1,0 +1,140 @@
+# CUSTOMIZE: Set your cloud provider credentials and environment names
+# Supports: AWS ECS, Google Cloud Run, or any container platform
+name: Blue-Green Deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options: [production, staging]
+
+env:
+  # CUSTOMIZE: Your container registry and service name
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: my-cluster       # CUSTOMIZE
+  ECS_SERVICE_BLUE: app-blue    # CUSTOMIZE
+  ECS_SERVICE_GREEN: app-green  # CUSTOMIZE
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=,format=long
+            type=ref,event=branch
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-green:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to GREEN slot
+        run: |
+          # Update green service with new image
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE_GREEN \
+            --force-new-deployment \
+            --query 'service.serviceArn' \
+            --output text
+
+          # Wait for green to stabilize
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE_GREEN
+
+          echo "GREEN deployment stable"
+
+  smoke-test-green:
+    needs: deploy-green
+    runs-on: ubuntu-latest
+    steps:
+      # CUSTOMIZE: Replace with your green environment health check URL
+      - name: Health check GREEN
+        run: |
+          GREEN_URL="${{ secrets.GREEN_HEALTH_URL }}"
+          for i in {1..5}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$GREEN_URL/health")
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed ($STATUS)"
+              exit 0
+            fi
+            echo "Attempt $i failed ($STATUS), retrying..."
+            sleep 10
+          done
+          echo "Health check failed after 5 attempts"
+          exit 1
+
+  switch-traffic:
+    needs: smoke-test-green
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ secrets.PRODUCTION_URL }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # CUSTOMIZE: Update your load balancer target group weights
+      - name: Switch load balancer to GREEN
+        run: |
+          echo "Switching traffic from BLUE to GREEN..."
+          # Example: AWS ALB weighted target groups
+          # aws elbv2 modify-rule --rule-arn $RULE_ARN \
+          #   --actions '[{"Type":"forward","ForwardConfig":{"TargetGroups":[{"TargetGroupArn":"$GREEN_TG","Weight":100},{"TargetGroupArn":"$BLUE_TG","Weight":0}]}}]'
+          echo "Traffic switched to GREEN. Monitor for 5 minutes before cleanup."
+
+      - name: Notify deployment complete
+        run: |
+          echo "Blue-Green swap complete. GREEN is now live."
+          echo "Image: ${{ needs.build-and-push.outputs.image-tag }}"

@@ -1,0 +1,110 @@
+# CUSTOMIZE: Set your health check URL and failure thresholds
+# Auto-triggers rollback when error rate exceeds threshold post-deploy
+name: Automated Rollback
+
+on:
+  # Triggered by your deploy workflow via repository_dispatch
+  repository_dispatch:
+    types: [deployment-failed, health-check-failed]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Rollback reason'
+        required: true
+      target_sha:
+        description: 'SHA to roll back to (optional, defaults to last stable)'
+        required: false
+
+jobs:
+  assess-and-rollback:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine rollback target
+        id: target
+        run: |
+          TARGET_SHA="${{ github.event.inputs.target_sha }}"
+
+          if [ -z "$TARGET_SHA" ]; then
+            # Find last successful deployment tag
+            TARGET_SHA=$(git tag -l "deployed-*" --sort=-creatordate | sed -n '2p' | xargs git rev-list -n1 2>/dev/null || git rev-parse HEAD~1)
+            echo "Auto-selected rollback target: $TARGET_SHA"
+          fi
+
+          echo "sha=$TARGET_SHA" >> $GITHUB_OUTPUT
+
+          # Get short SHA for display
+          SHORT_SHA=$(echo "$TARGET_SHA" | cut -c1-8)
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Notify rollback started
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔴 *ROLLBACK INITIATED*\n*Reason:* ${{ github.event.inputs.reason || github.event.client_payload.reason }}\n*Target:* `${{ steps.target.outputs.short_sha }}`\n*Triggered by:* ${{ github.actor }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      # CUSTOMIZE: Replace with your actual rollback command
+      - name: Execute rollback
+        run: |
+          TARGET="${{ steps.target.outputs.sha }}"
+          echo "Rolling back to $TARGET..."
+
+          # Example: ECS task definition rollback
+          # PREV_TASK_DEF=$(aws ecs describe-services \
+          #   --cluster my-cluster --services my-service \
+          #   --query 'services[0].taskDefinition' --output text)
+          # aws ecs update-service --cluster my-cluster \
+          #   --service my-service --task-definition "$PREV_TASK_DEF"
+
+          # Example: Kubernetes rollback
+          # kubectl rollout undo deployment/app -n production
+
+          echo "Rollback command executed"
+
+      - name: Wait and verify
+        run: |
+          echo "Waiting for rollback to stabilize (60s)..."
+          sleep 60
+
+          # CUSTOMIZE: Check your health endpoint
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.PRODUCTION_URL }}/health" || echo "000")
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Rollback successful — service healthy ($STATUS)"
+          else
+            echo "❌ Service unhealthy after rollback ($STATUS) — manual intervention required"
+            exit 1
+          fi
+
+      - name: Tag rollback point
+        if: success()
+        run: |
+          git tag "rollback-$(date +%Y%m%d-%H%M%S)-to-${{ steps.target.outputs.short_sha }}"
+          git push origin --tags
+
+      - name: Notify rollback complete
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅ ROLLBACK COMPLETE' || '🚨 ROLLBACK FAILED — MANUAL ACTION REQUIRED' }}\n*Target:* `${{ steps.target.outputs.short_sha }}`"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true

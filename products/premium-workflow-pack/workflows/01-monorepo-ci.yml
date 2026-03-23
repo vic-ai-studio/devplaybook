@@ -1,0 +1,97 @@
+# CUSTOMIZE: Set your package manager (npm/pnpm/yarn) and affected detection tool
+# Supports: Nx, Turborepo, or custom affected scripts
+name: Monorepo CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      affected: ${{ steps.affected.outputs.packages }}
+      has-changes: ${{ steps.affected.outputs.has-changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      # CUSTOMIZE: Replace with your monorepo tool's affected command
+      - name: Detect affected packages
+        id: affected
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha || 'HEAD~1' }}"
+          AFFECTED=$(npx nx show projects --affected --base="$BASE_SHA" --json 2>/dev/null || echo '[]')
+          echo "packages=$AFFECTED" >> $GITHUB_OUTPUT
+          if [ "$AFFECTED" = "[]" ] || [ -z "$AFFECTED" ]; then
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+          fi
+
+  test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.detect-changes.outputs.affected) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Test ${{ matrix.package }}
+        run: npx nx test ${{ matrix.package }} --coverage
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          flags: ${{ matrix.package }}
+        if: always()
+
+  build:
+    needs: [detect-changes, test]
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.detect-changes.outputs.affected) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build ${{ matrix.package }}
+        run: npx nx build ${{ matrix.package }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.package }}
+          path: dist/${{ matrix.package }}
+          retention-days: 7

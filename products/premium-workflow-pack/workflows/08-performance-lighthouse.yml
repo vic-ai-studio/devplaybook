@@ -1,0 +1,80 @@
+# CUSTOMIZE: Set your performance thresholds and URLs to test
+# Fails the build if Lighthouse scores drop below thresholds
+name: Performance Testing (Lighthouse CI)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build application
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Install Lighthouse CI
+        run: npm install -g @lhci/cli@0.13.x
+
+      - name: Start preview server
+        run: |
+          # CUSTOMIZE: Adjust for your framework (Next.js, Astro, Vite, etc.)
+          npx serve dist -l 3000 &
+          npx wait-on http://localhost:3000 --timeout 30000
+
+      - name: Run Lighthouse CI
+        run: lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      # CUSTOMIZE: Create .lighthouserc.json with your config (see below)
+      - name: Upload Lighthouse results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-report-${{ github.sha }}
+          path: .lighthouseci
+          retention-days: 14
+
+# ─── .lighthouserc.json template ──────────────────────────────────────────────
+# Create this file in your project root and customize thresholds:
+#
+# {
+#   "ci": {
+#     "collect": {
+#       "url": ["http://localhost:3000", "http://localhost:3000/about"],
+#       "numberOfRuns": 3,
+#       "settings": {
+#         "preset": "desktop"
+#       }
+#     },
+#     "assert": {
+#       "assertions": {
+#         "categories:performance":     ["error", {"minScore": 0.85}],
+#         "categories:accessibility":   ["error", {"minScore": 0.90}],
+#         "categories:best-practices":  ["warn",  {"minScore": 0.90}],
+#         "categories:seo":             ["error", {"minScore": 0.90}],
+#         "first-contentful-paint":     ["warn",  {"maxNumericValue": 2000}],
+#         "largest-contentful-paint":   ["error", {"maxNumericValue": 2500}],
+#         "total-blocking-time":        ["error", {"maxNumericValue": 300}],
+#         "cumulative-layout-shift":    ["error", {"maxNumericValue": 0.1}]
+#       }
+#     },
+#     "upload": {
+#       "target": "temporary-public-storage"
+#     }
+#   }
+# }

@@ -1,0 +1,96 @@
+# CUSTOMIZE: Adjust canary percentages and promotion thresholds
+# Pattern: Deploy to 5% → monitor → 25% → monitor → 100%
+name: Canary Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      canary_weight:
+        description: 'Starting canary traffic percentage'
+        default: '5'
+        required: false
+
+jobs:
+  deploy-canary:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      # CUSTOMIZE: Deploy your canary version
+      - name: Deploy canary (5%)
+        id: deploy
+        run: |
+          CANARY_WEIGHT="${{ github.event.inputs.canary_weight || '5' }}"
+          echo "Deploying canary at ${CANARY_WEIGHT}% traffic"
+          # Example: Kubernetes canary via kubectl
+          # kubectl set image deployment/app-canary app=$IMAGE
+          # kubectl patch svc app --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/selector/track\",\"value\":\"canary\"}]"
+          echo "canary_weight=$CANARY_WEIGHT" >> $GITHUB_OUTPUT
+
+  monitor-canary:
+    needs: deploy-canary
+    runs-on: ubuntu-latest
+    steps:
+      # CUSTOMIZE: Replace with your metrics/observability tool
+      - name: Monitor error rate (5 min)
+        run: |
+          echo "Monitoring canary for 5 minutes..."
+          sleep 300
+
+          # CUSTOMIZE: Query your metrics endpoint
+          ERROR_RATE=$(curl -s "${{ secrets.METRICS_URL }}/error_rate?service=canary" || echo "0")
+          THRESHOLD=0.01  # 1% error rate threshold
+
+          echo "Current error rate: $ERROR_RATE"
+          if (( $(echo "$ERROR_RATE > $THRESHOLD" | bc -l) )); then
+            echo "ERROR: Canary error rate exceeds threshold. Rolling back."
+            exit 1
+          fi
+          echo "Canary healthy. Promoting..."
+
+  promote-to-25:
+    needs: monitor-canary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Promote canary to 25%
+        run: |
+          echo "Increasing canary traffic to 25%"
+          # CUSTOMIZE: Update your traffic weights
+          echo "Monitoring 25% canary for 10 minutes..."
+          sleep 600
+
+  promote-to-full:
+    needs: promote-to-25
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ secrets.PRODUCTION_URL }}
+    steps:
+      - name: Full rollout (100%)
+        run: |
+          echo "Canary promotion complete. Rolling out to 100%."
+          # CUSTOMIZE: Fully replace stable with canary
+          # kubectl rollout status deployment/app
+          echo "Canary release successful"
+
+  rollback-on-failure:
+    needs: [deploy-canary, monitor-canary]
+    runs-on: ubuntu-latest
+    if: failure()
+    steps:
+      - name: Rollback canary
+        run: |
+          echo "Canary failed. Rolling back to stable..."
+          # CUSTOMIZE: Revert canary traffic to 0%
+          # kubectl rollout undo deployment/app-canary
+          echo "Rollback complete. Stable version restored."

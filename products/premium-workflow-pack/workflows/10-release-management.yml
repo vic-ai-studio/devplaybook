@@ -1,0 +1,92 @@
+# CUSTOMIZE: Adjust release branches and changelog categories
+# Follows: Conventional Commits → auto-version → changelog → GitHub Release
+name: Release Management
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      tag-name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: google-github-actions/release-please-action@v4
+        id: release
+        with:
+          # CUSTOMIZE: Your release type (node, python, go, simple, etc.)
+          release-type: node
+          # CUSTOMIZE: Main branch name
+          target-branch: main
+          # CUSTOMIZE: Add extra labels on release PRs
+          labels: release,automated
+
+  publish-artifacts:
+    needs: release-please
+    if: needs.release-please.outputs.release-created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - name: Build release artifacts
+        run: npm run build
+
+      - name: Run tests (final gate)
+        run: npm test
+
+      # CUSTOMIZE: Uncomment to publish to npm
+      # - name: Publish to npm
+      #   run: npm publish
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release assets
+        run: |
+          VERSION="${{ needs.release-please.outputs.version }}"
+          tar -czf "release-v${VERSION}.tar.gz" dist/
+          zip -r "release-v${VERSION}.zip" dist/
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release-please.outputs.tag-name }}
+          files: |
+            release-*.tar.gz
+            release-*.zip
+
+      - name: Notify on Slack
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🚀 *${{ github.repository }}* released *v${{ needs.release-please.outputs.version }}*\n<https://github.com/${{ github.repository }}/releases/tag/${{ needs.release-please.outputs.tag-name }}|View Release>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+# ─── Conventional Commit types used for version bumping ─────────────────────
+# feat:     minor version bump  (1.0.0 → 1.1.0)
+# fix:      patch version bump  (1.0.0 → 1.0.1)
+# feat!:    major version bump  (1.0.0 → 2.0.0)
+# chore:    no release
+# docs:     no release
+# style:    no release
+# refactor: no release
+# test:     no release
