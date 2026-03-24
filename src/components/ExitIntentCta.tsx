@@ -13,6 +13,9 @@ const DISMISS_DAYS = 7;
 
 export default function ExitIntentCta({ productName, productUrl, productPrice }: Props) {
   const [visible, setVisible] = useState(false);
+  const [email, setEmail] = useState('');
+  const [subscribed, setSubscribed] = useState(false);
+  const [subLoading, setSubLoading] = useState(false);
 
   const dismiss = useCallback(() => {
     setVisible(false);
@@ -39,6 +42,26 @@ export default function ExitIntentCta({ productName, productUrl, productPrice }:
     document.addEventListener('mouseleave', onMouseLeave);
     return () => document.removeEventListener('mouseleave', onMouseLeave);
   }, []);
+
+  const handleSubscribe = async (e: Event) => {
+    e.preventDefault();
+    if (!email) return;
+    setSubLoading(true);
+    try {
+      const res = await fetch('/api/newsletter/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, source: 'exit_intent' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSubscribed(true);
+        try { (window as any).dpTrack?.('newsletter_signup', { source: 'exit_intent' }); } catch {}
+        setTimeout(dismiss, 2000);
+      }
+    } catch {}
+    setSubLoading(false);
+  };
 
   if (!visible) return null;
 
@@ -93,7 +116,35 @@ export default function ExitIntentCta({ productName, productUrl, productPrice }:
           </a>
         </div>
 
-        <p class="text-text-muted text-xs mt-4 text-center">
+        {/* Newsletter fallback */}
+        <div class="mt-5 pt-4 border-t border-border">
+          {subscribed ? (
+            <p class="text-green-400 text-sm text-center font-medium">You're in! Check your inbox soon. 🎉</p>
+          ) : (
+            <>
+              <p class="text-text-muted text-xs text-center mb-2">Not ready to buy? Get free weekly dev tips instead:</p>
+              <form onSubmit={handleSubscribe} class="flex gap-2">
+                <input
+                  type="email"
+                  value={email}
+                  onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
+                  placeholder="your@email.com"
+                  required
+                  class="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-border bg-bg-alt text-text placeholder-text-muted focus:outline-none focus:border-primary"
+                />
+                <button
+                  type="submit"
+                  disabled={subLoading}
+                  class="px-4 py-2 bg-bg-alt border border-border text-text text-sm font-medium rounded-lg hover:border-primary hover:text-primary transition-colors whitespace-nowrap disabled:opacity-50"
+                >
+                  {subLoading ? '...' : 'Subscribe'}
+                </button>
+              </form>
+            </>
+          )}
+        </div>
+
+        <p class="text-text-muted text-xs mt-3 text-center">
           MIT licensed · Instant download · No subscription
         </p>
       </div>
