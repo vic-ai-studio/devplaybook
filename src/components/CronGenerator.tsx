@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'preact/hooks';
+import { useState, useMemo, useEffect } from 'preact/hooks';
+import { isProUser } from '../utils/pro';
 
 const PRESETS = [
   { name: 'Every minute', cron: '* * * * *' },
@@ -97,6 +98,29 @@ function getNextRuns(parts: string[], count = 5): string[] {
 
 export default function CronGenerator() {
   const [fields, setFields] = useState(['0', '*', '*', '*', '*']);
+  const [pro, setPro] = useState(false);
+  const [savedSchedules, setSavedSchedules] = useState<{label: string; cron: string}[]>([]);
+  const [saveLabel, setSaveLabel] = useState('');
+
+  useEffect(() => {
+    setPro(isProUser());
+    const saved = localStorage.getItem('cron-saved-schedules');
+    if (saved) setSavedSchedules(JSON.parse(saved));
+  }, []);
+
+  const saveSchedule = () => {
+    if (!saveLabel.trim()) return;
+    const updated = [...savedSchedules, { label: saveLabel.trim(), cron }];
+    setSavedSchedules(updated);
+    localStorage.setItem('cron-saved-schedules', JSON.stringify(updated));
+    setSaveLabel('');
+  };
+
+  const deleteSchedule = (i: number) => {
+    const updated = savedSchedules.filter((_, idx) => idx !== i);
+    setSavedSchedules(updated);
+    localStorage.setItem('cron-saved-schedules', JSON.stringify(updated));
+  };
 
   const cron = fields.join(' ');
   const parts = cron.split(' ');
@@ -181,6 +205,56 @@ export default function CronGenerator() {
           <div>GitHub Actions: <span class="text-text">cron: '{cron}'</span></div>
           <div>node-cron: <span class="text-text">cron.schedule('{cron}', callback)</span></div>
         </div>
+      </div>
+
+      {/* Saved Schedules — Pro only */}
+      <div class={`border rounded-xl p-4 space-y-3 ${pro ? 'border-border' : 'border-border/50'}`}>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <h3 class="font-semibold text-sm">Saved Schedules</h3>
+            {!pro && (
+              <span class="text-xs bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded-full">Pro</span>
+            )}
+          </div>
+          {!pro && (
+            <a href="/pro" class="text-xs text-primary hover:underline shrink-0 ml-2">Unlock with Pro →</a>
+          )}
+        </div>
+        {pro ? (
+          <div class="space-y-3">
+            <div class="flex gap-2">
+              <input
+                value={saveLabel}
+                onInput={(e) => setSaveLabel((e.target as HTMLInputElement).value)}
+                placeholder="Label (e.g. Daily backup)"
+                class="flex-1 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+              />
+              <button
+                onClick={saveSchedule}
+                disabled={!saveLabel.trim()}
+                class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40"
+              >Save</button>
+            </div>
+            {savedSchedules.length > 0 ? (
+              <div class="space-y-2">
+                {savedSchedules.map((s, i) => (
+                  <div key={i} class="flex items-center justify-between bg-bg-card border border-border rounded-lg px-3 py-2">
+                    <button onClick={() => loadPreset(s.cron)} class="text-left">
+                      <div class="text-sm font-medium text-text">{s.label}</div>
+                      <div class="text-xs font-mono text-primary">{s.cron}</div>
+                    </button>
+                    <button onClick={() => deleteSchedule(i)} class="text-xs text-text-muted hover:text-red-500 ml-4">✕</button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p class="text-xs text-text-muted">No saved schedules yet. Build a cron expression and save it here.</p>
+            )}
+            {pro && <span class="text-xs text-primary">✓ Pro — unlimited saved schedules</span>}
+          </div>
+        ) : (
+          <p class="text-xs text-text-muted">Save and reuse your cron expressions with labels. Available with Pro.</p>
+        )}
       </div>
     </div>
   );

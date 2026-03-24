@@ -1,4 +1,5 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
+import { isProUser } from '../utils/pro';
 
 const HTML_ENTITIES: Record<string, string> = {
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -40,6 +41,14 @@ export default function HtmlEntityEncoder() {
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<'encode' | 'decode'>('encode');
   const [copied, setCopied] = useState(false);
+  const [pro, setPro] = useState(false);
+  const [batchInput, setBatchInput] = useState('');
+  const [batchOutput, setBatchOutput] = useState('');
+  const [batchCopied, setBatchCopied] = useState(false);
+
+  useEffect(() => {
+    setPro(isProUser());
+  }, []);
 
   const output = input ? (mode === 'encode' ? encodeHtmlEntities(input) : decodeHtmlEntities(input)) : '';
 
@@ -98,6 +107,47 @@ export default function HtmlEntityEncoder() {
             value={output}
           />
         </div>
+      </div>
+
+      {/* Batch Mode — Pro only */}
+      <div class={`border rounded-xl p-4 space-y-3 ${pro ? 'border-border' : 'border-border/50'}`}>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <h3 class="font-semibold text-sm">Batch {mode === 'encode' ? 'Encode' : 'Decode'}</h3>
+            {!pro && (
+              <span class="text-xs bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded-full">Pro</span>
+            )}
+          </div>
+          {!pro && (
+            <a href="/pro" class="text-xs text-primary hover:underline shrink-0 ml-2">Unlock with Pro →</a>
+          )}
+        </div>
+        {pro ? (
+          <div class="space-y-3">
+            <textarea
+              class="w-full h-28 bg-bg-card border border-border rounded-lg p-3 font-mono text-sm text-text resize-none focus:outline-none focus:border-primary transition-colors"
+              placeholder="Enter multiple strings, one per line..."
+              value={batchInput}
+              onInput={(e) => {
+                const val = (e.target as HTMLTextAreaElement).value;
+                setBatchInput(val);
+                const result = val.split('\n').map(line => mode === 'encode' ? encodeHtmlEntities(line) : decodeHtmlEntities(line)).join('\n');
+                setBatchOutput(result);
+              }}
+            />
+            {batchOutput && (
+              <div class="relative">
+                <textarea readOnly class="w-full h-28 bg-bg-card border border-border rounded-lg p-3 font-mono text-sm text-text resize-none" value={batchOutput} />
+                <button
+                  onClick={() => navigator.clipboard.writeText(batchOutput).then(() => { setBatchCopied(true); setTimeout(() => setBatchCopied(false), 1500); })}
+                  class="absolute top-2 right-2 text-xs bg-bg border border-border px-2 py-1 rounded hover:border-primary hover:text-primary transition-colors"
+                >{batchCopied ? '✓ Copied' : 'Copy all'}</button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p class="text-xs text-text-muted">{mode === 'encode' ? 'Encode' : 'Decode'} multiple strings at once — one per line. Available with Pro.</p>
+        )}
       </div>
 
       {!input && (
