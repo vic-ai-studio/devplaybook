@@ -344,6 +344,60 @@ Use **Base64url** for: anything appearing in a URL, JWT tokens, OAuth state para
 
 ---
 
+## Performance: How Much Does Base64 Increase Size?
+
+Base64 encodes 3 bytes into 4 characters — a 33% size increase. This matters at scale:
+
+| Original Size | Base64 Size | Increase |
+|---------------|-------------|----------|
+| 1 KB | ~1.37 KB | +370 bytes |
+| 10 KB | ~13.7 KB | +3.7 KB |
+| 100 KB | ~137 KB | +37 KB |
+| 1 MB | ~1.37 MB | +370 KB |
+
+### Impact on HTTP Requests
+
+When you embed Base64-encoded images in CSS, you remove an HTTP request but increase the CSS file size. The tradeoff:
+
+- **Worth it:** Small icons under 5-10KB where the HTTP request overhead (TCP connection, headers, DNS, latency) exceeds the size cost
+- **Not worth it:** Photos, illustrations, or any image over ~10KB — the size increase outweighs the request savings
+
+Modern HTTP/2 connection multiplexing reduces the "too many requests" problem significantly. With HTTP/2, multiple resources are served over one connection, making the "save a request" argument for Base64 data URIs weaker than it was in the HTTP/1.1 era.
+
+### Impact on JavaScript Bundles
+
+Bundlers (webpack, Rollup, esbuild) can inline small assets as Base64 data URIs automatically:
+
+```javascript
+// webpack config — inline assets under 8KB as Base64
+module.exports = {
+  module: {
+    rules: [{
+      test: /\.(png|jpg|gif|svg)$/,
+      type: 'asset',
+      parser: {
+        dataUrlCondition: {
+          maxSize: 8 * 1024 // 8KB
+        }
+      }
+    }]
+  }
+};
+```
+
+For Vite:
+
+```javascript
+// vite.config.js
+export default {
+  build: {
+    assetsInlineLimit: 4096 // 4KB — inline as Base64 if smaller
+  }
+};
+```
+
+These settings handle the tradeoff automatically based on file size.
+
 ## Using DevPlaybook Base64 Tool
 
 For quick encoding and decoding without writing code, [DevPlaybook's Base64 tool](/tools/base64) handles:
