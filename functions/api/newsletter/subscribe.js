@@ -2,6 +2,7 @@
  * POST /api/newsletter/subscribe
  * Subscribe an email to the newsletter (stored in Cloudflare KV)
  * Sends a welcome email via Resend if RESEND_API_KEY is set.
+ * Syncs to Buttondown if BUTTONDOWN_API_KEY is set (mock mode when not set).
  */
 
 const FROM_EMAIL = 'DevPlaybook <newsletter@devplaybook.cc>';
@@ -92,21 +93,36 @@ export async function onRequestPost({ request, env }) {
     }
 
     // Store subscriber with metadata
+    const source = (body.source || 'website').slice(0, 50);
     const subscriber = {
       email,
       subscribedAt: new Date().toISOString(),
-      source: body.source || 'website',
+      source,
       welcomeEmailSent: false,
+      buttondownSynced: false,
     };
 
-    // Send welcome email via Resend (non-blocking — don't fail subscription if email fails)
+    // Send welcome email via Resend (non-blocking)
     if (env.RESEND_API_KEY) {
       try {
         const sent = await sendWelcomeEmail(email, env.RESEND_API_KEY);
         subscriber.welcomeEmailSent = sent;
-      } catch {
-        // Log but don't block subscription
-      }
+      } catch { /* non-fatal */ }
+    }
+
+    // Sync to Buttondown when API key is available (non-blocking, mock mode when not set)
+    if (env.BUTTONDOWN_API_KEY) {
+      try {
+        const res = await fetch('https://api.buttondown.email/v1/subscribers', {
+          method: 'POST',
+          headers: {
+            Authorization: `Token ${env.BUTTONDOWN_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email, tags: [source] }),
+        });
+        subscriber.buttondownSynced = res.ok || res.status === 409; // 409 = already exists
+      } catch { /* non-fatal */ }
     }
 
     await kv.put(`subscriber:${email}`, JSON.stringify(subscriber));
