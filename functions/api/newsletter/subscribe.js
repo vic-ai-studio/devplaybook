@@ -100,6 +100,7 @@ export async function onRequestPost({ request, env }) {
       source,
       welcomeEmailSent: false,
       buttondownSynced: false,
+      mailerliteSynced: false,
     };
 
     // Send welcome email via Resend (non-blocking)
@@ -122,6 +123,26 @@ export async function onRequestPost({ request, env }) {
           body: JSON.stringify({ email, tags: [source] }),
         });
         subscriber.buttondownSynced = res.ok || res.status === 409; // 409 = already exists
+      } catch { /* non-fatal */ }
+    }
+
+    // Sync to MailerLite when API key is available
+    if (env.MAILERLITE_API_KEY) {
+      try {
+        const mlBody = { email };
+        if (env.MAILERLITE_GROUP_ID) {
+          mlBody.groups = [env.MAILERLITE_GROUP_ID];
+        }
+        const res = await fetch('https://connect.mailerlite.com/api/subscribers', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.MAILERLITE_API_KEY}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(mlBody),
+        });
+        subscriber.mailerliteSynced = res.ok || res.status === 409;
       } catch { /* non-fatal */ }
     }
 

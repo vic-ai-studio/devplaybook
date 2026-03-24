@@ -26,6 +26,7 @@ Stop grinding LeetCode in the dark. Get **210 real technical interview questions
 🧠 **50 DSA Questions** — Arrays, trees, graphs, dynamic programming. Code solutions in Python with time/space complexity analysis.
 
 **Format:**
+- **PDF files** (ready to read, print, or annotate)
 - Markdown files (readable in VS Code, Obsidian, Notion, GitHub)
 - Organized by category and difficulty
 - Every question includes model answer + follow-up questions
