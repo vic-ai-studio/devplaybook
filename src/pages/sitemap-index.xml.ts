@@ -14,6 +14,10 @@ export const GET: APIRoute = () => {
     <loc>${SITE}/sitemap-blog.xml</loc>
     <lastmod>${TODAY}</lastmod>
   </sitemap>
+  <sitemap>
+    <loc>${SITE}/sitemap-pages.xml</loc>
+    <lastmod>${TODAY}</lastmod>
+  </sitemap>
 </sitemapindex>`;
 
   return new Response(xml, {
