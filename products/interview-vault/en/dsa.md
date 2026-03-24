@@ -1,452 +1,345 @@
 # Data Structures & Algorithms Interview Questions
 
-**50 questions** covering arrays, strings, trees, graphs, dynamic programming, and core algorithms.
+50 questions covering arrays, strings, trees, graphs, dynamic programming, and core algorithms.
 
 ---
 
-## Core Concepts & Complexity (5 questions)
+## Arrays & Strings
 
-### 1. What is Big O notation? Explain common complexities. `[Junior]`
-
-**Answer:**
-Big O describes the upper bound of an algorithm's time or space complexity as input grows.
-
-| Complexity | Name | Example |
-|-----------|------|---------|
-| O(1) | Constant | Array index, hash map lookup |
-| O(log n) | Logarithmic | Binary search, BST operations |
-| O(n) | Linear | Linear search, single loop |
-| O(n log n) | Linearithmic | Merge sort, heap sort |
-| O(n²) | Quadratic | Bubble sort, nested loops |
-| O(2^n) | Exponential | Recursive subset generation |
-| O(n!) | Factorial | Brute-force permutations |
-
-**Rules:** Drop constants (`O(2n) = O(n)`), drop lower terms (`O(n² + n) = O(n²)`). Analyze worst case unless specified.
-
----
-
-### 2. When should you use an array vs a linked list? `[Junior]`
+### 1. Two Sum — find two indices that add up to a target. `[Junior]`
 
 **Answer:**
-| | Array | Linked List |
-|---|---|---|
-| Access by index | O(1) | O(n) |
-| Search | O(n) / O(log n) sorted | O(n) |
-| Insert at beginning | O(n) (shift) | O(1) |
-| Insert at end | O(1) amortized | O(1) with tail pointer |
-| Insert in middle | O(n) | O(1) with pointer |
-| Memory | Contiguous (cache-friendly) | Scattered (pointer overhead) |
+Use a hash map to store each number's complement as you iterate. O(N) vs O(N²) brute force.
 
-**Use array:** Random access needed, cache performance matters, size known upfront.
-**Use linked list:** Frequent insertions/deletions at known positions, size unknown/varies widely.
-
----
-
-### 3. What is the difference between a stack and a queue? `[Junior]`
-
-**Answer:**
-- **Stack** — LIFO (Last In, First Out). Push/pop at the same end.
-  - Operations: push O(1), pop O(1), peek O(1)
-  - Uses: Function call stack, undo/redo, DFS, balanced parentheses, browser history
-- **Queue** — FIFO (First In, First Out). Enqueue at back, dequeue from front.
-  - Operations: enqueue O(1), dequeue O(1)
-  - Uses: BFS, task scheduling, producer-consumer, printer queue
-
-**Implementations:** Arrays (circular buffer for queue), linked lists, or language built-ins (Python `deque`, JS `[]`).
-
----
-
-### 4. What is a hash table and how does it handle collisions? `[Mid]`
-
-**Answer:**
-A hash table maps keys to values via a hash function. Hash function computes an index (bucket) for each key.
-
-**Collision resolution:**
-- **Chaining:** Each bucket holds a linked list of entries. O(1) average, O(n) worst case.
-- **Open addressing (linear probing):** On collision, probe next empty slot. Cache-friendly but clusters.
-- **Double hashing:** Use second hash function for probe sequence. Reduces clustering.
-
-**Load factor:** `n/m` (entries/buckets). Rehash (resize to 2x) when load factor exceeds threshold (~0.75).
-
-**Average case:** O(1) for insert, delete, lookup. Worst case: O(n) (all keys hash to same bucket).
-
----
-
-### 5. Explain the difference between BFS and DFS. `[Mid]`
-
-**Answer:**
-- **BFS (Breadth-First Search):** Explore all neighbors before going deeper. Uses a **queue**. Finds shortest path in unweighted graphs.
-- **DFS (Depth-First Search):** Go as deep as possible before backtracking. Uses a **stack** (or recursion). Memory-efficient for deep trees.
-
-| | BFS | DFS |
-|---|---|---|
-| Data structure | Queue | Stack/Recursion |
-| Space | O(width) — wide graphs use lots | O(depth) — deep graphs use lots |
-| Shortest path | ✅ (unweighted) | ❌ |
-| Cycle detection | ✅ | ✅ |
-| Topological sort | ❌ | ✅ |
-| Connected components | ✅ | ✅ |
-
----
-
-## Arrays & Strings (10 questions)
-
-### 6. Find the maximum subarray sum (Kadane's Algorithm). `[Mid]`
-
-**Answer:**
-```python
-def max_subarray(nums):
-    max_sum = current_sum = nums[0]
-    for num in nums[1:]:
-        current_sum = max(num, current_sum + num)
-        max_sum = max(max_sum, current_sum)
-    return max_sum
-```
-**Time:** O(n), **Space:** O(1)
-
-**Key insight:** At each position, decide whether to extend the current subarray or start fresh. If `current_sum + num < num`, start fresh.
-
----
-
-### 7. Two Sum: find indices of two numbers that add to a target. `[Junior]`
-
-**Answer:**
 ```python
 def two_sum(nums, target):
-    seen = {}  # value → index
-    for i, num in enumerate(nums):
-        complement = target - num
+    seen = {}  # value -> index
+    for i, n in enumerate(nums):
+        complement = target - n
         if complement in seen:
             return [seen[complement], i]
-        seen[num] = i
+        seen[n] = i
     return []
 ```
-**Time:** O(n), **Space:** O(n)
 
-**Pattern:** Use a hash map to store complement while iterating. Classic "one-pass hash map" pattern.
+**Time Complexity:** O(N)
+**Space Complexity:** O(N)
 
----
+**Key points:** Edge cases: duplicate values (hash map stores latest index, but since we check before inserting, duplicates are handled correctly), empty array, negative numbers.
 
-### 8. How do you detect a cycle in a linked list? `[Mid]`
-
-**Answer:**
-**Floyd's Cycle Detection (Tortoise and Hare):**
-```python
-def has_cycle(head):
-    slow = fast = head
-    while fast and fast.next:
-        slow = slow.next
-        fast = fast.next.next
-        if slow == fast:
-            return True
-    return False
-```
-**Time:** O(n), **Space:** O(1)
-
-**Intuition:** Fast pointer moves 2 steps, slow 1 step. If there's a cycle, fast will "lap" slow and they'll meet.
-
-**Extension:** Find the start of the cycle — after they meet, move one pointer to head, advance both one step at a time; they meet at cycle start.
+**Follow-up:** What if the array is sorted? → Use two pointers (left, right); move left forward if sum < target, move right backward if sum > target. O(N) time, O(1) space.
 
 ---
 
-### 9. Reverse a string or an array in place. `[Junior]`
+### 2. Longest Substring Without Repeating Characters. `[Junior]`
 
 **Answer:**
-```python
-def reverse(s):
-    # Convert to list if string (strings are immutable in Python)
-    arr = list(s)
-    left, right = 0, len(arr) - 1
-    while left < right:
-        arr[left], arr[right] = arr[right], arr[left]
-        left += 1
-        right -= 1
-    return ''.join(arr)
-```
-**Time:** O(n), **Space:** O(1) for arrays, O(n) for strings
+Sliding window with a hash map tracking the last seen index of each character. Shrink the left pointer when a duplicate is found.
 
-**Two-pointer pattern** — one of the most common patterns in array/string problems.
-
----
-
-### 10. Find all duplicates in an array. `[Mid]`
-
-**Answer:**
-```python
-# O(n) time, O(n) space using hash set
-def find_duplicates(nums):
-    seen = set()
-    return [x for x in nums if x in seen or seen.add(x) is None and False]
-
-# Better:
-def find_duplicates(nums):
-    seen, duplicates = set(), []
-    for num in nums:
-        if num in seen:
-            duplicates.append(num)
-        else:
-            seen.add(num)
-    return duplicates
-
-# O(n) time, O(1) space (if nums in range [1,n]):
-def find_duplicates_inplace(nums):
-    result = []
-    for num in nums:
-        idx = abs(num) - 1
-        if nums[idx] < 0:
-            result.append(abs(num))
-        else:
-            nums[idx] = -nums[idx]
-    return result
-```
-
----
-
-### 11. Sliding window: longest substring without repeating characters. `[Mid]`
-
-**Answer:**
 ```python
 def length_of_longest_substring(s):
-    char_index = {}
-    left = max_len = 0
-
-    for right, char in enumerate(s):
-        if char in char_index and char_index[char] >= left:
-            left = char_index[char] + 1  # shrink window
-        char_index[char] = right
-        max_len = max(max_len, right - left + 1)
-
-    return max_len
+    last_seen = {}
+    left = 0
+    best = 0
+    for right, ch in enumerate(s):
+        if ch in last_seen and last_seen[ch] >= left:
+            left = last_seen[ch] + 1
+        last_seen[ch] = right
+        best = max(best, right - left + 1)
+    return best
 ```
-**Time:** O(n), **Space:** O(min(n, alphabet_size))
 
-**Sliding window pattern:** Maintain a valid window with two pointers. Expand right, shrink left when condition violated.
+**Time Complexity:** O(N)
+**Space Complexity:** O(min(N, Σ)) where Σ is the alphabet size
+
+**Key points:** The condition `last_seen[ch] >= left` avoids shrinking the window past the left pointer due to a stale entry in the map.
+
+**Follow-up:** How does this change if you need the actual substring, not just the length? → Track the start index of the best window and slice `s[best_left:best_right+1]`.
 
 ---
 
-### 12. Binary search and its variants. `[Mid]`
+### 3. Container With Most Water (two-pointer approach). `[Junior]`
 
 **Answer:**
+Place pointers at both ends. The area is `min(height[l], height[r]) * (r - l)`. Always move the shorter side inward, since moving the taller side can only decrease or maintain the width without increasing the height.
+
+```python
+def max_area(height):
+    l, r = 0, len(height) - 1
+    best = 0
+    while l < r:
+        area = min(height[l], height[r]) * (r - l)
+        best = max(best, area)
+        if height[l] <= height[r]:
+            l += 1
+        else:
+            r -= 1
+    return best
+```
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(1)
+
+**Key points:** The greedy choice to move the shorter side is correct because the current area is limited by the shorter side; moving it is the only way to potentially find a taller boundary.
+
+**Follow-up:** What is the brute-force complexity? → O(N²); enumerate all pairs. The two-pointer approach exploits the monotonic structure.
+
+---
+
+### 4. Maximum Subarray (Kadane's Algorithm). `[Junior]`
+
+**Answer:**
+Track the running subarray sum and reset to the current element whenever continuing the previous subarray makes it worse. Track the global maximum.
+
+```python
+def max_subarray(nums):
+    cur = best = nums[0]
+    for n in nums[1:]:
+        cur = max(n, cur + n)
+        best = max(best, cur)
+    return best
+```
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(1)
+
+**Key points:** Edge cases: all-negative array (answer is the largest single element, handled correctly), single element, array with zeros.
+
+**Follow-up:** How do you return the actual subarray indices, not just the sum? → Track `start`, `end`, and a `temp_start` variable; update them when you reset `cur` or find a new best.
+
+---
+
+### 5. Find the Majority Element (Boyer-Moore Voting). `[Mid]`
+
+**Answer:**
+Boyer-Moore: maintain a candidate and a count. Increment count when you see the candidate, decrement otherwise. When count hits 0, the next element becomes the new candidate. The true majority element (if one exists) always survives.
+
+```python
+def majority_element(nums):
+    candidate, count = nums[0], 1
+    for n in nums[1:]:
+        if count == 0:
+            candidate = n
+        count += 1 if n == candidate else -1
+    return candidate
+```
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(1)
+
+**Key points:** This only works if a majority element (appearing >N/2 times) is guaranteed. If it is not guaranteed, add a second pass to verify the count.
+
+**Follow-up:** How do you find all elements appearing more than N/3 times? → There can be at most 2 such elements; use the same Boyer-Moore logic with two candidates and two counts.
+
+---
+
+### 6. Binary Search on a sorted array. `[Junior]`
+
+**Answer:**
+Standard binary search halves the search space each iteration by comparing the middle element with the target.
+
 ```python
 def binary_search(nums, target):
-    left, right = 0, len(nums) - 1
-    while left <= right:
-        mid = left + (right - left) // 2  # avoid overflow
+    lo, hi = 0, len(nums) - 1
+    while lo <= hi:
+        mid = lo + (hi - lo) // 2  # avoids integer overflow
         if nums[mid] == target:
             return mid
         elif nums[mid] < target:
-            left = mid + 1
+            lo = mid + 1
         else:
-            right = mid - 1
+            hi = mid - 1
     return -1
-
-# Find leftmost position (first occurrence)
-def lower_bound(nums, target):
-    left, right = 0, len(nums)
-    while left < right:
-        mid = (left + right) // 2
-        if nums[mid] < target:
-            left = mid + 1
-        else:
-            right = mid  # don't exclude right
-    return left  # first position where nums[i] >= target
 ```
-**Time:** O(log n)
+
+**Time Complexity:** O(log N)
+**Space Complexity:** O(1)
+
+**Key points:** `mid = lo + (hi - lo) // 2` avoids integer overflow (critical in languages with fixed-width integers). The loop invariant: target is in `[lo, hi]` if it exists.
+
+**Follow-up:** How do you find the leftmost (first) occurrence of a target? → When `nums[mid] == target`, set `hi = mid - 1` instead of returning, and track the last match.
 
 ---
 
-### 13. Merge two sorted arrays. `[Junior]`
+### 7. Prefix Sums — Range Sum Query. `[Junior]`
 
 **Answer:**
+Precompute prefix sums so any range sum `[l, r]` is answered in O(1) using `prefix[r+1] - prefix[l]`.
+
 ```python
-def merge_sorted(a, b):
+class RangeSum:
+    def __init__(self, nums):
+        self.prefix = [0] * (len(nums) + 1)
+        for i, n in enumerate(nums):
+            self.prefix[i + 1] = self.prefix[i] + n
+
+    def query(self, l, r):  # inclusive [l, r]
+        return self.prefix[r + 1] - self.prefix[l]
+```
+
+**Time Complexity:** O(N) build, O(1) query
+**Space Complexity:** O(N)
+
+**Key points:** The extra leading zero in the prefix array simplifies the boundary condition at index 0. Extend to 2D prefix sums for matrix range queries.
+
+**Follow-up:** How do you handle range updates (add a value to every element in a range)? → Use a difference array: `diff[l] += v`, `diff[r+1] -= v`; reconstruct by prefix-summing the difference array.
+
+---
+
+### 8. Sliding Window Maximum. `[Mid]`
+
+**Answer:**
+Use a monotonic deque (decreasing) that stores indices. The front of the deque is always the maximum of the current window. Pop from the front when the index falls out of the window; pop from the back when a new element is larger than the back.
+
+```python
+from collections import deque
+
+def sliding_window_max(nums, k):
+    dq = deque()  # stores indices, front is max
     result = []
-    i = j = 0
-    while i < len(a) and j < len(b):
-        if a[i] <= b[j]:
-            result.append(a[i]); i += 1
-        else:
-            result.append(b[j]); j += 1
-    return result + a[i:] + b[j:]
+    for i, n in enumerate(nums):
+        # remove indices outside the window
+        while dq and dq[0] < i - k + 1:
+            dq.popleft()
+        # maintain decreasing order
+        while dq and nums[dq[-1]] < n:
+            dq.pop()
+        dq.append(i)
+        if i >= k - 1:
+            result.append(nums[dq[0]])
+    return result
 ```
-**Time:** O(m+n), **Space:** O(m+n)
 
-**In-place variant (merge into array with extra space):** Used in merge sort and LeetCode #88. Work backwards from end to avoid shifting.
+**Time Complexity:** O(N) — each element is added and removed from the deque at most once
+**Space Complexity:** O(k)
+
+**Key points:** Each element enters and leaves the deque exactly once, giving O(N) amortized. The window size constraint is enforced by checking the front index.
+
+**Follow-up:** How do you find the sliding window minimum? → Maintain a monotonically increasing deque instead.
 
 ---
 
-### 14. Product of array except self. `[Mid]`
+### 9. Check if a String is a Valid Anagram. `[Junior]`
 
 **Answer:**
+Two strings are anagrams if they contain the same characters with the same frequencies. Count character frequencies and compare.
+
 ```python
-def product_except_self(nums):
+def is_anagram(s, t):
+    if len(s) != len(t):
+        return False
+    count = {}
+    for ch in s:
+        count[ch] = count.get(ch, 0) + 1
+    for ch in t:
+        if ch not in count or count[ch] == 0:
+            return False
+        count[ch] -= 1
+    return True
+```
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(Σ) where Σ is the alphabet size (26 for lowercase ASCII)
+
+**Key points:** Early exit on length mismatch. For Unicode strings, use a generic hash map (the alphabet may not be bounded at 26).
+
+**Follow-up:** How do you group a list of strings by anagram? → Use `tuple(sorted(s))` or `tuple(Counter(s).items())` as a hash map key; group strings with the same key.
+
+---
+
+### 10. Check if a String is a Palindrome. `[Junior]`
+
+**Answer:**
+Compare characters from both ends moving inward. Skip non-alphanumeric characters if needed.
+
+```python
+def is_palindrome(s):
+    # Clean: keep only alphanumeric, lowercase
+    filtered = [ch.lower() for ch in s if ch.isalnum()]
+    l, r = 0, len(filtered) - 1
+    while l < r:
+        if filtered[l] != filtered[r]:
+            return False
+        l += 1
+        r -= 1
+    return True
+```
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(N) for filtered; O(1) if done in-place with two pointers on the original string
+
+**Key points:** Edge cases: empty string (palindrome by definition), single character, string with only spaces or special characters.
+
+**Follow-up:** How do you check if any permutation of a string is a palindrome? → Count character frequencies; at most one character may have an odd count (the middle character for odd-length palindromes).
+
+---
+
+### 11. In-place Array Rotation (rotate array by k steps). `[Mid]`
+
+**Answer:**
+Rotating right by k is equivalent to three reversals: reverse the whole array, then the first k elements, then the remaining.
+
+```python
+def rotate(nums, k):
     n = len(nums)
-    result = [1] * n
+    k = k % n  # handle k >= n
 
-    # Left pass: result[i] = product of all elements to the left
-    prefix = 1
-    for i in range(n):
-        result[i] = prefix
-        prefix *= nums[i]
+    def reverse(l, r):
+        while l < r:
+            nums[l], nums[r] = nums[r], nums[l]
+            l += 1
+            r -= 1
 
-    # Right pass: multiply by product of all elements to the right
-    suffix = 1
-    for i in range(n - 1, -1, -1):
-        result[i] *= suffix
-        suffix *= nums[i]
-
-    return result
+    reverse(0, n - 1)
+    reverse(0, k - 1)
+    reverse(k, n - 1)
 ```
-**Time:** O(n), **Space:** O(1) extra (output array doesn't count)
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(1)
+
+**Key points:** `k % n` handles the case where k ≥ n. Three-reversal trick is the canonical O(1)-space solution.
+
+**Follow-up:** How do you rotate a matrix 90 degrees clockwise in-place? → First transpose (swap `matrix[i][j]` and `matrix[j][i]`), then reverse each row.
 
 ---
 
-### 15. Longest common subsequence. `[Senior]`
+### 12. Frequency Map — Top K Frequent Elements. `[Mid]`
 
 **Answer:**
+Count frequencies with a hash map, then use a min-heap of size K to track the top K elements. Alternatively, use bucket sort for O(N) time.
+
 ```python
-def lcs(s1, s2):
-    m, n = len(s1), len(s2)
-    dp = [[0] * (n + 1) for _ in range(m + 1)]
+import heapq
+from collections import Counter
 
-    for i in range(1, m + 1):
-        for j in range(1, n + 1):
-            if s1[i-1] == s2[j-1]:
-                dp[i][j] = dp[i-1][j-1] + 1
-            else:
-                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-
-    return dp[m][n]
+def top_k_frequent(nums, k):
+    count = Counter(nums)
+    # Min-heap: push (freq, num); pop when heap > k
+    heap = []
+    for num, freq in count.items():
+        heapq.heappush(heap, (freq, num))
+        if len(heap) > k:
+            heapq.heappop(heap)
+    return [num for freq, num in heap]
 ```
-**Time:** O(m×n), **Space:** O(m×n), optimizable to O(min(m,n))
+
+**Time Complexity:** O(N log K)
+**Space Complexity:** O(N)
+
+**Key points:** A min-heap of size K is more efficient than sorting all unique elements when K << N. The bucket sort approach achieves O(N) by using frequency as the bucket index.
+
+**Follow-up:** How does the bucket sort approach work? → Create N+1 buckets indexed by frequency; put each number in its frequency bucket; scan from the highest bucket down, collecting until K elements are gathered.
 
 ---
 
-## Trees (10 questions)
+## Trees & Graphs
 
-### 16. Implement tree traversals (in-order, pre-order, post-order). `[Mid]`
-
-**Answer:**
-```python
-class Node:
-    def __init__(self, val):
-        self.val = val
-        self.left = self.right = None
-
-# Recursive
-def inorder(root):    # Left → Root → Right (sorted for BST)
-    return inorder(root.left) + [root.val] + inorder(root.right) if root else []
-
-def preorder(root):   # Root → Left → Right (copy tree)
-    return [root.val] + preorder(root.left) + preorder(root.right) if root else []
-
-def postorder(root):  # Left → Right → Root (delete tree)
-    return postorder(root.left) + postorder(root.right) + [root.val] if root else []
-
-# Iterative inorder (using stack)
-def inorder_iterative(root):
-    result, stack, curr = [], [], root
-    while curr or stack:
-        while curr:
-            stack.append(curr)
-            curr = curr.left
-        curr = stack.pop()
-        result.append(curr.val)
-        curr = curr.right
-    return result
-```
-
----
-
-### 17. Find the height of a binary tree. `[Junior]`
+### 13. Binary Tree Level-Order Traversal (BFS). `[Junior]`
 
 **Answer:**
-```python
-def height(root):
-    if not root:
-        return 0
-    return 1 + max(height(root.left), height(root.right))
-```
-**Time:** O(n), **Space:** O(h) where h is height (O(n) worst case for skewed tree, O(log n) balanced)
+Use a queue. Process all nodes at the current level before moving to the next. Track level boundaries by recording the queue length at the start of each level.
 
----
-
-### 18. Check if a binary tree is balanced. `[Mid]`
-
-**Answer:**
-```python
-def is_balanced(root):
-    def check(node):
-        if not node:
-            return 0  # height 0
-        left = check(node.left)
-        if left == -1:
-            return -1  # left subtree unbalanced
-        right = check(node.right)
-        if right == -1:
-            return -1  # right subtree unbalanced
-        if abs(left - right) > 1:
-            return -1  # this node unbalanced
-        return 1 + max(left, right)
-
-    return check(root) != -1
-```
-**Time:** O(n), **Space:** O(h)
-
-**Optimization:** Returns -1 on first unbalanced detection (early termination).
-
----
-
-### 19. Lowest Common Ancestor of a binary tree. `[Mid]`
-
-**Answer:**
-```python
-def lca(root, p, q):
-    if not root or root == p or root == q:
-        return root
-
-    left = lca(root.left, p, q)
-    right = lca(root.right, p, q)
-
-    # If both sides found a node, current root is LCA
-    if left and right:
-        return root
-    # Otherwise, LCA is on the side that found a node
-    return left or right
-```
-**Time:** O(n), **Space:** O(h)
-
----
-
-### 20. Serialize and deserialize a binary tree. `[Senior]`
-
-**Answer:**
-```python
-def serialize(root):
-    if not root:
-        return 'null'
-    return f'{root.val},{serialize(root.left)},{serialize(root.right)}'
-
-def deserialize(data):
-    queue = deque(data.split(','))
-
-    def build():
-        val = queue.popleft()
-        if val == 'null':
-            return None
-        node = Node(int(val))
-        node.left = build()
-        node.right = build()
-        return node
-
-    return build()
-```
-
----
-
-### 21. Level-order traversal (BFS on a tree). `[Mid]`
-
-**Answer:**
 ```python
 from collections import deque
 
@@ -456,59 +349,127 @@ def level_order(root):
     result, queue = [], deque([root])
     while queue:
         level = []
-        for _ in range(len(queue)):  # process all nodes at current level
+        for _ in range(len(queue)):  # process exactly this level
             node = queue.popleft()
             level.append(node.val)
-            if node.left:  queue.append(node.left)
-            if node.right: queue.append(node.right)
+            if node.left:
+                queue.append(node.left)
+            if node.right:
+                queue.append(node.right)
         result.append(level)
     return result
 ```
-**Time:** O(n), **Space:** O(w) where w is max width
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(W) where W is the maximum tree width (up to N/2 for a complete tree)
+
+**Key points:** Snapshotting `len(queue)` at the start of each level is the key to separating levels without a sentinel node.
+
+**Follow-up:** How do you do a zigzag level-order traversal? → Alternate the direction of appending: left-to-right for even levels, right-to-left for odd levels (deque with appendleft/append).
 
 ---
 
-### 22. Validate a binary search tree. `[Mid]`
+### 14. DFS — In-order, Pre-order, Post-order Traversals. `[Junior]`
 
 **Answer:**
+Recursive DFS is concise; iterative uses an explicit stack.
+
 ```python
-def is_valid_bst(root, min_val=float('-inf'), max_val=float('inf')):
-    if not root:
-        return True
-    if root.val <= min_val or root.val >= max_val:
-        return False
-    return (is_valid_bst(root.left, min_val, root.val) and
-            is_valid_bst(root.right, root.val, max_val))
+# Recursive (in-order example)
+def inorder(root):
+    result = []
+    def dfs(node):
+        if not node:
+            return
+        dfs(node.left)
+        result.append(node.val)
+        dfs(node.right)
+    dfs(root)
+    return result
+
+# Iterative in-order
+def inorder_iterative(root):
+    result, stack, cur = [], [], root
+    while cur or stack:
+        while cur:
+            stack.append(cur)
+            cur = cur.left
+        cur = stack.pop()
+        result.append(cur.val)
+        cur = cur.right
+    return result
 ```
 
-**Common mistake:** Just checking `node.left.val < node.val` is wrong — the entire left subtree must be less than node.val.
+**Time Complexity:** O(N)
+**Space Complexity:** O(H) where H is tree height; O(N) worst case (skewed tree)
+
+**Key points:** In-order traversal of a BST yields sorted order. Pre-order is useful for serializing a tree. Post-order is useful for bottom-up computations (e.g., tree height).
+
+**Follow-up:** How do you do an iterative post-order traversal? → Use two stacks, or push to a result list in reverse order (pre-order but with right and left swapped, then reverse the output).
 
 ---
 
-### 23. Find the kth smallest element in a BST. `[Mid]`
+### 15. Lowest Common Ancestor (LCA) of a Binary Tree. `[Mid]`
 
 **Answer:**
+Post-order DFS: if both left and right subtrees return a non-null node, the current node is the LCA. Otherwise, return whichever side found a target node.
+
 ```python
-def kth_smallest(root, k):
-    # In-order traversal of BST is sorted
-    stack, curr = [], root
-    while curr or stack:
-        while curr:
-            stack.append(curr)
-            curr = curr.left
-        curr = stack.pop()
-        k -= 1
-        if k == 0:
-            return curr.val
-        curr = curr.right
+def lca(root, p, q):
+    if not root or root == p or root == q:
+        return root
+    left = lca(root.left, p, q)
+    right = lca(root.right, p, q)
+    if left and right:
+        return root  # p and q are in different subtrees
+    return left or right
 ```
-**Time:** O(H + k), **Space:** O(H)
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(H) — recursion stack
+
+**Key points:** This works even when p or q may not exist in the tree (verify by checking if both are found). For a BST, use the BST property to navigate without visiting every node.
+
+**Follow-up:** How do you find LCA in a BST more efficiently? → If both p.val and q.val are less than root.val, recurse left; if both are greater, recurse right; otherwise, root is the LCA. O(H) time, no extra space needed beyond the recursion.
 
 ---
 
-### 24. Implement a trie (prefix tree). `[Senior]`
+### 16. Check if a Binary Tree is Balanced. `[Mid]`
 
 **Answer:**
+DFS that returns the height of each subtree. Return -1 as a sentinel value if any subtree is unbalanced; propagate the sentinel up.
+
+```python
+def is_balanced(root):
+    def height(node):
+        if not node:
+            return 0
+        lh = height(node.left)
+        if lh == -1:
+            return -1
+        rh = height(node.right)
+        if rh == -1:
+            return -1
+        if abs(lh - rh) > 1:
+            return -1
+        return 1 + max(lh, rh)
+    return height(root) != -1
+```
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(H)
+
+**Key points:** The naive approach (compute height separately for every node) is O(N²). The sentinel-value trick achieves O(N) by computing balance and height simultaneously in a single pass.
+
+**Follow-up:** What is the difference between a balanced BST and a balanced binary tree? → A balanced binary tree requires |height(left) - height(right)| ≤ 1 at every node. A BST also enforces the left-less-than-root-less-than-right ordering property.
+
+---
+
+### 17. Trie — Insert and Search. `[Mid]`
+
+**Answer:**
+A Trie stores strings character-by-character. Each node has a map of children and an `is_end` flag.
+
 ```python
 class TrieNode:
     def __init__(self):
@@ -544,648 +505,693 @@ class Trie:
         return True
 ```
 
----
+**Time Complexity:** O(L) for insert/search where L is the word length
+**Space Complexity:** O(N × L) for N words of average length L
 
-### 25. Convert binary search tree to sorted doubly linked list. `[Senior]`
+**Key points:** Tries are better than hash sets when you need prefix matching, autocomplete, or longest-prefix lookup. The alphabet size (branching factor) determines memory usage.
 
-**Answer:**
-```python
-def bst_to_dll(root):
-    if not root:
-        return None
-    head = prev = None
-
-    def inorder(node):
-        nonlocal head, prev
-        if not node:
-            return
-        inorder(node.left)
-        if prev:
-            prev.right = node
-            node.left = prev
-        else:
-            head = node  # leftmost is head
-        prev = node
-        inorder(node.right)
-
-    inorder(root)
-    return head
-```
+**Follow-up:** How do you implement wildcard search (e.g., `.` matches any character)? → At each `.` character, recursively try all children; return true if any path leads to a match.
 
 ---
 
-## Graphs (10 questions)
-
-### 26. Implement DFS and BFS for a graph. `[Mid]`
+### 18. Cycle Detection in a Directed Graph. `[Mid]`
 
 **Answer:**
+DFS with three states: unvisited (0), in current DFS path (1), fully processed (2). A back edge to a node in state 1 means a cycle.
+
 ```python
-from collections import deque
+def has_cycle(num_nodes, edges):
+    adj = [[] for _ in range(num_nodes)]
+    for u, v in edges:
+        adj[u].append(v)
 
-def dfs(graph, start, visited=None):
-    if visited is None:
-        visited = set()
-    visited.add(start)
-    result = [start]
-    for neighbor in graph[start]:
-        if neighbor not in visited:
-            result.extend(dfs(graph, neighbor, visited))
-    return result
-
-def bfs(graph, start):
-    visited = {start}
-    queue = deque([start])
-    result = []
-    while queue:
-        node = queue.popleft()
-        result.append(node)
-        for neighbor in graph[node]:
-            if neighbor not in visited:
-                visited.add(neighbor)
-                queue.append(neighbor)
-    return result
-```
-
----
-
-### 27. Detect a cycle in a directed graph. `[Mid]`
-
-**Answer:**
-```python
-def has_cycle(graph):
-    WHITE, GRAY, BLACK = 0, 1, 2
-    color = {node: WHITE for node in graph}
+    state = [0] * num_nodes  # 0=unvisited, 1=in-stack, 2=done
 
     def dfs(node):
-        color[node] = GRAY  # in current DFS path
-        for neighbor in graph.get(node, []):
-            if color[neighbor] == GRAY:
+        state[node] = 1
+        for nei in adj[node]:
+            if state[nei] == 1:
                 return True  # back edge = cycle
-            if color[neighbor] == WHITE and dfs(neighbor):
+            if state[nei] == 0 and dfs(nei):
                 return True
-        color[node] = BLACK  # fully processed
+        state[node] = 2
         return False
 
-    return any(dfs(node) for node in graph if color[node] == WHITE)
+    return any(dfs(i) for i in range(num_nodes) if state[i] == 0)
 ```
+
+**Time Complexity:** O(V + E)
+**Space Complexity:** O(V)
+
+**Key points:** The three-state approach (vs a simple visited boolean) correctly distinguishes back edges (cycles) from cross edges and forward edges in a DFS forest.
+
+**Follow-up:** How do you detect a cycle in an undirected graph? → Use a visited set and pass the parent node; if you encounter a visited node that is not the parent, a cycle exists. Alternatively, use Union-Find.
 
 ---
 
-### 28. Topological sort. `[Mid]`
+### 19. Topological Sort (Kahn's Algorithm / BFS). `[Mid]`
 
 **Answer:**
+Compute in-degrees for all nodes. Start with all nodes of in-degree 0. Process each, decrement neighbors' in-degrees, and add newly zero-in-degree nodes to the queue.
+
 ```python
 from collections import deque
 
-def topological_sort(graph):
-    in_degree = {u: 0 for u in graph}
-    for u in graph:
-        for v in graph[u]:
-            in_degree[v] = in_degree.get(v, 0) + 1
+def topo_sort(num_nodes, edges):
+    adj = [[] for _ in range(num_nodes)]
+    in_degree = [0] * num_nodes
+    for u, v in edges:
+        adj[u].append(v)
+        in_degree[v] += 1
 
-    queue = deque([u for u in in_degree if in_degree[u] == 0])
-    result = []
-
+    queue = deque(i for i in range(num_nodes) if in_degree[i] == 0)
+    order = []
     while queue:
         node = queue.popleft()
-        result.append(node)
-        for neighbor in graph.get(node, []):
-            in_degree[neighbor] -= 1
-            if in_degree[neighbor] == 0:
-                queue.append(neighbor)
+        order.append(node)
+        for nei in adj[node]:
+            in_degree[nei] -= 1
+            if in_degree[nei] == 0:
+                queue.append(nei)
 
-    return result if len(result) == len(graph) else []  # [] if cycle exists
+    return order if len(order) == num_nodes else []  # empty = cycle detected
 ```
-**Use cases:** Task scheduling, build systems, course prerequisites.
+
+**Time Complexity:** O(V + E)
+**Space Complexity:** O(V)
+
+**Key points:** If the output order contains fewer nodes than the graph, a cycle exists (course schedule validation). DFS-based topological sort adds nodes to the result in post-order, then reverses.
+
+**Follow-up:** How do you find all valid topological orderings? → Use backtracking: at each step, pick any node with in-degree 0, add it to the current order, remove it, then recurse; undo on backtrack.
 
 ---
 
-### 29. Number of islands (connected components). `[Mid]`
+### 20. Dijkstra's Shortest Path Algorithm. `[Mid]`
 
 **Answer:**
-```python
-def num_islands(grid):
-    if not grid:
-        return 0
+Use a min-heap (priority queue) keyed by distance. Greedily expand the closest unvisited node.
 
-    def dfs(r, c):
-        if r < 0 or r >= len(grid) or c < 0 or c >= len(grid[0]) or grid[r][c] != '1':
-            return
-        grid[r][c] = '0'  # mark visited
-        for dr, dc in [(0,1),(0,-1),(1,0),(-1,0)]:
-            dfs(r + dr, c + dc)
-
-    count = 0
-    for r in range(len(grid)):
-        for c in range(len(grid[0])):
-            if grid[r][c] == '1':
-                dfs(r, c)
-                count += 1
-    return count
-```
-**Time:** O(m×n), **Space:** O(m×n) recursion stack
-
----
-
-### 30. Dijkstra's shortest path algorithm. `[Senior]`
-
-**Answer:**
 ```python
 import heapq
 
 def dijkstra(graph, start):
-    distances = {node: float('inf') for node in graph}
-    distances[start] = 0
+    # graph: {node: [(neighbor, weight), ...]}
+    dist = {node: float('inf') for node in graph}
+    dist[start] = 0
     heap = [(0, start)]  # (distance, node)
 
     while heap:
-        dist, node = heapq.heappop(heap)
-        if dist > distances[node]:
+        d, u = heapq.heappop(heap)
+        if d > dist[u]:
             continue  # stale entry
-        for neighbor, weight in graph[node]:
-            new_dist = dist + weight
-            if new_dist < distances[neighbor]:
-                distances[neighbor] = new_dist
-                heapq.heappush(heap, (new_dist, neighbor))
+        for v, w in graph[u]:
+            if dist[u] + w < dist[v]:
+                dist[v] = dist[u] + w
+                heapq.heappush(heap, (dist[v], v))
 
-    return distances
+    return dist
 ```
-**Time:** O((V + E) log V), **Space:** O(V)
 
-**Limitation:** Doesn't work with negative edge weights (use Bellman-Ford instead).
+**Time Complexity:** O((V + E) log V) with a binary heap
+**Space Complexity:** O(V)
+
+**Key points:** Dijkstra does not work with negative edge weights (use Bellman-Ford instead). The `d > dist[u]` guard skips stale heap entries instead of using a "visited" set.
+
+**Follow-up:** When do you use Bellman-Ford instead of Dijkstra? → When the graph has negative edge weights (but no negative cycles), or when you need to detect negative cycles.
 
 ---
 
-### 31. Course Schedule (detect if course order is possible). `[Mid]`
+### 21. Bellman-Ford Algorithm. `[Senior]`
 
 **Answer:**
+Relax all edges V-1 times. Any further relaxation in the V-th pass indicates a negative cycle.
+
 ```python
-def can_finish(num_courses, prerequisites):
-    graph = [[] for _ in range(num_courses)]
-    for course, prereq in prerequisites:
-        graph[prereq].append(course)
+def bellman_ford(num_nodes, edges, start):
+    # edges: [(u, v, weight), ...]
+    dist = [float('inf')] * num_nodes
+    dist[start] = 0
 
-    # 0=unvisited, 1=in-progress (current path), 2=completed
-    state = [0] * num_courses
+    for _ in range(num_nodes - 1):
+        for u, v, w in edges:
+            if dist[u] != float('inf') and dist[u] + w < dist[v]:
+                dist[v] = dist[u] + w
 
-    def has_cycle(course):
-        if state[course] == 1: return True   # cycle
-        if state[course] == 2: return False  # already done
-        state[course] = 1
-        for next_course in graph[course]:
-            if has_cycle(next_course):
-                return True
-        state[course] = 2
-        return False
+    # Check for negative cycles
+    for u, v, w in edges:
+        if dist[u] != float('inf') and dist[u] + w < dist[v]:
+            return None  # negative cycle detected
 
-    return not any(has_cycle(c) for c in range(num_courses))
+    return dist
 ```
+
+**Time Complexity:** O(V × E)
+**Space Complexity:** O(V)
+
+**Key points:** V-1 relaxation passes are sufficient for the longest possible shortest path in a graph with no negative cycles. The V-th pass serves as the negative cycle detector.
+
+**Follow-up:** How does SPFA (Shortest Path Faster Algorithm) improve on Bellman-Ford? → SPFA uses a queue to only relax edges of nodes whose distance was recently updated; average O(E) but worst case still O(VE).
 
 ---
 
-### 32. Word ladder (shortest transformation sequence). `[Senior]`
+### 22. Union-Find (Disjoint Set Union). `[Mid]`
 
 **Answer:**
+Track the parent of each node. `find` returns the root (with path compression). `union` merges two components (by rank to keep the tree shallow).
+
+```python
+class UnionFind:
+    def __init__(self, n):
+        self.parent = list(range(n))
+        self.rank = [0] * n
+
+    def find(self, x):
+        if self.parent[x] != x:
+            self.parent[x] = self.find(self.parent[x])  # path compression
+        return self.parent[x]
+
+    def union(self, x, y):
+        px, py = self.find(x), self.find(y)
+        if px == py:
+            return False  # already in same component
+        if self.rank[px] < self.rank[py]:
+            px, py = py, px
+        self.parent[py] = px  # union by rank
+        if self.rank[px] == self.rank[py]:
+            self.rank[px] += 1
+        return True
+```
+
+**Time Complexity:** O(α(N)) amortized per operation (α = inverse Ackermann, effectively O(1))
+**Space Complexity:** O(N)
+
+**Key points:** Path compression and union by rank together achieve near-constant amortized time. Union-Find is ideal for dynamic connectivity, Kruskal's MST, and cycle detection in undirected graphs.
+
+**Follow-up:** How do you count the number of connected components? → Maintain a component count initialized to N; decrement by 1 each time `union` returns True.
+
+---
+
+### 23. Minimum Spanning Tree — Kruskal's Algorithm. `[Mid]`
+
+**Answer:**
+Sort all edges by weight. Use Union-Find to greedily add the smallest edge that connects two different components.
+
+```python
+def kruskal(num_nodes, edges):
+    # edges: [(weight, u, v)]
+    edges.sort()
+    uf = UnionFind(num_nodes)
+    mst_weight = 0
+    mst_edges = []
+    for w, u, v in edges:
+        if uf.union(u, v):
+            mst_weight += w
+            mst_edges.append((u, v, w))
+            if len(mst_edges) == num_nodes - 1:
+                break  # MST complete
+    return mst_weight, mst_edges
+```
+
+**Time Complexity:** O(E log E) for sorting + O(E α(V)) for Union-Find ≈ O(E log E)
+**Space Complexity:** O(V + E)
+
+**Key points:** An MST has exactly V-1 edges. Early termination once V-1 edges are added. If the graph is disconnected, a full spanning tree does not exist.
+
+**Follow-up:** When do you use Prim's algorithm instead of Kruskal's? → Prim's is better on dense graphs (E ≈ V²) because it runs in O(E + V log V) with a Fibonacci heap; Kruskal's is better on sparse graphs.
+
+---
+
+### 24. Number of Islands (BFS/DFS grid traversal). `[Junior]`
+
+**Answer:**
+Iterate over the grid. When a '1' is found, increment the island count and flood-fill (BFS or DFS) to mark all connected '1's as visited.
+
 ```python
 from collections import deque
 
-def ladder_length(begin_word, end_word, word_list):
-    word_set = set(word_list)
-    if end_word not in word_set:
+def num_islands(grid):
+    if not grid:
         return 0
+    rows, cols = len(grid), len(grid[0])
+    count = 0
 
-    queue = deque([(begin_word, 1)])
-    visited = {begin_word}
+    def bfs(r, c):
+        queue = deque([(r, c)])
+        grid[r][c] = '0'  # mark visited in-place
+        while queue:
+            row, col = queue.popleft()
+            for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                nr, nc = row + dr, col + dc
+                if 0 <= nr < rows and 0 <= nc < cols and grid[nr][nc] == '1':
+                    grid[nr][nc] = '0'
+                    queue.append((nr, nc))
 
-    while queue:
-        word, length = queue.popleft()
-        for i in range(len(word)):
-            for c in 'abcdefghijklmnopqrstuvwxyz':
-                new_word = word[:i] + c + word[i+1:]
-                if new_word == end_word:
-                    return length + 1
-                if new_word in word_set and new_word not in visited:
-                    visited.add(new_word)
-                    queue.append((new_word, length + 1))
-    return 0
+    for r in range(rows):
+        for c in range(cols):
+            if grid[r][c] == '1':
+                count += 1
+                bfs(r, c)
+    return count
 ```
 
----
+**Time Complexity:** O(M × N)
+**Space Complexity:** O(min(M, N)) for BFS queue in the worst case
 
-### 33. Clone a graph. `[Mid]`
+**Key points:** Mutating the grid in-place avoids a separate visited matrix (acceptable if mutation is allowed). Edge cases: empty grid, all water, single cell.
 
-**Answer:**
-```python
-def clone_graph(node):
-    if not node:
-        return None
-    cloned = {}  # original → clone mapping
-
-    def dfs(n):
-        if n in cloned:
-            return cloned[n]
-        clone = Node(n.val)
-        cloned[n] = clone
-        for neighbor in n.neighbors:
-            clone.neighbors.append(dfs(neighbor))
-        return clone
-
-    return dfs(node)
-```
+**Follow-up:** How do you find the area of the largest island? → Track the count of cells BFS visits during each flood-fill; return the maximum count across all islands.
 
 ---
 
-### 34. Find bridges in a graph. `[Senior]`
+## Dynamic Programming
+
+### 25. Coin Change — minimum coins to make a target amount. `[Mid]`
 
 **Answer:**
-A bridge is an edge whose removal disconnects the graph. Tarjan's algorithm:
-```python
-def find_bridges(n, edges):
-    graph = [[] for _ in range(n)]
-    for u, v in edges:
-        graph[u].append(v)
-        graph[v].append(u)
+Classic unbounded knapsack DP. `dp[i]` = minimum coins needed for amount `i`. For each coin, update all reachable amounts.
 
-    discovery = [-1] * n
-    low = [0] * n
-    timer = [0]
-    bridges = []
-
-    def dfs(u, parent):
-        discovery[u] = low[u] = timer[0]
-        timer[0] += 1
-        for v in graph[u]:
-            if discovery[v] == -1:  # tree edge
-                dfs(v, u)
-                low[u] = min(low[u], low[v])
-                if low[v] > discovery[u]:
-                    bridges.append((u, v))
-            elif v != parent:  # back edge
-                low[u] = min(low[u], discovery[v])
-
-    for i in range(n):
-        if discovery[i] == -1:
-            dfs(i, -1)
-    return bridges
-```
-
----
-
-### 35. Minimum spanning tree (Kruskal's algorithm). `[Senior]`
-
-**Answer:**
-```python
-def min_spanning_tree(n, edges):
-    edges.sort(key=lambda x: x[2])  # sort by weight
-    parent = list(range(n))
-
-    def find(x):
-        if parent[x] != x:
-            parent[x] = find(parent[x])  # path compression
-        return parent[x]
-
-    def union(x, y):
-        px, py = find(x), find(y)
-        if px == py: return False
-        parent[px] = py
-        return True
-
-    mst_weight = 0
-    for u, v, w in edges:
-        if union(u, v):
-            mst_weight += w
-    return mst_weight
-```
-**Time:** O(E log E), **Space:** O(V)
-
----
-
-## Dynamic Programming (10 questions)
-
-### 36. What is dynamic programming and when do you use it? `[Mid]`
-
-**Answer:**
-DP solves problems by breaking them into overlapping subproblems and storing results (memoization/tabulation) to avoid recomputation.
-
-**When to use:** Problem has **optimal substructure** (optimal solution built from optimal subproblems) AND **overlapping subproblems** (same subproblems solved multiple times).
-
-**Approaches:**
-- **Top-down (memoization):** Recursion + cache. Natural, but recursive overhead.
-- **Bottom-up (tabulation):** Iterative, build from base cases. More memory-efficient, avoids stack overflow.
-
-**Common patterns:** 1D DP (fibonacci, climbing stairs), 2D DP (LCS, edit distance), interval DP, knapsack variants.
-
----
-
-### 37. Fibonacci with memoization. `[Junior]`
-
-**Answer:**
-```python
-# Top-down (memoization)
-from functools import lru_cache
-
-@lru_cache(maxsize=None)
-def fib(n):
-    if n <= 1: return n
-    return fib(n-1) + fib(n-2)
-
-# Bottom-up (tabulation)
-def fib_dp(n):
-    if n <= 1: return n
-    a, b = 0, 1
-    for _ in range(2, n+1):
-        a, b = b, a + b
-    return b
-```
-**Time:** O(n), **Space:** O(1) bottom-up, O(n) memoization
-
----
-
-### 38. 0/1 Knapsack problem. `[Mid]`
-
-**Answer:**
-```python
-def knapsack(weights, values, capacity):
-    n = len(weights)
-    dp = [[0] * (capacity + 1) for _ in range(n + 1)]
-
-    for i in range(1, n + 1):
-        for w in range(capacity + 1):
-            dp[i][w] = dp[i-1][w]  # don't take item i
-            if weights[i-1] <= w:
-                dp[i][w] = max(dp[i][w], dp[i-1][w - weights[i-1]] + values[i-1])
-
-    return dp[n][capacity]
-```
-**Time:** O(n×W), **Space:** O(n×W), optimizable to O(W)
-
----
-
-### 39. Coin change (minimum coins). `[Mid]`
-
-**Answer:**
 ```python
 def coin_change(coins, amount):
     dp = [float('inf')] * (amount + 1)
-    dp[0] = 0  # base case: 0 coins to make amount 0
-
+    dp[0] = 0
     for a in range(1, amount + 1):
         for coin in coins:
             if coin <= a:
                 dp[a] = min(dp[a], dp[a - coin] + 1)
-
     return dp[amount] if dp[amount] != float('inf') else -1
 ```
-**Time:** O(amount × len(coins)), **Space:** O(amount)
+
+**Time Complexity:** O(amount × len(coins))
+**Space Complexity:** O(amount)
+
+**Key points:** Initialize `dp[0] = 0` and all others to infinity. Return -1 if the amount is unreachable. This is the "minimum count" variant; the "number of ways" variant uses addition instead of min.
+
+**Follow-up:** How do you count the number of ways to make the amount? → Change `dp[a] = min(...)` to `dp[a] += dp[a - coin]`; initialize `dp[0] = 1`.
 
 ---
 
-### 40. Longest increasing subsequence. `[Mid]`
+### 26. Longest Common Subsequence (LCS). `[Mid]`
 
 **Answer:**
-```python
-# O(n²) DP
-def lis(nums):
-    dp = [1] * len(nums)
-    for i in range(1, len(nums)):
-        for j in range(i):
-            if nums[j] < nums[i]:
-                dp[i] = max(dp[i], dp[j] + 1)
-    return max(dp)
+2D DP where `dp[i][j]` = LCS length of `s1[:i]` and `s2[:j]`. Characters match → extend; otherwise → take the best of skipping either character.
 
-# O(n log n) with binary search (patience sorting)
+```python
+def lcs(s1, s2):
+    m, n = len(s1), len(s2)
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if s1[i-1] == s2[j-1]:
+                dp[i][j] = dp[i-1][j-1] + 1
+            else:
+                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
+    return dp[m][n]
+```
+
+**Time Complexity:** O(M × N)
+**Space Complexity:** O(M × N); reducible to O(min(M, N)) with row rolling
+
+**Key points:** LCS is the foundation for diff algorithms (GNU diff uses Myers' algorithm, a variant). To reconstruct the actual subsequence, backtrack through the DP table.
+
+**Follow-up:** How does edit distance relate to LCS? → Edit distance = M + N - 2 × LCS(s1, s2) when only insertions and deletions are allowed (not substitutions).
+
+---
+
+### 27. Longest Increasing Subsequence (LIS). `[Mid]`
+
+**Answer:**
+O(N²) DP: `dp[i]` = LIS ending at index i. O(N log N) with binary search: maintain a `tails` array where `tails[k]` is the smallest tail element of all increasing subsequences of length k+1.
+
+```python
 import bisect
 
-def lis_fast(nums):
+def lis(nums):
     tails = []
-    for num in nums:
-        pos = bisect.bisect_left(tails, num)
+    for n in nums:
+        pos = bisect.bisect_left(tails, n)
         if pos == len(tails):
-            tails.append(num)
+            tails.append(n)
         else:
-            tails[pos] = num
+            tails[pos] = n  # replace with smaller value
     return len(tails)
 ```
 
+**Time Complexity:** O(N log N)
+**Space Complexity:** O(N)
+
+**Key points:** `tails` is always sorted but does not represent an actual LIS. To reconstruct the actual subsequence, record each element's predecessor in the O(N²) version.
+
+**Follow-up:** How do you find the number of longest increasing subsequences? → Use two DP arrays: `length[i]` and `count[i]`; when a new maximum length is found, copy the count; when the same length is matched, add the count.
+
 ---
 
-### 41. Edit distance (Levenshtein distance). `[Senior]`
+### 28. Edit Distance (Levenshtein Distance). `[Mid]`
 
 **Answer:**
+`dp[i][j]` = minimum edits (insert, delete, replace) to convert `word1[:i]` to `word2[:j]`.
+
 ```python
 def edit_distance(word1, word2):
     m, n = len(word1), len(word2)
-    dp = list(range(n + 1))  # base case: delete all chars of word2
-
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(m + 1):
+        dp[i][0] = i  # delete all
+    for j in range(n + 1):
+        dp[0][j] = j  # insert all
     for i in range(1, m + 1):
-        prev, dp[0] = dp[0], i  # dp[0] = delete all chars of word1
         for j in range(1, n + 1):
-            temp = dp[j]
             if word1[i-1] == word2[j-1]:
-                dp[j] = prev
+                dp[i][j] = dp[i-1][j-1]
             else:
-                dp[j] = 1 + min(prev, dp[j], dp[j-1])
-                # substitute, delete, insert
-            prev = temp
-
-    return dp[n]
+                dp[i][j] = 1 + min(
+                    dp[i-1][j],    # delete
+                    dp[i][j-1],    # insert
+                    dp[i-1][j-1]   # replace
+                )
+    return dp[m][n]
 ```
-**Time:** O(m×n), **Space:** O(min(m,n))
+
+**Time Complexity:** O(M × N)
+**Space Complexity:** O(M × N); reducible to O(min(M, N))
+
+**Key points:** Base cases: converting any string to an empty string costs its length. Applications: spell checkers, DNA sequence alignment, fuzzy string matching.
+
+**Follow-up:** How do you reconstruct the actual sequence of edits? → Backtrack through the DP table: if characters match, move diagonally; otherwise, choose the direction with the minimum cost and record the corresponding edit.
 
 ---
 
-### 42. Word break problem. `[Mid]`
+### 29. 0/1 Knapsack Problem. `[Mid]`
 
 **Answer:**
+`dp[i][w]` = maximum value using items `0..i` with capacity `w`. Each item can be taken or left; taking it transitions from `dp[i-1][w-weight[i]]`.
+
+```python
+def knapsack(weights, values, capacity):
+    n = len(weights)
+    # 1D rolling array
+    dp = [0] * (capacity + 1)
+    for i in range(n):
+        # iterate right-to-left to avoid using item i twice
+        for w in range(capacity, weights[i] - 1, -1):
+            dp[w] = max(dp[w], dp[w - weights[i]] + values[i])
+    return dp[capacity]
+```
+
+**Time Complexity:** O(N × W)
+**Space Complexity:** O(W) with the rolling array optimization
+
+**Key points:** Iterating right-to-left in the 1D version prevents using the same item twice (0/1 constraint). Iterating left-to-right would give the unbounded knapsack (coin change).
+
+**Follow-up:** How do you reconstruct which items were selected? → Use the 2D DP table; backtrack from `dp[n][W]`: if `dp[i][w] != dp[i-1][w]`, item i was included; subtract its weight and continue.
+
+---
+
+### 30. Unique Paths in a Grid. `[Junior]`
+
+**Answer:**
+`dp[i][j]` = number of unique paths from (0,0) to (i,j). Each cell is reached from the cell above or the cell to the left.
+
+```python
+def unique_paths(m, n):
+    dp = [[1] * n for _ in range(m)]
+    for i in range(1, m):
+        for j in range(1, n):
+            dp[i][j] = dp[i-1][j] + dp[i][j-1]
+    return dp[m-1][n-1]
+```
+
+**Time Complexity:** O(M × N)
+**Space Complexity:** O(M × N); reducible to O(N)
+
+**Key points:** Base cases: all cells in the first row and first column have exactly 1 path (can only go right or down respectively). The answer is also the binomial coefficient C(m+n-2, m-1).
+
+**Follow-up:** How do you handle obstacles (blocked cells)? → If `grid[i][j] == 1`, set `dp[i][j] = 0`; otherwise compute as normal.
+
+---
+
+### 31. Word Break. `[Mid]`
+
+**Answer:**
+`dp[i]` = True if `s[:i]` can be segmented using the word dictionary. For each position, check all possible last words.
+
 ```python
 def word_break(s, word_dict):
     word_set = set(word_dict)
-    dp = [False] * (len(s) + 1)
-    dp[0] = True  # empty string
-
-    for i in range(1, len(s) + 1):
+    n = len(s)
+    dp = [False] * (n + 1)
+    dp[0] = True  # empty string is always segmentable
+    for i in range(1, n + 1):
         for j in range(i):
             if dp[j] and s[j:i] in word_set:
                 dp[i] = True
                 break
-
-    return dp[len(s)]
+    return dp[n]
 ```
-**Time:** O(n²), **Space:** O(n)
+
+**Time Complexity:** O(N² × L) where L is the average word length for the substring check
+**Space Complexity:** O(N)
+
+**Key points:** The break statement is an important optimization — once `dp[i]` is True, stop checking earlier split points. Using a set for dictionary lookup reduces word-check time.
+
+**Follow-up:** How do you return all possible segmentations? → Use DFS with memoization: at each position, try all words that match the current prefix and recursively segment the remainder; memoize positions that lead to no solution.
 
 ---
 
-### 43. Regular expression matching. `[Senior]`
+### 32. Count Palindromic Substrings. `[Mid]`
 
 **Answer:**
+Expand-around-center: for each center (a character or gap between characters), expand outward while characters match. Count each valid palindrome.
+
 ```python
-def is_match(s, p):
-    m, n = len(s), len(p)
-    dp = [[False] * (n + 1) for _ in range(m + 1)]
-    dp[0][0] = True
+def count_substrings(s):
+    n = len(s)
+    count = 0
 
-    # Handle patterns like a*, a*b*, etc. matching empty string
-    for j in range(2, n + 1):
-        if p[j-1] == '*':
-            dp[0][j] = dp[0][j-2]
+    def expand(l, r):
+        nonlocal count
+        while l >= 0 and r < n and s[l] == s[r]:
+            count += 1
+            l -= 1
+            r += 1
 
-    for i in range(1, m + 1):
-        for j in range(1, n + 1):
-            if p[j-1] == '*':
-                dp[i][j] = dp[i][j-2]  # zero occurrences
-                if p[j-2] == '.' or p[j-2] == s[i-1]:
-                    dp[i][j] |= dp[i-1][j]  # one or more
-            elif p[j-1] == '.' or p[j-1] == s[i-1]:
-                dp[i][j] = dp[i-1][j-1]
-
-    return dp[m][n]
+    for i in range(n):
+        expand(i, i)      # odd-length palindromes
+        expand(i, i + 1)  # even-length palindromes
+    return count
 ```
+
+**Time Complexity:** O(N²)
+**Space Complexity:** O(1)
+
+**Key points:** There are 2N-1 possible centers (N characters + N-1 gaps). Manacher's algorithm solves this in O(N) but is complex to implement in interviews.
+
+**Follow-up:** How do you find the longest palindromic substring? → Modify `expand` to track the longest expansion's start and end indices instead of counting.
 
 ---
 
-### 44. Burst balloons (interval DP). `[Senior]`
+### 33. House Robber. `[Junior]`
 
 **Answer:**
+`dp[i]` = maximum money robbing from houses `0..i`. For each house: either rob it (add its value to `dp[i-2]`) or skip it (`dp[i-1]`).
+
 ```python
-def max_coins(nums):
-    # Add boundary balloons
-    balloons = [1] + nums + [1]
-    n = len(balloons)
+def rob(nums):
+    if not nums:
+        return 0
+    if len(nums) == 1:
+        return nums[0]
+    prev2, prev1 = 0, 0
+    for n in nums:
+        cur = max(prev1, prev2 + n)
+        prev2, prev1 = prev1, cur
+    return prev1
+```
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(1)
+
+**Key points:** Only the last two DP values are needed at any point — use two variables instead of a full array. Edge cases: empty array, single house, two houses.
+
+**Follow-up:** House Robber II — houses arranged in a circle (first and last house are adjacent)? → Run the linear house robber twice: once on `nums[0:-1]` and once on `nums[1:]`; return the maximum.
+
+---
+
+### 34. Best Time to Buy and Sell Stock (Maximum Profit). `[Junior]`
+
+**Answer:**
+Track the minimum price seen so far. At each day, compute profit if selling today; update the global maximum.
+
+```python
+def max_profit(prices):
+    min_price = float('inf')
+    max_profit = 0
+    for price in prices:
+        min_price = min(min_price, price)
+        max_profit = max(max_profit, price - min_price)
+    return max_profit
+```
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(1)
+
+**Key points:** You must buy before you sell (min_price tracked before computing profit on the current day). If prices are strictly decreasing, profit = 0.
+
+**Follow-up:** Best Time to Buy and Sell Stock II — unlimited transactions? → Sum all positive day-over-day differences: `sum(max(prices[i] - prices[i-1], 0) for i in range(1, len(prices)))`.
+
+---
+
+### 35. Matrix Chain Multiplication (Interval DP). `[Senior]`
+
+**Answer:**
+`dp[i][j]` = minimum multiplications to compute the product of matrices `i..j`. Try all split points `k` in `[i, j-1]`.
+
+```python
+def matrix_chain(dims):
+    # dims[i] and dims[i+1] are the dimensions of matrix i
+    n = len(dims) - 1  # number of matrices
     dp = [[0] * n for _ in range(n)]
 
-    # dp[i][j] = max coins from bursting all balloons between i and j (exclusive)
-    for length in range(2, n):
-        for left in range(0, n - length):
-            right = left + length
-            for k in range(left + 1, right):
-                dp[left][right] = max(
-                    dp[left][right],
-                    balloons[left] * balloons[k] * balloons[right] +
-                    dp[left][k] + dp[k][right]
-                )
-
+    for length in range(2, n + 1):  # subproblem length
+        for i in range(n - length + 1):
+            j = i + length - 1
+            dp[i][j] = float('inf')
+            for k in range(i, j):
+                cost = dp[i][k] + dp[k+1][j] + dims[i] * dims[k+1] * dims[j+1]
+                dp[i][j] = min(dp[i][j], cost)
     return dp[0][n-1]
 ```
 
+**Time Complexity:** O(N³)
+**Space Complexity:** O(N²)
+
+**Key points:** Interval DP is filled by increasing subproblem length. The split point k determines where to split the matrix chain and accounts for the cost of the final multiplication.
+
+**Follow-up:** What other problems use interval DP? → Burst Balloons, Minimum Cost to Merge Stones, Optimal BST construction, Palindrome Partitioning II.
+
 ---
 
-### 45. House robber (cannot rob adjacent houses). `[Mid]`
+### 36. Palindrome Partitioning — minimum cuts to partition into palindromes. `[Senior]`
 
 **Answer:**
+Two DP tables: `is_pal[i][j]` (whether `s[i..j]` is a palindrome), and `cuts[i]` (minimum cuts for `s[0..i]`).
+
 ```python
-def rob(nums):
-    if not nums: return 0
-    if len(nums) == 1: return nums[0]
+def min_cut(s):
+    n = len(s)
+    is_pal = [[False] * n for _ in range(n)]
+    for i in range(n):
+        is_pal[i][i] = True
+    for length in range(2, n + 1):
+        for i in range(n - length + 1):
+            j = i + length - 1
+            if s[i] == s[j]:
+                is_pal[i][j] = (length == 2) or is_pal[i+1][j-1]
 
-    prev2, prev1 = 0, 0
-    for num in nums:
-        curr = max(prev1, prev2 + num)
-        prev2, prev1 = prev1, curr
-
-    return prev1
+    cuts = list(range(-1, n - 1))  # cuts[i] = min cuts for s[0..i]
+    for i in range(n):
+        for j in range(i + 1):
+            if is_pal[j][i]:
+                cuts[i] = min(cuts[i], cuts[j-1] + 1 if j > 0 else 0)
+    return cuts[n-1]
 ```
-**Time:** O(n), **Space:** O(1)
+
+**Time Complexity:** O(N²)
+**Space Complexity:** O(N²)
+
+**Key points:** Precomputing the palindrome table avoids recomputing palindrome checks inside the cut DP loop, reducing the overall time from O(N³) to O(N²).
+
+**Follow-up:** How does Palindrome Partitioning I (return all partitions) differ? → Use backtracking DFS with the `is_pal` table to prune; time is exponential in the worst case.
 
 ---
 
-## Sorting & Other Algorithms (5 questions)
+## Stack, Queue & Heap
 
-### 46. Implement merge sort. `[Mid]`
+### 37. Next Greater Element (Monotonic Stack). `[Mid]`
 
 **Answer:**
+Use a decreasing monotonic stack. When a new element is larger than the stack top, pop and record it as the "next greater element" for the popped index.
+
 ```python
-def merge_sort(arr):
-    if len(arr) <= 1:
-        return arr
-
-    mid = len(arr) // 2
-    left = merge_sort(arr[:mid])
-    right = merge_sort(arr[mid:])
-
-    return merge(left, right)
-
-def merge(left, right):
-    result = []
-    i = j = 0
-    while i < len(left) and j < len(right):
-        if left[i] <= right[j]:
-            result.append(left[i]); i += 1
-        else:
-            result.append(right[j]); j += 1
-    return result + left[i:] + right[j:]
+def next_greater_element(nums):
+    n = len(nums)
+    result = [-1] * n
+    stack = []  # stores indices
+    for i in range(n):
+        while stack and nums[stack[-1]] < nums[i]:
+            idx = stack.pop()
+            result[idx] = nums[i]
+        stack.append(i)
+    return result
 ```
-**Time:** O(n log n), **Space:** O(n)
+
+**Time Complexity:** O(N) — each element pushed and popped at most once
+**Space Complexity:** O(N)
+
+**Key points:** Storing indices (not values) in the stack allows writing to the correct position in the result array. The stack contains elements in decreasing order.
+
+**Follow-up:** How do you find the next greater element in a circular array? → Iterate twice (indices 0 to 2N-1) using `i % n`; only append to the stack in the first pass.
 
 ---
 
-### 47. Implement quick sort. `[Mid]`
+### 38. K-th Largest Element (Min-Heap). `[Mid]`
 
 **Answer:**
-```python
-def quick_sort(arr, low=0, high=None):
-    if high is None:
-        high = len(arr) - 1
+Maintain a min-heap of size K. Push each element; if the heap exceeds K, pop the minimum. The heap top is the K-th largest.
 
-    if low < high:
-        pivot_idx = partition(arr, low, high)
-        quick_sort(arr, low, pivot_idx - 1)
-        quick_sort(arr, pivot_idx + 1, high)
-
-def partition(arr, low, high):
-    pivot = arr[high]
-    i = low - 1  # pointer for smaller elements
-    for j in range(low, high):
-        if arr[j] <= pivot:
-            i += 1
-            arr[i], arr[j] = arr[j], arr[i]
-    arr[i+1], arr[high] = arr[high], arr[i+1]
-    return i + 1
-```
-**Time:** O(n log n) average, O(n²) worst case, **Space:** O(log n) recursion
-
----
-
-### 48. Find the kth largest element. `[Mid]`
-
-**Answer:**
 ```python
 import heapq
 
-# O(n log k) — min-heap of size k
 def kth_largest(nums, k):
     heap = []
-    for num in nums:
-        heapq.heappush(heap, num)
+    for n in nums:
+        heapq.heappush(heap, n)
         if len(heap) > k:
-            heapq.heappop(heap)  # pop smallest
-    return heap[0]  # root is kth largest
-
-# O(n) average — QuickSelect
-def kth_largest_quickselect(nums, k):
-    target = len(nums) - k  # target index in sorted order
-
-    def partition(left, right):
-        pivot, store = nums[right], left
-        for i in range(left, right):
-            if nums[i] <= pivot:
-                nums[i], nums[store] = nums[store], nums[i]
-                store += 1
-        nums[store], nums[right] = nums[right], nums[store]
-        return store
-
-    left, right = 0, len(nums) - 1
-    while left <= right:
-        pivot_idx = partition(left, right)
-        if pivot_idx == target: return nums[pivot_idx]
-        elif pivot_idx < target: left = pivot_idx + 1
-        else: right = pivot_idx - 1
+            heapq.heappop(heap)
+    return heap[0]
 ```
+
+**Time Complexity:** O(N log K)
+**Space Complexity:** O(K)
+
+**Key points:** A min-heap of size K stores the K largest elements seen so far; the top is the K-th largest. Quickselect achieves O(N) average time but O(N²) worst case without median-of-medians.
+
+**Follow-up:** How do you find the K-th largest in a stream? → Maintain the same min-heap of size K; for each new element, push it and pop if size exceeds K; `heap[0]` is always the K-th largest seen so far.
 
 ---
 
-### 49. Design a LRU cache. `[Senior]`
+### 39. Valid Parentheses. `[Junior]`
 
 **Answer:**
+Use a stack. Push open brackets; on a closing bracket, check if the stack top is the matching opener.
+
+```python
+def is_valid(s):
+    stack = []
+    matching = {')': '(', ']': '[', '}': '{'}
+    for ch in s:
+        if ch in matching:
+            if not stack or stack[-1] != matching[ch]:
+                return False
+            stack.pop()
+        else:
+            stack.append(ch)
+    return len(stack) == 0
+```
+
+**Time Complexity:** O(N)
+**Space Complexity:** O(N)
+
+**Key points:** Edge cases: empty string (True), odd-length string (always False — short-circuit possible), string starting with a closing bracket.
+
+**Follow-up:** How do you find the minimum number of bracket removals to make a string valid? → Count unmatched open brackets (stack size at the end) and unmatched close brackets (count incremented when the stack is empty on a close bracket); sum the two counts.
+
+---
+
+### 40. LRU Cache. `[Mid]`
+
+**Answer:**
+Use a hash map (O(1) lookup) combined with a doubly linked list (O(1) move-to-front and remove-from-tail). Python's `OrderedDict` implements this natively.
+
 ```python
 from collections import OrderedDict
 
@@ -1205,49 +1211,372 @@ class LRUCache:
             self.cache.move_to_end(key)
         self.cache[key] = value
         if len(self.cache) > self.capacity:
-            self.cache.popitem(last=False)  # remove LRU (first item)
+            self.cache.popitem(last=False)  # evict LRU (front)
 ```
-**All operations:** O(1)
 
-**Without OrderedDict:** Use doubly linked list + hash map. LinkedList maintains order; hash map provides O(1) lookup.
+**Time Complexity:** O(1) for both get and put
+**Space Complexity:** O(capacity)
+
+**Key points:** Without `OrderedDict`, implement a doubly linked list manually: head = most recently used, tail = least recently used; maintain a dict mapping key → list node.
+
+**Follow-up:** How would you design an LFU cache (Least Frequently Used eviction)? → Maintain two hash maps: `key → (value, freq)` and `freq → OrderedDict of keys`; track the current minimum frequency; update both maps on access and insertion.
 
 ---
 
-### 50. Implement a min-heap. `[Senior]`
+### 41. Merge K Sorted Lists. `[Senior]`
 
 **Answer:**
+Use a min-heap to efficiently find the smallest element among all list heads. Push the next node from the same list when popping.
+
 ```python
-class MinHeap:
-    def __init__(self):
-        self.heap = []
+import heapq
 
-    def push(self, val):
-        self.heap.append(val)
-        self._sift_up(len(self.heap) - 1)
+def merge_k_lists(lists):
+    dummy = ListNode(0)
+    cur = dummy
+    heap = []
+    for i, node in enumerate(lists):
+        if node:
+            heapq.heappush(heap, (node.val, i, node))
 
-    def pop(self):
-        if len(self.heap) == 1:
-            return self.heap.pop()
-        min_val = self.heap[0]
-        self.heap[0] = self.heap.pop()  # move last to root
-        self._sift_down(0)
-        return min_val
+    while heap:
+        val, i, node = heapq.heappop(heap)
+        cur.next = node
+        cur = cur.next
+        if node.next:
+            heapq.heappush(heap, (node.next.val, i, node.next))
 
-    def _sift_up(self, i):
-        parent = (i - 1) // 2
-        while i > 0 and self.heap[i] < self.heap[parent]:
-            self.heap[i], self.heap[parent] = self.heap[parent], self.heap[i]
-            i, parent = parent, (parent - 1) // 2
-
-    def _sift_down(self, i):
-        n = len(self.heap)
-        while True:
-            smallest = i
-            for child in [2*i+1, 2*i+2]:
-                if child < n and self.heap[child] < self.heap[smallest]:
-                    smallest = child
-            if smallest == i: break
-            self.heap[i], self.heap[smallest] = self.heap[smallest], self.heap[i]
-            i = smallest
+    return dummy.next
 ```
-**Push/Pop:** O(log n), **Peek:** O(1)
+
+**Time Complexity:** O(N log K) where N is total nodes and K is number of lists
+**Space Complexity:** O(K) for the heap
+
+**Key points:** The index `i` is included in the heap tuple as a tiebreaker to avoid comparing ListNode objects. Merge sort divide-and-conquer is an alternative: O(N log K) time, O(log K) space.
+
+**Follow-up:** What is the time complexity of the naive approach (merge lists one by one)? → O(NK) — each merge of two lists is O(N), done K-1 times; the heap approach reduces this to O(N log K).
+
+---
+
+### 42. Task Scheduler (CPU scheduling with cooldown). `[Mid]`
+
+**Answer:**
+The optimal strategy is to schedule the most frequent remaining task first. The number of idle intervals needed is determined by the most frequent task.
+
+```python
+from collections import Counter
+import heapq
+from collections import deque
+
+def least_interval(tasks, n):
+    freq = Counter(tasks)
+    max_heap = [-f for f in freq.values()]
+    heapq.heapify(max_heap)
+
+    time = 0
+    cooldown_queue = deque()  # (available_time, neg_freq)
+
+    while max_heap or cooldown_queue:
+        time += 1
+        if max_heap:
+            neg_freq = heapq.heappop(max_heap) + 1  # use one instance
+            if neg_freq:  # still has remaining instances
+                cooldown_queue.append((time + n, neg_freq))
+        if cooldown_queue and cooldown_queue[0][0] == time:
+            heapq.heappush(max_heap, cooldown_queue.popleft()[1])
+
+    return time
+```
+
+**Time Complexity:** O(T log T) where T is the number of unique tasks
+**Space Complexity:** O(T)
+
+**Key points:** The mathematical formula approach: `result = max(len(tasks), (max_freq - 1) * (n + 1) + count_of_max_freq_tasks)` is O(N) but the heap simulation shows the reasoning.
+
+**Follow-up:** How do you reconstruct the actual task order? → Extend the heap simulation to record the task name instead of just frequency.
+
+---
+
+## Sorting & Searching
+
+### 43. Merge Sort. `[Junior]`
+
+**Answer:**
+Divide the array in half recursively, sort each half, then merge the two sorted halves.
+
+```python
+def merge_sort(nums):
+    if len(nums) <= 1:
+        return nums
+    mid = len(nums) // 2
+    left = merge_sort(nums[:mid])
+    right = merge_sort(nums[mid:])
+    return merge(left, right)
+
+def merge(left, right):
+    result = []
+    i = j = 0
+    while i < len(left) and j < len(right):
+        if left[i] <= right[j]:
+            result.append(left[i]); i += 1
+        else:
+            result.append(right[j]); j += 1
+    result.extend(left[i:])
+    result.extend(right[j:])
+    return result
+```
+
+**Time Complexity:** O(N log N) guaranteed
+**Space Complexity:** O(N)
+
+**Key points:** Merge sort is stable (preserves relative order of equal elements) and has guaranteed O(N log N) performance, unlike quicksort. It is the preferred sort for linked lists.
+
+**Follow-up:** How do you count inversions in an array? → During the merge step, when a right-side element is merged before a left-side element, add `len(left) - i` to the inversion count (all remaining left elements form inversions with this right element).
+
+---
+
+### 44. Quicksort and Quickselect. `[Mid]`
+
+**Answer:**
+Quicksort uses a partition step (Lomuto or Hoare) to place the pivot in its final position, then recursively sorts both sides.
+
+```python
+def quicksort(nums, lo, hi):
+    if lo < hi:
+        p = partition(nums, lo, hi)
+        quicksort(nums, lo, p - 1)
+        quicksort(nums, p + 1, hi)
+
+def partition(nums, lo, hi):
+    pivot = nums[hi]
+    i = lo - 1
+    for j in range(lo, hi):
+        if nums[j] <= pivot:
+            i += 1
+            nums[i], nums[j] = nums[j], nums[i]
+    nums[i+1], nums[hi] = nums[hi], nums[i+1]
+    return i + 1
+
+# Quickselect: find k-th smallest in O(N) average
+def quickselect(nums, lo, hi, k):
+    if lo == hi:
+        return nums[lo]
+    p = partition(nums, lo, hi)
+    if k == p:
+        return nums[p]
+    elif k < p:
+        return quickselect(nums, lo, p - 1, k)
+    else:
+        return quickselect(nums, p + 1, hi, k)
+```
+
+**Time Complexity:** O(N log N) average, O(N²) worst case; Quickselect O(N) average
+**Space Complexity:** O(log N) average (recursion stack)
+
+**Key points:** Randomizing the pivot avoids the O(N²) worst case. Quicksort is not stable. Quickselect is the foundation of the "K-th largest element" problem without extra space.
+
+**Follow-up:** How does introsort (used in most standard libraries) improve on quicksort? → Introsort starts with quicksort but switches to heapsort after log N levels of recursion, guaranteeing O(N log N) worst case.
+
+---
+
+### 45. Binary Search Variants — find first/last occurrence. `[Mid]`
+
+**Answer:**
+Modify the standard binary search to continue searching after finding the target to find the leftmost or rightmost occurrence.
+
+```python
+def first_occurrence(nums, target):
+    lo, hi, result = 0, len(nums) - 1, -1
+    while lo <= hi:
+        mid = lo + (hi - lo) // 2
+        if nums[mid] == target:
+            result = mid
+            hi = mid - 1  # keep searching left
+        elif nums[mid] < target:
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return result
+
+def last_occurrence(nums, target):
+    lo, hi, result = 0, len(nums) - 1, -1
+    while lo <= hi:
+        mid = lo + (hi - lo) // 2
+        if nums[mid] == target:
+            result = mid
+            lo = mid + 1  # keep searching right
+        elif nums[mid] < target:
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return result
+```
+
+**Time Complexity:** O(log N)
+**Space Complexity:** O(1)
+
+**Key points:** The key insight is to not return immediately on match — instead, record the match and continue searching in the relevant direction.
+
+**Follow-up:** How do you count the total occurrences of a target? → `last_occurrence(target) - first_occurrence(target) + 1` if target exists, else 0.
+
+---
+
+### 46. Search in a Rotated Sorted Array. `[Mid]`
+
+**Answer:**
+One half of the rotated array is always sorted. Determine which half is sorted, check if the target lies in it, and narrow accordingly.
+
+```python
+def search_rotated(nums, target):
+    lo, hi = 0, len(nums) - 1
+    while lo <= hi:
+        mid = lo + (hi - lo) // 2
+        if nums[mid] == target:
+            return mid
+        # Left half is sorted
+        if nums[lo] <= nums[mid]:
+            if nums[lo] <= target < nums[mid]:
+                hi = mid - 1
+            else:
+                lo = mid + 1
+        # Right half is sorted
+        else:
+            if nums[mid] < target <= nums[hi]:
+                lo = mid + 1
+            else:
+                hi = mid - 1
+    return -1
+```
+
+**Time Complexity:** O(log N)
+**Space Complexity:** O(1)
+
+**Key points:** The condition `nums[lo] <= nums[mid]` identifies the sorted half. Careful with `<=` on the left boundary to handle duplicate values (a separate problem variant).
+
+**Follow-up:** How do you handle duplicates in a rotated sorted array? → When `nums[lo] == nums[mid]`, you cannot determine which half is sorted; fall back to `lo += 1` (worst case O(N)).
+
+---
+
+### 47. Find the K-th Smallest Element (using two binary searches). `[Senior]`
+
+**Answer:**
+In a matrix where each row and column is sorted, binary search on the value range. For a given mid value, count how many elements are ≤ mid by walking from the top-right corner.
+
+```python
+def kth_smallest_matrix(matrix, k):
+    n = len(matrix)
+    lo, hi = matrix[0][0], matrix[n-1][n-1]
+
+    def count_le(mid):
+        count, row, col = 0, n - 1, 0
+        while row >= 0 and col < n:
+            if matrix[row][col] <= mid:
+                count += row + 1
+                col += 1
+            else:
+                row -= 1
+        return count
+
+    while lo < hi:
+        mid = lo + (hi - lo) // 2
+        if count_le(mid) < k:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+```
+
+**Time Complexity:** O(N log(max-min))
+**Space Complexity:** O(1)
+
+**Key points:** Binary search on the value range (not indices); the result is always a value that exists in the matrix (the loop invariant ensures this). The counting step uses the sorted structure of the matrix.
+
+**Follow-up:** How does this compare to using a min-heap approach? → Min-heap: O(K log N); binary search: O(N log(max-min)); for small K the heap is better; for large K or a large value range the binary search is better.
+
+---
+
+### 48. Find Minimum in a Rotated Sorted Array. `[Mid]`
+
+**Answer:**
+The minimum is the point of inflection. Binary search: if the mid element is greater than the rightmost, the minimum is in the right half; otherwise it is in the left half (including mid).
+
+```python
+def find_min_rotated(nums):
+    lo, hi = 0, len(nums) - 1
+    while lo < hi:
+        mid = lo + (hi - lo) // 2
+        if nums[mid] > nums[hi]:
+            lo = mid + 1  # min is in right half
+        else:
+            hi = mid  # min is in left half (including mid)
+    return nums[lo]
+```
+
+**Time Complexity:** O(log N)
+**Space Complexity:** O(1)
+
+**Key points:** Compare mid with `hi` (not `lo`) to avoid ambiguity. When there is no rotation, `nums[mid] <= nums[hi]` always, and `hi` converges to 0 correctly.
+
+**Follow-up:** How do you find the rotation index (the index of the minimum element)? → The same algorithm returns `lo` which is the index of the minimum element, which is also the number of positions the array was rotated.
+
+---
+
+### 49. Merge Intervals. `[Mid]`
+
+**Answer:**
+Sort intervals by start time. Iterate: if the current interval overlaps the last merged interval, extend it; otherwise, add it as a new interval.
+
+```python
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0]]
+    for start, end in intervals[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)  # extend
+        else:
+            merged.append([start, end])
+    return merged
+```
+
+**Time Complexity:** O(N log N) — dominated by sorting
+**Space Complexity:** O(N)
+
+**Key points:** Sort by start time first; the condition `start <= merged[-1][1]` detects overlap; use `max` for the end to handle containment (one interval fully inside another).
+
+**Follow-up:** How do you insert a new interval into an already sorted, non-overlapping list of intervals? → Iterate through: add all intervals ending before the new one, merge overlapping ones into the new interval, then add all intervals starting after it. O(N).
+
+---
+
+### 50. Matrix Search — Search a 2D Matrix. `[Mid]`
+
+**Answer:**
+Treat the 2D matrix as a virtual 1D sorted array and apply binary search. Index `mid` maps to `matrix[mid // cols][mid % cols]`.
+
+```python
+def search_matrix(matrix, target):
+    if not matrix or not matrix[0]:
+        return False
+    rows, cols = len(matrix), len(matrix[0])
+    lo, hi = 0, rows * cols - 1
+    while lo <= hi:
+        mid = lo + (hi - lo) // 2
+        val = matrix[mid // cols][mid % cols]
+        if val == target:
+            return True
+        elif val < target:
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return False
+```
+
+**Time Complexity:** O(log(M × N))
+**Space Complexity:** O(1)
+
+**Key points:** This works only when each row is sorted and the first element of each row is greater than the last element of the previous row (strict row ordering). For a matrix where only rows and columns are individually sorted, use the top-right corner walk approach.
+
+**Follow-up:** How do you search a matrix where only rows and columns are sorted (but rows are not globally ordered)? → Start at the top-right corner: if the current value equals target return true; if greater, move left; if less, move down. O(M + N) time.
+
+---
