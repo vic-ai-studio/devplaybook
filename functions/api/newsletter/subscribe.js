@@ -67,6 +67,7 @@ export async function onRequestPost({ request, env }) {
   try {
     const body = await request.json().catch(() => ({}));
     const email = (body.email || '').trim().toLowerCase();
+    const name = (body.name || '').trim().slice(0, 100);
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return new Response(JSON.stringify({ error: 'Valid email required' }), {
@@ -96,6 +97,7 @@ export async function onRequestPost({ request, env }) {
     const source = (body.source || 'website').slice(0, 50);
     const subscriber = {
       email,
+      name,
       subscribedAt: new Date().toISOString(),
       source,
       welcomeEmailSent: false,
