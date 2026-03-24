@@ -112,7 +112,7 @@ const PRIORITY_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 const STORAGE_KEY = 'devportfolio_checklist_v1';
-const DEVTOOLKIT_URL = 'https://vicnail.gumroad.com/l/devtoolkit-starter-kit';
+const DEVTOOLKIT_URL = 'https://vicnail.gumroad.com/l/devtoolkit-starter-kit?utm_source=devplaybook&utm_medium=tool&utm_campaign=developer-portfolio-checklist';
 
 export default function DeveloperPortfolioChecklist() {
   const allItems = SECTIONS.flatMap(s => s.items);

@@ -147,3 +147,6 @@ What tools do you wish existed? Drop a comment — I'm actively adding based on 
 ---
 
 *Built with Astro 4 + Preact + Tailwind CSS. Deployed on Cloudflare Pages.*
+
+
+<div class="affiliate"><p>使用以下連結支持我們：<a href="https://www.cloudflare.com/affiliate/?affiliate=devplaybook">Cloudflare</a> | <a href="https://www.digitalocean.com/?ref=devplaybook">DigitalOcean</a></p></div>

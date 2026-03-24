@@ -10,6 +10,7 @@ const blog = defineCollection({
     author: z.string().default('DevPlaybook Team'),
     tags: z.array(z.string()),
     readingTime: z.string(),
+    updatedDate: z.string().optional(),
     ogImage: z.string().optional(),
     faq: z.array(z.object({
       question: z.string(),

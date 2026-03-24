@@ -92,7 +92,7 @@ const STACKS = Object.keys(QUESTIONS);
 const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 const TYPES = ['conceptual', 'practical', 'system-design', 'behavioral'] as const;
 
-const DEVTOOLKIT_URL = 'https://vicnail.gumroad.com/l/devtoolkit-starter-kit';
+const DEVTOOLKIT_URL = 'https://vicnail.gumroad.com/l/devtoolkit-starter-kit?utm_source=devplaybook&utm_medium=tool&utm_campaign=interview-question-generator';
 
 const DIFF_COLOR: Record<string, string> = {
   easy: 'text-green-400 border-green-400/40 bg-green-400/10',
