@@ -8,6 +8,15 @@ import sitemap from '@astrojs/sitemap';
 // https://astro.build/config
 export default defineConfig({
   site: 'https://devplaybook.cc',
+  compressHTML: true,
+  build: {
+    inlineStylesheets: 'auto',
+    assetFileNames: '_astro/[name].[hash][extname]',
+  },
+  prefetch: {
+    prefetchAll: true,
+    defaultStrategy: 'viewport',
+  },
   integrations: [
     preact(),
     sitemap({
