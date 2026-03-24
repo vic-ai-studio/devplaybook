@@ -226,6 +226,58 @@ A regex tester helps you catch these performance issues before they hit producti
 
 ---
 
+## Regex Across Programming Languages
+
+Regex syntax is mostly universal, but there are differences between JavaScript, Python, and other languages that affect how you write patterns.
+
+### JavaScript
+
+JavaScript regex uses `RegExp` objects or inline `/pattern/flags` syntax:
+
+```javascript
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const isValid = emailRegex.test(userInput);
+
+// Extract all matches
+const allMatches = text.match(/\d+/g);
+
+// Named capture groups (ES2018+)
+const { year, month, day } = '2025-03-15'.match(
+  /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/
+).groups;
+```
+
+### Python
+
+Python uses the `re` module. Key difference: raw strings (`r"..."`) prevent Python from interpreting backslashes before the regex engine sees them.
+
+```python
+import re
+
+# Match
+pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+is_valid = bool(pattern.match(email))
+
+# Extract named groups
+match = re.search(r'(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})', date_string)
+if match:
+    year = match.group('year')
+```
+
+### Key Differences
+
+| Feature | JavaScript | Python |
+|---------|-----------|--------|
+| Named groups | `(?<name>...)` | `(?P<name>...)` |
+| Non-capturing | `(?:...)` | `(?:...)` |
+| Lookahead | `(?=...)` | `(?=...)` |
+| Lookbehind | `(?<=...)` | `(?<=...)` |
+| Flags in pattern | Not supported | `(?i)` inline flags |
+
+A **regex tester tool online** typically follows JavaScript regex syntax, which means patterns work directly in your frontend code. For backend Python/Ruby/Go patterns, verify the flavor differences before using the pattern.
+
+---
+
 ## Regex Tester vs. Writing Patterns Directly in Code
 
 Some developers write regex directly in their IDE and test it by running their code. This works, but it has a major downside: the feedback loop is long. You write the pattern, write a test, run the test, debug, repeat.
