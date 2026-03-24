@@ -1,0 +1,113 @@
+# =============================================================================
+# DevPlaybook Universal Makefile — Python Projects
+# Version: 1.0 | devplaybook.cc
+# USAGE: cp Makefile.python Makefile (in your project root)
+# =============================================================================
+
+.DEFAULT_GOAL := help
+.PHONY: help install dev test lint format clean docker-build docker-run
+
+PYTHON   ?= python3
+PIP      ?= pip3
+VENV     ?= .venv
+APP      ?= src
+PORT     ?= 8000
+APP_NAME ?= $(shell basename $(CURDIR))
+
+CYAN  = \033[0;36m
+GREEN = \033[0;32m
+RESET = \033[0m
+
+## help: Show this help message
+help:
+	@echo ""
+	@echo "$(CYAN)$(APP_NAME)$(RESET) — Available commands:"
+	@echo ""
+	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  make /' | column -t -s ':'
+	@echo ""
+
+## venv: Create virtual environment
+venv:
+	$(PYTHON) -m venv $(VENV)
+	@echo "$(GREEN)Run: source $(VENV)/bin/activate$(RESET)"
+
+## install: Install dependencies (requires active venv)
+install:
+	$(PIP) install -r requirements.txt
+
+## install-dev: Install dev dependencies
+install-dev:
+	$(PIP) install -r requirements.txt -r requirements-dev.txt
+
+## freeze: Export current dependencies
+freeze:
+	$(PIP) freeze > requirements.txt
+
+## dev: Start development server
+dev:
+	uvicorn $(APP).main:app --reload --port $(PORT)
+
+## start: Start production server
+start:
+	gunicorn $(APP).main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$(PORT)
+
+## test: Run tests
+test:
+	pytest tests/ -v
+
+## test-fast: Run tests, stop on first failure
+test-fast:
+	pytest tests/ -x -v
+
+## test-coverage: Run tests with coverage
+test-coverage:
+	pytest tests/ --cov=$(APP) --cov-report=html --cov-report=term-missing
+
+## lint: Run linting
+lint:
+	ruff check $(APP) tests
+
+## lint-fix: Auto-fix linting issues
+lint-fix:
+	ruff check --fix $(APP) tests
+
+## format: Format code
+format:
+	ruff format $(APP) tests
+
+## format-check: Check formatting
+format-check:
+	ruff format --check $(APP) tests
+
+## type-check: Run type checking
+type-check:
+	mypy $(APP) --ignore-missing-imports
+
+## clean: Remove caches and build artifacts
+clean:
+	find . -type f -name "*.pyc" -delete
+	find . -type d -name "__pycache__" -delete
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov dist build
+
+## clean-all: Remove everything including venv
+clean-all: clean
+	rm -rf $(VENV)
+
+## docker-build: Build Docker image
+docker-build:
+	docker build -t $(APP_NAME):latest .
+
+## docker-run: Run container
+docker-run:
+	docker run -p $(PORT):$(PORT) $(APP_NAME):latest
+
+## migrate: Run database migrations
+migrate:
+	alembic upgrade head
+
+## migration: Create new migration
+migration:
+	@read -p "Migration name: " name; alembic revision --autogenerate -m "$$name"
+
+# =============================================================================
