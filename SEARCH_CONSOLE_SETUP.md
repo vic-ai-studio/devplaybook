@@ -13,13 +13,24 @@
 
 ---
 
-## Step 2: Verify Site Ownership (HTML file method)
+## Step 2: Verify Site Ownership (Meta Tag method — recommended)
 
-1. In GSC, choose the **"HTML file"** verification method.
-2. Download the verification file — it will be named something like `google1234abcd5678efgh.html`.
-3. Place the file in `C:/OpenClaw_Pro/devplaybook/public/` on your computer.
-4. Push to GitHub (Cloudflare Pages will auto-deploy) or manually upload via Cloudflare Pages dashboard.
-5. Once deployed, go back to GSC and click **"Verify"**.
+The site now supports verification via the `PUBLIC_GSC_SITE_VERIFICATION` environment variable (no code deploy needed):
+
+1. In GSC, choose the **"HTML tag"** verification method.
+2. Copy the content value from the meta tag shown — it looks like `abc123xyz...`.
+3. Go to **Cloudflare Pages dashboard** → devplaybook → **Settings → Environment variables**.
+4. Add variable: `PUBLIC_GSC_SITE_VERIFICATION` = `<paste the content value>`.
+5. Trigger a new deploy (or it applies on next deploy).
+6. Go back to GSC and click **"Verify"**.
+
+### Alternative: HTML file method
+
+1. In GSC, choose the **"HTML file"** method instead.
+2. Download the verification file — it will be named like `google1234abcd5678efgh.html`.
+3. Place the file in `C:/OpenClaw_Pro/devplaybook/public/`.
+4. Push to GitHub — Cloudflare Pages auto-deploys.
+5. Click **"Verify"** in GSC.
 
 > **Tip:** The verification file in `public/` is already referenced in the sitemap filter — it will be deployed but excluded from search results automatically.
 
@@ -54,11 +65,29 @@ After verification, use the **URL Inspection** tool in GSC to request indexing f
 
 ---
 
+## Cloudflare Web Analytics Setup
+
+The analytics beacon is already in the site code — you just need to set the token:
+
+1. Go to **Cloudflare Dashboard** → **Analytics & Logs → Web Analytics**.
+2. Click **Add site** → enter `devplaybook.cc`.
+3. Copy the **JavaScript snippet token** (the long string after `token:`).
+4. Go to **Workers & Pages** → devplaybook → **Settings → Environment variables**.
+5. Add: `PUBLIC_CF_ANALYTICS_TOKEN` = `<paste token here>`.
+6. Trigger a redeploy — analytics will start collecting on all pages automatically.
+
+> Analytics data appears in Cloudflare Dashboard under **Analytics & Logs → Web Analytics → devplaybook.cc**.
+
+---
+
 ## What's Already Done (No Action Needed)
 
 | Item | Status |
 |------|--------|
-| Sitemap auto-generation | ✅ `@astrojs/sitemap` configured |
+| Cloudflare Analytics beacon code | ✅ In BaseLayout.astro (needs token env var) |
+| GSC meta tag verification support | ✅ `PUBLIC_GSC_SITE_VERIFICATION` env var |
+| Sitemap auto-generation | ✅ `@astrojs/sitemap` — 145 blog + 119 tool pages |
+| robots.txt | ✅ Allows all crawlers, references sitemap-index.xml |
 | Bing + Yandex IndexNow submission | ✅ 129 URLs submitted 2026-03-21 |
 | JSON-LD structured data | ✅ WebApplication, BlogPosting, Organization, BreadcrumbList, FAQPage |
 | Core Web Vitals tracking | ✅ LCP, CLS, INP, FCP, TTFB via web-vitals |
