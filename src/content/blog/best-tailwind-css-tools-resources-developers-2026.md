@@ -377,8 +377,34 @@ Yes. Tailwind's `@theme` block lets you define design tokens (colors, spacing, t
 
 ---
 
+## Common Tailwind Pitfalls (and How to Avoid Them)
+
+Even with good tooling, Tailwind projects run into recurring issues:
+
+**Class ordering inconsistency**: Different developers (or AI tools) order classes differently, making diffs noisy. Fix: add `prettier-plugin-tailwindcss` which auto-sorts classes on save.
+
+```bash
+npm install -D prettier prettier-plugin-tailwindcss
+```
+
+**Purge misses dynamic classes**: Tailwind's tree-shaking removes unused classes. If you build class names dynamically with string concatenation, they get purged. Always use complete class names in your source.
+
+```javascript
+// ❌ Wrong — Tailwind can't detect this:
+const color = 'blue'
+<div className={`text-${color}-500`}>
+
+// ✓ Correct — full class name present:
+const colorMap = { blue: 'text-blue-500', red: 'text-red-500' }
+<div className={colorMap[color]}>
+```
+
+**Dark mode inconsistency**: Choose `class` strategy (toggle `dark` class on `<html>`) or `media` strategy and stick to it across all components.
+
+---
+
 ## Summary
 
 The Tailwind ecosystem in 2026 is mature. Whether you need pre-built components (shadcn/ui, DaisyUI), interactive elements (Headless UI, Flowbite), design tooling (color generators, grid builders), or AI-assisted scaffolding (v0), there's a purpose-built tool available.
 
-For most projects, start with three things: **Tailwind CSS IntelliSense** for your editor, **shadcn/ui** for React components, and **Tailwind Play** for rapid prototyping. Add other tools from this list as your specific needs emerge.
+For most projects, start with three things: **Tailwind CSS IntelliSense** for your editor, **shadcn/ui** for React components, and **Tailwind Play** for rapid prototyping. Add `prettier-plugin-tailwindcss` early to keep class ordering consistent, and add other tools from this list as your specific needs emerge.
