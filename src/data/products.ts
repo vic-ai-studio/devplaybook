@@ -229,6 +229,32 @@ export const products: Product[] = [
     icon: '⚙️',
     gumroadUrl: gumroadLink('github-actions-templates'),
   },
+  {
+    slug: 'developer-interview-vault',
+    name: 'Developer Interview Vault',
+    price: 29,
+    description: '210 technical interview questions with model answers, key points, and follow-up questions. Covers Frontend, Backend, System Design, and DSA — bilingual English + Traditional Chinese (ZH-TW). PWYW from $29.',
+    features: [
+      '210 questions across 4 categories (Frontend, Backend, System Design, DSA)',
+      'Every question includes a model answer + key talking points',
+      'Most questions include follow-up questions interviewers actually ask',
+      'Difficulty tags: [Junior] [Mid] [Senior]',
+      'Full English + Traditional Chinese (ZH-TW) bilingual edition',
+      'PDF-ready Markdown format — read anywhere, print anytime',
+      'Covers FAANG-style interviews: Google, Meta, Amazon, Stripe, Shopify',
+      'System Design questions use the structured SNAKE framework',
+    ],
+    faq: [
+      { q: 'What experience level is this for?', a: 'Covers Junior through Senior. Each question is tagged [Junior], [Mid], or [Senior] so you can focus on your level.' },
+      { q: 'Is it really bilingual?', a: 'Yes — complete Traditional Chinese (ZH-TW) and English editions are both included. All 210 questions, fully translated.' },
+      { q: 'What format is the content in?', a: 'Markdown files organized by category. Open in VS Code, Obsidian, Notion, or any text editor. Convert to PDF anytime.' },
+      { q: 'How is this different from LeetCode?', a: 'Focuses on conceptual and behavioral questions — the kind that decide whether you get the offer. DSA is included but this is not a LeetCode grind pack.' },
+      { q: 'Does it cover system design?', a: '50 system design questions with structured SNAKE-framework answers: URL shorteners, Twitter timeline, YouTube, rate limiters, and more.' },
+    ],
+    tags: ['interview', 'career', 'frontend', 'backend', 'system-design', 'dsa', 'algorithms'],
+    icon: '🎯',
+    gumroadUrl: gumroadLink('developer-interview-vault'),
+  },
 ];
 
 export function getProductBySlug(slug: string): Product | undefined {
