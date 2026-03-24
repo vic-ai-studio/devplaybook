@@ -1,4 +1,4 @@
-# 前端面試題
+# 前端面試題目
 
 **55 道題目**，涵蓋 HTML/CSS、JavaScript、React、TypeScript、效能與無障礙設計。
 
@@ -6,46 +6,50 @@
 
 ## HTML & CSS（10 題）
 
-### 1. `display: none` 和 `visibility: hidden` 有什麼差別？ `[初級]`
+### 1. `display: none` 和 `visibility: hidden` 有什麼差別？`[初級]`
 
-**解答：**
-- `display: none`：元素從文件流移除，完全不占空間、不渲染。
-- `visibility: hidden`：元素隱藏但**保留原本空間**，仍占位。
+**答：**
+- `display: none` 將元素從文件流中移除——它不佔空間，也不會被渲染。
+- `visibility: hidden` 隱藏元素，但保留其在文件流中的位置——它仍然佔用空間。
 
-**延伸問題：** `opacity: 0` 呢？元素不可見但仍占空間，且仍能接收滑鼠事件（除非同時設 `pointer-events: none`）。
+**關鍵點：** `display: none` 同樣影響子元素。`visibility: hidden` 可以在子元素上用 `visibility: visible` 個別覆蓋。
 
----
-
-### 2. 說明 CSS 盒模型（Box Model）。 `[初級]`
-
-**解答：**
-每個元素都是一個矩形盒子，由內到外依序為：
-1. **Content**（內容）
-2. **Padding**（內距）
-3. **Border**（邊框）
-4. **Margin**（外距）
-
-預設 `width`/`height` 只計算 content。設定 `box-sizing: border-box` 後，`width`/`height` 會包含 padding 和 border，讓版面計算更直觀。
+**延伸問題：** `opacity: 0` 呢？→ 元素不可見，但仍然佔用空間，並且仍然接收滑鼠事件（除非同時設定 `pointer-events: none`）。
 
 ---
 
-### 3. `em`、`rem`、`%`、`vw`、`vh` 的差別？ `[初級]`
+### 2. 請說明 CSS 盒模型。`[初級]`
 
-**解答：**
-- `em`：相對於**父元素**字體大小
-- `rem`：相對於**根元素（html）**字體大小，更可預測
-- `%`：相對於父元素對應屬性（如 `width: 50%` = 父寬的 50%）
-- `vw`：視窗寬度的 1%
-- `vh`：視窗高度的 1%
+**答：**
+每個元素都是一個矩形盒子，由內到外包含：
+1. **Content（內容）** — 實際內容區域
+2. **Padding（內距）** — 內容與邊框之間的空間
+3. **Border（邊框）** — 可見的邊框線
+4. **Margin（外距）** — 邊框外側的空間
 
-**最佳實踐：** 字體用 `rem`（尊重使用者瀏覽器設定），全螢幕版面用 `vw`/`vh`。
+預設情況下，`width` 和 `height` 只套用於內容盒。設定 `box-sizing: border-box` 後，`width` 和 `height` 會包含 padding 和 border。
+
+**延伸問題：** 為什麼要全域使用 `box-sizing: border-box`？→ 它讓版面計算變得可預期。設定 `width: 200px` 意味著整個可見寬度就是 200px，不論 padding 為何。
 
 ---
 
-### 4. 什麼是 CSS 選擇器優先級（Specificity）？如何計算？ `[中級]`
+### 3. `em`、`rem`、`%`、`vw` 和 `vh` 有什麼差別？`[初級]`
 
-**解答：**
-優先級決定多條規則衝突時哪條生效，以 `(行內, ID, class/屬性/偽類, 元素/偽元素)` 四位數表示：
+**答：**
+- `em` — 相對於**父元素**的 font-size
+- `rem` — 相對於**根元素**（`html`）的 font-size，比 `em` 更可預期
+- `%` — 相對於**父元素**對應的屬性（例如 `width: 50%` = 父元素寬度的 50%）
+- `vw` — 視窗寬度的 1%
+- `vh` — 視窗高度的 1%
+
+**主要使用情境：** 字體大小用 `rem`（尊重使用者瀏覽器設定），全螢幕版面用 `vw`/`vh`。
+
+---
+
+### 4. 什麼是 CSS 優先順序（Specificity），如何計算？`[中級]`
+
+**答：**
+優先順序決定當多個規則套用到同一個元素時，哪條 CSS 規則獲勝。它以四元組計算：`(行內, ID, class/屬性/偽類, 元素/偽元素)`。
 
 | 選擇器 | 分數 |
 |--------|------|
@@ -54,69 +58,76 @@
 | `.class` | 0,0,1,0 |
 | `#id` | 0,1,0,0 |
 | `style=""` | 1,0,0,0 |
-| `!important` | 覆蓋全部 |
+| `!important` | 覆蓋所有 |
 
-**避免優先級戰爭：** 使用 BEM 命名、避免 `!important`、保持選擇器扁平。
+**延伸問題：** 如何避免優先順序戰爭？→ 使用 BEM 命名、避免 `!important`、保持選擇器扁平、使用 CSS 自訂屬性。
 
 ---
 
-### 5. Flexbox 和 CSS Grid 有什麼差別？ `[中級]`
+### 5. Flexbox 和 CSS Grid 有什麼差別？`[中級]`
 
-**解答：**
-- **Flexbox**：一維排版（橫向**或**縱向）。適合元件層級排版（導覽列、卡片行、置中）。
-- **Grid**：二維排版（同時處理列**和**欄）。適合頁面級版面、複雜格線。
+**答：**
+- **Flexbox** 是一維的——沿單一軸（橫列或縱行）排列元素。最適合元件層級的版面（導覽列、卡片列、置中）。
+- **CSS Grid** 是二維的——同時處理橫列和縱行。最適合頁面層級的版面和複雜的格狀佈局。
 
-**選擇時機：**
+**使用時機：**
 - 導覽列 → Flexbox
-- 相片圖庫 → Grid
-- 將 div 置中 → Flexbox（`display:flex; align-items:center; justify-content:center`）
+- 相片圖廊 → Grid
+- 卡片版面 → 兩者皆可；若需要一致的列高則用 Grid
+- 置中一個 div → Flexbox（`display: flex; align-items: center; justify-content: center`）
 
 ---
 
-### 6. 什麼是 CSS 疊加上下文（Stacking Context）？ `[中級]`
+### 6. 什麼是 CSS 堆疊上下文（Stacking Context）？`[中級]`
 
-**解答：**
-疊加上下文是一個三維空間，子元素在此沿 z 軸疊加。以下情況會建立新的疊加上下文：
-- `position: relative/absolute/fixed/sticky` + `z-index` 非 `auto`
-- `opacity < 1`
-- `transform`、`filter`、`will-change`、`isolation: isolate`
+**答：**
+堆疊上下文是子元素沿 z 軸堆疊的三維環境。當元素具有以下條件時，會建立新的堆疊上下文：
+- `position: relative/absolute/fixed/sticky` 且 `z-index` 不為 `auto`
+- `opacity` 小於 1
+- `transform`、`filter`、`clip-path`、`will-change` 或 `isolation: isolate`
 
-**關鍵：** `z-index` 只在同一疊加上下文內有效。子元素設再高的 `z-index` 也無法超越不同疊加上下文的兄弟元素。
-
----
-
-### 7. 說明 `position` 的各個值。 `[初級]`
-
-**解答：**
-- `relative`：相對**自身原始位置**偏移，仍佔原來空間
-- `absolute`：脫離文件流，相對最近**已定位**的祖先元素
-- `fixed`：相對**視窗**定位，滾動時固定不動
-- `sticky`：混合型，滾動到閾值前像 `relative`，之後像 `fixed`
+**關鍵觀察：** `z-index` 只在同一個堆疊上下文內有效。一個 `z-index: 9999` 的子元素，無法顯示在 `z-index` 較低的兄弟堆疊上下文之上。
 
 ---
 
-### 8. 什麼是 CSS 自訂屬性（Custom Properties / CSS 變數）？ `[中級]`
+### 7. 請說明 `position: relative`、`absolute`、`fixed` 和 `sticky` 的差別。`[初級]`
 
-**解答：**
+**答：**
+- `relative` — 相對於其**正常流**位置定位。`top/left` 從它自然所在的位置偏移，仍佔用原始空間。
+- `absolute` — 從正常流中移除。相對於最近的**已定位祖先**（非 `static`）定位。若無，則相對於初始包含塊。
+- `fixed` — 相對於**視窗**定位，捲動時保持固定位置。
+- `sticky` — 混合型：在捲動門檻前表現如 `relative`，之後在其父容器內表現如 `fixed`。
+
+---
+
+### 8. 什麼是 CSS 自訂屬性（變數），它們如何運作？`[中級]`
+
+**答：**
+自訂屬性（以 `--` 定義）允許你在 CSS 中儲存可重複使用的值：
+
 ```css
 :root {
   --primary-color: #3b82f6;
-  --base-font-size: 16px;
+  --font-size-base: 16px;
 }
+
 .button {
   background: var(--primary-color);
-  font-size: var(--base-font-size);
+  font-size: var(--font-size-base);
 }
 ```
-**特點：** 支援繼承與串聯、可在任何作用域覆蓋、可透過 JS 動態修改（`element.style.setProperty('--color', 'red')`）。與預處理器變數不同，CSS 變數是**動態的**，可在執行期改變。
+
+**關鍵特性：** 它們會串聯與繼承。你可以在任何範疇覆蓋它們。JavaScript 可以讀取/寫入（`element.style.setProperty('--color', 'red')`）。與預處理器變數不同，它們是動態的，可在執行期間變更。
 
 ---
 
-### 9. 什麼是 `@media` 查詢？如何實作響應式設計？ `[初級]`
+### 9. 什麼是 `@media` 查詢，如何用於響應式設計？`[初級]`
 
-**解答：**
+**答：**
+媒體查詢只在特定條件滿足時（例如視窗寬度、裝置類型、色彩方案）才套用 CSS 規則：
+
 ```css
-/* Mobile-first 方式 */
+/* 行動優先方式 */
 .container { padding: 16px; }
 
 @media (min-width: 768px) {
@@ -127,70 +138,81 @@
   body { background: #111; }
 }
 ```
-**Mobile-first vs Desktop-first：** Mobile-first 用 `min-width`（從小加複雜性），效能較佳，是主流做法。
+
+**延伸問題：** 行動優先 vs. 桌面優先？行動優先使用 `min-width`（從小開始，逐步增加複雜度）。桌面優先使用 `max-width`。行動優先在效能上通常更佳。
 
 ---
 
-### 10. `will-change` 有什麼用途？ `[高級]`
+### 10. 什麼是 `will-change` CSS 屬性？`[高級]`
 
-**解答：**
-提示瀏覽器某元素即將發生特定變化，讓瀏覽器預先優化（如提升至獨立合成層）：
+**答：**
+`will-change` 提示瀏覽器某個元素將以特定方式改變，讓瀏覽器可以預先最佳化渲染（例如將元素提升到其自身的合成器層）：
+
 ```css
-.animated { will-change: transform; }
+.animated {
+  will-change: transform;
+}
 ```
-**注意：** 只對確定會動畫的元素使用。過度使用會消耗大量 GPU 記憶體。最好動態加入，動畫結束後移除。
+
+**使用時機：** 只用於確定會做動畫的元素。過度使用會浪費記憶體（每個層佔用 GPU 記憶體）。應在動畫前後透過 JavaScript 動態加入/移除，而非一直保持設定。
 
 ---
 
 ## JavaScript（20 題）
 
-### 11. `var`、`let`、`const` 有什麼差別？ `[初級]`
+### 11. `var`、`let` 和 `const` 有什麼差別？`[初級]`
 
-**解答：**
+**答：**
 | | `var` | `let` | `const` |
 |---|---|---|---|
-| 作用域 | 函式 | 區塊 | 區塊 |
+| 範疇 | 函式 | 區塊 | 區塊 |
 | 提升 | 是（undefined） | 是（TDZ 錯誤） | 是（TDZ 錯誤） |
-| 重複宣告 | 可以 | 不行 | 不行 |
-| 重新賦值 | 可以 | 可以 | 不行 |
+| 重複宣告 | 可以 | 不可以 | 不可以 |
+| 重新賦值 | 可以 | 可以 | 不可以 |
+| 全域屬性 | 是 | 否 | 否 |
 
-**TDZ（暫時性死區）：** `let`/`const` 被提升但未初始化，宣告前存取會拋出 `ReferenceError`。
+**TDZ（暫時性死區）：** `let`/`const` 雖然被提升，但未初始化——在宣告之前存取會拋出 `ReferenceError`。
 
 ---
 
-### 12. 說明 JavaScript 的閉包（Closure）。 `[中級]`
+### 12. 請說明 JavaScript 中的閉包（Closure）。`[中級]`
 
-**解答：**
-閉包是一個函式，能記住並存取其外部作用域的變數，即使外部函式已執行完畢。
+**答：**
+閉包是一個函式，即使在外部函式已回傳後，仍能保留對其外部範疇的存取。
 
 ```javascript
 function makeCounter() {
   let count = 0;
   return {
     increment: () => ++count,
+    decrement: () => --count,
     value: () => count,
   };
 }
+
 const counter = makeCounter();
 counter.increment(); // 1
 counter.increment(); // 2
+counter.value();     // 2
 ```
 
-**實際應用：** 資料封裝、工廠函式、事件處理器、記憶化。
+**為什麼有效：** `count` 在閉包範疇中，不會被垃圾回收，因為回傳的物件持有對參考 `count` 的函式的引用。
+
+**實際應用：** 資料封裝、工廠函式、事件處理器、記憶化（Memoization）。
 
 ---
 
-### 13. 什麼是 JavaScript 的事件迴圈（Event Loop）？ `[中級]`
+### 13. 什麼是 JavaScript 中的事件迴圈（Event Loop）？`[中級]`
 
-**解答：**
-JavaScript 是單執行緒的。事件迴圈讓非阻塞的非同步操作成為可能：
+**答：**
+JavaScript 是單執行緒的。事件迴圈允許非阻塞的非同步操作：
 
-1. **呼叫堆疊（Call Stack）**：同步程式碼在此執行
-2. **Web APIs**：處理非同步操作（setTimeout、fetch、DOM 事件）
-3. **回呼佇列（Macrotask Queue）**：Web API 的回呼排隊等候
-4. **微任務佇列（Microtask Queue）**：Promise 的 `.then`、`async/await`
+1. **呼叫堆疊（Call Stack）** — 同步程式碼在此執行（後進先出）
+2. **Web APIs** — 處理非同步操作（setTimeout、fetch、DOM 事件）
+3. **回呼佇列（Macrotask）** — 來自 Web APIs 的回呼在此排隊
+4. **微任務佇列（Microtask）** — Promise 回呼（`.then`、`async/await`）、`queueMicrotask`
 
-**執行順序：** 每個 macrotask 後，**所有** microtask 都會先清空，才執行下一個 macrotask。
+**順序：** 每個巨任務（Macrotask）結束後，所有微任務（Microtask）會全部清空，然後才進行下一個巨任務。
 
 ```javascript
 console.log('1');
@@ -202,99 +224,117 @@ console.log('2');
 
 ---
 
-### 14. 什麼是 JavaScript 的原型繼承？ `[中級]`
+### 14. 什麼是 JavaScript 中的原型繼承（Prototypal Inheritance）？`[中級]`
 
-**解答：**
-每個 JavaScript 物件都有一個內部 `[[Prototype]]` 連結到另一個物件。存取屬性時，JS 會沿著原型鏈查找，直到找到或到達 `null`。
+**答：**
+每個 JavaScript 物件都有一個內部 `[[Prototype]]` 連結指向另一個物件。存取屬性時，JS 沿著原型鏈向上查找，直到找到或到達 `null`。
 
 ```javascript
-const animal = { breathe() { return '呼吸中'; } };
+const animal = { breathe() { return 'breathing'; } };
 const dog = Object.create(animal);
-dog.bark = () => '汪汪';
-dog.breathe(); // '呼吸中'（繼承自 animal）
+dog.bark = function() { return 'woof'; };
+
+dog.bark();    // 'woof'（自身屬性）
+dog.breathe(); // 'breathing'（繼承自 animal）
 ```
 
-`class` 語法是原型繼承的語法糖，`extends` 設定原型鏈。
+**`class` 語法**是原型繼承的語法糖——`extends` 建立原型鏈。
 
 ---
 
-### 15. 說明 JavaScript 的 `this`。 `[中級]`
+### 15. 請說明 JavaScript 中的 `this`。`[中級]`
 
-**解答：**
-`this` 指向執行上下文，根據呼叫方式而改變：
+**答：**
+`this` 指向執行上下文，並根據函式的呼叫方式而改變：
 
 | 上下文 | `this` 值 |
-|--------|----------|
-| 全域（非嚴格） | `window`（瀏覽器） |
+|--------|-----------|
+| 全域（非嚴格模式） | `window`（瀏覽器） |
+| 全域（嚴格模式） | `undefined` |
 | 物件方法 | 該物件 |
-| 箭頭函式 | 詞法 `this`（繼承外部作用域） |
-| `new` 呼叫 | 新建立的實例 |
-| `call`/`apply`/`bind` | 第一個參數 |
+| 箭頭函式 | 詞法 `this`（繼承自外層範疇） |
+| `new` 呼叫 | 新建的實例 |
+| `call`/`apply`/`bind` | 第一個引數 |
 
-**關鍵：** 箭頭函式**沒有自己的 `this`**，這正是在類別方法中用它作為回呼的原因。
+**關鍵觀察：** 箭頭函式**沒有**自己的 `this`——這就是為什麼它們作為 class 方法內的回呼很有用。
 
 ---
 
-### 16. `async/await` 是什麼，如何運作？ `[初級]`
+### 16. 什麼是 `async/await`，它如何運作？`[初級]`
 
-**解答：**
-`async/await` 是 Promise 的語法糖，讓非同步程式碼看起來像同步的：
+**答：**
+`async/await` 是 Promise 的語法糖，讓非同步程式碼讀起來像同步程式碼：
 
 ```javascript
+// Promise 鏈
+fetch('/api/user')
+  .then(res => res.json())
+  .then(data => console.log(data))
+  .catch(err => console.error(err));
+
+// async/await 等效寫法
 async function getUser() {
   try {
     const res = await fetch('/api/user');
     const data = await res.json();
-    return data;
+    console.log(data);
   } catch (err) {
     console.error(err);
   }
 }
 ```
 
-`await` 暫停 `async` 函式執行直到 Promise 解決，**不會阻塞執行緒**。
+`await` 暫停 `async` 函式的執行，直到 Promise 完成/拒絕。它**不會**阻塞執行緒。
 
-**延伸問題：** 如何並行執行多個非同步請求？用 `Promise.all([fetch1, fetch2])`，而非連續的 `await`。
+**延伸問題：** 如何並行執行多個非同步呼叫？→ 使用 `Promise.all([fetch1, fetch2])`，而非依序的 `await`。
 
 ---
 
-### 17. `==` 和 `===` 有什麼差別？ `[初級]`
+### 17. `==` 和 `===` 有什麼差別？`[初級]`
 
-**解答：**
-- `===`（嚴格相等）：同時比較值**和型別**，不做型別轉換。**永遠使用這個。**
-- `==`（寬鬆相等）：比較前進行型別強制轉換，導致意外結果：
+**答：**
+- `===`（嚴格相等）— 比較值**和**型別，不做型別轉換。**請一律使用這個。**
+- `==`（寬鬆相等）— 比較前先執行型別轉換，導致令人意外的結果：
 
 ```javascript
 0 == false     // true
 '' == false    // true
-null == undefined // true（這是 == 少數合理使用場景）
+null == undefined // true
+1 == '1'       // true
+[] == 0        // true
 ```
+
+**準則：** 在任何地方都使用 `===`。`==` 唯一合理的使用情境是 `x == null`（同時匹配 `null` 和 `undefined`）。
 
 ---
 
-### 18. 什麼是 JavaScript 的生成器（Generator）？ `[高級]`
+### 18. 什麼是 JavaScript 的生成器（Generator）？`[高級]`
 
-**解答：**
-生成器是可以暫停和恢復的函式，按需產生多個值：
+**答：**
+生成器是可以暫停和恢復的函式，按需產出多個值：
 
 ```javascript
 function* range(start, end) {
-  for (let i = start; i <= end; i++) yield i;
+  for (let i = start; i <= end; i++) {
+    yield i;
+  }
 }
+
 const gen = range(1, 3);
 gen.next(); // { value: 1, done: false }
 gen.next(); // { value: 2, done: false }
 gen.next(); // { value: 3, done: false }
+gen.next(); // { value: undefined, done: true }
 ```
 
-**應用：** 惰性序列、無限串流、自訂迭代器、redux-saga。
+**使用情境：** 懶序列、無限串流、自訂迭代器、`async` 流程控制（redux-saga）。
 
 ---
 
-### 19. 什麼是記憶化（Memoization）？何時使用？ `[中級]`
+### 19. 什麼是記憶化（Memoization），何時使用它？`[中級]`
 
-**解答：**
-記憶化快取昂貴函式呼叫的結果，相同輸入直接返回快取值：
+**答：**
+記憶化快取耗費資源的函式呼叫結果，使相同輸入的重複呼叫立即回傳快取結果：
 
 ```javascript
 function memoize(fn) {
@@ -307,83 +347,122 @@ function memoize(fn) {
     return result;
   };
 }
-```
 
-**使用時機：** 純函式（同輸入同輸出）、計算昂貴的函式、遞迴演算法。React 的 `useMemo` 和 `useCallback` 都是記憶化的形式。
-
----
-
-### 20. `null`、`undefined`、`NaN` 的差別？ `[初級]`
-
-**解答：**
-- `undefined`：變數宣告但未賦值、函式無回傳值、不存在的屬性
-- `null`：明確賦值的「無值」，`typeof null === 'object'`（歷史遺留 bug）
-- `NaN`：「非數字」，無效數學運算的結果。`typeof NaN === 'number'`。`NaN !== NaN`，需用 `Number.isNaN()` 判斷。
-
----
-
-### 21. JavaScript 的垃圾回收如何運作？ `[中級]`
-
-**解答：**
-現代引擎使用**標記清除（mark-and-sweep）**演算法：
-1. 從「根」（全域物件、呼叫堆疊的變數）開始
-2. 標記所有可從根到達的物件
-3. 清除（釋放）所有未標記的物件
-
-**記憶體洩漏的常見原因：**
-- 未清除的計時器/定時器保持引用
-- 意外的全域變數
-- 閉包不必要地保留大物件
-- 從 DOM 移除但 JS 仍引用的節點
-
----
-
-### 22. 什麼是事件委派（Event Delegation）？ `[中級]`
-
-**解答：**
-不為每個子元素綁定事件監聽器，而是在父元素上綁定一個，利用 `event.target` 判斷觸發元素：
-
-```javascript
-document.querySelector('.list').addEventListener('click', (e) => {
-  if (e.target.matches('.item')) handleClick(e);
+const expensiveFn = memoize((n) => {
+  // 複雜計算
+  return n * 2;
 });
 ```
 
-**優點：** 效能好（一個監聽器 vs N 個）、動態新增的元素也有效。
+**使用時機：** 純函式（相同輸入 → 相同輸出）、昂貴的計算、遞迴演算法（費波那契、動態規劃）。React 的 `useMemo` 和 `useCallback` 都是記憶化的形式。
 
 ---
 
-### 23. `call`、`apply`、`bind` 的差別？ `[中級]`
+### 20. `null`、`undefined` 和 `NaN` 有什麼差別？`[初級]`
 
-**解答：**
-三者都能明確設定 `this`：
-- `call(context, arg1, arg2)`：立即呼叫，參數逐一傳入
-- `apply(context, [arg1, arg2])`：立即呼叫，參數以陣列傳入
-- `bind(context, arg1)`：回傳一個**新函式**（不立即執行），`this` 已綁定
-
----
-
-### 24. JavaScript 中的不可變性（Immutability）概念。 `[中級]`
-
-**解答：**
-不修改現有資料，而是創建新資料：
+**答：**
+- `undefined` — 變數已宣告但未賦值，或函式沒有回傳值，或缺少屬性
+- `null` — 明確賦予的「無值」。`typeof null === 'object'`（JS 的歷史遺留 bug）
+- `NaN` — 「非數字」。無效數學運算的結果。`typeof NaN === 'number'`。值得注意的是 `NaN !== NaN`——使用 `Number.isNaN()` 來檢查。
 
 ```javascript
-// 不可變模式
-const newArr = [...arr, 4];                    // 展開運算子
-const newObj = { ...obj, key: 'newValue' };    // 物件展開
-const updated = arr.map(x => x * 2);          // 回傳新陣列
+let x;
+console.log(x);         // undefined
+console.log(null == undefined); // true（寬鬆）
+console.log(null === undefined); // false（嚴格）
+console.log(0 / 0);    // NaN
+console.log(Number.isNaN(NaN)); // true
 ```
-
-**為何重要：** 可預測的狀態、更易於除錯、啟用引用比較的變更偵測（React、Redux）。
 
 ---
 
-### 25. JavaScript 的模組系統（ESM vs CJS）。 `[中級]`
+### 21. JavaScript 中的垃圾回收如何運作？`[中級]`
 
-**解答：**
-- **CommonJS (CJS)：** `require()` / `module.exports`，用於 Node.js，同步載入
-- **ES Modules (ESM)：** `import` / `export`，原生 JS 標準，非同步、靜態分析、支援 tree-shaking
+**答：**
+現代引擎使用**標記清除（Mark-and-Sweep）**演算法：
+1. 從「根」（全域物件、呼叫堆疊變數）開始
+2. 標記所有從根可達的物件
+3. 清除（釋放）所有未標記的物件
+
+**造成記憶體洩漏的原因：**
+- 持有引用的未清除計時器/間隔
+- 意外的全域變數
+- 閉包不必要地保留大型物件
+- 已從 DOM 移除但在 JS 中仍被引用的 DOM 節點
+- `WeakMap`/`WeakSet` 的存在就是為了避免這些問題——它們持有不阻止垃圾回收的弱引用。
+
+---
+
+### 22. 什麼是事件委派（Event Delegation）？`[中級]`
+
+**答：**
+不在每個子元素上附加事件監聽器，而是在父元素上附加一個監聽器，並使用 `event.target` 判斷哪個子元素被點擊：
+
+```javascript
+// 未使用委派（1000 個項目時效能差）
+document.querySelectorAll('.item').forEach(item => {
+  item.addEventListener('click', handleClick);
+});
+
+// 使用委派（所有項目只用一個監聽器）
+document.querySelector('.list').addEventListener('click', (e) => {
+  if (e.target.matches('.item')) {
+    handleClick(e);
+  }
+});
+```
+
+**優點：** 效能（一個監聽器 vs. N 個）、適用於動態新增的元素。
+
+---
+
+### 23. `call`、`apply` 和 `bind` 有什麼差別？`[中級]`
+
+**答：**
+三者都明確設定 `this`：
+- `call(context, arg1, arg2)` — 立即用個別引數呼叫
+- `apply(context, [arg1, arg2])` — 立即用陣列形式的引數呼叫
+- `bind(context, arg1)` — 回傳一個**新函式**，`this` 已綁定，不立即呼叫
+
+```javascript
+function greet(greeting, punctuation) {
+  return `${greeting}, ${this.name}${punctuation}`;
+}
+
+const user = { name: 'Alice' };
+greet.call(user, 'Hello', '!');      // "Hello, Alice!"
+greet.apply(user, ['Hi', '?']);      // "Hi, Alice?"
+const boundGreet = greet.bind(user);
+boundGreet('Hey', '.');              // "Hey, Alice."
+```
+
+---
+
+### 24. 請說明 JavaScript 中的不可變性（Immutability）概念。`[中級]`
+
+**答：**
+不可變性意味著不修改現有資料，而是建立新資料：
+
+```javascript
+// 可變（修改原始陣列）
+const arr = [1, 2, 3];
+arr.push(4); // arr 現在是 [1,2,3,4]
+
+// 不可變模式
+const newArr = [...arr, 4];          // 展開運算子
+const newObj = { ...obj, key: 'val' }; // 物件展開
+const updated = arr.map(x => x * 2); // 回傳新陣列
+```
+
+**為什麼重要：** 可預測的狀態、更容易除錯、透過引用比較啟用變更偵測（React、Redux）、啟用時間旅行除錯。
+
+---
+
+### 25. JavaScript 的模組系統（ESM vs CJS）是什麼？`[中級]`
+
+**答：**
+- **CommonJS (CJS)：** `require()` / `module.exports`。用於 Node.js。同步，在執行期間載入。
+- **ES Modules (ESM)：** `import` / `export`。原生 JS 標準。非同步、靜態分析、可搖樹（Tree-shakeable）。
 
 ```javascript
 // CJS
@@ -393,303 +472,700 @@ module.exports = { fn };
 // ESM
 import { readFile } from 'fs/promises';
 export { fn };
+export default class MyClass {}
 ```
 
-**為何 ESM 支援 tree-shaking？** 靜態 import 在編譯時可分析，打包工具能移除未使用的 export。
+**延伸問題：** 為什麼 ESM 能啟用搖樹？→ 靜態 import 可在建置時分析；打包工具可以消除未使用的匯出。
 
 ---
 
-### 26. `Symbol` 是什麼？ `[高級]`
+### 26. JavaScript 中的 `Symbol` 是什麼？`[高級]`
 
-每次呼叫 `Symbol()` 都會返回唯一的不可變原始值，常用於：物件的「私有」屬性、知名符號（`Symbol.iterator`）、避免 key 衝突。
-
----
-
-### 27. `WeakMap` 和 `WeakSet` 是什麼？ `[高級]`
-
-弱引用集合，key/值為物件，不阻止垃圾回收。適合為 DOM 元素快取計算結果，不造成記憶體洩漏。
-
----
-
-### 28. `Proxy` 物件是什麼？ `[高級]`
-
-攔截並自訂物件操作（get、set、delete 等）。Vue 3 的響應式系統基於此實作。
-
----
-
-### 29. JavaScript 的錯誤處理方式？ `[中級]`
-
-使用 `try/catch/finally` 處理同步錯誤，`async/await` 配合 `try/catch` 處理非同步錯誤。使用 `window.addEventListener('unhandledrejection')` 作為最後防線。永遠不要吞掉未知的錯誤（`catch (e) {}`）。
-
----
-
-### 30. 選擇性鏈（`?.`）和空值合併（`??`）？ `[初級]`
+**答：**
+`Symbol` 建立唯一的、不可變的原始值。每次呼叫 `Symbol()` 都回傳唯一值：
 
 ```javascript
-user?.address?.city;   // undefined（不拋錯）
-count ?? 'default';    // 0（0 不是 null/undefined）
-count || 'default';    // 'default'（0 是假值—常見 bug）
+const id1 = Symbol('id');
+const id2 = Symbol('id');
+console.log(id1 === id2); // false — 永遠唯一
+
+// 用作物件鍵
+const obj = { [id1]: 'value' };
+// Symbol 在 for...in 或 Object.keys() 中不可列舉
+```
+
+**使用情境：** 類私有的物件屬性、知名 Symbol（`Symbol.iterator`、`Symbol.toPrimitive`）、避免共享物件中的鍵衝突。
+
+---
+
+### 27. 什麼是 WeakMap 和 WeakSet？`[高級]`
+
+**答：**
+- **WeakMap** — 鍵值對，鍵必須是物件。鍵被弱持有（不阻止垃圾回收）。鍵不可列舉。
+- **WeakSet** — 物件的集合。物件被弱持有。
+
+```javascript
+const cache = new WeakMap();
+function process(element) {
+  if (cache.has(element)) return cache.get(element);
+  const result = expensiveComputation(element);
+  cache.set(element, result);
+  return result;
+}
+// 當 `element` 從 DOM 移除時，快取條目會自動被垃圾回收
+```
+
+**使用情境：** 為 DOM 元素快取計算值而不造成記憶體洩漏。
+
+---
+
+### 28. 什麼是 Proxy 物件？`[高級]`
+
+**答：**
+`Proxy` 包裝一個物件，並攔截對其的操作（get、set、delete 等）：
+
+```javascript
+const validator = new Proxy({}, {
+  set(target, key, value) {
+    if (typeof value !== 'number') throw new TypeError('Must be a number');
+    target[key] = value;
+    return true;
+  }
+});
+
+validator.age = 25;   // OK
+validator.age = 'old'; // TypeError
+```
+
+**實際應用：** Vue 3 的響應式系統、表單驗證、日誌記錄、存取控制。`Reflect` 是提供預設行為的配套 API。
+
+---
+
+### 29. 如何在 JavaScript 中處理錯誤？`[中級]`
+
+**答：**
+```javascript
+// 同步
+try {
+  riskyOperation();
+} catch (error) {
+  if (error instanceof TypeError) {
+    // 處理特定錯誤
+  } else {
+    throw error; // 重新拋出未知錯誤
+  }
+} finally {
+  cleanup(); // 永遠執行
+}
+
+// 非同步
+async function load() {
+  try {
+    const data = await fetchData();
+    return data;
+  } catch (error) {
+    // Promise 拒絕在這裡被捕獲
+    logger.error(error);
+    throw error; // 不要吞掉錯誤
+  }
+}
+
+// 全域處理器（最後手段）
+window.addEventListener('unhandledrejection', (e) => {
+  console.error(e.reason);
+});
+```
+
+---
+
+### 30. 什麼是可選鏈（`?.`）和空值合併（`??`）？`[初級]`
+
+**答：**
+- `?.` — 若左側為 `null`/`undefined`，短路並回傳 `undefined`，而非拋出錯誤
+- `??` — 只有當左側為 `null`/`undefined` 時（非 `0`、`''`、`false`），才回傳右側值
+
+```javascript
+const user = { address: { city: 'Taipei' } };
+user?.address?.city;    // 'Taipei'
+user?.phone?.number;    // undefined（不拋出錯誤）
+user?.greet?.();        // undefined（方法也不拋出錯誤）
+
+const count = 0;
+count ?? 'default';     // 0（0 不是 null/undefined）
+count || 'default';     // 'default'（0 是 falsy — 常見的 bug）
 ```
 
 ---
 
 ## React（15 題）
 
-### 31. 什麼是虛擬 DOM，React 如何使用它？ `[初級]`
+### 31. 什麼是虛擬 DOM，React 如何使用它？`[初級]`
 
-**解答：**
-虛擬 DOM 是真實 DOM 的輕量 JavaScript 表示。狀態改變時：
-1. React 建立新的虛擬 DOM 樹
-2. **Diffing**：與前一個比較（O(n) 演算法）
-3. **調和（Reconciliation）**：計算最小變更
-4. **提交**：只更新必要的真實 DOM 節點
+**答：**
+虛擬 DOM（vDOM）是真實 DOM 的輕量 JavaScript 表示。React 在記憶體中保存 vDOM。當狀態改變時：
+1. React 建立新的 vDOM 樹
+2. **Diffing（差異比對）：** 與前一個 vDOM 比較（O(n) 演算法）
+3. **Reconciliation（協調）：** 計算所需的最小變更
+4. **只提交**真實 DOM 的變更
+
+**為什麼快：** 真實 DOM 操作代價昂貴。批次處理變更並計算最小差異，減少了 DOM 操作。
+
+**延伸問題：** React 一定使用 vDOM 嗎？→ React Native 使用相同的協調器，但目標是原生行動元件。React Server Components 完全繞過 vDOM。
 
 ---
 
-### 32. `useMemo` 和 `useCallback` 的差別？ `[中級]`
+### 32. 請說明 `useMemo` 和 `useCallback` 的差別。`[中級]`
 
-- `useMemo`：記憶化**計算值**，依賴改變才重算
-- `useCallback`：記憶化**函式參考**，依賴改變才回傳新函式
+**答：**
+- `useMemo` — 記憶化一個**計算值**。只在相依項改變時重新計算。
+- `useCallback` — 記憶化一個**函式引用**。若相依項未改變，回傳相同的函式實例。
 
 ```javascript
-const sortedList = useMemo(() => items.sort(...), [items]);
-const handleClick = useCallback((id) => dispatch({ type: 'SELECT', id }), [dispatch]);
+// useMemo：昂貴的計算
+const sortedList = useMemo(
+  () => items.sort((a, b) => a.name.localeCompare(b.name)),
+  [items]
+);
+
+// useCallback：穩定的函式引用給子元件
+const handleClick = useCallback((id) => {
+  dispatch({ type: 'SELECT', id });
+}, [dispatch]);
 ```
 
-**使用時機：** 只在記憶化成本低於重新計算/重新渲染成本時才使用。
+**使用時機：** 只在記憶化的成本低於重新計算/重新渲染的成本時使用。過早最佳化是有害的。
 
 ---
 
-### 33. React 的調和（Reconciliation）和 `key` prop？ `[中級]`
+### 33. 什麼是 React 的協調（Reconciliation）和 `key` 屬性？`[中級]`
 
-`key` 幫助 React 識別列表中哪些項目改變/新增/移除。使用穩定、唯一的 ID（不要用 index），否則 React 會錯誤地複用 DOM 節點，導致輸入焦點、動畫等問題。
+**答：**
+在協調過程中，React 比較元素樹。`key` 屬性幫助 React 識別清單中哪些項目已變更/新增/移除：
+
+```jsx
+// 錯誤 — 使用索引作為 key，在重新排序/插入時破壞協調
+{items.map((item, i) => <Item key={i} {...item} />)}
+
+// 正確 — 穩定、唯一的 ID
+{items.map(item => <Item key={item.id} {...item} />)}
+```
+
+**錯誤的 key 會發生什麼：** React 錯誤地重用 DOM 節點，導致輸入焦點、動畫和非受控元件狀態出現 bug。
 
 ---
 
-### 34. 什麼是 React Hooks？為什麼引入？ `[初級]`
+### 34. 什麼是 React Hooks，為什麼引入它們？`[初級]`
 
-React 16.8 引入 Hooks，讓函式元件能使用狀態和生命週期功能。解決了：類別元件的複雜生命週期、邏輯難以在元件間共享（HOC 和 render props 的 wrapper hell）、令人困惑的 `this` 綁定。
+**答：**
+Hooks（React 16.8 引入）是讓你在函式元件中使用狀態和生命週期功能的函式。
 
-常用 Hook：`useState`、`useEffect`、`useContext`、`useRef`、`useReducer`、`useMemo`、`useCallback`
+**引入原因：**
+1. Class 元件有複雜的生命週期方法，難以理解
+2. 邏輯無法輕易在元件之間共享（HOC 和 render props 導致包裝器地獄）
+3. `this` 綁定令人困惑
+
+**常用 Hooks：**
+- `useState` — 元件狀態
+- `useEffect` — 副作用（資料取得、訂閱、DOM 更新）
+- `useContext` — 不需要 Consumer 元件即可消費 context
+- `useRef` — 在渲染之間持久的可變 ref
+- `useReducer` — 複雜的狀態邏輯（類似 Redux 模式）
+- `useMemo` / `useCallback` — 效能最佳化
 
 ---
 
-### 35. `useEffect` 的清理函式（cleanup function）？ `[中級]`
+### 35. 請說明 `useEffect` 的清除函式。`[中級]`
+
+**答：**
+從 `useEffect` 回傳的函式會在效果再次執行前（相依項變更時）以及元件卸載時執行：
 
 ```javascript
 useEffect(() => {
   const subscription = subscribe(userId);
-  return () => subscription.unsubscribe(); // 清理：依賴改變或卸載前執行
+
+  // 清除：在重新訂閱或卸載前執行
+  return () => {
+    subscription.unsubscribe();
+  };
 }, [userId]);
 ```
 
-沒有清理函式會導致：記憶體洩漏、已卸載元件的狀態更新警告。
+**未清除的後果：** 訂閱造成記憶體洩漏、陳舊的事件監聽器、嘗試在已卸載的元件上更新狀態。
+
+**延伸問題：** 不提供相依陣列會怎樣？→ 效果在每次渲染後執行。空的 `[]` 只執行一次（僅在掛載/卸載時）。
 
 ---
 
-### 36. React Context 的用途和限制？ `[中級]`
+### 36. 什麼是 React Context，何時應使用它？`[中級]`
 
-用於跨元件樹傳遞全域資料（主題、語系、當前使用者）而不需逐層傳遞 props。不適合頻繁更新（每次更新都導致所有消費者重新渲染）。
+**答：**
+Context 提供了一種在不透過 props 逐層傳遞的情況下，在元件樹中傳遞資料的方式：
+
+```jsx
+const ThemeContext = createContext('light');
+
+function App() {
+  return (
+    <ThemeContext.Provider value="dark">
+      <DeepChild />
+    </ThemeContext.Provider>
+  );
+}
+
+function DeepChild() {
+  const theme = useContext(ThemeContext); // 'dark'
+  return <div className={theme}>...</div>;
+}
+```
+
+**使用時機：** 許多元件需要的全域資料（主題、語言、當前使用者、認證狀態）。
+
+**不適用時機：** 頻繁更新（造成所有消費者重新渲染）。伺服器狀態使用 React Query/SWR。複雜的客戶端狀態使用 Zustand/Redux。
 
 ---
 
-### 37. 受控元件和非受控元件的差別？ `[中級]`
+### 37. 受控元件和非受控元件有什麼差別？`[中級]`
 
-- **受控：** React 是唯一資料來源，input 的值由 state 驅動
-- **非受控：** DOM 是資料來源，透過 `ref` 在需要時取值
+**答：**
+- **受控（Controlled）：** React 是唯一資料來源。輸入值由狀態驅動。每次變更都更新狀態。
+- **非受控（Uncontrolled）：** DOM 是資料來源。需要時透過 `ref` 存取值。
 
 ```jsx
 // 受控
+const [value, setValue] = useState('');
 <input value={value} onChange={e => setValue(e.target.value)} />
+
 // 非受控
+const inputRef = useRef();
 <input ref={inputRef} defaultValue="initial" />
+// 存取：inputRef.current.value
+```
+
+**何時使用非受控：** 簡單表單、檔案輸入、與非 React 函式庫整合、效能敏感的表單。
+
+---
+
+### 38. 什麼是 `React.memo`，何時應使用它？`[中級]`
+
+**答：**
+`React.memo` 是一個高階元件，可以記憶化一個元件——只有在 props 改變時（淺比較）才重新渲染：
+
+```jsx
+const ExpensiveComponent = React.memo(({ data, onAction }) => {
+  return <div>{/* 昂貴的渲染 */}</div>;
+});
+```
+
+**使用時機：**
+- 元件以未改變的 props 頻繁渲染
+- 元件渲染代價昂貴（大型列表、複雜圖表）
+- 父元件頻繁重新渲染
+
+**不使用時機：**
+- Props 在每次渲染時都會改變
+- 元件渲染代價低廉（最佳化開銷超過效益）
+
+**注意事項：** 物件/函式 props 會破壞 memo，除非同時對它們使用 `useMemo`/`useCallback`。
+
+---
+
+### 39. 請說明函式元件的 React 渲染生命週期。`[中級]`
+
+**答：**
+```
+1. 渲染階段（純粹，無副作用）：
+   - 函式執行，回傳 JSX
+   - 協調器與前一個 vDOM 進行差異比對
+
+2. 提交階段：
+   - React 更新真實 DOM
+   - 版面效果執行（useLayoutEffect）— 同步
+   - 瀏覽器繪製
+
+3. 被動效果：
+   - useEffect 執行 — 非同步，在繪製後
+```
+
+**渲染內的順序：**
+```
+父元件渲染 → 子元件渲染 → ...
+→ 子元件 useLayoutEffect → 父元件 useLayoutEffect
+→ 瀏覽器繪製
+→ 子元件 useEffect → 父元件 useEffect
 ```
 
 ---
 
-### 38. `React.memo` 的用途？ `[中級]`
+### 40. 什麼是 React Server Components？`[高級]`
 
-高階元件，讓元件只在 props 改變時（淺比較）才重新渲染。適用於渲染頻繁但 props 常不變的昂貴元件。配合 `useMemo`/`useCallback` 確保物件/函式 props 的穩定性。
+**答：**
+RSC（隨 Next.js App Router 引入）允許元件**只在伺服器端**執行：
 
----
+```jsx
+// Server Component（App Router 中的預設）
+async function ProductPage({ id }) {
+  const product = await db.products.findById(id); // 直接存取資料庫！
+  return <ProductDetail product={product} />;
+}
 
-### 39. 函式元件的 React 渲染生命週期？ `[中級]`
-
+// Client Component（用 'use client' 選擇加入）
+'use client';
+function AddToCart({ productId }) {
+  const [loading, setLoading] = useState(false);
+  // ...
+}
 ```
-渲染階段（純粹，無副作用）→ 提交階段 → useLayoutEffect（同步）→ 瀏覽器繪製 → useEffect（非同步）
+
+**優點：** 伺服器元件的 JS bundle 為零、直接存取後端、自動串流。
+
+**限制：** 伺服器元件中沒有狀態、沒有 hooks、沒有瀏覽器 API。
+
+---
+
+### 41. React 如何處理效能最佳化？`[高級]`
+
+**答：**
+**防止不必要的重新渲染：**
+- 元件使用 `React.memo`
+- 昂貴的計算使用 `useMemo`
+- 穩定的函式引用使用 `useCallback`
+- 狀態共置（將狀態保持在靠近使用位置的地方）
+
+**程式碼分割：**
+```jsx
+const LazyComponent = React.lazy(() => import('./HeavyComponent'));
+<Suspense fallback={<Spinner />}>
+  <LazyComponent />
+</Suspense>
 ```
 
----
+**虛擬列表：** 使用 `react-window` 或 `react-virtual` 只渲染大型列表中可見的行。
 
-### 40. 什麼是 React Server Components？ `[高級]`
-
-RSC 讓元件只在**伺服器端**執行，可直接存取資料庫，不包含在 JS bundle 中。Client Components 需明確加上 `'use client'`。
+**並發功能：** 使用 `useTransition` 標記非緊急更新，使用 `useDeferredValue` 延遲更新緩慢的部分。
 
 ---
 
-### 41. React 的效能優化策略？ `[高級]`
+### 42. 什麼是 React 的 `useReducer` Hook？`[中級]`
 
-- `React.memo`、`useMemo`、`useCallback` 防止不必要渲染
-- 狀態同置（state co-location）
-- `React.lazy` + `Suspense` 做程式碼分割
-- `react-window`/`react-virtual` 處理大型列表（虛擬捲動）
-- `useTransition` 標記非緊急更新
-
----
-
-### 42. `useReducer` Hook 是什麼？ `[中級]`
-
-處理複雜狀態的替代方案，遵循 Redux 模式：
+**答：**
+`useReducer` 是複雜狀態邏輯的 `useState` 替代方案，遵循 Redux 模式：
 
 ```javascript
-const [state, dispatch] = useReducer(reducer, initialState);
-dispatch({ type: 'INCREMENT' });
+const initialState = { count: 0, loading: false };
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'INCREMENT': return { ...state, count: state.count + 1 };
+    case 'SET_LOADING': return { ...state, loading: action.payload };
+    default: throw new Error(`Unknown action: ${action.type}`);
+  }
+}
+
+function Counter() {
+  const [state, dispatch] = useReducer(reducer, initialState);
+  return (
+    <button onClick={() => dispatch({ type: 'INCREMENT' })}>
+      {state.count}
+    </button>
+  );
+}
 ```
 
-適合：有多個子值的狀態、下一個狀態依賴前一個、狀態轉換邏輯複雜。
+**使用時機：** 狀態有多個子值、下一個狀態依賴前一個狀態、狀態轉換複雜時。
 
 ---
 
-### 43. `useRef` Hook 的兩種用途？ `[中級]`
+### 43. 什麼是 `useRef` Hook？`[中級]`
 
-1. 直接存取 DOM 元素（如 `inputRef.current.focus()`）
-2. 儲存不需觸發重新渲染的可變值（如渲染計數器）
+**答：**
+`useRef` 回傳一個可變的 ref 物件，其 `.current` 屬性在元件的整個生命週期中持久存在。改變它**不會**觸發重新渲染。
+
+**兩種使用情境：**
+
+1. 直接存取 DOM 元素：
+```javascript
+const inputRef = useRef(null);
+<input ref={inputRef} />
+// 命令式：inputRef.current.focus()
+```
+
+2. 儲存不應造成重新渲染的可變值：
+```javascript
+const renderCount = useRef(0);
+renderCount.current++; // 不會重新渲染
+```
 
 ---
 
-### 44. 什麼是自訂 Hook？如何建立？ `[中級]`
+### 44. 什麼是自訂 Hook，如何建立？`[中級]`
 
-以 `use` 開頭、可呼叫其他 Hook 的函式，用於提取可重用的狀態邏輯：
+**答：**
+自訂 Hook 是以 `use` 開頭並可呼叫其他 Hook 的函式。它們提取可重複使用的狀態邏輯：
 
 ```javascript
 function useFetch(url) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  useEffect(() => { /* fetch logic */ }, [url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(url)
+      .then(res => res.json())
+      .then(data => { if (!cancelled) setData(data); })
+      .catch(err => { if (!cancelled) setError(err); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [url]);
+
   return { data, loading, error };
 }
 ```
 
 ---
 
-### 45. React `Suspense` 是什麼？ `[高級]`
+### 45. 什麼是 React 的 `Suspense`？`[高級]`
 
-讓元件在「等待某事」時顯示後備 UI（fallback）。用於程式碼分割（`React.lazy`）和資料取得。React 18+ 支援 Streaming SSR，元件資料就緒後逐步渲染。
+**答：**
+`Suspense` 允許元件在渲染之前「等待」某些事情，同時顯示備用 UI：
+
+```jsx
+// 程式碼分割
+<Suspense fallback={<Spinner />}>
+  <LazyComponent />
+</Suspense>
+
+// 資料取得（搭配 Next.js、Relay 等框架）
+<Suspense fallback={<Skeleton />}>
+  <UserProfile userId={id} /> {/* 內部拋出 Promise */}
+</Suspense>
+```
+
+**如何運作：** 元件透過拋出一個 Promise 來「暫停」。React 捕獲它，顯示備用 UI，並在 Promise 解析後重新渲染元件。
+
+**React 18+ 新增：** 使用 `Suspense` 的串流式 SSR——元件在資料載入時逐步渲染。
 
 ---
 
 ## TypeScript（10 題）
 
-### 46. `interface` 和 `type` 的差別？ `[中級]`
+### 46. TypeScript 中的 `interface` 和 `type` 有什麼差別？`[中級]`
 
-**主要差異：**
-- `interface` 支援宣告合併（declaration merging），適合公開 API 型別
-- `type` 支援聯合型別、交叉型別、計算屬性、原始型別別名
-- **建議：** 公開 API 用 `interface`，其他用 `type`
+**答：**
+兩者都定義形狀，但有關鍵差異：
+
+| 功能 | `interface` | `type` |
+|------|-------------|--------|
+| 宣告合併 | ✅ | ❌ |
+| 繼承 | `extends` 關鍵字 | 交叉型別 `&` |
+| 實作 | ✅ | ✅ |
+| 聯合型別 | ❌ | ✅ |
+| 計算屬性 | ❌ | ✅ |
+| 基本型別別名 | ❌ | ✅ |
+
+**準則：** 公開 API 形狀使用 `interface`（允許擴充）。其他所有情況使用 `type`。
 
 ---
 
-### 47. TypeScript 泛型（Generics）是什麼？ `[中級]`
+### 47. 什麼是 TypeScript 的泛型（Generics）？`[中級]`
+
+**答：**
+泛型允許你編寫可與多種型別搭配使用的可重複使用程式碼，同時保持型別安全：
 
 ```typescript
-function identity<T>(arg: T): T { return arg; }
+function identity<T>(arg: T): T {
+  return arg;
+}
 
-// 帶約束
+identity<string>('hello'); // T = string
+identity(42);              // T 推斷為 number
+
+// 有約束的泛型
 function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
   return obj[key];
 }
-```
 
-讓程式碼在保持型別安全的前提下能處理多種型別。
+// 泛型類別
+class Stack<T> {
+  private items: T[] = [];
+  push(item: T): void { this.items.push(item); }
+  pop(): T | undefined { return this.items.pop(); }
+}
+```
 
 ---
 
-### 48. TypeScript 的 `keyof` 和 `typeof`？ `[中級]`
+### 48. TypeScript 中的 `keyof` 和 `typeof` 是什麼？`[中級]`
+
+**答：**
+- `keyof T` — 建立 `T` 所有鍵的聯合型別
+- `typeof x` — 取得 `x` 的 TypeScript 型別（在型別位置使用）
 
 ```typescript
-type UserKey = keyof User;        // 'id' | 'name' | 'email'
-type Config = typeof configObj;   // 從值推導型別
+interface User { id: number; name: string; email: string; }
+type UserKey = keyof User; // 'id' | 'name' | 'email'
+
+const config = { port: 3000, host: 'localhost' };
+type Config = typeof config; // { port: number; host: string }
+
+// 組合使用
+function pick<T, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
+  return keys.reduce((acc, key) => ({ ...acc, [key]: obj[key] }), {} as Pick<T, K>);
+}
 ```
 
 ---
 
-### 49. TypeScript 的工具型別（Utility Types）？ `[中級]`
+### 49. TypeScript 中的工具型別（Utility Types）是什麼？`[中級]`
+
+**答：**
+內建的泛型型別，用於轉換其他型別：
 
 ```typescript
-Partial<T>       // 全部可選
-Required<T>      // 全部必填
-Readonly<T>      // 全部唯讀
-Pick<T, 'a'|'b'> // 挑選屬性
-Omit<T, 'c'>     // 排除屬性
-Record<K, V>     // 鍵值對型別
-ReturnType<typeof fn>  // 函式回傳值型別
+interface User { id: number; name: string; email: string; age?: number; }
+
+Partial<User>        // 所有屬性變為可選
+Required<User>       // 所有屬性變為必填
+Readonly<User>       // 所有屬性變為唯讀
+Pick<User, 'id' | 'name'>   // { id: number; name: string }
+Omit<User, 'age'>           // User 去掉 'age'
+Record<string, User>        // { [key: string]: User }
+Exclude<'a' | 'b' | 'c', 'b'> // 'a' | 'c'
+Extract<'a' | 'b', 'a' | 'd'>  // 'a'
+NonNullable<string | null | undefined> // string
+ReturnType<typeof fn>  // 函式的回傳型別
 ```
 
 ---
 
-### 50. 什麼是判別聯合（Discriminated Union）？ `[高級]`
+### 50. 什麼是可辨識聯合（Discriminated Union）？`[高級]`
 
-有共同字面量屬性（判別子）的聯合型別，TypeScript 利用它做型別收窄：
+**答：**
+可辨識聯合是一種聯合型別，具有共同的字面型別屬性（辨識符），TypeScript 用它來進行型別縮窄：
 
 ```typescript
 type Shape =
   | { kind: 'circle'; radius: number }
-  | { kind: 'square'; side: number };
+  | { kind: 'square'; side: number }
+  | { kind: 'rectangle'; width: number; height: number };
 
-function area(s: Shape) {
-  switch (s.kind) {
-    case 'circle': return Math.PI * s.radius ** 2;
-    case 'square': return s.side ** 2;
+function area(shape: Shape): number {
+  switch (shape.kind) {
+    case 'circle':    return Math.PI * shape.radius ** 2;
+    case 'square':    return shape.side ** 2;
+    case 'rectangle': return shape.width * shape.height;
+    // 若未處理所有情況，TypeScript 會發出警告
   }
 }
 ```
 
----
-
-### 51. TypeScript 的型別收窄（Type Narrowing）？ `[中級]`
-
-透過 `typeof`、`instanceof`、`in`、等值比較、型別謂語（`x is T`）等縮小型別範圍。TypeScript 的控制流分析會自動追蹤型別變化。
+**使用情境：** 建模狀態機、具有不同 payload 形狀的 API 回應、Reducer 中的 action 型別。
 
 ---
 
-### 52. `unknown` 和 `any` 的差別？ `[中級]`
+### 51. 什麼是 TypeScript 的型別縮窄（Type Narrowing）？`[中級]`
 
-- `any`：完全停用型別檢查，操作不受限制。**避免使用。**
-- `unknown`：型別安全的替代品，操作前必須先收窄型別。
+**答：**
+TypeScript 根據控制流分析縮窄型別：
 
-對不信任的資料來源（API 回應、`JSON.parse`、使用者輸入）使用 `unknown`。
+```typescript
+function process(input: string | number | null) {
+  if (input === null) {
+    return; // input 在這裡是 null
+  }
+  if (typeof input === 'string') {
+    input.toUpperCase(); // input 在這裡是 string
+  } else {
+    input.toFixed(2); // input 在這裡是 number
+  }
+}
+
+// 自訂型別守衛
+function isUser(x: unknown): x is User {
+  return typeof x === 'object' && x !== null && 'id' in x;
+}
+```
+
+**縮窄機制：** `typeof`、`instanceof`、`in`、等號比較、型別謂詞（`x is T`）、斷言函式。
 
 ---
 
-### 53. TypeScript 的條件型別（Conditional Types）？ `[高級]`
+### 52. TypeScript 中的 `unknown` 和 `any` 有什麼差別？`[中級]`
+
+**答：**
+- `any` — 完全關閉型別檢查。對 `any` 的操作不受檢查。應避免使用。
+- `unknown` — `any` 的型別安全替代。在執行操作之前必須縮窄/斷言。
+
+```typescript
+function processAny(x: any) {
+  x.foo.bar(); // 無錯誤 — TypeScript 盲目信任你
+}
+
+function processUnknown(x: unknown) {
+  x.foo.bar(); // 錯誤 — 必須先縮窄
+  if (typeof x === 'string') {
+    x.toUpperCase(); // 縮窄後 OK
+  }
+}
+```
+
+**準則：** 對來自不受信任來源的值使用 `unknown`（API 回應、`JSON.parse`、使用者輸入）。除非在遷移舊有程式碼，否則絕不使用 `any`。
+
+---
+
+### 53. 什麼是 TypeScript 的條件型別（Conditional Types）？`[高級]`
+
+**答：**
+條件型別根據條件選擇型別：
 
 ```typescript
 type IsArray<T> = T extends any[] ? true : false;
+type IsString = IsArray<string>; // false
+type IsNumbers = IsArray<number[]>; // true
 
 // infer 關鍵字
+type UnpackArray<T> = T extends (infer Item)[] ? Item : T;
+type Str = UnpackArray<string[]>; // string
+type Num = UnpackArray<number>;   // number（非陣列）
+
+// 實際應用
 type Awaited<T> = T extends Promise<infer R> ? R : T;
 type Result = Awaited<Promise<string>>; // string
 ```
 
 ---
 
-### 54. TypeScript 的宣告合併（Declaration Merging）？ `[高級]`
+### 54. 什麼是 TypeScript 的宣告合併（Declaration Merging）？`[高級]`
 
-多個同名宣告會被合併，常用於擴充第三方型別：
+**答：**
+TypeScript 將同名的多個宣告合併為一個：
 
 ```typescript
-// 擴充 Express 的 Request 型別
-declare module 'express' {
-  interface Request { user?: User; }
+// Interface 合併
+interface Window {
+  myCustomProp: string;
 }
+// 現在 window.myCustomProp 有型別（適合擴充全域）
+
+// 模組擴充
+declare module 'express' {
+  interface Request {
+    user?: User;
+  }
+}
+// 現在 req.user 在整個 Express 應用程式中都有型別
 ```
+
+**使用情境：** 擴充第三方型別、polyfill、環境特定的全域擴充。
 
 ---
 
-### 55. 如何在 TypeScript 中型別化 React 元件？ `[中級]`
+### 55. 如何在 TypeScript 中為 React 元件定義型別？`[中級]`
 
+**答：**
 ```typescript
+// 函式元件
 interface Props {
   name: string;
   age?: number;
@@ -697,11 +1173,24 @@ interface Props {
   onClick: (id: string) => void;
 }
 
-const MyComponent: React.FC<Props> = ({ name, age = 18, onClick }) => (
-  <div onClick={() => onClick(name)}>{name}</div>
-);
+const MyComponent: React.FC<Props> = ({ name, age = 18, children, onClick }) => {
+  return <div onClick={() => onClick(name)}>{children}</div>;
+};
 
-// 事件型別
-const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {};
-const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); };
+// 泛型元件
+function List<T extends { id: string }>({ items, renderItem }: {
+  items: T[];
+  renderItem: (item: T) => React.ReactNode;
+}) {
+  return <ul>{items.map(item => <li key={item.id}>{renderItem(item)}</li>)}</ul>;
+}
+
+// 事件處理
+const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  setValue(e.target.value);
+};
+
+const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+};
 ```
