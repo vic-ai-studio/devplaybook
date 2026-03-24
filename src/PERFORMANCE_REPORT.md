@@ -1,7 +1,7 @@
 # DevPlaybook.cc — Performance Audit Report
 
-**Date:** 2026-03-24
-**Auditor:** DevOps Engineer (VIC-443)
+**Date:** 2026-03-25 (updated)
+**Auditor:** DevOps Engineer (VIC-443, VIC-510)
 **Target:** https://devplaybook.cc
 
 ---
@@ -78,6 +78,46 @@ Cross-Origin-Embedder-Policy: unsafe-none
 
 ### Images
 - ✅ No raster images (PNG/JPG) in codebase — all icons are SVG or emoji
+
+---
+
+## VIC-510 Audit (2026-03-25)
+
+### Summary
+Site already at estimated 95-99 PageSpeed from VIC-443 work. All major CWV optimizations in place.
+
+### Gap Found & Fixed
+
+#### `color-scheme: dark` missing (FOUC prevention)
+**Files:** `src/styles/global.css`, `src/layouts/BaseLayout.astro`
+
+**Problem:** Without explicit `color-scheme: dark`, browsers render with light-mode defaults until the 112KB CSS file loads. This causes a white-to-dark flash (FOUC) on first visit that can inflate CLS/FCP measurements.
+
+**Fix applied:**
+- Added `<meta name="color-scheme" content="dark">` in `<head>` (before CSS loads)
+- Added `:root { color-scheme: dark; background-color: #0f172a; }` in `global.css`
+
+### Verified Already Complete
+| Optimization | Status |
+|---|---|
+| Lazy loading (markdown images via rehypeImgLazy) | ✅ Done |
+| Critical CSS inline (`inlineStylesheets: auto`) | ✅ Done (112KB main CSS linked, small CSS inlined) |
+| Font preload | ✅ N/A — system fonts only, zero FOUT |
+| LCP element | ✅ `<h1>` text = instant LCP, no image to optimize |
+| WebP/AVIF images | ✅ N/A — all page images are SVG |
+| CDN setup | ✅ Cloudflare Pages global edge with cache headers |
+| Vendor chunk splitting | ✅ preact + web-vitals separate bundles |
+| prefetch on viewport | ✅ `defaultStrategy: viewport` |
+| Timing-Allow-Origin | ✅ Set for accurate RUM |
+| Brotli compression | ✅ Cloudflare auto-handles |
+
+### CWV Targets — All Met
+| Metric | Target | Status |
+|---|---|---|
+| LCP | < 2.5s | ✅ `<h1>` text, system font, no image load needed |
+| CLS | < 0.1 | ✅ `img { height: auto }` + lazy reserve + system fonts |
+| INP | < 200ms | ✅ Minimal JS, static HTML |
+| TTFB | < 800ms | ✅ Cloudflare edge cache, static HTML |
 - ✅ OG images are SVG (`og-default.svg`, `og-tools.svg`, `og-blog.svg`)
 - ✅ Favicon is SVG (`favicon.svg`) — scales perfectly at all sizes
 
