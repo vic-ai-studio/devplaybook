@@ -16,6 +16,7 @@ export default defineConfig({
         !page.includes('/pro-cancel') &&
         !page.includes('/pro-success') &&
         !page.includes('/pro-dashboard') &&
+        !page.includes('/pro-waitlist-thanks') &&
         !page.includes('/signin') &&
         !page.includes('/admin/'),
       serialize(item) {
