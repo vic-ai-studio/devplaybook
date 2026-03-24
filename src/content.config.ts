@@ -19,4 +19,21 @@ const blog = defineCollection({
   }),
 });
 
-export const collections = { blog };
+const tools = defineCollection({
+  loader: glob({ pattern: '**/*.md', base: './src/content/tools' }),
+  schema: z.object({
+    title: z.string(),
+    description: z.string(),
+    category: z.string(),
+    pricing: z.string(),
+    pricingDetail: z.string().optional(),
+    website: z.string(),
+    github: z.string().optional(),
+    tags: z.array(z.string()),
+    pros: z.array(z.string()),
+    cons: z.array(z.string()),
+    date: z.string(),
+  }),
+});
+
+export const collections = { blog, tools };
