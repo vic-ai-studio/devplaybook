@@ -56,7 +56,55 @@ async function uuidv5(name: string, namespace: string = '6ba7b810-9dad-11d1-80b4
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
-type Version = 'v4' | 'v1' | 'v5';
+// UUID v7 — Unix timestamp-ordered (RFC 9562)
+function uuidv7(): string {
+  const ms = BigInt(Date.now());
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[0] = Number((ms >> 40n) & 0xffn);
+  bytes[1] = Number((ms >> 32n) & 0xffn);
+  bytes[2] = Number((ms >> 24n) & 0xffn);
+  bytes[3] = Number((ms >> 16n) & 0xffn);
+  bytes[4] = Number((ms >> 8n) & 0xffn);
+  bytes[5] = Number(ms & 0xffn);
+  bytes[6] = (bytes[6] & 0x0f) | 0x70; // version 7
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function extractV7Timestamp(uuid: string): Date | null {
+  const hex = uuid.replace(/-/g, '');
+  if (hex.length !== 32) return null;
+  if (parseInt(hex[12], 16) !== 7) return null;
+  const ms = parseInt(hex.slice(0, 12), 16);
+  return new Date(ms);
+}
+
+// ULID — Universally Unique Lexicographically Sortable Identifier
+const ULID_CHARS = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+function generateULID(): string {
+  const ms = Date.now();
+  const rnd = new Uint8Array(10);
+  crypto.getRandomValues(rnd);
+  let randomBits = rnd.reduce((acc, b) => (acc << 8n) | BigInt(b), 0n);
+  const timeChars = new Array(10);
+  let t = ms;
+  for (let i = 9; i >= 0; i--) { timeChars[i] = ULID_CHARS[t % 32]; t = Math.floor(t / 32); }
+  const randChars = new Array(16);
+  for (let i = 15; i >= 0; i--) { randChars[i] = ULID_CHARS[Number(randomBits % 32n)]; randomBits >>= 5n; }
+  return timeChars.join('') + randChars.join('');
+}
+
+// Nanoid — URL-safe random ID (21 chars, same collision probability as UUID v4)
+const NANOID_ALPHABET = 'useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict';
+function generateNanoid(size = 21): string {
+  const bytes = new Uint8Array(size);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => NANOID_ALPHABET[b & 63]).join('');
+}
+
+type Version = 'v4' | 'v1' | 'v5' | 'v7' | 'ulid' | 'nanoid';
 type Format = 'standard' | 'uppercase' | 'no-hyphens' | 'braces';
 
 function applyFormat(uuid: string, fmt: Format): string {
@@ -102,6 +150,11 @@ function ShareButton() {
 }
 
 const VERSION_INFO: Record<Version, { label: string; desc: string; pattern: string }> = {
+  v7: {
+    label: 'v7 — Sortable (RFC 9562)',
+    desc: 'Timestamp-first UUID. Lexicographically sortable by creation time. Recommended for new projects.',
+    pattern: 'tttttttt-tttt-7xxx-yxxx-xxxxxxxxxxxx',
+  },
   v4: {
     label: 'v4 — Random',
     desc: 'Cryptographically random. Best for most use cases.',
@@ -117,18 +170,30 @@ const VERSION_INFO: Record<Version, { label: string; desc: string; pattern: stri
     desc: 'Deterministic: same name always produces the same UUID.',
     pattern: 'xxxxxxxx-xxxx-5xxx-yxxx-xxxxxxxxxxxx',
   },
+  ulid: {
+    label: 'ULID',
+    desc: 'Lexicographically sortable. Encodes ms-precision timestamp in first 10 chars. No hyphens.',
+    pattern: 'TTTTTTTTTTXXXXXXXXXXXXXXXX',
+  },
+  nanoid: {
+    label: 'Nanoid',
+    desc: 'URL-safe, 21-char random ID. Same collision probability as UUID v4 but shorter.',
+    pattern: 'V1StGXR8_Z5jdHi6B-myT',
+  },
 };
 
 export default function UuidGenerator() {
-  const [uuids, setUuids] = useState<string[]>(() => [uuidv4()]);
+  const [uuids, setUuids] = useState<string[]>(() => [uuidv7()]);
   const [format, setFormat] = useState<Format>('standard');
   const [count, setCount] = useState(1);
-  const [version, setVersion] = useState<Version>('v4');
+  const [version, setVersion] = useState<Version>('v7');
   const [v5Name, setV5Name] = useState('example.com');
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [allCopied, setAllCopied] = useState(false);
   const [pro, setPro] = useState(false);
   const [showProBanner, setShowProBanner] = useState(false);
+  const [v7ExtractInput, setV7ExtractInput] = useState('');
+  const [v7Extracted, setV7Extracted] = useState<Date | null | 'invalid'>('invalid');
 
   useEffect(() => {
     setPro(isProUser());
@@ -143,10 +208,16 @@ export default function UuidGenerator() {
     } else {
       setShowProBanner(false);
     }
-    if (version === 'v4') {
+    if (version === 'v7') {
+      const results: string[] = [];
+      for (let i = 0; i < n; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 1));
+        results.push(uuidv7());
+      }
+      setUuids(results);
+    } else if (version === 'v4') {
       setUuids(Array.from({ length: n }, () => uuidv4()));
     } else if (version === 'v1') {
-      // Slight delay between v1 UUIDs so timestamps differ
       const results: string[] = [];
       for (let i = 0; i < n; i++) {
         await new Promise(r => setTimeout(r, 1));
@@ -154,13 +225,21 @@ export default function UuidGenerator() {
       }
       setUuids(results);
     } else if (version === 'v5') {
-      // v5 with incrementing names for bulk: name, name-2, name-3...
       const results: string[] = [];
       for (let i = 0; i < n; i++) {
         const name = n === 1 ? v5Name : `${v5Name}${i > 0 ? `-${i + 1}` : ''}`;
         results.push(await uuidv5(name));
       }
       setUuids(results);
+    } else if (version === 'ulid') {
+      const results: string[] = [];
+      for (let i = 0; i < n; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 1));
+        results.push(generateULID());
+      }
+      setUuids(results);
+    } else if (version === 'nanoid') {
+      setUuids(Array.from({ length: n }, () => generateNanoid()));
     }
   }, [count, version, v5Name, pro, effectiveCount]);
 
@@ -311,7 +390,7 @@ export default function UuidGenerator() {
 
       {/* Copy all + count header */}
       <div class="flex items-center justify-between">
-        <span class="text-sm text-gray-400">{uuids.length} UUID{uuids.length > 1 ? 's' : ''} generated</span>
+        <span class="text-sm text-gray-400">{uuids.length} {version === 'ulid' ? 'ULID' : version === 'nanoid' ? 'Nanoid' : 'UUID'}{uuids.length > 1 ? 's' : ''} generated</span>
         <button onClick={copyAll}
           class="text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-1.5 rounded-lg transition-colors font-medium">
           {allCopied ? '✓ All Copied!' : `Copy All (${uuids.length})`}
@@ -334,13 +413,59 @@ export default function UuidGenerator() {
         ))}
       </div>
 
+      {/* v7 timestamp extractor */}
+      {version === 'v7' && (
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-4 space-y-3">
+          <p class="text-sm font-medium text-gray-300">Extract Timestamp from UUID v7</p>
+          <div class="flex gap-2">
+            <input
+              type="text"
+              value={v7ExtractInput}
+              onInput={e => {
+                const val = (e.target as HTMLInputElement).value.trim();
+                setV7ExtractInput(val);
+                if (!val) { setV7Extracted('invalid'); return; }
+                const ts = extractV7Timestamp(val);
+                setV7Extracted(ts);
+              }}
+              placeholder="Paste a UUID v7 to extract its timestamp..."
+              class="flex-1 bg-gray-800 text-gray-100 border border-gray-700 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-indigo-500"
+            />
+            {uuids[0] && (
+              <button onClick={() => {
+                setV7ExtractInput(uuids[0]);
+                setV7Extracted(extractV7Timestamp(uuids[0]));
+              }} class="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-md transition-colors whitespace-nowrap">
+                Use first
+              </button>
+            )}
+          </div>
+          {v7ExtractInput && (
+            <div class="text-sm">
+              {v7Extracted instanceof Date ? (
+                <div class="space-y-1 text-xs">
+                  <p><span class="text-gray-400">ISO 8601:</span> <code class="text-green-300">{v7Extracted.toISOString()}</code></p>
+                  <p><span class="text-gray-400">Local time:</span> <code class="text-green-300">{v7Extracted.toLocaleString()}</code></p>
+                  <p><span class="text-gray-400">Unix ms:</span> <code class="text-green-300">{v7Extracted.getTime()}</code></p>
+                </div>
+              ) : (
+                <p class="text-red-400 text-xs">Not a valid UUID v7</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Info box */}
       <div class="bg-gray-900/50 rounded-lg border border-gray-800 p-4 text-sm text-gray-400 space-y-2">
-        <p class="font-medium text-gray-300">UUID Version Guide</p>
+        <p class="font-medium text-gray-300">ID Format Guide</p>
         <div class="space-y-1 text-xs">
+          <p><span class="text-indigo-400 font-medium">v7 (Sortable)</span> — Timestamp-first UUID per RFC 9562. Lexicographically sortable. Best for database primary keys.</p>
           <p><span class="text-indigo-400 font-medium">v4 (Random)</span> — Best for most use cases. Uses CSPRNG. Pattern: <code class="text-gray-500">xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx</code></p>
           <p><span class="text-indigo-400 font-medium">v1 (Time-based)</span> — Encodes creation timestamp. Useful when ordering by creation time matters.</p>
           <p><span class="text-indigo-400 font-medium">v5 (Name-based)</span> — SHA-1 hash of a name. Deterministic: same input = same UUID, every time.</p>
+          <p><span class="text-indigo-400 font-medium">ULID</span> — 26-char Crockford Base32. Millisecond-sortable. No hyphens. URL-safe.</p>
+          <p><span class="text-indigo-400 font-medium">Nanoid</span> — 21-char URL-safe random ID. Shorter than UUID v4 with equivalent collision resistance.</p>
         </div>
         {!pro && (
           <p class="text-xs text-gray-500 border-t border-gray-800 pt-2 mt-2">

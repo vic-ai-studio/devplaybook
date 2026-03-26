@@ -20,9 +20,13 @@ function computeLCS(a: string[], b: string[]): number[][] {
   return dp;
 }
 
-function computeDiff(original: string, modified: string): DiffLine[] {
-  const left  = original.split('\n');
-  const right = modified.split('\n');
+function normalizeWhitespace(text: string): string {
+  return text.split('\n').map(line => line.replace(/\s+/g, ' ').trim()).join('\n');
+}
+
+function computeDiff(original: string, modified: string, ignoreWhitespace = false): DiffLine[] {
+  const left  = (ignoreWhitespace ? normalizeWhitespace(original) : original).split('\n');
+  const right = (ignoreWhitespace ? normalizeWhitespace(modified) : modified).split('\n');
   const dp    = computeLCS(left, right);
 
   const result: DiffLine[] = [];
@@ -75,8 +79,9 @@ export default function TextDiff() {
   const [modified, setModified] = useState(SAMPLE_MODIFIED);
   const [copied, setCopied]     = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'unified'>('split');
+  const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
 
-  const diffLines = useMemo(() => computeDiff(original, modified), [original, modified]);
+  const diffLines = useMemo(() => computeDiff(original, modified, ignoreWhitespace), [original, modified, ignoreWhitespace]);
 
   const stats = useMemo(() => {
     let added = 0, removed = 0, unchanged = 0;
@@ -159,7 +164,16 @@ export default function TextDiff() {
           <span class="w-3 h-3 rounded-sm bg-border inline-block"></span>
           <span class="text-sm"><span class="font-semibold">{stats.unchanged}</span> <span class="text-text-muted">unchanged</span></span>
         </div>
-        <div class="ml-auto">
+        <div class="ml-auto flex items-center gap-3">
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-text-muted select-none">
+            <input
+              type="checkbox"
+              checked={ignoreWhitespace}
+              onChange={e => setIgnoreWhitespace((e.target as HTMLInputElement).checked)}
+              class="w-3.5 h-3.5 accent-primary cursor-pointer"
+            />
+            Ignore whitespace
+          </label>
           <button
             onClick={copyDiff}
             class="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:opacity-90 transition-opacity"
