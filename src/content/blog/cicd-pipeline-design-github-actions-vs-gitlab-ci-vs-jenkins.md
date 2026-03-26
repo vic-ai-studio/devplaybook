@@ -1,145 +1,153 @@
 ---
 title: "CI/CD Pipeline Design: GitHub Actions vs GitLab CI vs Jenkins in 2026"
-description: "Compare GitHub Actions, GitLab CI, and Jenkins for CI/CD pipeline design in 2026. Learn features, pricing, migration paths, and which tool fits your team."
+description: "A practical comparison of GitHub Actions vs GitLab CI vs Jenkins for modern dev teams. Covers YAML pipelines, DAG-based workflows, self-hosted options, market share, and migration paths."
 date: "2026-03-26"
 author: "DevPlaybook Team"
 tags: ["ci-cd", "github-actions", "gitlab-ci", "jenkins", "devops", "pipeline"]
 readingTime: "18 min read"
 ---
 
-# CI/CD Pipeline Design: GitHub Actions vs GitLab CI vs Jenkins in 2026
+## Why the CI/CD Tool Matters More Than Ever in 2026
 
-**Choosing the right CI/CD tool is one of the most consequential infrastructure decisions a development team can make.** The CI/CD pipeline is where your code goes to be validated, built, tested, and shipped — meaning a poorly designed or ill-fitting pipeline introduces friction into every single commit. A slow, brittle pipeline demoralizes developers. A missing integration stalls deployment. A vendor lock-in traps your team.
+The CI/CD tool you choose is no longer just a tactical decision — it's a strategic one. As teams scale microservices, adopt containerized workloads, and ship multiple times per day, the pipeline becomes the backbone of your delivery infrastructure. A poorly designed pipeline means slower feedback loops, brittle deployments, and engineering hours wasted fighting tooling instead of building software.
 
-In 2026, three tools dominate the CI/CD landscape: **GitHub Actions**, **GitLab CI**, and **Jenkins**. Each has a distinct philosophy, a different delivery model, and a community with passionate opinions. This guide breaks down every dimension that matters — from architecture and syntax to pricing, ecosystem, and real-world adoption data — so you can design (or migrate) your CI/CD pipeline with confidence.
+The numbers tell the story. The global CI/CD tools market was valued at **USD 2.09 billion in 2026** and is growing at a **20.72% CAGR**, projected to reach USD 5.36 billion by 2031 ([Mordor Intelligence, January 2026](https://www.mordorintelligence.com/industry-reports/continuous-integration-tools-market)). That's not a niche — that's critical infrastructure for the entire software industry.
 
-> **Source fact:** According to JetBrains' State of CI/CD 2025 survey, GitHub Actions, Jenkins, and GitLab CI are the top three CI/CD tools in both personal and organizational use. ([JetBrains, October 2025](https://blog.jetbrains.com/teamcity/2025/10/the-state-of-cicd/))
+What changed in the last 24 months? Three forces reshaped the landscape: **GitHub Actions crossed 5 million daily workflow executions** ([CoinLaw, February 2026](https://coinlaw.io/github-statistics/)), **GitLab grew to over 40,000 companies** using it as a source code management tool ([6sense, 2026](https://6sense.com/tech/sourcecode-management/gitlab-market-share)), and **Jenkins Pipeline usage surged 79%** from 2021 to 2023 even as newer tools gained ground ([CD Foundation, August 2023](https://cd.foundation/announcement/2023/08/29/jenkins-project-growth/)). Meanwhile, teams that once committed exclusively to Jenkins are now running hybrid setups — legacy pipelines coexisting with GitHub Actions or GitLab CI for months or even years during migration ([JetBrains State of CI/CD Survey, October 2025](https://blog.jetbrains.com/teamcity/2025/10/the-state-of-cicd/)).
 
----
-
-## Why the CI/CD Tool Matters More Than Ever
-
-Software delivery has compressed dramatically. Teams that shipped weekly a decade ago now deploy multiple times a day. This shift — accelerated by DevOps culture, containerization, and cloud-native architectures — places enormous pressure on CI/CD pipelines. They're no longer "nice to have" build scripts; they're the backbone of how software gets from a developer's IDE to production.
-
-A well-designed CI/CD pipeline delivers four compounding benefits:
-
-1. **Faster feedback** — Developers know within minutes if their changes broke something.
-2. **Higher confidence** — Automated testing catches regressions before they reach users.
-3. **Reduced toil** — Engineers spend less time on manual builds and more time writing features.
-4. **Better observability** — Every deployment is traceable, auditable, and reversible.
-
-But not all pipelines deliver equally. The tool you choose shapes how easily you can achieve these benefits. A pipeline that's a joy to work with accelerates a team; one that's cumbersome becomes an obstacle that engineers route around (or complain about constantly).
-
-> **Source fact:** Fast feedback loops are a core principle of effective CI/CD pipeline design, directly impacting developer productivity and code quality. ([Wonderment Apps, November 2025](https://www.wondermentapps.com/blog/ci-cd-pipeline-best-practices/))
+This article is a practical, engineer-first comparison of the three dominant CI/CD platforms: **GitHub Actions**, **GitLab CI**, and **Jenkins**. We'll cover pipeline architecture, code reuse, self-hosted options, the plugin ecosystem, pricing, and concrete migration paths — so you can make an informed decision or plan your next migration with confidence.
 
 ---
 
-## GitHub Actions: The Platform-Native Powerhouse
+## GitHub Actions: The YAML-First Cloud-Native Standard
 
-**GitHub Actions** is GitHub's native CI/CD and automation platform, integrated directly into the world's largest code hosting platform. If your code lives on GitHub, Actions is the path of least resistance.
+### Overview
 
-### How It Works
+GitHub Actions, launched in 2019, has grown into the dominant cloud-hosted CI/CD platform. In 2026, it surpassed **5 million daily workflow executions**, representing a **40% year-over-year increase** ([CoinLaw, February 2026](https://coinlaw.io/github-statistics/)). With over **22,000 marketplace actions** available, the ecosystem has effectively removed most of the barriers that once pushed teams toward self-managed solutions ([Tech Insider, March 2026](https://tech-insider.org/github-actions-ci-cd-pipeline-tutorial-2026/)).
 
-GitHub Actions uses **YAML-based workflow files** stored in `.github/workflows/` at the root of your repository. Each workflow is composed of **jobs**, **steps**, and **actions** — where actions are the reusable units that third-party developers and companies publish to the GitHub Marketplace.
+### Pipeline Architecture: YAML, Jobs, Steps
 
-A minimal GitHub Actions workflow looks like this:
+GitHub Actions pipelines are defined entirely in YAML via `.github/workflows/` files. Every workflow consists of **triggers** (events that start the pipeline), **jobs** (units of work that run in parallel or sequence), and **steps** (individual commands or actions within a job).
 
 ```yaml
-name: CI Pipeline
+name: Node.js CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install dependencies
-        run: npm ci
-      - name: Run tests
-        run: npm test
+      - run: npm ci
+      - run: npm test
 ```
 
-The `on: [push, pull_request]` trigger means this workflow fires on every push and pull request. No external configuration server needed — everything lives alongside your code.
+The YAML-first approach means pipeline-as-code is readable by any developer, version-controlled alongside application code, and reviewable through standard pull requests.
 
-### Key Features
+### Matrix Builds: Parallelism at Scale
 
-#### GitHub Marketplace
-
-The [GitHub Marketplace](https://github.com/marketplace?category=continuous-integration) is a curated gallery of actions contributed by vendors and the open-source community. Need to deploy to AWS? There's an action for that. Need to send a Slack notification? There's an action for that too. The marketplace dramatically reduces boilerplate, though quality varies — always check an action's maintenance status and download count before adopting it.
-
-#### Matrix Builds
-
-Matrix builds let you test across multiple configurations in a single workflow definition. Instead of writing separate jobs for Node 18, 20, and 22, you declare them declaratively:
+One of GitHub Actions' most powerful features is **matrix strategy**, which lets you test across multiple combinations of OS, Node version, or runtime with a single job definition:
 
 ```yaml
-strategy:
-  matrix:
-    node-version: ['18', '20', '22']
-    os: [ubuntu-latest, windows-latest]
-steps:
-  - name: Use Node.js ${{ matrix.node-version }}
-    uses: actions/setup-node@v4
-    with:
-      node-version: ${{ matrix.node-version }}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+        operating-system: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - run: npm test
 ```
 
-GitHub automatically generates every combination — 6 jobs in this example — and runs them in parallel.
+This expands to 6 parallel jobs (3 Node versions × 2 OSes) from 15 lines of YAML — a pattern that would require extensive boilerplate in most other tools.
 
-#### Reusable Workflows
+### Reusable Workflows
 
-Reusable workflows (`workflow_call` trigger) let you define a pipeline once in a dedicated repository and consume it across dozens of other repositories. This is especially powerful for platform teams that need to enforce consistent build standards across an entire organization without copy-pasting YAML across 50 repos.
+Introduced in 2021 and significantly enhanced since, **reusable workflows** let you define a workflow in one repository and call it from others. This is a game-changer for organizations with multiple teams:
 
-#### Concurrency Controls
+```yaml
+# .github/workflows/reusable-deploy.yml
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+    secrets:
+      deploy-token:
+        required: true
 
-Built-in concurrency groups ensure that redundant workflow runs get canceled when new commits land on the same branch, preventing wasted compute and confusing status checks.
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - run: deploy.sh
+        env:
+          TOKEN: ${{ secrets.deploy-token }}
+```
 
-### Pricing
+Teams call it with a single `uses:` statement. This dramatically reduces duplication and enforces standardization across hundreds of repositories.
 
-GitHub Actions pricing is based on **minutes consumed**:
+### GitHub Marketplace
 
-| Plan | Minutes per month | Additional minutes |
-|------|-------------------|-------------------|
-| Free (public repos) | 2,000 | N/A |
-| Free (private repos) | 2,000 | $0.008 / minute |
-| Pro | 3,000 | $0.008 / minute |
-| Team | 3,000 | $0.008 / minute |
-| Enterprise | 50,000 | Negotiated |
+The **Marketplace** is where Actions shines. With 22,000+ actions covering every conceivable task — from Docker build/push to Terraform deployment, from Slack notifications to AWS credential management — you rarely need to write raw shell steps. Popular actions include:
 
-For open-source projects, GitHub Actions is effectively free. For startups and mid-market companies with large build fleets, the per-minute cost can add up — but the operational simplicity often offsets it.
+- `actions/checkout@v4` — Code checkout
+- `aws-actions/configure-aws-credentials` — AWS auth
+- `docker/build-push-action` — Container image builds
+- `hashicorp/setup-terraform` — Terraform CLI
 
-> **Source fact:** Daily GitHub Actions workflows climbed to over **5 million** in 2026, compared to 4 million the prior year, with monthly workflow runs exceeding **6 billion**. ([CoinLaw / ElectroIQ, 2025-2026](https://coinlaw.io/github-statistics/))
+For teams that can't find what they need, custom actions can be written as Docker containers, JavaScript packages, or composite shell scripts.
 
-### Strengths and Weaknesses
+### Self-Hosted Runners
 
-**Strengths:**
+GitHub provides **GitHub-hosted runners** (Ubuntu, Windows, macOS) out of the box. For teams needing custom hardware, GPU access, or on-premises compliance, **self-hosted runners** can be added at the repository, organization, or enterprise level. These run as a daemon that connects to GitHub — no firewall holes required on GitHub's side.
 
-- Tight GitHub integration — no separate UI, everything in the same place as your code
-- Massive marketplace with thousands of pre-built actions
-- Free for open source; simple pricing model
-- Strong security features: secrets management, environment protection rules, OIDC-based token federation
-- Matrix builds and reusable workflows reduce boilerplate significantly
+### Pricing in 2026
 
-**Weaknesses:**
+GitHub introduced a **$0.002 per-minute platform charge** for all Actions workflows effective January 1, 2026, in addition to runner compute costs ([GitHub Resources, 2026](https://resources.github.com/actions/2026-pricing-changes-for-github-actions/)). For open-source projects, GitHub continues to offer free minutes on public repositories. For private repos, the free tier includes 2,000 minutes/month, with paid plans scaling from there.
 
-- **GitHub-only** — if your code lives on GitLab or Bitbucket, it's a poor fit
-- Minutes-based pricing can become expensive at scale without careful optimization
-- Parallelization, while good, has limits on the free tier
-- YAML-only configuration (no GUI pipeline editor), which can be intimidating for beginners
+### Strengths
+
+- **Fastest time-to-value** for GitHub-hosted projects — zero infrastructure to manage
+- **Massive marketplace ecosystem** reduces custom scripting
+- **Matrix builds** make cross-platform testing trivial
+- **Reusable workflows** enforce org-wide standards
+- **Tight GitHub integration** — PR checks, deployment environments, and security alerts are native
+
+### Weaknesses
+
+- **YAML-only** — no code-based alternative for complex logic (though composite actions help)
+- **Limited debugging** compared to Jenkins' scripting power
+- **GitHub dependency** — not suitable if your code lives on GitLab or Bitbucket
+- **Cold start latency** on GitHub-hosted runners can add 30–60 seconds to pipeline startup
 
 ---
 
-## GitLab CI: The All-in-One DevOps Platform
+## GitLab CI: The GitLab-Native DevOps Platform
 
-**GitLab CI** is the continuous integration and deployment component of [GitLab](https://about.gitlab.com/), a single application that covers the entire DevOps lifecycle — from issue tracking and source code management to security scanning, container registry, and monitoring. If you want a unified platform rather than a best-of-breed toolstack, GitLab is compelling.
+### Overview
 
-### How It Works
+GitLab CI is built directly into GitLab, meaning CI/CD is available the moment you create a project — no separate plugin installation, no external service to authenticate against. This tight integration has driven significant adoption: over **40,000 companies** now use GitLab as their source code management tool ([6sense, 2026](https://6sense.com/tech/sourcecode-management/gitlab-market-share)). GitLab's subscription revenue grew to **US$369 million** in 2023, up 63% year-over-year, reflecting strong enterprise demand for its all-in-one platform ([ElectroIQ, July 2025](https://electroiq.com/stats/gitlab-statistics/)).
 
-GitLab CI uses a `.gitlab-ci.yml` file at the repository root. The pipeline model is built around **stages** (ordered groups of jobs) and **jobs** (individual units of work). Jobs within the same stage run in parallel; stages run sequentially.
+### Pipeline Architecture: The `.gitlab-ci.yml`
+
+GitLab CI also uses YAML (`.gitlab-ci.yml`), but its pipeline model has fundamentally different semantics from GitHub Actions. The most critical distinction: **GitLab CI is a Directed Acyclic Graph (DAG)** — jobs declare their dependencies, and GitLab automatically schedules them as soon as their inputs are ready, maximizing parallelism.
 
 ```yaml
 stages:
@@ -147,124 +155,110 @@ stages:
   - test
   - deploy
 
-build-app:
+build:
   stage: build
-  image: node:20
   script:
-    - npm ci
-    - npm run build
+    - echo "Building..."
   artifacts:
     paths:
       - dist/
 
-test-unit:
+test:unit:
   stage: test
-  image: node:20
   script:
-    - npm test
+    - echo "Running unit tests..."
   dependencies:
-    - build-app
+    - build
 
-deploy-production:
+test:integration:
+  stage: test
+  script:
+    - echo "Running integration tests..."
+  dependencies:
+    - build
+
+deploy:
   stage: deploy
   script:
-    - ./deploy.sh
-  only:
-    - main
+    - echo "Deploying..."
+  dependencies:
+    - test:unit
+    - test:integration
 ```
 
-### Key Features
+In this example, `build` runs first. Once it completes, both `test:unit` and `test:integration` start **in parallel** because they both only depend on `build`. The `deploy` job waits for both test jobs to finish. This DAG model is GitLab CI's most architecturally elegant feature — you never have to manually order jobs that don't need ordering.
 
-#### Directed Acyclic Graph (DAG) Pipelines
+### Auto DevOps
 
-Unlike stage-based pipelines where all jobs in a stage must complete before the next stage begins, **GitLab DAG mode** (`needs:` keyword) allows you to express fine-grained dependencies between individual jobs. This means if Job B only depends on Job A (and not the rest of the build stage), B can start as soon as A finishes — without waiting for other jobs in the same stage.
+**Auto DevOps** is GitLab's opinionated pipeline that automatically detects your language, runs builds, tests (via Code Quality and Browser Performance testing), creates Docker images, and deploys to Kubernetes — all with zero explicit pipeline configuration. For teams getting started or running standard workloads, this is a compelling "it just works" story. For production systems with complex requirements, most teams override or extend specific stages rather than relying entirely on defaults.
 
-```yaml
-deploy-component-a:
-  stage: deploy
-  needs: [build-component-a]
+### Docker Integration
 
-deploy-component-b:
-  stage: deploy
-  needs: [build-component-b]
-```
-
-This dramatically speeds up pipelines when you have independent workstreams.
-
-#### Auto DevOps
-
-[Auto DevOps](https://docs.gitlab.com/ee/topics/autodevops/) is GitLab's opinionated pipeline that detects your language, runs builds, runs tests (via predefined CI templates), runs security scans, creates a Docker container, and deploys to production — all from a single `include: auto_devops.yml` line. For teams that want a functioning pipeline in minutes rather than days, Auto DevOps is remarkably powerful.
-
-#### Docker Integration
-
-GitLab includes a **built-in container registry** (`registry.gitlab.com`) for every project and group, integrated directly into the pipeline. Building, tagging, and pushing Docker images requires no external registry configuration:
+GitLab's **Container Registry** is built into every GitLab instance (gitlab.com and self-hosted). Your pipeline builds an image, tags it, and pushes it to the same registry — all with `$CI_REGISTRY_IMAGE` and `$CI_COMMIT_SHA` variables that require zero configuration. This tight integration significantly reduces pipeline complexity for containerized workloads.
 
 ```yaml
-build-docker:
+build:
   stage: build
-  image: docker:24
+  image: docker:latest
   services:
-    - docker:24-dind
+    - docker:dind
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
 ```
 
-#### Merge Train
+### GitLab CI vs GitHub Actions: Key Differences
 
-GitLab's Merge Train feature queues merge requests and continuously deploys them to a target environment, ensuring that when one MR merges, the next one is already validated and ready — eliminating the "merge queue" problem that plagues many teams.
+| Feature | GitLab CI | GitHub Actions |
+|---|---|---|
+| Pipeline model | DAG-based, automatic scheduling | Job-based, explicit `needs` for DAG |
+| Self-hosted runners | GitLab Runner (Go, cross-platform) | Any machine with the Runner app |
+| Docker registry | Built-in per project | External (GHCR is separate product) |
+| Configuration location | `.gitlab-ci.yml` in repo | `.github/workflows/*.yml` |
+| Marketplace | "GitLab CI templates" (curated) | 22,000+ marketplace actions |
+| Auto DevOps | Yes, zero-config pipeline | No native equivalent |
+| Architecture | All-in-one: repo + CI/CD + registry + PM | Separate product (Actions), deep GitHub integration |
 
-### Pricing
+The **DAG model** is GitLab CI's architectural differentiator. In GitHub Actions, you get DAG behavior only if you explicitly declare `needs:` dependencies. In GitLab CI, it's the default — parallel jobs start as soon as their dependencies complete, without any explicit parallel keyword. This makes GitLab CI pipelines more automatically efficient, especially for large test suites.
 
-GitLab's pricing is tiered by the DevOps lifecycle features you need:
+### Strengths
 
-| Tier | Price | CI/CD | Features |
-|------|-------|-------|----------|
-| Free | $0 | Yes | 400 CI/CD minutes, 5 GB registry |
-| Premium | $19 / user / month | Yes | 10,000 minutes, full DevOps lifecycle |
-| Ultimate | $39 / user / month | Yes | Unlimited minutes, security and governance |
+- **Built-in, zero-setup** CI/CD for every project from day one
+- **True DAG scheduling** — maximum parallelism without manual job ordering
+- **All-in-one platform** — source, CI, registry, issue tracking, security in one UI
+- **Auto DevOps** for teams that want convention over configuration
+- **GitLab Runner** is open source and can run anywhere (Kubernetes, bare metal, VMs, even edge devices)
 
-> **Source fact:** GitLab's subscription revenue grew to **US$369 million** in 2023, a 63% increase year over year, driven by strong adoption of its DevOps platform. ([ElectroIQ, July 2025](https://electroiq.com/stats/gitlab-statistics/))
+### Weaknesses
 
-### Strengths and Weaknesses
-
-**Strengths:**
-
-- Single application for the entire DevOps lifecycle — no stitching together separate tools
-- Excellent Docker and Kubernetes integration out of the box
-- DAG pipelines provide fine-grained control over job dependencies
-- Auto DevOps dramatically reduces time-to-first-pipeline
-- Built-in container registry saves infrastructure cost
-- Strong compliance and governance features at Premium and Ultimate tiers
-
-**Weaknesses:**
-
-- If you're already invested in GitHub or Bitbucket, migrating to GitLab's SCM is a significant decision
-- The "everything in one platform" model means you're all-in on GitLab's ecosystem
-- CI/CD minutes quotas on Free tier are restrictive for larger teams
-- The sheer breadth of features can be overwhelming for small teams
+- **GitLab dependency** — pipeline and repo must be on GitLab
+- **YAML-only** (like GitHub Actions, no code-based alternative)
+- **Marketplace is smaller** than GitHub's — fewer pre-built actions, more custom scripting
+- **Runner management** adds operational complexity for self-hosted
 
 ---
 
-## Jenkins: The Self-Hosted Veteran
+## Jenkins: The Self-Hosted Powerhouse
 
-**Jenkins** is the open-source automation server that arguably invented CI/CD as we know it. With over 20,000 plugins and a massive installed base in enterprises worldwide, Jenkins remains a powerhouse for teams that need maximum control and flexibility.
+### Overview
 
-### How It Works
+Jenkins is the oldest, most battle-tested CI/CD tool in this comparison. First released in 2011, it remains the most widely deployed automation server in the world. A 2022 CNCF DevOps Survey found **over 50% of respondents used Jenkins** for automation and CI/CD, and Jenkins Pipeline usage grew **79% from June 2021 to June 2023** even as newer tools gained adoption ([DevOps.com, December 2023](https://devops.com/the-future-of-jenkins-in-2024/); [CD Foundation, August 2023](https://cd.foundation/announcement/2023/08/29/jenkins-project-growth/)).
 
-Jenkins runs on your own infrastructure (or in your cloud of choice). You install the Jenkins server, install plugins, configure agents (formerly "slaves"), and define pipelines — either through the web UI or as code in a `Jenkinsfile`.
+The JetBrains State of CI/CD 2025 survey confirms that Jenkins remains deeply embedded in enterprise environments: many organizations are **mid-migration**, running legacy Jenkins pipelines alongside GitHub Actions or GitLab CI, with full transitions taking months or even years ([JetBrains, October 2025](https://blog.jetbrains.com/teamcity/2025/10/the-state-of-cicd/)).
 
-Pipelines can be written in two syntaxes:
+### Jenkinsfile and Pipeline as Code
 
-1. **Declarative Pipeline** — Structured, opinionated YAML-like syntax (preferred for most teams)
-2. **Scripted Pipeline** — Groovy-based, flexible, and more powerful for complex scenarios
+Jenkins' flagship feature is the **Jenkinsfile** — a `pipeline { }` block checked into source control that defines your entire pipeline in code (not just YAML). Jenkinsfile-based pipelines come in two flavors:
 
-A minimal declarative Jenkinsfile:
+**Declarative Pipeline** (the recommended, structured approach):
 
 ```groovy
 pipeline {
     agent any
+    environment {
+        DB_HOST = credentials('db-host')
+    }
     stages {
         stage('Build') {
             steps {
@@ -277,6 +271,11 @@ pipeline {
                 echo 'Testing...'
                 sh 'npm test'
             }
+            post {
+                always {
+                    junit '**/test-results/**/*.xml'
+                }
+            }
         }
         stage('Deploy') {
             when {
@@ -284,191 +283,219 @@ pipeline {
             }
             steps {
                 echo 'Deploying...'
+                sh './deploy.sh'
             }
         }
     }
 }
 ```
 
-### Key Features
+**Scripted Pipeline** (Groovy-based, more powerful but unstructured):
 
-#### Jenkins Pipeline
+```groovy
+node {
+    stage('Build') {
+        sh 'npm ci'
+    }
+    stage('Test') {
+        sh 'npm test'
+    }
+    if (env.BRANCH_NAME == 'main') {
+        stage('Deploy') {
+            sh './deploy.sh'
+        }
+    }
+}
+```
 
-The **Pipeline plugin** (and its modern successor, **Pipeline as Code**) lets you define your build process as code in a `Jenkinsfile` committed to source control. This brings CI/CD into the same code review and version control workflows as application code.
+### The Plugin Ecosystem
 
-#### Plugin Ecosystem
+Jenkins' greatest strength is its **plugin ecosystem** — over 1,800 plugins covering virtually every tool, platform, and integration imaginable. Whether you need to:
 
-Jenkins' plugin ecosystem is its defining characteristic. The [Plugin Index](https://plugins.jenkins.io/) lists over 20,000 plugins covering:
+- Connect to AWS, Azure, GCP, Kubernetes, OpenShift
+- Integrate with SonarQube, Artifactory, Nexus
+- Send notifications to Slack, Teams, Email,PagerDuty
+- Run mobile CI for iOS/Android
+- Orchestrate mainframe or embedded system builds
 
-- Cloud providers (AWS, GCP, Azure, Kubernetes)
-- Source control systems (Git, Subversion, Mercurial)
-- Build tools (Maven, Gradle, npm, Docker)
-- Testing and quality (JUnit, Selenium, SonarQube)
-- Notifications (Slack, Email, Teams)
-- Security (Role-based access control, SSO)
-- And virtually anything else you can imagine
+...there's a Jenkins plugin for it. This ecosystem is Jenkins' moat — for enterprise teams with heterogeneous toolchains, no other platform matches Jenkins' breadth of integrations.
 
-#### Self-Hosted Control
+### Self-Hosted, Full Control
 
-Jenkins runs entirely on your own infrastructure. For organizations with strict data sovereignty requirements, regulatory constraints, or existing on-premises hardware investments, this is not a nice-to-have — it's a requirement. No code leaves your network. No third party has access to your build logs.
+Jenkins runs entirely on your infrastructure. You control the master node and any number of agents. Your builds run on your hardware, your VMs, or your Kubernetes cluster. For organizations with:
 
-#### Distributed Builds
+- **Compliance requirements** (FedRAMP, SOC 2, air-gapped environments)
+- **Special hardware needs** (GPU, large-memory, ARM, Windows-only)
+- **Cost-sensitive high-volume workloads** (Jenkins has no per-minute pricing)
 
-Jenkins' master-agent architecture lets you spin up build agents on any machine (Linux, Windows, macOS, containers) and distribute build workloads across them. You can provision agents on-demand in Kubernetes, AWS EC2, or Azure using plugin-provided cloud templates.
+...Jenkins is often the only viable option. GitHub Actions' per-minute pricing can become prohibitive at scale for compute-heavy workloads, while Jenkins' infrastructure costs are fixed (assuming you have the machines).
 
-### Pricing
+### Distributed Build Architecture
 
-Jenkins itself is **free and open source** (MIT license). Your costs are:
+Jenkins' **master-agent architecture** is mature and battle-tested. The master schedules jobs; agents run them. Agents can be:
 
-- **Infrastructure** — The servers or cloud VMs that run the Jenkins master and agents
-- **Maintenance** — Jenkins requires more operational attention than managed solutions; plan for an engineer to maintain and upgrade it
-- **Plugins** — Some commercial plugins require paid licenses
+- **Static** (permanent machines provisioned for specific roles)
+- **Dynamic** (provisioned on-demand via cloud plugins for AWS, Azure, Kubernetes, Docker)
+- **Docker containers** (agents spin up a container per build, then tear it down)
+- **Kubernetes pods** (agents run as pods in your cluster, auto-scaling with demand)
 
-For large organizations with existing infrastructure, Jenkins can be extremely cost-effective. For teams without dedicated ops resources, the hidden costs of maintenance can outweigh the sticker-price savings.
+This flexibility is unmatched — Jenkins can fit into any infrastructure topology.
 
-> **Source fact:** Jenkins Pipeline usage grew **79% from June 2021 to June 2023**, while total workloads grew by 45% during the same period, demonstrating continued enterprise demand for Jenkins' flexibility. ([CD Foundation, August 2023](https://cd.foundation/announcement/2023/08/29/jenkins-project-growth/))
+### Strengths
 
-### Strengths and Weaknesses
+- **Maximum control** — 100% self-hosted, no vendor dependency
+- **1,800+ plugins** — integrations exist for virtually every tool
+- **Scripted pipelines in Groovy** — full programmatic power for complex, conditional logic
+- **No per-minute pricing** — fixed infrastructure cost scales predictably
+- **Battle-tested maturity** — 15+ years in production across every industry
+- **Air-gap capable** — runs in fully isolated environments
 
-**Strengths:**
+### Weaknesses
 
-- **Fully self-hosted** — complete control, no vendor lock-in, data never leaves your infrastructure
-- Largest plugin ecosystem in CI/CD — if it exists, there's probably a Jenkins plugin
-- Runs on any OS (Linux, Windows, macOS), any cloud, any environment
-- Mature, battle-tested at massive scale (some organizations run tens of thousands of builds per day)
-- Both GUI-based and pipeline-as-code configuration
-- Large global community with decades of documentation and knowledge
-
-**Weaknesses:**
-
-- **Operational burden** — requires dedicated maintenance, upgrades, and security patching
-- UI can feel dated compared to modern developer tools
-- Plugin quality is inconsistent; incompatible plugins are a notorious source of instability
-- Scaling requires manual configuration of agents and cloud templates
-- No built-in container registry, source control, or issue tracking — it's a point solution
-- Configuration can become complex and fragile with large plugin sets
+- **High operational overhead** — you own all upgrades, backups, plugin compatibility
+- **Plugin dependency hell** — plugin updates can break pipelines, testing is essential
+- **Steep learning curve** — Groovy scripted pipelines require real programming knowledge
+- **No native DAG** — parallelism requires explicit `parallel` blocks or triggers
+- **UI-centric legacy patterns** — classic Jenkins UI encourages click-ops, though Blue Ocean and GitOps-style Jenkinsfile usage push back on this
 
 ---
 
 ## Feature Comparison Table
 
 | Feature | GitHub Actions | GitLab CI | Jenkins |
-|---------|---------------|-----------|---------|
-| **Delivery Model** | Cloud (SaaS) + self-hosted runners | Cloud (SaaS) + self-managed | Self-hosted only |
-| **Configuration Syntax** | YAML | YAML | Groovy (Declarative or Scripted) |
-| **Pipeline as Code** | Yes (`.github/workflows/*.yml`) | Yes (`.gitlab-ci.yml`) | Yes (`Jenkinsfile`) |
-| **Marketplace / Plugins** | GitHub Marketplace (20,000+ actions) | GitLab Plugin Registry | 20,000+ plugins |
-| **Docker Integration** | Via actions | Native (built-in registry) | Via plugins |
-| **Kubernetes Support** | Yes (actions + hosted runners) | Native (Auto DevOps, deployment) | Via plugins |
-| **Parallelism** | Matrix builds + `concurrency` | DAG pipelines + `needs:` | Via `parallel` blocks |
-| **Reusable Workflows / Templates** | Reusable workflows (`workflow_call`) | Include templates + Auto DevOps | Shared libraries |
-| **Built-in Container Registry** | No (use GHCR.io or external) | Yes (`registry.gitlab.com`) | No (plugin required) |
-| **Free Tier Minutes** | 2,000 min/month (private repos) | 400 min/month | Unlimited (self-hosted) |
-| **Enterprise Pricing** | Starts at $21/user/month (Team) | Starts at $19/user/month (Premium) | Free (open source); support contracts extra |
-| **Source Control Requirement** | GitHub only | GitLab only | Any (Git, SVN, Mercurial) |
-| **Setup Complexity** | Low | Low | High |
-| **CI/CD Minutes Quota** | Generous on paid plans | Generous on Premium/Ultimate | Unlimited (self-hosted) |
+|---|---|---|---|
+| **Pricing model** | Per-minute (free tier: 2K min/month private repos) | Included in GitLab subscription | Free (self-hosted infrastructure cost) |
+| **Pipeline definition** | YAML in `.github/workflows/` | YAML in `.gitlab-ci.yml` | Jenkinsfile (Groovy) in repo, or UI |
+| **Pipeline model** | Job-based with explicit `needs:` for DAG | Native DAG (automatic parallelism) | Job-based with `parallel` blocks |
+| **Self-hosted runners** | Self-hosted runners (any machine) | GitLab Runner (Go, cross-platform) | Master-agent architecture, highly flexible |
+| **Cloud-hosted** | GitHub-hosted (Ubuntu, Windows, macOS) | GitLab.com SaaS + self-hosted | Not applicable (100% self-hosted) |
+| **Ecosystem size** | 22,000+ marketplace actions | GitLab CI templates (~100 curated) | 1,800+ plugins |
+| **Docker integration** | `docker/build-push-action` | Built-in container registry per project | Docker plugin + Docker pipeline plugin |
+| **Auto DevOps** | No | Yes, zero-config pipeline | No (requires manual setup) |
+| **Reusable configs** | Reusable workflows (`workflow_call`) | `include:` for YAML composition | Shared libraries (Groovy) |
+| **Configuration as code** | YAML only | YAML only | Jenkinsfile (Groovy) + Configuration as Code plugin |
+| **Learning curve** | Low (YAML, GitHub-native) | Low-Medium (YAML, GitLab-native) | High (Groovy, Jenkins-specific concepts) |
+| **Setup time** | Minutes (for GitHub repos) | Minutes (for GitLab repos) | Hours to days (server setup, plugins, agents) |
+| **Enterprise SSO** | Via GitHub Enterprise ($21/user/month) | Via GitLab Premium/Ultimate | Via plugins (SSO-SAML, OAuth) |
+| **Air-gap support** | No | Yes (self-hosted) | Yes |
 
 ---
 
-## Migration Paths: Moving Between CI/CD Tools
+## Migration Paths
 
-Migrating a CI/CD pipeline is rarely a "big bang" rewrite. The JetBrains State of CI/CD 2025 survey found that many teams are "caught mid-move, running their legacy pipelines alongside new ones, sometimes taking months or even years to make the switch fully." ([JetBrains, October 2025](https://blog.jetbrains.com/teamcity/2025/10/the-state-of-cicd/))
+Migrating CI/CD pipelines is not trivial. The JetBrains State of CI/CD 2025 survey found that **companies are often caught mid-move**, running legacy pipelines alongside new ones for extended periods during transition ([JetBrains, October 2025](https://blog.jetbrains.com/teamcity/2025/10/the-state-of-cicd/)). Here are practical migration paths for each direction:
 
-### Migrating to GitHub Actions
+### Jenkins → GitHub Actions
 
-**From Jenkins:** The [GitHub Actions Importer](https://docs.github.com/en/migration-acquisition-importing/importing-using-github-actions-importer) automates much of the translation from Jenkins pipelines to GitHub Actions workflows. It analyzes your Jenkins configuration and generates equivalent Actions YAML. Manual review and adjustment follow.
+The most common migration in 2025–2026. Key steps:
 
-**From GitLab CI:** Since both use YAML-based syntax, the migration is more straightforward. Most `.gitlab-ci.yml` constructs map directly to GitHub Actions equivalents, though `needs:` (DAG) requires restructuring into `jobs.<job_id>.needs`.
+1. **Map Jenkins concepts to GitHub Actions equivalents**:
+   - Jenkins "job" → GitHub Actions "job"
+   - Jenkins "stage" → GitHub Actions "step" (with `name:`)
+   - Jenkins "agent/label" → `runs-on:`
+   - Jenkins "post-build step" → `if:` conditions + `always()` / `success()` / `failure()`
+   - Jenkins "credentials binding" → `secrets:` in `with:` or `env:`
 
-**Key steps:**
+2. **Translate the Jenkinsfile to YAML**:
+   - Each `stage { steps { ... } }` becomes a job with a `name:` and `steps:`
+   - Groovy conditionals (`if (env.BRANCH_NAME == 'main')`) become `if: github.ref == 'refs/heads/main'`
+   - `timeout(time: 1, unit: 'HOURS')` becomes `timeout-minutes: 60`
 
-1. Install the GitHub Actions Importer (`brew install actions-importer` or via container)
-2. Assess your existing pipeline complexity
-3. Generate equivalent workflows automatically
-4. Test in parallel with existing pipeline (shadow mode)
-5. Gradually redirect traffic as confidence grows
+3. **Leverage GitHub Actions' reusable workflows** for org-wide standardization
 
-### Migrating to GitLab CI
+4. **Run parallel** during transition: use GitHub Actions for new projects while Jenkins handles existing ones, then migrate project-by-project
 
-**From Jenkins:** GitLab provides an [import tool](https://docs.gitlab.com/ee/ci/migration/) that converts Jenkinsfiles into `.gitlab-ci.yml`. Complex Groovy scripted pipelines may require manual intervention.
+### Jenkins → GitLab CI
 
-**From GitHub Actions:** YAML syntax is largely compatible, but GitHub-specific constructs (like `runs-on`, `uses`, and the `actions/checkout` action ecosystem) need replacement with GitLab's equivalent keywords.
+1. **Convert Jenkinsfile to `.gitlab-ci.yml`**:
+   - Jenkins `stages` → GitLab `stages:` (semantics are nearly identical)
+   - Groovy `sh 'command'` → YAML `script: - command`
+   - Jenkins `environment { ... }` → GitLab `variables:` block
+   - `when { branch 'main' }` → `if: '$CI_COMMIT_BRANCH == "main"'`
 
-**Key steps:**
+2. **Replace plugins with native GitLab features** or custom scripts:
+   - `slackSend` Jenkins plugin → GitLab webhook or GitLab CI template
+   - `junit` test reporting → `artifacts: reports: junit:` in GitLab CI
 
-1. Import the repository (GitLab supports direct import from GitHub)
-2. Run the CI/CD migration tool on your workflow files
-3. Map GitHub Actions marketplace actions to GitLab CI templates or Docker images
-4. Leverage Auto DevOps for an accelerated baseline
+3. **Run GitLab Runner agents** alongside Jenkins during the transition period
 
-### Migrating to Jenkins
+### GitHub Actions → GitLab CI
 
-**From GitHub Actions or GitLab CI:** There is no automated migration path to Jenkins — this is largely a manual effort. Jenkins' Groovy-based pipeline syntax is more expressive but also more complex than YAML.
+1. **Rename and restructure**:
+   - `.github/workflows/*.yml` → `.gitlab-ci.yml`
+   - Each `job` maps directly; `runs-on:` → `tags:` (if using tagged runners)
+   - `uses: actions/checkout@v4` → `git checkout` or GitLab's built-in clone
 
-**Key steps:**
+2. **Adopt GitLab CI's DAG model**: remove explicit `needs:` declarations if jobs already have implicit ordering via `dependencies:` — GitLab will parallelize automatically
 
-1. Write `Jenkinsfile`s for each repository (declarative syntax is recommended)
-2. Set up Jenkins agents for the target platforms (Linux, Windows, macOS, containers)
-3. Configure plugin dependencies and ensure version compatibility
-4. Migrate secrets and credentials to Jenkins' Credentials API
-5. Test thoroughly — Jenkins plugin interactions can introduce subtle failures
+3. **Replace marketplace actions** with shell commands or GitLab CI templates (search GitLab's `ci_templates` repository for equivalents)
 
-### General Migration Principles
+4. **Migrate secrets**: GitHub `secrets:` → GitLab CI `variables:` (masked and protected)
 
-- **Run in parallel** — Never migrate by replacing in place without running the new pipeline first. Run shadow builds to catch discrepancies.
-- **Preserve secrets** — Use each platform's secrets management; don't copy plaintext credentials.
-- **Version your pipelines** — Commit the new pipeline alongside the old one; use feature flags or branch-based deployment to switch.
-- **Document deviations** — Some behaviors won't map 1:1. Document intentional differences for your team.
+### GitLab CI → GitHub Actions
 
----
+1. **Structure conversion** is straightforward since both use YAML:
+   - GitLab `stages:` → GitHub implicit parallelism (no direct equivalent — use `needs:` for explicit ordering)
+   - GitLab `dependencies:` → GitHub `needs:`
+   - GitLab `rules: if:` → GitHub `if:`
+   - GitLab `$CI_REGISTRY_IMAGE` → `${{ env.REGISTRY }}/${{ github.repository }}`
 
-## Which CI/CD Tool Should You Choose in 2026?
-
-There is no universally correct answer — but there are clearly correct answers *for specific contexts*. Here's a practical decision framework:
-
-### Choose GitHub Actions if...
-
-- Your code already lives on **GitHub** (especially true for open-source projects and startups)
-- You want the **fastest time-to-first-pipeline** with minimal operational overhead
-- You value the **GitHub Marketplace** ecosystem and don't mind vendor lock-in
-- Your team is small-to-medium and doesn't have a dedicated DevOps engineer
-- You want generous **free minutes** for open-source or low-volume private repos
-
-### Choose GitLab CI if...
-
-- You're already using **GitLab** for source control and want a unified DevOps platform
-- You need **Auto DevOps** to get a production-grade pipeline with minimal configuration
-- You want **built-in container registry** and tight Kubernetes integration
-- Your organization values the **DAG model** for complex dependency graphs
-- You're willing to be all-in on the GitLab ecosystem in exchange for a single pane of glass
-
-### Choose Jenkins if...
-
-- You need **complete control** over your CI/CD infrastructure (data sovereignty, air-gapped environments)
-- You have an **existing Jenkins installation** and a team experienced with it
-- You need to build on **Windows agents** (Jenkins has the best Windows support of the three)
-- You need to integrate with **legacy systems** that require specific plugin support
-- You have **unlimited build minutes** on self-hosted infrastructure and want to minimize per-minute costs
-
-### The Hybrid Reality
-
-The 2025 JetBrains survey confirms what many practitioners already know: **many organizations run multiple CI/CD tools simultaneously**. A team might use Jenkins for legacy .NET applications while using GitHub Actions for new microservices. That's a valid strategy — but it comes with operational overhead. Unified tooling reduces cognitive load; mixed tooling increases flexibility at the cost of complexity.
+2. **Replace GitLab-specific features**:
+   - GitLab Auto DevOps → GitHub Actions equivalents or custom composite actions
+   - GitLab container registry → GitHub Container Registry (`ghcr.io`) or Docker Hub
 
 ---
 
-## Conclusion: Design Your Pipeline for Your Team
+## Which to Choose in 2026
 
-The "best" CI/CD tool is the one that your team will actually use consistently, that integrates with the rest of your stack, and that scales to meet your needs as you grow. In 2026:
+The right tool depends on your context. Here's a decision framework:
 
-- **GitHub Actions** wins on developer experience, ecosystem breadth, and GitHub-native simplicity.
-- **GitLab CI** wins on platform breadth, unified DevOps, and Auto DevOps speed-to-value.
-- **Jenkins** wins on infrastructure control, Windows support, and installed-base flexibility.
+**Choose GitHub Actions if:**
+- Your code lives on GitHub and you want minimal operational overhead
+- You value the 22,000+ action marketplace for rapid pipeline development
+- You need fast onboarding — any developer can read YAML
+- You're building cloud-native apps and don't have strict air-gap requirements
+- Your team is smaller and values "it just works" over full infrastructure control
 
-Whichever tool you choose, invest in **pipeline-as-code**, **comprehensive testing**, and **fast feedback loops**. The CI/CD pipeline is not a solved problem — it evolves with your team, your architecture, and your users. Design it thoughtfully, measure its performance, and iterate.
+**Choose GitLab CI if:**
+- You're already on GitLab (or planning to migrate to it) and want an all-in-one platform
+- You value automatic DAG parallelism without verbose dependency declarations
+- You want built-in Docker registry, security scanning, and project management in one tool
+- You're an enterprise that wants the ability to self-host but also use the SaaS option
+- Auto DevOps fits your deployment philosophy
 
-> **Start here:** If you're beginning from scratch and your code is on GitHub, start with GitHub Actions. The learning curve is gentle, the documentation is excellent, and you can migrate later if needed. The cost of starting is low; the cost of a poorly designed pipeline that your team avoids is high.
+**Choose Jenkins if:**
+- You need 100% self-hosted CI with full infrastructure control
+- You're in a regulated industry (finance, healthcare, defense) with strict compliance requirements
+- You have complex, heterogeneous toolchains that require the 1,800+ plugin ecosystem
+- Your builds involve special hardware, air-gapped environments, or mainframe integration
+- You have an existing large Jenkins installation and want to migrate gradually rather than wholesale
+- Per-minute cloud pricing would be prohibitively expensive at your build volume
+
+**Consider a hybrid approach if:**
+- You're mid-migration. As the JetBrains survey confirms, many teams run legacy Jenkins alongside GitHub Actions or GitLab CI during transition. This is a valid strategy — don't force a big-bang migration.
+- Use **GitHub Actions or GitLab CI for new projects** while Jenkins handles existing ones. Migrate projects incrementally.
 
 ---
 
-*This article is part of the DevPlaybook DevOps series. For more guides on infrastructure, automation, and developer tooling, explore the [full DevPlaybook library](/).*
+## Final Thoughts
+
+There's no universally "best" CI/CD tool — only the right fit for your team's context, constraints, and existing investments. GitHub Actions has the momentum and ecosystem scale. GitLab CI has architectural elegance with its native DAG model and an all-in-one philosophy. Jenkins has the installed base, the plugin ecosystem, and the operational control that enterprises with complex requirements demand.
+
+What matters more than the tool itself is **pipeline discipline**: treating your pipeline as code, keeping it version-controlled, investing in fast feedback loops, and designing for maintainability. A well-designed Jenkins pipeline beats a poorly designed GitHub Actions setup every time.
+
+The CI/CD market's 20.72% CAGR tells us one thing clearly: the pipeline is becoming more central, not less. Whatever tool you choose, invest in it seriously — it's the engine of your delivery capability.
+
+---
+
+## Sources
+
+1. CoinLaw — "GitHub Statistics 2026" (February 2026): https://coinlaw.io/github-statistics/
+2. 6sense — "GitLab Market Share, Competitor Insights in Source Code Management" (2026): https://6sense.com/tech/sourcecode-management/gitlab-market-share
+3. CD Foundation — "Jenkins Project Reports Growth of 79% in Jenkins Pipeline" (August 2023): https://cd.foundation/announcement/2023/08/29/jenkins-project-growth/
+4. DevOps.com — "The Future of Jenkins in 2024" (December 2023): https://devops.com/the-future-of-jenkins-in-2024/
+5. Mordor Intelligence — "Continuous Integration Tools Market Size & Industry Analysis" (January 2026): https://www.mordorintelligence.com/industry-reports/continuous-integration-tools-market
+6. JetBrains — "The State of CI/CD in 2025" (October 2025): https://blog.jetbrains.com/teamcity/2025/10/the-state-of-cicd/
+7. GitHub Resources — "Pricing Changes for GitHub Actions" (2026): https://resources.github.com/actions/2026-pricing-changes-for-github-actions/
+8. Tech Insider — "Best CI/CD Tools for 2026" (March 2026): https://tech-insider.org/github-actions-ci-cd-pipeline-tutorial-2026/
+9. ElectroIQ — "GitLab Statistics And Facts (2025)" (July 2025): https://electroiq.com/stats/gitlab-statistics/
