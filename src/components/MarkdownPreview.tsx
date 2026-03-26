@@ -41,10 +41,11 @@ function markdownToHtml(md: string): string {
     .replace(/^### (.+)$/gm, '<h3 class="text-lg font-bold mt-5 mb-2 text-text">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold mt-6 mb-2 text-text">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold mt-6 mb-3 text-text">$1</h1>')
-    // Bold & italic
+    // Bold, italic, strikethrough
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/~~(.+?)~~/g, '<del>$1</del>')
     // Inline code
     .replace(/`([^`]+)`/g, '<code class="bg-bg-card px-1.5 py-0.5 rounded text-sm font-mono text-primary">$1</code>')
     // Links
@@ -105,6 +106,16 @@ export default function MarkdownPreview() {
     });
   };
 
+  const downloadMd = () => {
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'document.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div class="space-y-3">
       {/* Toolbar */}
@@ -129,6 +140,12 @@ export default function MarkdownPreview() {
             class="text-xs bg-bg-card border border-border px-3 py-1.5 rounded hover:border-primary hover:text-primary transition-colors"
           >
             {copied ? '✓ HTML Copied!' : 'Copy as HTML'}
+          </button>
+          <button
+            onClick={downloadMd}
+            class="text-xs bg-bg-card border border-border px-3 py-1.5 rounded hover:border-primary hover:text-primary transition-colors"
+          >
+            Download .md
           </button>
           <button
             onClick={() => setMd('')}

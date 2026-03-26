@@ -65,6 +65,27 @@ function wcagBadge(ratio: number): { aa: boolean; aaa: boolean } {
   return { aa: ratio >= 4.5, aaa: ratio >= 7 };
 }
 
+// ── oklch conversion ─────────────────────────────────────────────────────────
+
+function rgbToOklch(r: number, g: number, b: number): [number, number, number] {
+  const lin = [r, g, b].map(c => {
+    const cn = c / 255;
+    return cn <= 0.04045 ? cn / 12.92 : Math.pow((cn + 0.055) / 1.055, 2.4);
+  });
+  const x = 0.4122214708 * lin[0] + 0.5363325363 * lin[1] + 0.0514459929 * lin[2];
+  const y = 0.2119034982 * lin[0] + 0.6806995451 * lin[1] + 0.1073969566 * lin[2];
+  const z = 0.0883024619 * lin[0] + 0.2817188376 * lin[1] + 0.6299787005 * lin[2];
+  const lc = Math.cbrt(0.8189330101 * x + 0.3618667424 * y - 0.1288597137 * z);
+  const mc = Math.cbrt(0.0329845436 * x + 0.9293118715 * y + 0.0361456387 * z);
+  const sc = Math.cbrt(0.0482003018 * x + 0.2643662691 * y + 0.6338517070 * z);
+  const L = 0.2104542553 * lc + 0.7936177850 * mc - 0.0040720468 * sc;
+  const a = 1.9779984951 * lc - 2.4285922050 * mc + 0.4505937099 * sc;
+  const bk = 0.0259040371 * lc + 0.7827717662 * mc - 0.8086757660 * sc;
+  const C = Math.sqrt(a * a + bk * bk);
+  const H = ((Math.atan2(bk, a) * 180 / Math.PI) % 360 + 360) % 360;
+  return [Math.round(L * 100) / 100, Math.round(C * 1000) / 1000, Math.round(H)];
+}
+
 // ── Shade generation ─────────────────────────────────────────────────────────
 
 function generateShades(hex: string): { hex: string; label: string }[] {
@@ -117,9 +138,11 @@ export default function ColorPicker() {
 
   const rgb = hexToRgb(hex);
   const hsl = rgbToHsl(...rgb);
+  const oklch = rgbToOklch(...rgb);
   const hexStr = hex.toUpperCase();
   const rgbStr = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
   const hslStr = `hsl(${hsl[0]}, ${hsl[1]}%, ${hsl[2]}%)`;
+  const oklchStr = `oklch(${oklch[0]} ${oklch[1]} ${oklch[2]})`;
 
   const lumColor = relativeLuminance(...rgb);
   const ratioWhite = contrastRatio(lumColor, LUM_WHITE);
@@ -193,6 +216,7 @@ export default function ColorPicker() {
               { label: 'HEX', value: hexStr },
               { label: 'RGB', value: rgbStr },
               { label: 'HSL', value: hslStr },
+              { label: 'OKLCH', value: oklchStr },
             ].map(({ label, value }) => (
               <div key={label} class="flex items-center gap-3 bg-gray-900 rounded-lg px-4 py-2">
                 <span class="text-xs text-text-muted w-8 shrink-0 font-semibold">{label}</span>
@@ -251,6 +275,45 @@ export default function ColorPicker() {
         <p class="text-xs text-text-muted">WCAG AA requires ≥ 4.5:1 for normal text, AAA requires ≥ 7:1.</p>
       </div>
 
+      {/* Complementary & Analogous */}
+      {(() => {
+        const [h, s, l] = hsl;
+        const makeColor = (dh: number) => {
+          const nh = ((h + dh) % 360 + 360) % 360;
+          const [r2, g2, b2] = hslToRgb(nh, s, l);
+          return rgbToHex(r2, g2, b2);
+        };
+        const swatches = [
+          { label: 'Analogous −30°', hex: makeColor(-30) },
+          { label: 'Analogous −15°', hex: makeColor(-15) },
+          { label: 'Base',           hex },
+          { label: 'Analogous +15°', hex: makeColor(15) },
+          { label: 'Analogous +30°', hex: makeColor(30) },
+          { label: 'Complementary',  hex: makeColor(180) },
+        ];
+        return (
+          <div class="bg-bg-card rounded-xl p-6 border border-border space-y-4">
+            <h2 class="font-semibold text-base">Complementary & Analogous Colors</h2>
+            <div class="grid grid-cols-6 gap-2">
+              {swatches.map(({ label, hex: sh }) => (
+                <div key={label} class="flex flex-col items-center gap-1.5">
+                  <div
+                    class="w-full aspect-square rounded-lg border border-border cursor-pointer hover:scale-105 transition-transform"
+                    style={{ background: sh }}
+                    onClick={() => setHex(sh)}
+                    title={`Use ${sh.toUpperCase()}`}
+                  />
+                  <span class="text-xs text-text-muted text-center leading-tight hidden sm:block">{label}</span>
+                  <code class="text-xs font-mono text-gray-400">{sh.toUpperCase()}</code>
+                  <CopyButton value={sh.toUpperCase()} label="Copy" />
+                </div>
+              ))}
+            </div>
+            <p class="text-xs text-text-muted">Click any swatch to set it as the active color.</p>
+          </div>
+        );
+      })()}
+
       {/* Shade palette */}
       <div class="bg-bg-card rounded-xl p-6 border border-border space-y-4">
         <h2 class="font-semibold text-base">5-Shade Palette</h2>
@@ -278,6 +341,7 @@ export default function ColorPicker() {
         <p><strong class="text-white">HEX</strong> — 6-digit hexadecimal, e.g. <code class="font-mono">#6366f1</code>. Used in CSS and design tools.</p>
         <p><strong class="text-white">RGB</strong> — Red, Green, Blue channels 0–255. Used in CSS and digital displays.</p>
         <p><strong class="text-white">HSL</strong> — Hue (0–360°), Saturation (0–100%), Lightness (0–100%). More intuitive for generating palettes.</p>
+        <p><strong class="text-white">OKLCH</strong> — Perceptual lightness (0–1), chroma (0+), hue (0–360°). The modern CSS color space with uniform perceptual contrast.</p>
       </div>
     </div>
   );

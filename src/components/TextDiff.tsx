@@ -74,6 +74,7 @@ export default function TextDiff() {
   const [original, setOriginal] = useState(SAMPLE_ORIGINAL);
   const [modified, setModified] = useState(SAMPLE_MODIFIED);
   const [copied, setCopied]     = useState(false);
+  const [viewMode, setViewMode] = useState<'split' | 'unified'>('split');
 
   const diffLines = useMemo(() => computeDiff(original, modified), [original, modified]);
 
