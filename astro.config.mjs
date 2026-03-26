@@ -104,6 +104,7 @@ function rehypeImgLazy() {
 // https://astro.build/config
 export default defineConfig({
   site: 'https://devplaybook.cc',
+  trailingSlash: 'never',
   compressHTML: true,
   markdown: {
     remarkPlugins: [remarkToolAutoLink],
