@@ -1,6 +1,7 @@
 ---
 title: "Subnet Calculator for Developers: CIDR, IP Ranges, and Network Planning"
 description: "Use a subnet calculator to compute CIDR ranges, usable hosts, network/broadcast addresses instantly. Practical guide for developers working with AWS VPCs, Docker networks, and bare metal."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["networking", "devops", "aws", "cidr", "developer-tools"]
 readingTime: "8 min read"

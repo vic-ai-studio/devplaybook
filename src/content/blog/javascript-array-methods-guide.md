@@ -1,6 +1,7 @@
 ---
 title: "JavaScript Array Methods in 2026: The Complete Practical Guide"
 description: "Master JavaScript array methods: map, filter, reduce, find, some, every, flat, and more. Includes real-world examples, performance tips, and when to use each method."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["javascript", "array", "methods", "functional-programming", "performance"]
 readingTime: "3 min read"

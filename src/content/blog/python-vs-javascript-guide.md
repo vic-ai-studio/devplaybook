@@ -1,6 +1,7 @@
 ---
 title: "Python vs JavaScript in 2026: When to Use Each for Backend and Automation"
 description: "Python vs JavaScript comparison for backend development and automation. Covers async patterns, web frameworks, type systems, performance, and real-world use cases in 2026."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["python", "javascript", "backend", "comparison", "automation"]
 readingTime: "3 min read"

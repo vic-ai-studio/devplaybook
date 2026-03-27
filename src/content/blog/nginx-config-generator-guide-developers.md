@@ -1,6 +1,7 @@
 ---
 title: "Nginx Config Generator: Stop Writing Server Blocks by Hand"
 description: "Learn how to use an Nginx config generator to create reverse proxies, SSL configs, load balancers, and virtual hosts instantly. Includes real examples and best practices."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["nginx", "devops", "web-server", "developer-tools", "reverse-proxy"]
 readingTime: "8 min read"

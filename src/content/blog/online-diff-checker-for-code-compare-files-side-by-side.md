@@ -1,6 +1,7 @@
 ---
 title: "Online Diff Checker for Code: Compare Files Side by Side"
 description: "Use a free online diff checker to compare code files side by side. Spot changes, merge conflicts, and text differences instantly without installing anything."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["diff-checker", "code-comparison", "file-diff", "developer-tools", "free-tools"]
 readingTime: "8 min read"

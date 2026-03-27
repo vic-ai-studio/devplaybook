@@ -1,6 +1,7 @@
 ---
 title: "Cron Expression Generator for Developers: Build Any Schedule in Seconds"
 description: "Generate cron expressions visually with instant preview. Supports 5-field Linux cron, 6-field with seconds, AWS EventBridge, and GitHub Actions schedule syntax."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["cron", "cron-expression", "scheduling", "ci-cd", "devops", "automation", "aws"]
 readingTime: "7 min read"

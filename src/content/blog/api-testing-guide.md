@@ -1,6 +1,7 @@
 ---
 title: "API Testing in 2026: From cURL to Automated Test Suites"
 description: "Complete guide to API testing: starting with cURL basics, moving to Postman/Insomnia, then automated test suites with JavaScript and Python. Includes real API examples."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["api", "testing", "curl", "http", "postman", "automation"]
 readingTime: "12 min read"

@@ -1,6 +1,7 @@
 ---
 title: "Code Review Checklist Template 2025: Everything You Need to Ship Better Code"
 description: "A downloadable code review checklist template covering security, performance, readability, and testing. Used by engineering teams to catch bugs before they reach production."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["code-review", "best-practices", "developer-tools", "team-workflow", "software-quality"]
 readingTime: "8 min read"

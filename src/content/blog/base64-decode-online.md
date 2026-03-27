@@ -1,6 +1,7 @@
 ---
 title: "Base64 Decode Online: Instantly Decode Any Base64 String for Free"
 description: "Decode Base64 strings online instantly — no install, no account. Supports standard Base64, URL-safe encoding, and binary file decoding with one click."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["base64", "decode", "encoding", "developer-tools", "security", "api"]
 readingTime: "5 min read"

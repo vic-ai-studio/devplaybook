@@ -1,6 +1,7 @@
 ---
 title: "Regex Tester Tool: Test and Debug Regular Expressions Online"
 description: "How to use a regex tester tool to write, test, and debug regular expressions. Includes a guide to regex syntax, common patterns, and tips for avoiding common mistakes."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["regex", "regular-expressions", "developer-tools", "online-tools", "debugging"]
 readingTime: "6 min read"

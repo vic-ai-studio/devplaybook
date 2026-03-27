@@ -1,7 +1,9 @@
 ---
 title: "pnpm Workspaces Monorepo Guide 2026: Complete Setup with Examples"
 description: "Master pnpm workspaces for monorepo development in 2026. Step-by-step setup guide with code examples, comparison with npm and Yarn workspaces, filtering, and CI best practices."
-pubDate: 2026-03-27
+author: "DevPlaybook Team"
+date: "2026-03-27"
+readingTime: "10 min read"
 tags: [pnpm, monorepo, nodejs]
 ---
 

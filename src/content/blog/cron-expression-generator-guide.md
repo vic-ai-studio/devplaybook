@@ -1,6 +1,7 @@
 ---
 title: "Cron Expression Generator: Build and Understand Cron Schedules"
 description: "Learn cron expression syntax, build schedules visually, and avoid common mistakes. Includes a cron expression generator tool and reference for every cron format."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["cron", "cron-expression", "scheduling", "devops", "automation", "linux"]
 readingTime: "8 min read"

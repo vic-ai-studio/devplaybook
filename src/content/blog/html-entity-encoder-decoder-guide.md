@@ -1,6 +1,7 @@
 ---
 title: "HTML Entity Encoder/Decoder: Complete Guide for Web Developers"
 description: "Learn HTML entities, when to encode vs decode, and how to handle special characters safely in HTML. Includes a free online tool plus code examples in JavaScript and Python."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["html", "encoding", "security", "web-development", "xss", "developer-tools"]
 readingTime: "7 min read"

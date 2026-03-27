@@ -1,6 +1,7 @@
 ---
 title: "UUID Generator Online: Generate v4, v1, and v7 UUIDs Instantly Free"
 description: "Generate UUIDs online for free — v4 random, v1 time-based, and v7 sortable. Learn UUID formats, use cases, and how to generate UUIDs in JavaScript, Python, Go, and SQL."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["uuid", "generator", "unique-id", "developer-tools", "database", "api"]
 readingTime: "6 min read"

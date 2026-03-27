@@ -1,6 +1,7 @@
 ---
 title: "Online JSON Formatter: Instantly Beautify, Validate, and Debug JSON"
 description: "Use a free online JSON formatter to beautify, validate, and debug JSON data. Learn JSON syntax rules, common errors, and how to format JSON in seconds — no install needed."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["json", "formatter", "developer-tools", "api", "debugging"]
 readingTime: "6 min read"

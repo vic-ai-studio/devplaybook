@@ -1,6 +1,7 @@
 ---
 title: "React Server Components vs Client Components: The Complete Guide 2026"
 description: "Master React Server Components vs Client Components. Learn when to use RSC, data fetching patterns, performance benefits, and migration strategies with real Next.js code examples."
+author: "DevPlaybook Team"
 date: "2026-03-26"
 tags: ["react", "nextjs", "react server components", "RSC", "client components", "performance", "javascript"]
 readingTime: "10 min read"

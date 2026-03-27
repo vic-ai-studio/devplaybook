@@ -1,6 +1,7 @@
 ---
 title: "Cron Expression Generator Online: Build Cron Schedules Visually Free"
 description: "Generate cron expressions online for free. Build Linux cron schedules visually, validate cron syntax, and understand every field. Supports 5-field and 6-field cron formats."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["cron", "scheduler", "generator", "devops", "automation", "linux", "developer-tools"]
 readingTime: "6 min read"

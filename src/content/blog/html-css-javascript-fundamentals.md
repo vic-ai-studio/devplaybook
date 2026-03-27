@@ -1,6 +1,7 @@
 ---
 title: "HTML/CSS/JavaScript Fundamentals: The Core Every Developer Must Know in 2026"
 description: "The essential HTML, CSS, and JavaScript knowledge that separates senior developers from juniors. Covers semantic HTML, CSS specificity, JavaScript async patterns, and common mistakes."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["html", "css", "javascript", "frontend", "fundamentals"]
 readingTime: "3 min read"

@@ -1,6 +1,7 @@
 ---
 title: "UUID v4 Guide: When to Use UUIDs Instead of Auto-Increment IDs"
 description: "What are UUIDs, why use them over auto-increment integers, and how to generate them in JavaScript, Python, and Node.js. Includes performance tradeoffs and use cases."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["uuid", "database", "api", "javascript", "backend"]
 readingTime: "2 min read"

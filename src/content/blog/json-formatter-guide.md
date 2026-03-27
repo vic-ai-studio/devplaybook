@@ -1,6 +1,7 @@
 ---
 title: "The Complete JSON Formatter Guide: Validate, Pretty Print, and Debug JSON Like a Pro"
 description: "Learn how to use JSON formatter tools to validate, pretty print, and debug JSON data. Includes keyboard shortcuts, common errors, and integration tips for developers."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["json", "formatter", "debug", "api", "developer-tools"]
 readingTime: "2 min read"

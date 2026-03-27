@@ -1,6 +1,7 @@
 ---
 title: "JavaScript Bundle Size Optimization: From 2MB to 200KB — A Practical Guide"
 description: "Practical techniques to reduce JavaScript bundle size from megabytes to kilobytes. Covers tree shaking, code splitting, dynamic imports, bundle analysis, and tools that actually work in 2026."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["javascript", "performance", "webpack", "vite", "optimization", "web-vitals"]
 readingTime: "11 min read"

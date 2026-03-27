@@ -1,6 +1,7 @@
 ---
 title: "Git Workflow Best Practices 2025: Team-Proven Strategies"
 description: "Git workflow best practices for 2025: branching strategies, commit conventions, PR reviews, rebasing vs merging, and CI/CD integration that teams actually use."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["git", "version-control", "workflow", "devops", "team-collaboration"]
 readingTime: "10 min read"

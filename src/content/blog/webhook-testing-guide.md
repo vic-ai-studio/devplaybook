@@ -1,6 +1,7 @@
 ---
 title: "Webhook Testing: How to Debug, Inspect, and Replay Webhooks in 2026"
 description: "Complete guide to webhook testing. Covers local tunneling, replay tools, signature verification, retry handling, and the best practices for testing webhooks without production data."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["webhook", "api", "testing", "debugging", "http"]
 readingTime: "2 min read"

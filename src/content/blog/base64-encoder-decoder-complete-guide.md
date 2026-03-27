@@ -1,6 +1,7 @@
 ---
 title: "Base64 Encoder Decoder: Complete Guide for Developers"
 description: "Everything developers need to know about Base64 encoding and decoding. How it works, when to use it, common pitfalls, and a free online Base64 encoder decoder tool."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["base64", "encoding", "decoding", "developer-tools", "web-development", "api"]
 readingTime: "5 min read"

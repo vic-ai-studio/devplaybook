@@ -1,6 +1,7 @@
 ---
 title: "React Performance: useMemo vs useCallback vs React.memo — When to Use Each"
 description: "Clear explanation of React's useMemo, useCallback, and React.memo with real performance benchmarks. Learn when these optimizations help, when they hurt, and how to measure the difference."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["react", "performance", "usememo", "usecallback", "javascript", "optimization"]
 readingTime: "9 min read"

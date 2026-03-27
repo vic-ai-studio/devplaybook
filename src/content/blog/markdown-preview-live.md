@@ -1,6 +1,7 @@
 ---
 title: "Markdown Preview Live: Write and Preview Markdown in Real Time"
 description: "Get an instant live Markdown preview as you type — no install, no account. Supports GFM tables, fenced code blocks, task lists, and export to HTML."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["markdown", "preview", "developer-tools", "writing", "documentation", "github"]
 readingTime: "6 min read"

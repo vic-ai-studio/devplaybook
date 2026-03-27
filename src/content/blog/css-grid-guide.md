@@ -1,6 +1,7 @@
 ---
 title: "CSS Grid Layout Master Guide: From Zero to Production in 2026"
 description: "Master CSS Grid layout with practical examples. Covers grid container properties, named areas, auto-placement, and responsive grids without media queries."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["css", "grid", "layout", "responsive", "frontend"]
 readingTime: "2 min read"

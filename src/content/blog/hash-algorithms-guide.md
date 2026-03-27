@@ -1,6 +1,7 @@
 ---
 title: "Hash Functions Explained: MD5, SHA-1, SHA-256, and When to Use Each"
 description: "Understand cryptographic hash functions: how MD5, SHA-1, SHA-256, and bcrypt work, why you should never use MD5 for passwords, and when each is appropriate in 2026."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["hash", "security", "md5", "sha256", "cryptography"]
 readingTime: "2 min read"

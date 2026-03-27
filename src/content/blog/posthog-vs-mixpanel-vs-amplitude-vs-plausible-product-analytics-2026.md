@@ -1,7 +1,9 @@
 ---
 title: "PostHog vs Mixpanel vs Amplitude vs Plausible - Product Analytics 2026"
 description: "A detailed comparison of the leading product analytics platforms in 2026. Compare PostHog, Mixpanel, Amplitude, and Plausible on pricing, privacy, self-hosting, event tracking, and funnel analysis."
-pubDate: 2026-03-27
+author: "DevPlaybook Team"
+date: "2026-03-27"
+readingTime: "10 min read"
 tags: ["analytics", "posthog", "mixpanel", "amplitude", "plausible", "product"]
 ---
 

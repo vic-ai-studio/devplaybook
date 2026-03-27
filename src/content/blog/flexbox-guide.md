@@ -1,6 +1,7 @@
 ---
 title: "Flexbox Master Guide: The Modern Way to Build Layouts in 2026"
 description: "Master Flexbox layout with practical examples. Covers flex container, flex items, alignment, wrapping, and common patterns like sticky footers and card grids."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["css", "flexbox", "layout", "frontend", "responsive"]
 readingTime: "2 min read"

@@ -1,6 +1,7 @@
 ---
 title: "Node.js Memory Management and Profiling: Find and Fix Memory Leaks in 2026"
 description: "Practical guide to Node.js memory management, heap profiling, and memory leak detection. Covers V8 garbage collection, heap snapshots, clinic.js, and production monitoring techniques."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["nodejs", "memory", "performance", "profiling", "debugging", "v8"]
 readingTime: "10 min read"

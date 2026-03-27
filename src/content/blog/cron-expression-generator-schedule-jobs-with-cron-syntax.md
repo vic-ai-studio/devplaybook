@@ -1,6 +1,7 @@
 ---
 title: "Cron Expression Generator: Schedule Jobs with Cron Syntax"
 description: "Generate and validate cron expressions online for free. Learn cron syntax, common scheduling patterns, and how to schedule jobs in Linux, Docker, and cloud platforms."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["cron", "cron-generator", "scheduling", "developer-tools", "devops"]
 readingTime: "10 min read"

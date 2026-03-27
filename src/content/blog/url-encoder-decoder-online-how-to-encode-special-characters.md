@@ -1,6 +1,7 @@
 ---
 title: "URL Encoder Decoder Online: How to Encode Special Characters"
 description: "Encode and decode URLs online for free. Learn percent-encoding, which characters need encoding, and how to handle special characters in URLs and query strings."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["url-encoder", "url-decoder", "url-encoding", "developer-tools", "free-tools"]
 readingTime: "8 min read"

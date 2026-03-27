@@ -1,6 +1,7 @@
 ---
 title: "Biome vs ESLint vs Prettier vs oxlint: JavaScript Linting & Formatting 2026"
 description: "Compare Biome, ESLint, Prettier, and oxlint for JavaScript/TypeScript linting and formatting. Speed benchmarks, config complexity, ecosystem support, and migration guide."
+author: "DevPlaybook Team"
 date: "2026-03-27"
 readingTime: "9 min read"
 tags: ["javascript", "linting", "biome", "eslint", "prettier", "tools"]

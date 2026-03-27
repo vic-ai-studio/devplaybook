@@ -1,6 +1,7 @@
 ---
 title: "Best Free Developer Tools 2025: The Essential List"
 description: "The best free developer tools of 2025 — from code formatters and API testers to regex engines and JSON validators. All browser-based, no install required."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["developer-tools", "free-tools", "productivity", "web-development", "2025"]
 readingTime: "8 min read"

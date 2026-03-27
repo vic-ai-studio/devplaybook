@@ -1,6 +1,7 @@
 ---
 title: "DevOps Career Guide 2026: Entry Points, Skills, and Roadmap for Engineers"
 description: "Complete DevOps career guide for 2026. Covers entry points from software engineering and sysadmin, must-have skills, certifications worth getting, salary ranges, and a 12-month learning roadmap."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["devops", "career", "sre", "platform-engineering", "cloud", "learning"]
 readingTime: "12 min read"

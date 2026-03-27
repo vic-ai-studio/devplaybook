@@ -1,6 +1,7 @@
 ---
 title: "JSON Formatter Online Free: How to Format, Validate, and Debug JSON Fast"
 description: "Learn how to use a free online JSON formatter to instantly fix malformed JSON, validate schema, minify for production, and convert to TypeScript or CSV. No install needed."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["json", "developer-tools", "json-formatter", "online-tools", "free-tools"]
 readingTime: "7 min read"

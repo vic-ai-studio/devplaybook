@@ -1,6 +1,7 @@
 ---
 title: "JSON vs YAML Developer Guide 2025: When to Use Each Format"
 description: "JSON vs YAML: a practical developer guide covering syntax differences, use cases, performance, tooling, and conversion. Know exactly when to choose each format."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["json", "yaml", "data-formats", "configuration", "api", "developer-tools"]
 readingTime: "8 min read"

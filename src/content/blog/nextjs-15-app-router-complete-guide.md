@@ -1,6 +1,7 @@
 ---
 title: "Next.js 15 App Router Complete Guide: Server Components, Streaming & Performance"
 description: "Master Next.js 15 App Router with this comprehensive guide. Learn Server Components, Streaming with Suspense, Parallel Routes, Server Actions, caching strategies, and performance optimizations."
+author: "DevPlaybook Team"
 date: "2026-03-27"
 tags: ["nextjs", "react", "app-router", "server-components", "performance", "javascript", "web-development"]
 readingTime: "12 min read"

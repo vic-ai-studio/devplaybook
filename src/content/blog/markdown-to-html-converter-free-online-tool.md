@@ -1,6 +1,7 @@
 ---
 title: "Markdown to HTML Converter: Free Online Tool"
 description: "Convert Markdown to HTML instantly with a free online converter. Learn Markdown syntax, see live previews, and export clean HTML for blogs, docs, and emails."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["markdown", "html", "markdown-converter", "developer-tools", "free-tools"]
 readingTime: "8 min read"

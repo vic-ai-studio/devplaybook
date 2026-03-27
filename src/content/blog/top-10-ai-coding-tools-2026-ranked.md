@@ -1,6 +1,7 @@
 ---
 title: "Top 10 Best AI Coding Tools 2026: Ranked & Compared"
 description: "The 10 best AI coding tools of 2026, ranked by real-world performance. Compare Claude Code, Cursor, Copilot, Windsurf, Cline, and 5 more. Includes pricing, benchmarks, and which to choose."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 readingTime: "14 min read"
 tags: ["ai", "coding-tools", "claude-code", "cursor", "github-copilot", "windsurf", "cline", "aider", "top-10", "comparison", "2026"]

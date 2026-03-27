@@ -1,6 +1,7 @@
 ---
 title: "CSS Minifier Online: Compress Stylesheets Instantly"
 description: "Learn how to minify CSS online for free. Reduce stylesheet file size, improve page load speed, and understand what CSS minification removes from your code."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["css", "css-minifier", "css-optimization", "web-performance", "developer-tools"]
 readingTime: "8 min read"

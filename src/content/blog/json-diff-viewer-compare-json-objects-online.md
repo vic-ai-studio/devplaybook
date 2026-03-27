@@ -1,6 +1,7 @@
 ---
 title: "JSON Diff Viewer Online: Compare JSON Objects and Find Differences Instantly"
 description: "Compare two JSON objects side by side and spot differences instantly. Learn how JSON diff tools work, when to use them, and how to compare JSON in JavaScript, Python, and the command line."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["json", "diff", "developer-tools", "api", "debugging", "comparison"]
 readingTime: "6 min read"

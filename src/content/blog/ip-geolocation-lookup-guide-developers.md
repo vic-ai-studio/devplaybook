@@ -1,6 +1,7 @@
 ---
 title: "IP Geolocation Lookup: How to Find Location, ISP, and Timezone from an IP Address"
 description: "Learn how IP geolocation works, which APIs and tools to use, and how to implement IP-based features in your app. Covers country detection, timezone lookup, and rate limiting by region."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["ip", "geolocation", "networking", "api", "developer-tools", "security"]
 readingTime: "7 min read"

@@ -1,6 +1,7 @@
 ---
 title: "React Native vs Expo: Mobile Development Guide for Web Developers (2026)"
 description: "React Native vs Expo compared for 2026. Learn when to use bare React Native vs Expo managed workflow, Expo SDK 52 new architecture, EAS Build, and how to migrate from web React to mobile."
+author: "DevPlaybook Team"
 date: "2026-03-27"
 tags: ["react-native", "expo", "mobile", "ios", "android", "javascript", "typescript", "web-development"]
 category: "mobile-development"

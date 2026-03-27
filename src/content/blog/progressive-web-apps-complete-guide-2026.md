@@ -1,6 +1,7 @@
 ---
 title: "Progressive Web Apps Complete Guide 2026: Service Workers, Offline-First, and Beyond"
 description: "The definitive PWA guide for 2026. Learn service workers, Web App Manifest, offline-first strategies, push notifications, installability, and how PWAs compare to native apps—with real code examples."
+author: "DevPlaybook Team"
 date: "2026-03-26"
 tags: ["progressive-web-apps", "pwa", "service-worker", "offline-web-app", "pwa-tutorial", "web-development", "performance"]
 category: "blog"

@@ -1,6 +1,7 @@
 ---
 title: "CORS Tester Online: Debug Cross-Origin Errors Without Guessing"
 description: "Use a CORS tester to diagnose cross-origin resource sharing errors instantly. Understand preflight requests, CORS headers, and how to fix 'No Access-Control-Allow-Origin' errors."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["cors", "api", "debugging", "web-security", "developer-tools"]
 readingTime: "9 min read"

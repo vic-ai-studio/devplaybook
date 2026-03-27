@@ -1,6 +1,7 @@
 ---
 title: "Electron vs Tauri vs Wails: Build Desktop Apps with Web Tech (2026)"
 description: "Electron vs Tauri vs Wails compared in 2026: bundle sizes, memory usage, security models, and when to choose each framework for building desktop apps with web technologies."
+author: "DevPlaybook Team"
 date: "2026-03-27"
 tags: ["electron", "tauri", "wails", "desktop-apps", "rust", "go", "javascript", "cross-platform"]
 category: "developer-tools"

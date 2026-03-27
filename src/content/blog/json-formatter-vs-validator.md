@@ -1,6 +1,7 @@
 ---
 title: "JSON Formatter vs Validator: What's the Difference and When to Use Each"
 description: "JSON formatter vs validator — understand the key difference, when each tool matters, and how to format and validate JSON in one step online for free."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["json", "json-formatter", "json-validator", "developer-tools", "api", "debugging"]
 readingTime: "6 min read"

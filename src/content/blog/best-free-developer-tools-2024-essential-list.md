@@ -1,6 +1,7 @@
 ---
 title: "Best Free Developer Tools 2024: Essential Online Tools Every Developer Should Know"
 description: "The definitive list of free developer tools for 2024 and beyond — JSON formatters, regex testers, API clients, code formatters, and more. All free, all browser-based, no signup required."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["developer-tools", "free-tools", "productivity", "online-tools", "web-development"]
 readingTime: "7 min read"

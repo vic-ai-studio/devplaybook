@@ -1,6 +1,7 @@
 ---
 title: "CSV to JSON Online: Convert Spreadsheet Data in One Click"
 description: "Convert CSV to JSON online for free — paste your CSV data and get valid JSON instantly. Handles headers, nested objects, custom delimiters, and large datasets."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["csv", "json", "converter", "data", "developer-tools", "free-tools"]
 readingTime: "7 min read"

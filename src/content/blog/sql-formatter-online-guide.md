@@ -1,6 +1,7 @@
 ---
 title: "SQL Formatter Online: Beautify and Indent SQL Queries Instantly Free"
 description: "Format messy SQL queries online for free. Beautify SELECT, JOIN, subquery, and CTE syntax with proper indentation. Supports PostgreSQL, MySQL, SQLite, and SQL Server."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["sql", "formatter", "database", "postgresql", "mysql", "developer-tools"]
 readingTime: "6 min read"

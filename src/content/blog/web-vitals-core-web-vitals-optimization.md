@@ -1,6 +1,7 @@
 ---
 title: "Web Vitals Optimization: Achieve Core Web Vitals Score 90+ in 2026"
 description: "Step-by-step guide to achieving Core Web Vitals score of 90+ in 2026. Covers LCP, INP, CLS optimization techniques with code examples, measurement tools, and before/after benchmarks."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["web-vitals", "performance", "lcp", "inp", "cls", "seo", "javascript"]
 readingTime: "11 min read"

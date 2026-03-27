@@ -1,6 +1,7 @@
 ---
 title: "JavaScript Obfuscator vs Minifier: What Developers Need to Know"
 description: "Understand the difference between JavaScript obfuscation and minification. When to use each, pros and cons, and best free tools for both."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["javascript", "js-minifier", "js-obfuscator", "code-optimization", "developer-tools"]
 readingTime: "9 min read"

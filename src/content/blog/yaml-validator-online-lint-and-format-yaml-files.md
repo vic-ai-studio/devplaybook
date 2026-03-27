@@ -1,6 +1,7 @@
 ---
 title: "YAML Validator Online: Lint and Format YAML Files"
 description: "Validate and lint YAML online for free. Understand YAML syntax errors, indentation rules, and how to fix common YAML issues in config files and CI/CD pipelines."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["yaml", "yaml-validator", "yaml-linter", "developer-tools", "devops"]
 readingTime: "9 min read"

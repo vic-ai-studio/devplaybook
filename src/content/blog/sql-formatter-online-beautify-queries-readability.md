@@ -1,6 +1,7 @@
 ---
 title: "SQL Formatter Online: Beautify Queries for Readability"
 description: "Format messy SQL queries online for free. Learn how SQL formatters improve code readability, support multiple dialects, and help teams write consistent queries."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["sql", "sql-formatter", "database", "developer-tools", "free-tools"]
 readingTime: "8 min read"

@@ -1,9 +1,9 @@
 ---
 title: "SLO vs SLA vs SLI: Developer Guide to Reliability Engineering 2026"
 description: "Understand the difference between SLI, SLO, and SLA in 2026. Learn how to set error budgets, define your first SLO, and use Prometheus, Grafana, and DataDog to track reliability."
+author: "DevPlaybook Team"
 date: "2026-03-27"
 tags: ["sre", "reliability", "slo", "sla", "sli", "devops", "observability", "prometheus", "grafana"]
-slug: "slo-vs-sla-vs-sli-reliability-engineering-guide-2026"
 readingTime: "13 min read"
 ---
 

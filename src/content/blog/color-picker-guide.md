@@ -1,6 +1,7 @@
 ---
 title: "Color Picker Tools for Developers: HEX, RGB, HSL, and CSS Custom Properties in 2026"
 description: "How to use color picker tools effectively for web development. Covers HEX/RGB/HSL conversion, CSS custom properties for theming, accessibility contrast checking, and generating palettes."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["color", "css", "design", "hex", "rgb", "hsl", "accessibility"]
 readingTime: "3 min read"

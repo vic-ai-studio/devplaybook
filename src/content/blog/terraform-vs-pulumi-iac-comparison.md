@@ -1,6 +1,7 @@
 ---
 title: "Terraform vs Pulumi: Infrastructure as Code Comparison 2026"
 description: "In-depth comparison of Terraform and Pulumi for Infrastructure as Code in 2026. Covers HCL vs real programming languages, state management, provider ecosystem, and when to use each."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["terraform", "pulumi", "iac", "infrastructure", "devops", "cloud"]
 readingTime: "11 min read"

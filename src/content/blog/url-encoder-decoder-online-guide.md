@@ -1,6 +1,7 @@
 ---
 title: "URL Encoder Decoder Online: Encode and Decode URLs and Query Strings Free"
 description: "Encode and decode URLs online for free. Convert special characters to percent-encoding and back. Learn URL encoding rules, query string escaping, and fix common encoding bugs."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["url", "encoder", "decoder", "percent-encoding", "developer-tools", "api"]
 readingTime: "6 min read"

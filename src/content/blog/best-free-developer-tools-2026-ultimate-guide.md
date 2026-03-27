@@ -1,6 +1,7 @@
 ---
 title: "Best Free Developer Tools 2026: The Ultimate Guide for Web Developers"
 description: "The definitive list of the best free developer tools in 2026. JSON formatters, regex testers, code editors, API clients, and more — all free, all tested."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["developer-tools", "free-tools", "web-development", "productivity", "online-tools"]
 readingTime: "6 min read"

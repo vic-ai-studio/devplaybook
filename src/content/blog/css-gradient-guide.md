@@ -1,6 +1,7 @@
 ---
 title: "CSS Gradient Generator: Create Beautiful Gradients That Load Fast in 2026"
 description: "How to create and use CSS gradients in 2026. Covers linear, radial, conic gradients, gradient presets, and how to optimize them for performance."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["css", "gradient", "design", "ui", "frontend"]
 readingTime: "2 min read"

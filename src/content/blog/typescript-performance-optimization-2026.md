@@ -1,6 +1,7 @@
 ---
 title: "TypeScript Performance Optimization 2026: Compile Speed, Runtime Efficiency, and Type Safety"
 description: "Advanced TypeScript performance techniques for 2026: faster tsc compilation, runtime optimizations, avoiding type system pitfalls, and tools to measure TypeScript's real cost."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["typescript", "performance", "javascript", "compilation", "optimization", "developer-experience"]
 readingTime: "10 min read"

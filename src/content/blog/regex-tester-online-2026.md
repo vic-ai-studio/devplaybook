@@ -1,6 +1,7 @@
 ---
 title: "Regex Tester Online: Test, Debug & Learn Regular Expressions Instantly"
 description: "Use a free regex tester online to test patterns in real time. Supports JavaScript, Python, and PCRE syntax with match highlighting, group capture, and explanation."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["regex", "regular-expressions", "developer-tools", "testing", "javascript", "python"]
 readingTime: "7 min read"

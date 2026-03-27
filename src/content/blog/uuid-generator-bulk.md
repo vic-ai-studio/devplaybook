@@ -1,6 +1,7 @@
 ---
 title: "UUID Generator Bulk: Generate Hundreds of UUIDs Instantly Online"
 description: "Generate UUIDs in bulk online — v4 random, v1 time-based, v7 sortable. Download as CSV, JSON, or plain text. Free, no install, no account required."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["uuid", "bulk-generator", "unique-id", "developer-tools", "database", "testing"]
 readingTime: "6 min read"

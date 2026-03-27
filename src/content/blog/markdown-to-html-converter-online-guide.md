@@ -1,6 +1,7 @@
 ---
 title: "Markdown to HTML Converter Online: Convert MD Files to HTML Free"
 description: "Convert Markdown to HTML online instantly and free. Preview rendered output, copy clean HTML, and learn Markdown syntax for headings, tables, code blocks, and links."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["markdown", "html", "converter", "developer-tools", "documentation", "writing"]
 readingTime: "6 min read"

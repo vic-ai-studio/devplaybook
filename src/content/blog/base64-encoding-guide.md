@@ -1,6 +1,7 @@
 ---
 title: "Base64 Encoding Explained: When to Use It and When to Avoid It"
 description: "What is Base64 encoding, why it exists, and when to use it in web development. Includes real-world examples for APIs, image data URIs, and authentication tokens."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["base64", "encoding", "api", "data-uri", "web-development"]
 readingTime: "2 min read"

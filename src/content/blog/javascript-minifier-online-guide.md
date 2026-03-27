@@ -1,6 +1,7 @@
 ---
 title: "JavaScript Minifier Online: Compress and Minify JS Files Free"
 description: "Minify JavaScript online for free. Reduce JS file size by removing whitespace, comments, and shortening variable names. Learn when to minify, how it works, and best practices."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["javascript", "minifier", "performance", "build-tools", "developer-tools", "optimization"]
 readingTime: "6 min read"

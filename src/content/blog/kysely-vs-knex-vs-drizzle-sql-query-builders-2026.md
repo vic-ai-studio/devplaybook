@@ -1,9 +1,10 @@
 ---
 title: "Kysely vs Knex vs Drizzle: TypeScript SQL Query Builders in 2026"
 description: "An in-depth comparison of Kysely, Knex, and Drizzle ORM for TypeScript projects in 2026. We cover type safety, migration support, raw SQL escape hatches, bundle size, and performance so you can pick the right query builder for your stack."
-pubDate: 2026-03-27
+author: "DevPlaybook Team"
+date: "2026-03-27"
+readingTime: "10 min read"
 tags: ["database", "typescript", "kysely", "drizzle"]
-slug: kysely-vs-knex-vs-drizzle-sql-query-builders-2026
 ---
 
 # Kysely vs Knex vs Drizzle: TypeScript SQL Query Builders in 2026

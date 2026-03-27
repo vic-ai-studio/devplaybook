@@ -1,6 +1,7 @@
 ---
 title: "SSH Key Generator Guide: Generate RSA and Ed25519 Keys for Secure Access"
 description: "Learn how to generate SSH key pairs for GitHub, servers, and CI/CD pipelines. Comparison of RSA vs Ed25519, key sizes, passphrase best practices, and troubleshooting."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["ssh", "security", "keys", "github", "devops", "linux", "developer-tools"]
 readingTime: "8 min read"

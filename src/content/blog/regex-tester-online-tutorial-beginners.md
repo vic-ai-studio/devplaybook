@@ -1,6 +1,7 @@
 ---
 title: "Regex Tester Online Tutorial: Learn Regular Expressions From Scratch"
 description: "Beginner's guide to regular expressions with a free online regex tester. Covers character classes, quantifiers, groups, lookaheads, and real-world patterns with live examples."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["regex", "regular-expressions", "developer-tools", "tutorials", "beginner-guide"]
 readingTime: "9 min read"

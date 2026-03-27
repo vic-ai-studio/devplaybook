@@ -1,6 +1,7 @@
 ---
 title: "URL Encoding 101: encodeURIComponent vs encodeURI vs rawuriencode"
 description: "The complete guide to URL encoding in JavaScript and Python. Covers when to use encodeURIComponent, encodeURI, and how to handle special characters correctly."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["url", "encoding", "javascript", "python", "http", "api"]
 readingTime: "2 min read"

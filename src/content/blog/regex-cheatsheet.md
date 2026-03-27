@@ -1,6 +1,7 @@
 ---
 title: "Regex Cheat Sheet: The Only Regex Reference You'll Need in 2026"
 description: "Complete regex cheat sheet with practical examples. Covers character classes, quantifiers, anchors, groups, lookaheads, and common patterns for JavaScript, Python, and Go."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["regex", "cheatsheet", "javascript", "python", "reference"]
 readingTime: "3 min read"

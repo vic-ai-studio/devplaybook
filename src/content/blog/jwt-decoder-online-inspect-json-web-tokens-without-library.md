@@ -1,6 +1,7 @@
 ---
 title: "JWT Decoder Online: Inspect JSON Web Tokens Without a Library"
 description: "Decode and inspect JWT tokens online for free. Learn JWT structure, how to read claims, verify signatures, and debug authentication issues in your apps."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["jwt", "jwt-decoder", "authentication", "developer-tools", "security"]
 readingTime: "9 min read"

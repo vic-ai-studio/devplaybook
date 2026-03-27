@@ -1,7 +1,9 @@
 ---
 title: "Turborepo vs Nx 2026: Which Monorepo Tool Should You Choose?"
 description: "Comprehensive Turborepo vs Nx comparison for 2026. Feature tables, performance benchmarks, caching strategies, migration paths, and which tool fits your team size and tech stack."
-pubDate: 2026-03-27
+author: "DevPlaybook Team"
+date: "2026-03-27"
+readingTime: "10 min read"
 tags: [turborepo, nx, monorepo]
 ---
 

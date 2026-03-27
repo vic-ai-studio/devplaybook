@@ -1,6 +1,7 @@
 ---
 title: "WebAssembly for Backend Developers: The Complete Guide to WASM Beyond the Browser (2026)"
 description: "Master WebAssembly for server-side development. Covers WASI preview 2, component model, wasmCloud, Spin/Fermyon, SpinKube on Kubernetes, performance benchmarks vs containers, and language support for Rust, Go, Python, and JavaScript."
+author: "DevPlaybook Team"
 date: "2026-03-26"
 tags: ["webassembly", "wasm", "wasi", "serverless", "kubernetes", "rust", "backend", "performance"]
 readingTime: "14 min read"

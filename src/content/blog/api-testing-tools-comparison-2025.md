@@ -1,6 +1,7 @@
 ---
 title: "API Testing Tools Comparison 2025: Postman vs Insomnia vs Bruno vs Alternatives"
 description: "Compare the best API testing tools in 2025: Postman, Insomnia, Bruno, Hoppscotch, and browser-based options. Features, pricing, and which to use for your team."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["api", "api-testing", "postman", "insomnia", "bruno", "developer-tools"]
 readingTime: "9 min read"

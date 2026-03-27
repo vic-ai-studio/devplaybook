@@ -1,9 +1,10 @@
 ---
 title: "D3.js vs Chart.js vs Recharts vs Nivo: Data Visualization in 2026"
 description: "Compare D3.js, Chart.js, Recharts, and Nivo for data visualization in 2026. We analyze bundle size, React integration, customization, SSR support, and learning curve so you can pick the right charting library for your project."
-pubDate: 2026-03-27
+author: "DevPlaybook Team"
+date: "2026-03-27"
+readingTime: "10 min read"
 tags: ["data-visualization", "d3", "chartjs", "recharts"]
-slug: d3js-vs-chartjs-vs-recharts-vs-nivo-data-visualization-2026
 ---
 
 # D3.js vs Chart.js vs Recharts vs Nivo: Data Visualization in 2026

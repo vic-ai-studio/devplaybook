@@ -1,6 +1,7 @@
 ---
 title: "SQL Formatter: Clean Up Messy SQL Queries in Seconds"
 description: "How to format SQL queries instantly. Covers indentation rules, keyword capitalization, JOIN formatting, subqueries, and the best SQL formatters for PostgreSQL, MySQL, and SQLite."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["sql", "formatter", "database", "postgresql", "mysql", "query"]
 readingTime: "2 min read"

@@ -1,6 +1,7 @@
 ---
 title: "Best Free Online JSON Formatter and Validator 2024"
 description: "Find the best free online JSON formatter and validator. Compare features, learn how to validate JSON instantly, and fix common errors with our free tool."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["json", "json-formatter", "json-validator", "developer-tools", "free-tools"]
 readingTime: "8 min read"

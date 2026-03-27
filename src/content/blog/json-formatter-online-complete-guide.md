@@ -1,6 +1,7 @@
 ---
 title: "JSON Formatter Online: Format, Validate, and Debug JSON Instantly"
 description: "How to format, validate, and debug JSON online. Covers pretty printing, minifying, schema validation, and fixing common JSON errors — with a free online tool."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["json", "json-formatter", "json-validator", "developer-tools", "web-development"]
 readingTime: "5 min read"

@@ -1,6 +1,7 @@
 ---
 title: "CSS Gradient Generator Online: Create Linear, Radial & Conic Gradients Free"
 description: "Generate beautiful CSS gradients online for free. Build linear, radial, and conic gradients visually, copy the CSS code, and use it instantly in your project — no install needed."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["css", "gradient", "generator", "design", "frontend", "ui"]
 readingTime: "6 min read"

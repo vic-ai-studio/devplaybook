@@ -1,6 +1,7 @@
 ---
 title: "GitHub Actions vs GitLab CI vs CircleCI: Which CI/CD Platform in 2026?"
 description: "Detailed comparison of GitHub Actions, GitLab CI, and CircleCI for 2026. Covers pricing, performance, ecosystem integration, YAML syntax, and when to use each platform."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["ci-cd", "github-actions", "gitlab-ci", "circleci", "devops", "automation"]
 readingTime: "10 min read"

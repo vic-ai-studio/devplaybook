@@ -1,6 +1,7 @@
 ---
 title: "How to Use Regex in JavaScript: Complete Guide with Examples"
 description: "Learn how to use regex in JavaScript with practical examples. Covers RegExp syntax, methods, flags, groups, lookaheads, and real-world patterns for validation and parsing."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["javascript", "regex", "regexp", "string-manipulation", "web-development"]
 readingTime: "9 min read"

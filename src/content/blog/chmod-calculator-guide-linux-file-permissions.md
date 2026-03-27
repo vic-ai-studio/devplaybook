@@ -1,6 +1,7 @@
 ---
 title: "Chmod Calculator: Understand Linux File Permissions Without Memorizing Octal"
 description: "Use a chmod calculator to set Linux file permissions correctly. Convert between symbolic and octal notation, understand rwx bits, and avoid common permission mistakes."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["linux", "permissions", "devops", "shell", "developer-tools"]
 readingTime: "7 min read"

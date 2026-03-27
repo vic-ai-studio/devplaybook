@@ -1,6 +1,7 @@
 ---
 title: "GitHub Actions Workflow Examples: 15 Ready-to-Use CI/CD Templates"
 description: "Copy-paste GitHub Actions workflow examples for Node.js, Python, Docker, deployment, scheduled tasks, and more. Real templates that work out of the box."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["github-actions", "ci-cd", "devops", "automation", "workflow-templates"]
 readingTime: "10 min read"

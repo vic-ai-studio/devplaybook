@@ -1,6 +1,7 @@
 ---
 title: "SHA256 Hash Generator Online: Hash Any String or File for Free"
 description: "Generate SHA-256 hashes online for free — hash strings, passwords, file checksums, and API signatures instantly. No install required. Includes code examples in JavaScript, Python, and bash."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["sha256", "hash", "security", "cryptography", "developer-tools", "checksums"]
 readingTime: "8 min read"

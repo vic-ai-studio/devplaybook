@@ -1,6 +1,7 @@
 ---
 title: "Rust for JavaScript Developers: Memory Safety, Performance & WebAssembly"
 description: "A JavaScript developer's guide to Rust. Learn ownership vs garbage collection, Rust performance benchmarks, Cargo ecosystem, WebAssembly with wasm-pack, and when to choose Rust over JS."
+author: "DevPlaybook Team"
 date: "2026-03-27"
 tags: ["rust", "javascript", "webassembly", "wasm", "performance", "systems-programming", "memory-safety"]
 readingTime: "13 min read"

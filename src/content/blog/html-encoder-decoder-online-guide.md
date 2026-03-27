@@ -1,6 +1,7 @@
 ---
 title: "HTML Encoder Decoder Online: Escape & Unescape HTML Entities Free"
 description: "Encode and decode HTML entities online for free. Learn when to escape HTML, which characters must be encoded, and how to prevent XSS vulnerabilities using an HTML encoder decoder."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["html", "encoder", "decoder", "entities", "security", "xss", "developer-tools"]
 readingTime: "6 min read"

@@ -1,6 +1,7 @@
 ---
 title: "Markdown Table Generator: Create Tables Without the Formatting Headache"
 description: "Generate Markdown tables instantly from CSV data or a visual editor. Includes Markdown table syntax reference, alignment options, and how to use tables in GitHub, Notion, and documentation."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["markdown", "tables", "documentation", "github", "developer-tools", "writing"]
 readingTime: "5 min read"

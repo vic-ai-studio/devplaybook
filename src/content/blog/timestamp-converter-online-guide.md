@@ -1,6 +1,7 @@
 ---
 title: "Timestamp Converter Online: Convert Unix Timestamps to Human-Readable Dates"
 description: "Convert Unix timestamps to readable dates and back online for free. Learn what Unix timestamps are, how to convert them in JavaScript, Python, and SQL, and avoid timezone traps."
+author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["timestamp", "unix", "datetime", "converter", "developer-tools"]
 readingTime: "6 min read"
