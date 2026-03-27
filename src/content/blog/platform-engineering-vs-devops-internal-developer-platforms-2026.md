@@ -1,7 +1,9 @@
 ---
 title: "Platform Engineering vs DevOps: Internal Developer Platforms Guide 2026"
 description: "Discover the differences between Platform Engineering and DevOps, explore top IDP tools like Backstage, Port, Cortex, and OpsLevel, and learn how to build a golden path for your developers in 2026."
-date: 2026-03-27
+date: "2026-03-27"
+author: "DevPlaybook Team"
+readingTime: "12 min read"
 tags: ["platform engineering", "devops", "internal developer platform", "backstage", "developer experience", "IDP", "DORA metrics"]
 ---
 

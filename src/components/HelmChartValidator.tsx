@@ -298,7 +298,7 @@ export default function HelmChartValidator() {
         <p class="font-medium text-text mb-2">Validation checks</p>
         <ul class="space-y-1 list-disc list-inside">
           <li>Template: required Kubernetes fields (kind, apiVersion, metadata)</li>
-          <li>Template brace balance — catches unclosed {{ "{{" }} expressions</li>
+          <li>Template brace balance — catches unclosed {"{{ }}"} expressions</li>
           <li>Parameterization — flags hardcoded values that should use .Values</li>
           <li>nindent usage for multi-line includes</li>
           <li>values.yaml: image tag pinning and resource limits</li>

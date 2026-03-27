@@ -1,8 +1,10 @@
 ---
 title: "Svelte 5 vs React vs Vue 3: Frontend Framework Comparison 2026"
 description: "Compare Svelte 5 (with runes), React 19, and Vue 3 for modern web apps. Performance benchmarks, bundle size, DX, ecosystem, and when to choose each."
-pubDate: 2026-03-27
-tags: [svelte, react, vue, frontend, framework, javascript]
+date: "2026-03-27"
+author: "DevPlaybook Team"
+readingTime: "11 min read"
+tags: ["svelte", "react", "vue", "frontend", "framework", "javascript"]
 ---
 
 # Svelte 5 vs React vs Vue 3: Which Frontend Framework Should You Choose in 2026?

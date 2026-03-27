@@ -1,8 +1,10 @@
 ---
-title: ClickHouse vs TimescaleDB vs InfluxDB: Time-Series Database Comparison 2026
-description: Compare ClickHouse, TimescaleDB, and InfluxDB for time-series workloads. Performance benchmarks, query language, scaling, and when to choose each.
-pubDate: 2026-03-27
-tags: [database, time-series, clickhouse, timescaledb, influxdb, backend]
+title: "ClickHouse vs TimescaleDB vs InfluxDB: Time-Series Database Comparison 2026"
+description: "Compare ClickHouse, TimescaleDB, and InfluxDB for time-series workloads. Performance benchmarks, query language, scaling, and when to choose each."
+date: "2026-03-27"
+author: "DevPlaybook Team"
+tags: ["database", "time-series", "clickhouse", "timescaledb", "influxdb", "backend"]
+readingTime: "12 min read"
 ---
 
 # ClickHouse vs TimescaleDB vs InfluxDB: Time-Series Database Comparison 2026

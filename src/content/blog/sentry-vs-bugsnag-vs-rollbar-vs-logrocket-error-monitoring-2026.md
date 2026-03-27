@@ -1,7 +1,9 @@
 ---
 title: 'Sentry vs Bugsnag vs Rollbar vs LogRocket: Error Monitoring Comparison 2026'
 description: 'Compare Sentry, Bugsnag, Rollbar, and LogRocket for error monitoring and crash reporting. Pricing, features, session replay, and when to use each tool.'
-pubDate: '2026-03-27'
+date: "2026-03-27"
+author: "DevPlaybook Team"
+readingTime: "10 min read"
 tags: ['error-monitoring', 'debugging', 'devtools', 'sentry', 'comparison']
 ---
 

@@ -1,7 +1,9 @@
 ---
 title: "Rust vs Go vs Zig: Systems Programming Language Comparison 2026"
 description: "A deep technical comparison of Rust, Go, and Zig for systems programming in 2026. Covers performance benchmarks, memory management, concurrency models, ecosystem maturity, and when to choose each language."
-date: 2026-03-27
+date: "2026-03-27"
+author: "DevPlaybook Team"
+readingTime: "13 min read"
 tags: ["rust", "go", "zig", "systems programming", "programming languages", "performance", "memory management"]
 ---
 
