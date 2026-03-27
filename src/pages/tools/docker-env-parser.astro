@@ -1,0 +1,260 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is a .env file?",
+    answer: "A .env file stores environment variables as KEY=VALUE pairs, one per line. It's used by Docker, Node.js (via dotenv), Python (via python-dotenv), and many frameworks to inject configuration without hardcoding values in source code. Lines starting with # are comments."
+  },
+  {
+    question: "What is the difference between ARG and ENV in Docker?",
+    answer: "ARG is a build-time variable only available during docker build. ENV sets a runtime environment variable that persists in the container image and is available to running processes. Use ARG for build secrets or version pins; use ENV for app configuration that the container needs at runtime."
+  },
+  {
+    question: "How does docker-compose env_file work?",
+    answer: "The env_file directive in docker-compose.yml reads a file and injects all KEY=VALUE pairs as environment variables into the container. It supports the same .env format: comments (#), blank lines, and optional quotes around values. Variables defined this way do not expand other variables."
+  },
+  {
+    question: "How do I pass .env variables to docker run?",
+    answer: "Use --env-file <path> to pass all variables from a file, or -e KEY=VALUE for individual variables. Example: docker run --env-file .env myimage. The --env-file flag does not support variable expansion or multi-line values."
+  },
+  {
+    question: "Should I commit .env files to Git?",
+    answer: "No. Never commit .env files containing real secrets. Add .env to your .gitignore. Instead, commit a .env.example file with placeholder values so other developers know what variables are required. Use a secrets manager (AWS Secrets Manager, Vault, Doppler) for production credentials."
+  },
+];
+---
+
+<BaseLayout
+  title="Docker ENV File Parser — Parse & Validate .env Files"
+  description="Parse .env and docker-compose env_file format. See key-value table, detect duplicate keys, missing values, and special characters. Export as docker run --env flags or shell export statements. Free browser tool."
+  tool="Docker ENV Parser, .env File Parser, Docker env_file, Docker Environment Variables, dotenv Parser"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Docker ENV File Parser",
+    "url": "https://devplaybook.cc/tools/docker-env-parser",
+    "description": "Parse .env and docker-compose env_file format. Detect duplicate keys, missing values, and export as docker run flags or shell exports.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Docker ENV File Parser</h1>
+  <p class="text-text-muted mb-4">
+    Paste your <code class="font-mono bg-surface px-1 rounded text-sm">.env</code> or docker-compose <code class="font-mono bg-surface px-1 rounded text-sm">env_file</code> content to parse
+    key-value pairs, detect issues, and export as <code class="font-mono bg-surface px-1 rounded text-sm">docker run --env</code> flags or shell exports.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Detects duplicates & missing values</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Export as docker run or shell export</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+  </div>
+
+  <div id="docker-env-app" class="space-y-5">
+    <div>
+      <label class="block text-sm font-semibold mb-2" for="env-input">Paste your .env content</label>
+      <textarea
+        id="env-input"
+        rows="12"
+        placeholder={"# Example .env\nDB_HOST=localhost\nDB_PORT=5432\nDB_NAME=myapp\nDB_USER=admin\nDB_PASS=secret123\nDEBUG=true\n# NODE_ENV=production"}
+        class="w-full font-mono text-sm bg-surface border border-border rounded-lg p-3 text-text focus:outline-none focus:border-accent resize-y"
+      ></textarea>
+    </div>
+
+    <div id="issues-panel" class="hidden"></div>
+
+    <div class="flex flex-wrap gap-2">
+      <button id="btn-parse" class="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium transition-colors">Parse</button>
+      <button id="btn-export-docker" class="px-4 py-2 bg-surface border border-border hover:border-accent/50 text-text rounded-lg text-sm font-medium transition-colors">Export: docker run</button>
+      <button id="btn-export-shell" class="px-4 py-2 bg-surface border border-border hover:border-accent/50 text-text rounded-lg text-sm font-medium transition-colors">Export: shell export</button>
+      <button id="btn-clear" class="px-4 py-2 bg-surface border border-border hover:border-accent/50 text-text-muted rounded-lg text-sm font-medium transition-colors">Clear</button>
+    </div>
+
+    <div id="table-panel" class="hidden">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-semibold">Parsed Variables</span>
+        <span id="var-count" class="text-xs text-text-muted"></span>
+      </div>
+      <div class="overflow-x-auto rounded-lg border border-border">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-surface border-b border-border text-left">
+              <th class="px-3 py-2 font-semibold text-text-muted w-8">#</th>
+              <th class="px-3 py-2 font-semibold">Key</th>
+              <th class="px-3 py-2 font-semibold">Value</th>
+              <th class="px-3 py-2 font-semibold w-24">Status</th>
+            </tr>
+          </thead>
+          <tbody id="env-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="output-panel" class="hidden">
+      <div class="flex items-center justify-between mb-2">
+        <label id="output-label" class="text-sm font-semibold"></label>
+        <button id="btn-copy-output" class="text-xs text-accent hover:underline">Copy</button>
+      </div>
+      <pre id="output-code" class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-auto max-h-64 text-text leading-relaxed whitespace-pre"></pre>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      function parseEnv(text) {
+        const lines = text.split('\n');
+        const entries = [];
+        const seen = new Map();
+        const issues = [];
+
+        lines.forEach((raw, idx) => {
+          const line = raw.trim();
+          if (!line || line.startsWith('#')) return;
+
+          const eqIdx = line.indexOf('=');
+          if (eqIdx === -1) {
+            issues.push({ type: 'warn', msg: `Line ${idx + 1}: No '=' found — "${line.slice(0, 40)}"` });
+            return;
+          }
+
+          const key = line.slice(0, eqIdx).trim();
+          let value = line.slice(eqIdx + 1).trim();
+
+          // Strip surrounding quotes
+          if ((value.startsWith('"') && value.endsWith('"')) ||
+              (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+          }
+
+          if (!key) {
+            issues.push({ type: 'warn', msg: `Line ${idx + 1}: Empty key` });
+            return;
+          }
+          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+            issues.push({ type: 'warn', msg: `Line ${idx + 1}: Key "${key}" contains special characters` });
+          }
+          if (!value) {
+            issues.push({ type: 'info', msg: `Line ${idx + 1}: Key "${key}" has an empty value` });
+          }
+          if (seen.has(key)) {
+            issues.push({ type: 'error', msg: `Duplicate key "${key}" (first at line ${seen.get(key) + 1}, again at line ${idx + 1})` });
+          } else {
+            seen.set(key, idx);
+          }
+
+          entries.push({ key, value, line: idx + 1 });
+        });
+
+        return { entries, issues };
+      }
+
+      function renderTable(entries) {
+        const tbody = document.getElementById('env-table-body');
+        if (!tbody) return;
+        tbody.innerHTML = entries.map((e, i) => {
+          const isEmpty = !e.value;
+          const statusHtml = isEmpty
+            ? '<span class="text-yellow-500 text-xs">empty</span>'
+            : '<span class="text-green-500 text-xs">ok</span>';
+          const valueDisplay = e.value.length > 60 ? e.value.slice(0, 60) + '…' : e.value;
+          return `<tr class="border-b border-border hover:bg-surface/50">
+            <td class="px-3 py-2 text-text-muted">${i + 1}</td>
+            <td class="px-3 py-2 font-mono text-accent">${escHtml(e.key)}</td>
+            <td class="px-3 py-2 font-mono text-text-muted text-xs">${escHtml(valueDisplay) || '<em class="text-text-muted">(empty)</em>'}</td>
+            <td class="px-3 py-2">${statusHtml}</td>
+          </tr>`;
+        }).join('');
+        const countEl = document.getElementById('var-count');
+        if (countEl) countEl.textContent = `${entries.length} variable${entries.length !== 1 ? 's' : ''}`;
+      }
+
+      function renderIssues(issues) {
+        const panel = document.getElementById('issues-panel');
+        if (!panel) return;
+        if (!issues.length) { panel.classList.add('hidden'); return; }
+        const colorMap = { error: 'text-red-400', warn: 'text-yellow-400', info: 'text-blue-400' };
+        const iconMap = { error: '✕', warn: '⚠', info: 'ℹ' };
+        panel.innerHTML = `<div class="bg-surface border border-border rounded-lg p-4 space-y-1.5">
+          <p class="text-sm font-semibold mb-2">Issues Found</p>
+          ${issues.map(i => `<div class="text-xs flex gap-2"><span class="${colorMap[i.type] || 'text-text-muted'}">${iconMap[i.type] || '·'}</span><span>${escHtml(i.msg)}</span></div>`).join('')}
+        </div>`;
+        panel.classList.remove('hidden');
+      }
+
+      function escHtml(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
+      function showOutput(label, code) {
+        const panel = document.getElementById('output-panel');
+        const lbl = document.getElementById('output-label');
+        const pre = document.getElementById('output-code');
+        if (!panel || !lbl || !pre) return;
+        lbl.textContent = label;
+        pre.textContent = code;
+        panel.classList.remove('hidden');
+      }
+
+      let lastEntries = [];
+
+      document.getElementById('btn-parse')?.addEventListener('click', () => {
+        const input = (document.getElementById('env-input') as HTMLTextAreaElement)?.value || '';
+        const { entries, issues } = parseEnv(input);
+        lastEntries = entries;
+        renderIssues(issues);
+        if (entries.length) {
+          renderTable(entries);
+          document.getElementById('table-panel')?.classList.remove('hidden');
+        } else {
+          document.getElementById('table-panel')?.classList.add('hidden');
+        }
+        document.getElementById('output-panel')?.classList.add('hidden');
+      });
+
+      document.getElementById('btn-export-docker')?.addEventListener('click', () => {
+        if (!lastEntries.length) { alert('Parse first'); return; }
+        const flags = lastEntries.map(e => `-e ${e.key}="${e.value.replace(/"/g, '\\"')}"`).join(' \\\n  ');
+        showOutput('docker run flags', `docker run \\\n  ${flags} \\\n  your-image`);
+      });
+
+      document.getElementById('btn-export-shell')?.addEventListener('click', () => {
+        if (!lastEntries.length) { alert('Parse first'); return; }
+        const exports = lastEntries.map(e => `export ${e.key}="${e.value.replace(/"/g, '\\"')}"`).join('\n');
+        showOutput('Shell export statements', exports);
+      });
+
+      document.getElementById('btn-clear')?.addEventListener('click', () => {
+        (document.getElementById('env-input') as HTMLTextAreaElement).value = '';
+        document.getElementById('table-panel')?.classList.add('hidden');
+        document.getElementById('issues-panel')?.classList.add('hidden');
+        document.getElementById('output-panel')?.classList.add('hidden');
+        lastEntries = [];
+      });
+
+      document.getElementById('btn-copy-output')?.addEventListener('click', () => {
+        const pre = document.getElementById('output-code');
+        if (!pre) return;
+        navigator.clipboard.writeText(pre.textContent || '').then(() => {
+          const btn = document.getElementById('btn-copy-output');
+          if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
+        });
+      });
+
+      // Auto-parse on paste
+      document.getElementById('env-input')?.addEventListener('input', () => {
+        lastEntries = [];
+        document.getElementById('table-panel')?.classList.add('hidden');
+        document.getElementById('issues-panel')?.classList.add('hidden');
+        document.getElementById('output-panel')?.classList.add('hidden');
+      });
+    })();
+  </script>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Docker ENV File Parser" relatedTags={['docker', 'devops', 'security', 'linux', 'automation']} />
+</BaseLayout>
