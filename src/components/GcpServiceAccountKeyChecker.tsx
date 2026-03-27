@@ -5,6 +5,7 @@ type CheckResult = {
   message: string;
 };
 
+// NOTE: SAMPLE_KEY uses placeholder values only — no real credentials
 const SAMPLE_KEY = `{
   "type": "service_account",
   "project_id": "my-project-123456",
