@@ -32,13 +32,13 @@ const SAMPLE_OUTPUTS: Record<TempBand, SampleOutputs> = {
   mid: {
     outputs: [
       'Fuel your mornings, savor your afternoons.',
-      'Life's too short for bad coffee — sip the difference.',
+      "Life's too short for bad coffee — sip the difference.",
       'Where great days begin, one cup at a time.',
     ],
   },
   high: {
     outputs: [
-      'We don't just brew coffee. We brew conversations, connections, and cosmic coincidences.',
+      "We don't just brew coffee. We brew conversations, connections, and cosmic coincidences.",
       'Your neighborhood alchemist — turning beans into liquid gold since forever.',
       'Coffee so good, it makes Monday mornings feel illegal in a good way.',
     ],
