@@ -1,0 +1,692 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is a Kubernetes manifest?",
+    answer: "A Kubernetes manifest is a YAML (or JSON) file that describes the desired state of a Kubernetes resource — such as a Deployment, Service, ConfigMap, or Pod. kubectl apply -f manifest.yaml submits it to the API server, which reconciles the cluster to match that desired state."
+  },
+  {
+    question: "What fields are required in every Kubernetes resource?",
+    answer: "Every Kubernetes resource requires four top-level fields: apiVersion (e.g. apps/v1), kind (e.g. Deployment), metadata (which must contain at least name), and usually spec. Missing any of these will cause kubectl apply to reject the manifest."
+  },
+  {
+    question: "Why should containers always have resource limits?",
+    answer: "Without resource limits (resources.limits.cpu and resources.limits.memory), a single misbehaving pod can consume all node resources and evict other workloads. The scheduler also cannot make accurate placement decisions. Setting both requests (soft minimum) and limits (hard cap) is a Kubernetes best practice required for QoS guarantees."
+  },
+  {
+    question: "Why is using the :latest image tag bad practice?",
+    answer: "The :latest tag is mutable — it can point to a different image each time it's pulled, making deployments non-reproducible. In production, always pin to an immutable digest or a specific semantic version tag (e.g. nginx:1.25.3) to ensure consistent rollouts and easy rollbacks."
+  },
+  {
+    question: "What are liveness and readiness probes?",
+    answer: "A readiness probe tells Kubernetes when a container is ready to accept traffic — failing pods are removed from Service endpoints. A liveness probe tells Kubernetes when a container is unhealthy and should be restarted. Without probes, traffic can reach containers that aren't ready, and stuck containers won't be automatically recovered."
+  },
+  {
+    question: "Can I validate multiple resources in one file?",
+    answer: "Yes. Kubernetes manifests support multiple resources separated by --- (YAML document separator). This validator handles multi-document YAML, validating each resource independently and showing results grouped by document."
+  }
+];
+---
+
+<BaseLayout
+  title="Kubernetes Manifest Validator — Free K8s YAML Checker"
+  description="Validate Kubernetes YAML manifests online. Check required fields, security misconfigurations, missing resource limits, image tags, and best practice violations. Free, runs in your browser."
+  tool="kubernetes manifest validator, k8s yaml validator, kubernetes yaml checker, k8s linter, kubernetes security check, kubectl validate"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Kubernetes Manifest Validator",
+    "url": "https://devplaybook.cc/tools/k8s-manifest-validator",
+    "description": "Validate Kubernetes YAML manifests for required fields, security issues, and best practice violations. Free online K8s linter.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Kubernetes Manifest Validator</h1>
+  <p class="text-text-muted mb-4">Paste your K8s YAML manifest to check for missing required fields, security misconfigurations, and best practice violations. Supports multi-document YAML separated by <code class="font-mono text-xs bg-bg-card border border-border px-1 rounded">---</code>.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Required field checks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Security misconfiguration detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Best practice warnings</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-document YAML support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 100% runs in your browser</span>
+  </div>
+
+  <!-- Controls Row -->
+  <div class="flex flex-wrap items-center gap-3 mb-3">
+    <select id="example-select" class="px-3 py-2 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors focus:outline-none focus:border-primary cursor-pointer">
+      <option value="">Load example manifest…</option>
+      <option value="deployment">Deployment (nginx)</option>
+      <option value="service">Service (ClusterIP)</option>
+      <option value="configmap">ConfigMap</option>
+      <option value="ingress">Ingress</option>
+      <option value="pod">Pod (bare)</option>
+      <option value="bad-deployment">Bad Deployment (lots of issues)</option>
+    </select>
+    <button id="clear-btn" class="px-3 py-2 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Clear</button>
+    <button id="validate-btn" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">Validate Manifest</button>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-lg mb-4">
+    <div class="flex items-center justify-between px-4 py-2 border-b border-border">
+      <span class="text-sm font-medium">YAML Input</span>
+      <span id="doc-count" class="text-xs text-text-muted"></span>
+    </div>
+    <textarea
+      id="yaml-input"
+      class="w-full bg-transparent p-4 text-sm font-mono focus:outline-none resize-none"
+      rows="18"
+      placeholder="Paste your Kubernetes manifest YAML here…&#10;&#10;Supports multiple documents separated by ---"
+      spellcheck="false"
+    ></textarea>
+  </div>
+
+  <!-- Results -->
+  <div id="results-area" class="hidden">
+    <!-- Score banner -->
+    <div id="score-banner" class="flex items-center gap-3 p-4 rounded-lg border mb-4 text-sm font-medium"></div>
+
+    <!-- Per-document results -->
+    <div id="results-list" class="space-y-4"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Kubernetes Manifest Validator" relatedTags={['kubernetes', 'k8s', 'devops', 'yaml', 'docker', 'infrastructure']} />
+</BaseLayout>
+
+<script>
+// ─── Example manifests ───────────────────────────────────────────────────────
+const EXAMPLES: Record<string, string> = {
+  deployment: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  namespace: default
+  labels:
+    app: nginx
+    version: "1.25"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+        version: "1.25"
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.25.3
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101`,
+
+  service: `apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  namespace: default
+  labels:
+    app: nginx
+spec:
+  selector:
+    app: nginx
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP`,
+
+  configmap: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+data:
+  APP_ENV: production
+  LOG_LEVEL: info
+  MAX_CONNECTIONS: "100"`,
+
+  ingress: `apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-service
+                port:
+                  number: 80`,
+
+  pod: `apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+  namespace: default
+  labels:
+    app: my-app
+spec:
+  containers:
+    - name: app
+      image: myapp:2.0.1
+      ports:
+        - containerPort: 8080
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "256Mi"
+        limits:
+          cpu: "1"
+          memory: "512Mi"
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000`,
+
+  "bad-deployment": `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insecure-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: insecure
+  template:
+    metadata:
+      labels:
+        app: insecure
+    spec:
+      containers:
+        - name: app
+          image: myapp:latest
+          env:
+            - name: DB_PASSWORD
+              value: "supersecret123"
+            - name: API_KEY
+              value: "hardcoded-api-key"
+          securityContext:
+            privileged: true
+            runAsUser: 0`,
+};
+
+// ─── YAML parser (line-by-line, no external deps) ────────────────────────────
+interface YamlDoc {
+  raw: string;
+  lines: string[];
+  // Flat key paths with values, e.g. "spec.replicas" -> "3"
+  keys: Map<string, string>;
+  // All key path segments that exist (for presence checks)
+  keySet: Set<string>;
+}
+
+function parseYamlDoc(raw: string): YamlDoc {
+  const lines = raw.split('\n');
+  const keys = new Map<string, string>();
+  const keySet = new Set<string>();
+
+  // Track indent stack for path reconstruction
+  const stack: Array<{ indent: number; key: string }> = [];
+
+  for (const line of lines) {
+    // Skip comments and empty lines
+    if (line.trimStart().startsWith('#') || line.trim() === '') continue;
+
+    const match = line.match(/^(\s*)([\w.\-/]+)\s*:\s*(.*)?$/);
+    if (!match) continue;
+
+    const indent = match[1].length;
+    const key = match[2];
+    const value = (match[3] || '').trim();
+
+    // Pop stack entries that are at same or deeper indent
+    while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
+      stack.pop();
+    }
+
+    stack.push({ indent, key });
+    const fullPath = stack.map(s => s.key).join('.');
+    keys.set(fullPath, value);
+    keySet.add(fullPath);
+
+    // Also register all ancestor paths
+    let ancestor = '';
+    for (const seg of stack) {
+      ancestor = ancestor ? ancestor + '.' + seg.key : seg.key;
+      keySet.add(ancestor);
+    }
+  }
+
+  return { raw, lines, keys, keySet };
+}
+
+function splitDocuments(yaml: string): string[] {
+  // Split on lines that are exactly "---" (possibly with trailing spaces)
+  const docs = yaml.split(/^---\s*$/m).filter(d => d.trim().length > 0);
+  return docs.length === 0 ? [yaml] : docs;
+}
+
+function getVal(doc: YamlDoc, path: string): string {
+  return doc.keys.get(path) ?? '';
+}
+
+function hasKey(doc: YamlDoc, path: string): boolean {
+  return doc.keySet.has(path);
+}
+
+// ─── Validation engine ────────────────────────────────────────────────────────
+interface Issue {
+  level: 'error' | 'warning' | 'info' | 'pass';
+  message: string;
+  detail?: string;
+}
+
+function validateDocument(doc: YamlDoc): { kind: string; name: string; issues: Issue[] } {
+  const issues: Issue[] = [];
+  const kind = getVal(doc, 'kind');
+  const name = getVal(doc, 'metadata.name');
+
+  // ── Universal required fields ──
+  if (!hasKey(doc, 'apiVersion') || !getVal(doc, 'apiVersion')) {
+    issues.push({ level: 'error', message: 'Missing required field: apiVersion', detail: 'Every K8s resource must declare apiVersion (e.g. apps/v1, v1).' });
+  } else {
+    issues.push({ level: 'pass', message: 'apiVersion is present' });
+  }
+
+  if (!kind) {
+    issues.push({ level: 'error', message: 'Missing required field: kind', detail: 'Every resource must specify its type (Deployment, Service, Pod, etc.).' });
+  } else {
+    issues.push({ level: 'pass', message: `kind: ${kind}` });
+  }
+
+  if (!hasKey(doc, 'metadata.name') || !name) {
+    issues.push({ level: 'error', message: 'Missing required field: metadata.name', detail: 'Every resource must have a name under metadata.' });
+  } else {
+    issues.push({ level: 'pass', message: `metadata.name: ${name}` });
+  }
+
+  // ── Namespace check ──
+  if (!hasKey(doc, 'metadata.namespace')) {
+    issues.push({ level: 'warning', message: 'Missing metadata.namespace', detail: 'Not specifying a namespace deploys to the default namespace. Be explicit to avoid accidental cross-namespace conflicts.' });
+  }
+
+  // ── Labels check ──
+  if (!hasKey(doc, 'metadata.labels')) {
+    issues.push({ level: 'warning', message: 'Missing metadata.labels', detail: 'Labels are essential for resource selection, filtering, and observability. Add at minimum app and version labels.' });
+  } else {
+    // Check for app/version labels specifically
+    const hasAppLabel = hasKey(doc, 'metadata.labels.app');
+    const hasVersionLabel = hasKey(doc, 'metadata.labels.version');
+    if (!hasAppLabel) {
+      issues.push({ level: 'info', message: 'Consider adding a metadata.labels.app label', detail: 'The app label is a common convention used by selectors, dashboards, and Helm charts.' });
+    }
+    if (!hasVersionLabel) {
+      issues.push({ level: 'info', message: 'Consider adding a metadata.labels.version label', detail: 'A version label makes canary and blue/green deployments easier to manage.' });
+    }
+  }
+
+  // ── Kind-specific checks ──
+  if (kind === 'Deployment') {
+    validateDeployment(doc, issues);
+  } else if (kind === 'Service') {
+    validateService(doc, issues);
+  } else if (kind === 'ConfigMap') {
+    validateConfigMap(doc, issues);
+  } else if (kind === 'Secret') {
+    validateSecret(doc, issues);
+  } else if (kind === 'Pod') {
+    validatePodSpec(doc, issues, 'spec');
+  } else if (kind === 'Ingress') {
+    validateIngress(doc, issues);
+  }
+
+  return { kind: kind || 'Unknown', name: name || '(unnamed)', issues };
+}
+
+function validateDeployment(doc: YamlDoc, issues: Issue[]) {
+  if (!hasKey(doc, 'spec.replicas')) {
+    issues.push({ level: 'warning', message: 'Deployment: spec.replicas not set', detail: 'Defaults to 1 replica — no high availability. Explicitly set replicas to at least 2 for production workloads.' });
+  } else {
+    const replicas = parseInt(getVal(doc, 'spec.replicas') || '1', 10);
+    if (replicas === 1) {
+      issues.push({ level: 'warning', message: 'Deployment has only 1 replica (no HA)', detail: 'A single replica means downtime during node failure or rolling updates. Use at least 2 replicas for high availability.' });
+    } else {
+      issues.push({ level: 'pass', message: `spec.replicas: ${replicas} (HA configured)` });
+    }
+  }
+
+  if (!hasKey(doc, 'spec.selector')) {
+    issues.push({ level: 'error', message: 'Deployment: missing spec.selector', detail: 'spec.selector is required to link the Deployment to its Pods.' });
+  } else {
+    issues.push({ level: 'pass', message: 'spec.selector is present' });
+  }
+
+  if (!hasKey(doc, 'spec.template.spec.containers')) {
+    issues.push({ level: 'error', message: 'Deployment: missing spec.template.spec.containers', detail: 'At least one container definition is required.' });
+  } else {
+    issues.push({ level: 'pass', message: 'spec.template.spec.containers is present' });
+    validatePodSpec(doc, issues, 'spec.template.spec');
+  }
+
+  // Pod Disruption Budget hint
+  issues.push({ level: 'info', message: 'Consider adding a PodDisruptionBudget', detail: 'A PDB prevents all replicas from being evicted simultaneously during node drain or cluster upgrades.' });
+}
+
+function validateService(doc: YamlDoc, issues: Issue[]) {
+  if (!hasKey(doc, 'spec.ports')) {
+    issues.push({ level: 'error', message: 'Service: missing spec.ports', detail: 'At least one port mapping is required in a Service.' });
+  } else {
+    issues.push({ level: 'pass', message: 'spec.ports is present' });
+  }
+
+  if (!hasKey(doc, 'spec.selector')) {
+    issues.push({ level: 'warning', message: 'Service: missing spec.selector', detail: 'Without a selector the Service will not route traffic to any Pods (valid only for headless/ExternalName services).' });
+  } else {
+    issues.push({ level: 'pass', message: 'spec.selector is present' });
+  }
+
+  const serviceType = getVal(doc, 'spec.type');
+  if (serviceType === 'NodePort') {
+    issues.push({ level: 'warning', message: 'Service type is NodePort (security consideration)', detail: 'NodePort exposes the service on every node\'s IP on a static port, increasing the attack surface. Prefer ClusterIP with an Ingress controller for external access.' });
+  } else if (serviceType === 'LoadBalancer') {
+    issues.push({ level: 'info', message: 'Service type is LoadBalancer — verify cloud cost', detail: 'Each LoadBalancer service provisions a cloud load balancer. Use a single Ingress controller to reduce cost.' });
+  }
+}
+
+function validateConfigMap(doc: YamlDoc, issues: Issue[]) {
+  if (!hasKey(doc, 'data')) {
+    issues.push({ level: 'warning', message: 'ConfigMap: missing data section', detail: 'A ConfigMap without a data section is technically valid but likely unintentional.' });
+  } else {
+    issues.push({ level: 'pass', message: 'data section is present' });
+  }
+}
+
+function validateSecret(doc: YamlDoc, issues: Issue[]) {
+  if (!hasKey(doc, 'type')) {
+    issues.push({ level: 'warning', message: 'Secret: missing type field', detail: 'Secret type defaults to Opaque. Be explicit — other types include kubernetes.io/tls, kubernetes.io/dockerconfigjson, etc.' });
+  } else {
+    issues.push({ level: 'pass', message: `Secret type: ${getVal(doc, 'type')}` });
+  }
+  issues.push({ level: 'info', message: 'Consider using an external secret manager', detail: 'Native Kubernetes Secrets are only base64-encoded, not encrypted at rest by default. Consider Sealed Secrets, External Secrets Operator, or Vault for production.' });
+}
+
+function validateIngress(doc: YamlDoc, issues: Issue[]) {
+  if (!hasKey(doc, 'spec.rules')) {
+    issues.push({ level: 'error', message: 'Ingress: missing spec.rules', detail: 'At least one routing rule is required.' });
+  } else {
+    issues.push({ level: 'pass', message: 'spec.rules is present' });
+  }
+
+  if (!hasKey(doc, 'spec.tls')) {
+    issues.push({ level: 'warning', message: 'Ingress: no TLS configuration', detail: 'Consider adding TLS termination with a certificate (e.g. via cert-manager) to enforce HTTPS.' });
+  }
+}
+
+function validatePodSpec(doc: YamlDoc, issues: Issue[], specPrefix: string) {
+  const containersPath = `${specPrefix}.containers`;
+
+  // Check for image :latest
+  // We scan raw lines for image: tags
+  const imageLines = doc.lines.filter(l => /^\s+image:\s+/.test(l));
+  for (const imgLine of imageLines) {
+    const imgMatch = imgLine.match(/image:\s+(.+)/);
+    if (imgMatch) {
+      const img = imgMatch[1].trim().replace(/^["']|["']$/g, '');
+      if (img.endsWith(':latest') || (!img.includes(':') && !img.startsWith('sha256:'))) {
+        issues.push({ level: 'warning', message: `Image uses :latest or no tag: ${img}`, detail: 'Pin to an immutable tag or digest for reproducible deployments and safe rollbacks.' });
+      }
+    }
+  }
+
+  // Resource limits
+  const hasLimitsCpu = hasKey(doc, `${specPrefix}.containers.resources.limits.cpu`) ||
+    doc.raw.includes('limits:');
+  const hasRequests = doc.raw.includes('requests:');
+  const hasLimits = doc.raw.includes('limits:');
+
+  if (!hasLimits) {
+    issues.push({ level: 'error', message: 'Containers missing resource limits (cpu/memory)', detail: 'Without limits a container can starve other workloads on the node. Set resources.limits.cpu and resources.limits.memory.' });
+  } else {
+    issues.push({ level: 'pass', message: 'Resource limits are set' });
+  }
+
+  if (!hasRequests) {
+    issues.push({ level: 'warning', message: 'Containers missing resource requests', detail: 'Resource requests are used by the scheduler for placement decisions and QoS classification.' });
+  } else {
+    issues.push({ level: 'pass', message: 'Resource requests are set' });
+  }
+
+  // Privileged container
+  if (/privileged:\s*true/.test(doc.raw)) {
+    issues.push({ level: 'error', message: 'Container runs in privileged mode', detail: 'privileged: true gives the container nearly full host access. This is a critical security risk — remove it unless absolutely necessary.' });
+  }
+
+  // Running as root
+  if (/runAsUser:\s*0/.test(doc.raw)) {
+    issues.push({ level: 'error', message: 'Container runs as root (runAsUser: 0)', detail: 'Running as root in a container increases blast radius if compromised. Use a non-root UID.' });
+  } else if (!/runAsNonRoot:\s*true/.test(doc.raw) && !/runAsUser:\s*[1-9]/.test(doc.raw)) {
+    issues.push({ level: 'warning', message: 'Container may run as root — consider setting runAsNonRoot: true', detail: 'Explicitly enforce non-root execution with securityContext.runAsNonRoot: true or a non-zero runAsUser.' });
+  } else {
+    issues.push({ level: 'pass', message: 'Non-root user configured' });
+  }
+
+  // Readiness probe
+  if (!doc.raw.includes('readinessProbe:')) {
+    issues.push({ level: 'warning', message: 'Missing readinessProbe', detail: 'Without a readiness probe, traffic is sent to pods that may not be ready, causing errors during startup or rolling updates.' });
+  } else {
+    issues.push({ level: 'pass', message: 'readinessProbe is configured' });
+  }
+
+  // Liveness probe
+  if (!doc.raw.includes('livenessProbe:')) {
+    issues.push({ level: 'warning', message: 'Missing livenessProbe', detail: 'Without a liveness probe, stuck or deadlocked containers will not be automatically restarted.' });
+  } else {
+    issues.push({ level: 'pass', message: 'livenessProbe is configured' });
+  }
+
+  // Hardcoded secrets in env vars
+  const envLines = doc.lines;
+  let inEnv = false;
+  let lastEnvName = '';
+  for (const line of envLines) {
+    if (/^\s+env:/.test(line)) { inEnv = true; continue; }
+    if (inEnv) {
+      const nameMatch = line.match(/name:\s*(.+)/);
+      if (nameMatch) { lastEnvName = nameMatch[1].trim().toLowerCase(); }
+      if (/value:/.test(line) && !line.includes('secretKeyRef') && !line.includes('configMapKeyRef')) {
+        if (/password|secret|key|token|api_key|apikey|credential|passwd|pwd/.test(lastEnvName)) {
+          issues.push({ level: 'warning', message: `Possible hardcoded secret in env var: ${lastEnvName.toUpperCase()}`, detail: 'Avoid hardcoded secrets in env values. Use secretKeyRef to reference a Kubernetes Secret instead.' });
+        }
+      }
+    }
+  }
+}
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+const textarea = document.getElementById('yaml-input') as HTMLTextAreaElement;
+const validateBtn = document.getElementById('validate-btn') as HTMLButtonElement;
+const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
+const exampleSelect = document.getElementById('example-select') as HTMLSelectElement;
+const resultsArea = document.getElementById('results-area') as HTMLDivElement;
+const scoreBanner = document.getElementById('score-banner') as HTMLDivElement;
+const resultsList = document.getElementById('results-list') as HTMLDivElement;
+const docCountEl = document.getElementById('doc-count') as HTMLSpanElement;
+
+exampleSelect.addEventListener('change', () => {
+  const val = exampleSelect.value;
+  if (val && EXAMPLES[val]) {
+    textarea.value = EXAMPLES[val];
+    exampleSelect.value = '';
+    updateDocCount();
+  }
+});
+
+clearBtn.addEventListener('click', () => {
+  textarea.value = '';
+  resultsArea.classList.add('hidden');
+  docCountEl.textContent = '';
+});
+
+textarea.addEventListener('input', updateDocCount);
+
+function updateDocCount() {
+  const docs = splitDocuments(textarea.value);
+  const count = docs.length;
+  docCountEl.textContent = count > 1 ? `${count} documents` : '';
+}
+
+validateBtn.addEventListener('click', runValidation);
+
+function levelIcon(level: Issue['level']): string {
+  return { error: '✗', warning: '⚠', info: 'ℹ', pass: '✓' }[level];
+}
+function levelColor(level: Issue['level']): string {
+  return { error: 'text-red-400', warning: 'text-yellow-400', info: 'text-blue-400', pass: 'text-green-400' }[level];
+}
+function levelBg(level: Issue['level']): string {
+  return { error: 'bg-red-500/10 border-red-500/30', warning: 'bg-yellow-500/10 border-yellow-500/30', info: 'bg-blue-500/10 border-blue-500/30', pass: 'bg-green-500/10 border-green-500/30' }[level];
+}
+
+function runValidation() {
+  const yaml = textarea.value.trim();
+  if (!yaml) {
+    textarea.focus();
+    return;
+  }
+
+  const rawDocs = splitDocuments(yaml);
+  const allResults = rawDocs.map(raw => {
+    const doc = parseYamlDoc(raw);
+    return validateDocument(doc);
+  });
+
+  // Tally totals
+  let totalErrors = 0, totalWarnings = 0, totalPasses = 0;
+  for (const r of allResults) {
+    for (const i of r.issues) {
+      if (i.level === 'error') totalErrors++;
+      else if (i.level === 'warning') totalWarnings++;
+      else if (i.level === 'pass') totalPasses++;
+    }
+  }
+
+  // Score banner
+  const overallStatus = totalErrors > 0 ? 'failed' : totalWarnings > 0 ? 'warning' : 'passed';
+  const bannerColors = { failed: 'bg-red-500/15 border-red-500/40 text-red-300', warning: 'bg-yellow-500/15 border-yellow-500/40 text-yellow-300', passed: 'bg-green-500/15 border-green-500/40 text-green-300' };
+  const bannerIcons = { failed: '✗', warning: '⚠', passed: '✓' };
+  const bannerLabels = { failed: 'Validation Failed', warning: 'Warnings Found', passed: 'All Checks Passed' };
+
+  scoreBanner.className = `flex items-center gap-3 p-4 rounded-lg border mb-4 text-sm font-medium ${bannerColors[overallStatus]}`;
+  scoreBanner.innerHTML = `
+    <span class="text-lg">${bannerIcons[overallStatus]}</span>
+    <span>${bannerLabels[overallStatus]}</span>
+    <span class="ml-auto flex gap-4 text-xs font-normal">
+      <span class="text-red-400">✗ ${totalErrors} error${totalErrors !== 1 ? 's' : ''}</span>
+      <span class="text-yellow-400">⚠ ${totalWarnings} warning${totalWarnings !== 1 ? 's' : ''}</span>
+      <span class="text-green-400">✓ ${totalPasses} pass${totalPasses !== 1 ? 'es' : ''}</span>
+    </span>
+  `;
+
+  // Per-document results
+  resultsList.innerHTML = '';
+  for (let i = 0; i < allResults.length; i++) {
+    const r = allResults[i];
+    const docErrors = r.issues.filter(x => x.level === 'error').length;
+    const docWarnings = r.issues.filter(x => x.level === 'warning').length;
+
+    const statusDot = docErrors > 0 ? 'bg-red-400' : docWarnings > 0 ? 'bg-yellow-400' : 'bg-green-400';
+
+    // Group issues by level
+    const byLevel: Record<string, Issue[]> = { error: [], warning: [], info: [], pass: [] };
+    for (const issue of r.issues) byLevel[issue.level].push(issue);
+
+    const renderGroup = (level: Issue['level'], label: string) => {
+      const items = byLevel[level];
+      if (items.length === 0) return '';
+      return `
+        <div class="mb-3">
+          <div class="text-xs font-semibold uppercase tracking-wide mb-1 ${levelColor(level)}">${label} (${items.length})</div>
+          <div class="space-y-1">
+            ${items.map(item => `
+              <div class="flex gap-2 text-sm">
+                <span class="flex-shrink-0 font-mono ${levelColor(item.level)}">${levelIcon(item.level)}</span>
+                <div>
+                  <span>${item.message}</span>
+                  ${item.detail ? `<div class="text-xs text-text-muted mt-0.5">${item.detail}</div>` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    };
+
+    const docHtml = `
+      <div class="bg-bg-card border border-border rounded-lg overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <span class="w-2 h-2 rounded-full ${statusDot}"></span>
+          <span class="font-medium text-sm">${allResults.length > 1 ? `Document ${i + 1}: ` : ''}${r.kind}/${r.name}</span>
+          <span class="ml-auto text-xs text-text-muted">${r.issues.length} checks</span>
+        </div>
+        <div class="p-4">
+          ${renderGroup('error', 'Errors')}
+          ${renderGroup('warning', 'Warnings')}
+          ${renderGroup('info', 'Info')}
+          ${renderGroup('pass', 'Passed')}
+        </div>
+      </div>
+    `;
+    resultsList.insertAdjacentHTML('beforeend', docHtml);
+  }
+
+  resultsArea.classList.remove('hidden');
+  resultsArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+</script>
