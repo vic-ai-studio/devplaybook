@@ -1,0 +1,307 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "How accurate are the bundle size estimates?",
+    answer: "The estimates are based on published npm package statistics from Bundlephobia. They represent the minified + gzipped size when imported with tree-shaking enabled. Actual bundle sizes may vary depending on your bundler config, which parts of the package you use, and whether your bundler supports tree-shaking for that package."
+  },
+  {
+    question: "What is tree-shaking and why does it matter?",
+    answer: "Tree-shaking is a dead code elimination technique used by modern bundlers like webpack, Rollup, and Vite. When a package exports named exports (ESM), the bundler can include only the functions you actually import. For example, importing { debounce } from 'lodash-es' includes only ~2KB instead of the full 24KB lodash bundle. Packages with side-effect-free ESM exports benefit most from tree-shaking."
+  },
+  {
+    question: "What is the difference between minified and gzipped size?",
+    answer: "Minified size is after removing whitespace, comments, and shortening variable names. Gzipped size is what is actually transferred over the network — typically 60-80% smaller than minified. The browser decompresses on receipt. For performance budgets, use the gzipped size as your baseline since that reflects real network cost. Parse and execution time still depend on the uncompressed size."
+  },
+  {
+    question: "What are good bundle size thresholds?",
+    answer: "For a single npm dependency: under 5KB gzipped is excellent, 5-20KB is acceptable, 20-50KB warrants consideration, and over 50KB should be justified. For your entire JS bundle: under 100KB gzipped is a good target for initial load. Google's Core Web Vitals recommends keeping total JS under 200-300KB to avoid LCP and TBT penalties."
+  },
+  {
+    question: "What are lighter alternatives to large packages?",
+    answer: "Common swaps: moment.js (67KB) → day.js (2KB) or date-fns (tree-shakeable). lodash (24KB) → lodash-es (tree-shakeable) or native JS methods. axios (12KB) → native fetch. chart.js (60KB) → lightweight-charts or uplot. jquery (31KB) → vanilla JS. Always check bundlephobia.com for the latest sizes and alternatives."
+  }
+];
+---
+
+<BaseLayout
+  title="Bundle Size Analyzer — Check npm Package Size, Gzip & Tree-Shaking"
+  description="Analyze npm package bundle sizes. See estimated minified and gzipped sizes, compare multiple packages side by side, and get tree-shaking tips. Free, browser-based tool powered by Bundlephobia data."
+  tool="Bundle Size Analyzer, npm bundle size, webpack bundle analyzer, js bundle size checker, tree shaking, package size"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Bundle Size Analyzer",
+    "url": "https://devplaybook.cc/tools/bundle-size-analyzer",
+    "description": "Analyze npm package bundle sizes. See estimated minified and gzipped sizes, compare packages side by side, and get tree-shaking tips.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Bundle Size Analyzer</h1>
+  <p class="text-text-muted mb-4">
+    Check estimated bundle sizes for npm packages — minified and gzipped. Add multiple packages to compare side by side and get tree-shaking tips to minimize your JS payload.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Minified + gzipped estimates</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Side-by-side comparison</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Tree-shaking tips</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Lighter alternatives</span>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <label class="block text-sm font-medium mb-2" for="pkg-input">Add npm Package</label>
+    <div class="flex gap-2">
+      <input
+        id="pkg-input"
+        type="text"
+        placeholder="e.g. lodash, react, axios, moment"
+        class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+      />
+      <button id="add-btn" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        Analyze
+      </button>
+    </div>
+    <div class="flex flex-wrap gap-2 mt-3">
+      {['react', 'lodash', 'moment', 'axios', 'date-fns', 'chart.js', 'jquery'].map(pkg => (
+        <button class="preset-btn px-2.5 py-1 bg-surface border border-border rounded text-xs hover:border-primary hover:text-foreground transition-colors text-text-muted" data-pkg={pkg}>{pkg}</button>
+      ))}
+    </div>
+  </div>
+
+  <!-- Results table -->
+  <div id="results-area" class="hidden bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-medium">Package Comparison</h2>
+      <button id="clear-btn" class="text-xs text-text-muted hover:text-foreground transition-colors">Clear all</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="text-left py-2 pr-4 font-medium text-text-muted">Package</th>
+            <th class="text-right py-2 px-4 font-medium text-text-muted">Minified</th>
+            <th class="text-right py-2 px-4 font-medium text-text-muted">Gzipped</th>
+            <th class="text-right py-2 px-4 font-medium text-text-muted">Tree-shakeable</th>
+            <th class="py-2 pl-4"></th>
+          </tr>
+        </thead>
+        <tbody id="results-tbody"></tbody>
+      </table>
+    </div>
+    <div id="bar-chart" class="mt-4 space-y-2"></div>
+  </div>
+
+  <!-- Tips -->
+  <div id="tips-area" class="hidden bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <h2 class="text-sm font-medium mb-3">Tree-Shaking Tips</h2>
+    <div id="tips-list" class="space-y-2 text-sm text-text-muted"></div>
+  </div>
+
+  <div id="loading" class="hidden text-center py-8 text-text-muted text-sm">
+    <div class="inline-block w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2"></div>
+    Fetching size data from Bundlephobia…
+  </div>
+  <div id="error-msg" class="hidden bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-sm text-red-400"></div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Bundle Size Analyzer" relatedTags={['performance', 'webpack', 'bundler', 'npm', 'javascript']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  const packages = [];
+
+  const TIPS = {
+    'lodash': 'Use lodash-es and import individual functions: import debounce from "lodash-es/debounce". Saves ~22KB gzipped.',
+    'moment': 'Replace with day.js (~2KB) or date-fns (tree-shakeable). moment.js cannot be tree-shaken.',
+    'jquery': 'Modern browsers support querySelectorAll, fetch, classList — no jQuery needed for most use cases.',
+    'axios': 'Native fetch() works in all modern browsers. For advanced features, try ky (~4KB) or ofetch (~3KB).',
+    'chart.js': 'Import only the chart types you need via tree-shaking: import { Chart, LineElement } from "chart.js".',
+    'date-fns': 'Already tree-shakeable. Import only what you need: import { format } from "date-fns".',
+    'react': 'React is not easily replaceable if you need its ecosystem, but Preact (3KB) is a drop-in alternative for simple projects.',
+  };
+
+  const SIZE_DATA = {
+    'react': { min: 144680, gz: 46310, treeshake: false },
+    'react-dom': { min: 1051974, gz: 330120, treeshake: false },
+    'lodash': { min: 73116, gz: 25680, treeshake: false },
+    'lodash-es': { min: 552050, gz: 89550, treeshake: true },
+    'moment': { min: 300095, gz: 72370, treeshake: false },
+    'axios': { min: 56936, gz: 18900, treeshake: false },
+    'date-fns': { min: 46810, gz: 12570, treeshake: true },
+    'chart.js': { min: 220985, gz: 68900, treeshake: true },
+    'jquery': { min: 89501, gz: 32870, treeshake: false },
+    'vue': { min: 474530, gz: 135400, treeshake: false },
+    'angular': { min: 1200000, gz: 320000, treeshake: true },
+    'svelte': { min: 13900, gz: 5500, treeshake: true },
+    'next': { min: 285000, gz: 90000, treeshake: true },
+    'express': { min: 216800, gz: 71000, treeshake: false },
+    'typescript': { min: 8900000, gz: 2100000, treeshake: false },
+    'zod': { min: 116320, gz: 37800, treeshake: true },
+    'tailwindcss': { min: 5700000, gz: 1200000, treeshake: true },
+    'vite': { min: 4100000, gz: 1100000, treeshake: false },
+    'webpack': { min: 5900000, gz: 1500000, treeshake: false },
+    'eslint': { min: 2100000, gz: 590000, treeshake: false },
+    'prettier': { min: 1600000, gz: 450000, treeshake: false },
+    'dayjs': { min: 6980, gz: 2860, treeshake: false },
+    'ramda': { min: 221240, gz: 47560, treeshake: true },
+    'immer': { min: 32540, gz: 10260, treeshake: true },
+    'rxjs': { min: 742560, gz: 191210, treeshake: true },
+    'redux': { min: 39890, gz: 13060, treeshake: true },
+    'mobx': { min: 82350, gz: 25140, treeshake: true },
+  };
+
+  function formatBytes(bytes) {
+    if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return bytes + ' B';
+  }
+
+  function sizeColor(gz) {
+    if (gz < 5120) return 'text-green-500';
+    if (gz < 20480) return 'text-yellow-400';
+    if (gz < 51200) return 'text-orange-400';
+    return 'text-red-400';
+  }
+
+  function sizeBg(gz) {
+    if (gz < 5120) return 'bg-green-500';
+    if (gz < 20480) return 'bg-yellow-400';
+    if (gz < 51200) return 'bg-orange-400';
+    return 'bg-red-400';
+  }
+
+  function render() {
+    const area = document.getElementById('results-area');
+    const tbody = document.getElementById('results-tbody');
+    const chart = document.getElementById('bar-chart');
+    const tipsArea = document.getElementById('tips-area');
+    const tipsList = document.getElementById('tips-list');
+
+    if (packages.length === 0) {
+      area.classList.add('hidden');
+      tipsArea.classList.add('hidden');
+      return;
+    }
+
+    area.classList.remove('hidden');
+
+    // Table rows
+    tbody.innerHTML = packages.map((p, i) => `
+      <tr class="border-b border-border/50 hover:bg-surface/50">
+        <td class="py-2.5 pr-4 font-mono font-medium">${p.name}</td>
+        <td class="py-2.5 px-4 text-right text-text-muted">${formatBytes(p.data.min)}</td>
+        <td class="py-2.5 px-4 text-right font-medium ${sizeColor(p.data.gz)}">${formatBytes(p.data.gz)}</td>
+        <td class="py-2.5 px-4 text-right">${p.data.treeshake ? '<span class="text-green-500 text-xs font-medium">✓ Yes</span>' : '<span class="text-text-muted text-xs">— No</span>'}</td>
+        <td class="py-2.5 pl-4 text-right"><button class="remove-btn text-text-muted hover:text-red-400 text-xs transition-colors" data-idx="${i}">✕</button></td>
+      </tr>
+    `).join('');
+
+    // Bar chart
+    const maxGz = Math.max(...packages.map(p => p.data.gz));
+    chart.innerHTML = '<p class="text-xs text-text-muted mb-2">Gzipped size comparison</p>' + packages.map(p => `
+      <div class="flex items-center gap-3">
+        <span class="text-xs font-mono w-28 shrink-0 truncate text-text-muted">${p.name}</span>
+        <div class="flex-1 bg-surface rounded-full h-3 overflow-hidden">
+          <div class="${sizeBg(p.data.gz)} h-3 rounded-full transition-all" style="width:${Math.max(2, (p.data.gz / maxGz) * 100)}%"></div>
+        </div>
+        <span class="text-xs font-medium ${sizeColor(p.data.gz)} w-14 text-right">${formatBytes(p.data.gz)}</span>
+      </div>
+    `).join('');
+
+    // Tips
+    const relevantTips = packages.filter(p => TIPS[p.name]).map(p =>
+      `<div class="flex gap-2"><span class="font-mono text-accent text-xs pt-0.5 shrink-0">${p.name}</span><span>${TIPS[p.name]}</span></div>`
+    );
+    if (relevantTips.length > 0) {
+      tipsArea.classList.remove('hidden');
+      tipsList.innerHTML = relevantTips.join('');
+    } else {
+      tipsArea.classList.add('hidden');
+    }
+
+    // Remove buttons
+    tbody.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        packages.splice(parseInt(btn.dataset.idx), 1);
+        render();
+      });
+    });
+  }
+
+  function analyze(pkgName) {
+    pkgName = pkgName.trim().toLowerCase();
+    if (!pkgName) return;
+    if (packages.find(p => p.name === pkgName)) return;
+
+    const err = document.getElementById('error-msg');
+    err.classList.add('hidden');
+
+    const data = SIZE_DATA[pkgName];
+    if (data) {
+      packages.push({ name: pkgName, data });
+      render();
+    } else {
+      // Fetch from bundlephobia
+      document.getElementById('loading').classList.remove('hidden');
+      fetch(`https://bundlephobia.com/api/size?package=${encodeURIComponent(pkgName)}`)
+        .then(r => r.json())
+        .then(d => {
+          document.getElementById('loading').classList.add('hidden');
+          if (d.error) throw new Error(d.error.message || 'Package not found');
+          packages.push({
+            name: pkgName,
+            data: {
+              min: d.size,
+              gz: d.gzip,
+              treeshake: d.hasJSNext || d.hasJSModule || false
+            }
+          });
+          render();
+        })
+        .catch(e => {
+          document.getElementById('loading').classList.add('hidden');
+          err.textContent = `Could not fetch "${pkgName}": ${e.message}. Try a known package name.`;
+          err.classList.remove('hidden');
+        });
+    }
+  }
+
+  document.getElementById('add-btn').addEventListener('click', () => {
+    const inp = document.getElementById('pkg-input');
+    analyze(inp.value);
+    inp.value = '';
+  });
+
+  document.getElementById('pkg-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      analyze(e.target.value);
+      e.target.value = '';
+    }
+  });
+
+  document.getElementById('clear-btn').addEventListener('click', () => {
+    packages.length = 0;
+    render();
+  });
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => analyze(btn.dataset.pkg));
+  });
+
+  // Load a couple examples on start
+  analyze('lodash');
+  analyze('moment');
+  analyze('date-fns');
+})();
+</script>
