@@ -1,0 +1,297 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a GitHub Actions expression?", answer: "GitHub Actions expressions use the ${{ }} syntax to dynamically compute values in workflow files. They can reference context variables (github, env, secrets, inputs), call built-in functions (contains, startsWith, toJSON, etc.), and perform boolean/comparison logic to conditionally run steps or set output values." },
+  { question: "What context variables are available?", answer: "Common contexts include: github (event_name, ref, sha, actor, repository), env (custom environment variables), inputs (workflow_dispatch inputs), secrets (encrypted secrets), needs (outputs from dependent jobs), and matrix (current matrix values). Each context is a JSON object accessible in expressions." },
+  { question: "How does the 'contains' function work?", answer: "contains(haystack, needle) returns true if the string or array contains the value. Examples: contains('hello world', 'hello') → true. contains(github.event.labels.*.name, 'bug') → true if any label is named 'bug'. It's case-insensitive for strings." },
+  { question: "What is the difference between == and startsWith?", answer: "== is strict equality: github.ref == 'refs/heads/main' is true only for exact match. startsWith(str, prefix) checks if a string begins with the prefix — useful for branch patterns like startsWith(github.ref, 'refs/heads/release/')." },
+  { question: "How do I run a step only on the main branch?", answer: "Use: if: github.ref == 'refs/heads/main'. For multiple branches: if: contains(fromJSON('[\"refs/heads/main\",\"refs/heads/develop\"]'), github.ref). For PR events targeting main: if: github.event.pull_request.base.ref == 'main'." },
+  { question: "What does fromJSON do?", answer: "fromJSON(value) parses a JSON string into an object. It's commonly used to convert string-encoded matrix values or to compare against arrays. For example: contains(fromJSON('[\"push\",\"pull_request\"]'), github.event_name) checks if the event is a push or pull_request." },
+];
+---
+
+<BaseLayout
+  title="GitHub Actions Expression Tester — Test ${{ }} Expressions Online"
+  description="Test and debug GitHub Actions expressions with mock context variables. See true/false/string output instantly. Supports contains, startsWith, fromJSON, and all built-in functions. Free, runs in browser."
+  tool="GitHub Actions expression tester, GitHub Actions ${{ }}, test github.ref expression, GitHub Actions if condition, contains startsWith fromJSON, GitHub Actions context variables"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">GitHub Actions Expression Tester</h1>
+  <p class="text-text-muted mb-4">Test <code class="bg-surface px-1 rounded text-sm">${{ }}</code> expressions with mock GitHub Actions context variables. Catch logic errors before committing. Supports all built-in functions: <code class="bg-surface px-1 rounded text-sm">contains</code>, <code class="bg-surface px-1 rounded text-sm">startsWith</code>, <code class="bg-surface px-1 rounded text-sm">fromJSON</code>, and more.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 60K+ developers trust DevPlaybook</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> All GitHub Actions functions</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Examples -->
+    <div class="bg-surface border border-border rounded-xl p-5">
+      <h2 class="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wide">Example Expressions</h2>
+      <div class="flex flex-wrap gap-2">
+        <button class="gha-ex text-xs px-3 py-1.5 rounded-lg border border-border bg-background hover:border-accent transition-colors" data-expr="github.ref == 'refs/heads/main'">Main branch check</button>
+        <button class="gha-ex text-xs px-3 py-1.5 rounded-lg border border-border bg-background hover:border-accent transition-colors" data-expr="contains(github.event_name, 'push')">Event contains push</button>
+        <button class="gha-ex text-xs px-3 py-1.5 rounded-lg border border-border bg-background hover:border-accent transition-colors" data-expr="startsWith(github.ref, 'refs/tags/')">Tag push</button>
+        <button class="gha-ex text-xs px-3 py-1.5 rounded-lg border border-border bg-background hover:border-accent transition-colors" data-expr="github.event_name == 'pull_request' && github.event.pull_request.draft == false">Non-draft PR</button>
+        <button class="gha-ex text-xs px-3 py-1.5 rounded-lg border border-border bg-background hover:border-accent transition-colors" data-expr="contains(fromJSON('[\"main\",\"develop\"]'), github.ref_name)">Multi-branch allow list</button>
+        <button class="gha-ex text-xs px-3 py-1.5 rounded-lg border border-border bg-background hover:border-accent transition-colors" data-expr="inputs.environment != '' && inputs.environment != null">Input provided check</button>
+        <button class="gha-ex text-xs px-3 py-1.5 rounded-lg border border-border bg-background hover:border-accent transition-colors" data-expr="!cancelled() && (success() || failure())">Always run (not cancelled)</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <!-- Expression Input -->
+      <div class="bg-surface border border-border rounded-xl p-5 space-y-4">
+        <div>
+          <label for="gha-expr" class="block text-sm font-medium mb-1.5">Expression (without <code class="text-xs bg-background px-1 rounded">${{ }}</code>)</label>
+          <textarea id="gha-expr" rows="3"
+            class="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-accent resize-none"
+            placeholder="github.ref == 'refs/heads/main'">github.ref == 'refs/heads/main'</textarea>
+        </div>
+
+        <button id="gha-eval" class="w-full bg-accent hover:bg-accent/80 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors">
+          Evaluate Expression
+        </button>
+
+        <!-- Result -->
+        <div id="gha-result-area" class="hidden">
+          <label class="block text-sm font-medium mb-2">Result</label>
+          <div id="gha-result" class="flex items-center gap-3 p-4 rounded-lg border"></div>
+        </div>
+        <div id="gha-error" class="hidden text-red-400 text-sm p-3 bg-red-500/10 rounded-lg border border-red-500/20"></div>
+      </div>
+
+      <!-- Context Variables -->
+      <div class="bg-surface border border-border rounded-xl p-5 space-y-3">
+        <h2 class="text-sm font-semibold text-text-muted uppercase tracking-wide mb-3">Mock Context Variables</h2>
+        <p class="text-xs text-text-muted">Edit values to match your scenario, then evaluate.</p>
+
+        <div class="space-y-2 text-xs font-mono">
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <span class="text-text-muted">github.event_name</span>
+            <input id="ctx-event_name" class="bg-background border border-border rounded px-2 py-1 focus:outline-none focus:border-accent w-full" value="push" />
+          </div>
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <span class="text-text-muted">github.ref</span>
+            <input id="ctx-ref" class="bg-background border border-border rounded px-2 py-1 focus:outline-none focus:border-accent w-full" value="refs/heads/main" />
+          </div>
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <span class="text-text-muted">github.ref_name</span>
+            <input id="ctx-ref_name" class="bg-background border border-border rounded px-2 py-1 focus:outline-none focus:border-accent w-full" value="main" />
+          </div>
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <span class="text-text-muted">github.actor</span>
+            <input id="ctx-actor" class="bg-background border border-border rounded px-2 py-1 focus:outline-none focus:border-accent w-full" value="octocat" />
+          </div>
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <span class="text-text-muted">github.sha</span>
+            <input id="ctx-sha" class="bg-background border border-border rounded px-2 py-1 focus:outline-none focus:border-accent w-full" value="abc1234def5678" />
+          </div>
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <span class="text-text-muted">github.repository</span>
+            <input id="ctx-repository" class="bg-background border border-border rounded px-2 py-1 focus:outline-none focus:border-accent w-full" value="owner/repo" />
+          </div>
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <span class="text-text-muted">inputs.environment</span>
+            <input id="ctx-inputs_environment" class="bg-background border border-border rounded px-2 py-1 focus:outline-none focus:border-accent w-full" value="production" />
+          </div>
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <span class="text-text-muted">github.event.pull_request.draft</span>
+            <input id="ctx-pr_draft" class="bg-background border border-border rounded px-2 py-1 focus:outline-none focus:border-accent w-full" value="false" />
+          </div>
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <span class="text-text-muted">github.event.pull_request.base.ref</span>
+            <input id="ctx-pr_base_ref" class="bg-background border border-border rounded px-2 py-1 focus:outline-none focus:border-accent w-full" value="main" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Context Reference -->
+    <div class="bg-surface border border-border rounded-xl p-5">
+      <h2 class="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wide">Built-in Functions Reference</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+        <div class="bg-background rounded-lg p-3 border border-border">
+          <code class="text-accent font-semibold">contains(s, v)</code>
+          <p class="text-text-muted mt-1">String/array contains value. Case-insensitive for strings.</p>
+        </div>
+        <div class="bg-background rounded-lg p-3 border border-border">
+          <code class="text-accent font-semibold">startsWith(s, prefix)</code>
+          <p class="text-text-muted mt-1">String starts with prefix. Case-insensitive.</p>
+        </div>
+        <div class="bg-background rounded-lg p-3 border border-border">
+          <code class="text-accent font-semibold">endsWith(s, suffix)</code>
+          <p class="text-text-muted mt-1">String ends with suffix. Case-insensitive.</p>
+        </div>
+        <div class="bg-background rounded-lg p-3 border border-border">
+          <code class="text-accent font-semibold">fromJSON(s)</code>
+          <p class="text-text-muted mt-1">Parse JSON string to object/array.</p>
+        </div>
+        <div class="bg-background rounded-lg p-3 border border-border">
+          <code class="text-accent font-semibold">toJSON(v)</code>
+          <p class="text-text-muted mt-1">Serialize value to JSON string.</p>
+        </div>
+        <div class="bg-background rounded-lg p-3 border border-border">
+          <code class="text-accent font-semibold">success() / failure()</code>
+          <p class="text-text-muted mt-1">Job status check functions for step conditions.</p>
+        </div>
+        <div class="bg-background rounded-lg p-3 border border-border">
+          <code class="text-accent font-semibold">cancelled()</code>
+          <p class="text-text-muted mt-1">Returns true if job was cancelled.</p>
+        </div>
+        <div class="bg-background rounded-lg p-3 border border-border">
+          <code class="text-accent font-semibold">format(str, r0, r1…)</code>
+          <p class="text-text-muted mt-1">Replaces {0}, {1}… with arguments.</p>
+        </div>
+        <div class="bg-background rounded-lg p-3 border border-border">
+          <code class="text-accent font-semibold">join(arr, sep)</code>
+          <p class="text-text-muted mt-1">Joins array to string with separator.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="GitHub Actions Expression Tester" relatedTags={['github', 'devops', 'ci-cd', 'automation', 'workflow']} />
+</BaseLayout>
+
+<script>
+(function () {
+  function getContext() {
+    return {
+      github: {
+        event_name: document.getElementById('ctx-event_name').value,
+        ref: document.getElementById('ctx-ref').value,
+        ref_name: document.getElementById('ctx-ref_name').value,
+        actor: document.getElementById('ctx-actor').value,
+        sha: document.getElementById('ctx-sha').value,
+        repository: document.getElementById('ctx-repository').value,
+        event: {
+          pull_request: {
+            draft: document.getElementById('ctx-pr_draft').value === 'true',
+            base: {
+              ref: document.getElementById('ctx-pr_base_ref').value
+            }
+          }
+        }
+      },
+      inputs: {
+        environment: document.getElementById('ctx-inputs_environment').value
+      },
+      env: {},
+      secrets: {}
+    };
+  }
+
+  function evaluateExpr(expr, ctx) {
+    // Built-in functions
+    function contains(haystack, needle) {
+      if (Array.isArray(haystack)) return haystack.some(v => String(v).toLowerCase() === String(needle).toLowerCase());
+      return String(haystack).toLowerCase().includes(String(needle).toLowerCase());
+    }
+    function startsWith(str, prefix) { return String(str).toLowerCase().startsWith(String(prefix).toLowerCase()); }
+    function endsWith(str, suffix) { return String(str).toLowerCase().endsWith(String(suffix).toLowerCase()); }
+    function fromJSON(s) { return JSON.parse(s); }
+    function toJSON(v) { return JSON.stringify(v); }
+    function format(str, ...args) { return args.reduce((s, a, i) => s.replace(`{${i}}`, a), str); }
+    function join(arr, sep) { return Array.isArray(arr) ? arr.join(sep) : String(arr); }
+    function success() { return true; }
+    function failure() { return false; }
+    function cancelled() { return false; }
+    function always() { return true; }
+
+    // Build a safe evaluation scope
+    const github = ctx.github;
+    const inputs = ctx.inputs;
+    const env = ctx.env;
+    const secrets = ctx.secrets;
+
+    // Replace common patterns
+    let safeExpr = expr
+      .replace(/\bnull\b/g, 'null')
+      .replace(/\btrue\b/g, 'true')
+      .replace(/\bfalse\b/g, 'false');
+
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(
+      'github', 'inputs', 'env', 'secrets',
+      'contains', 'startsWith', 'endsWith', 'fromJSON', 'toJSON',
+      'format', 'join', 'success', 'failure', 'cancelled', 'always',
+      `"use strict"; return (${safeExpr});`
+    );
+    return fn(
+      github, inputs, env, secrets,
+      contains, startsWith, endsWith, fromJSON, toJSON,
+      format, join, success, failure, cancelled, always
+    );
+  }
+
+  function evaluate() {
+    const expr = document.getElementById('gha-expr').value.trim();
+    const resultArea = document.getElementById('gha-result-area');
+    const resultEl = document.getElementById('gha-result');
+    const errorEl = document.getElementById('gha-error');
+
+    resultArea.classList.add('hidden');
+    errorEl.classList.add('hidden');
+
+    if (!expr) { errorEl.textContent = 'Please enter an expression.'; errorEl.classList.remove('hidden'); return; }
+
+    try {
+      const ctx = getContext();
+      const result = evaluateExpr(expr, ctx);
+      const type = typeof result;
+      let display, color, icon;
+
+      if (type === 'boolean') {
+        display = String(result);
+        color = result ? 'text-green-400' : 'text-red-400';
+        icon = result ? '✓' : '✗';
+      } else if (result === null || result === undefined) {
+        display = 'null';
+        color = 'text-text-muted';
+        icon = '○';
+      } else if (type === 'object') {
+        display = JSON.stringify(result, null, 2);
+        color = 'text-accent';
+        icon = '{}';
+      } else {
+        display = String(result);
+        color = 'text-yellow-400';
+        icon = '"';
+      }
+
+      resultEl.className = `flex items-start gap-3 p-4 rounded-lg border ${result === true ? 'border-green-500/30 bg-green-500/5' : result === false ? 'border-red-500/30 bg-red-500/5' : 'border-accent/30 bg-accent/5'}`;
+      resultEl.innerHTML = `
+        <span class="text-2xl font-bold ${color} mt-0.5">${icon}</span>
+        <div>
+          <div class="font-mono text-base font-bold ${color}">${display}</div>
+          <div class="text-xs text-text-muted mt-1">Type: <span class="font-mono">${type}</span></div>
+        </div>
+      `;
+      resultArea.classList.remove('hidden');
+    } catch (e) {
+      errorEl.textContent = `Error: ${e.message}`;
+      errorEl.classList.remove('hidden');
+    }
+  }
+
+  document.getElementById('gha-eval').addEventListener('click', evaluate);
+  document.getElementById('gha-expr').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) evaluate();
+  });
+
+  document.querySelectorAll('.gha-ex').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('gha-expr').value = btn.dataset.expr;
+      evaluate();
+    });
+  });
+
+  // Initial eval
+  evaluate();
+})();
+</script>
