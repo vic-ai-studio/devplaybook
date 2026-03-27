@@ -175,9 +175,8 @@ function generateSW(settings: GeneralSettings, rules: RouteRule[]): string {
   lines.push(`function matchesPattern(url, pattern) {`);
   lines.push(`  const path = new URL(url).pathname;`);
   lines.push(`  if (pattern.startsWith('/') || pattern.startsWith('*')) {`);
-  lines.push(`    const regex = new RegExp(`);
-  lines.push(`      '^' + pattern.replace(/[.+?^${}()|[\\]\\\\]/g, '\\\\$&').replace(/\\*/g, '.*') + '$'`);
-  lines.push(`    );`);
+  lines.push("    const re = pattern.replace(/[-\\.+?^${}()|[\\]\\\\]/g, '\\\\$&').replace(/\\*/g, '.*');");
+  lines.push("    const regex = new RegExp('^' + re + '$');");
   lines.push(`    return regex.test(path);`);
   lines.push(`  }`);
   lines.push(`  // Extension pattern like *.css`);
