@@ -1,0 +1,360 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+---
+
+<BaseLayout
+  title="Prometheus Alert Rule Builder — Visual PromQL Alerting Rules Generator"
+  description="Build Prometheus alerting rules with a visual form. Configure alert name, PromQL expression, for duration, labels, and annotations. Preview complete YAML and validate rule structure. Free, runs in your browser."
+  tool="Prometheus alert rules, PromQL alerting, Prometheus YAML generator, alertmanager rules, SRE alerting, Prometheus for duration, alert rule builder"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Prometheus Alert Rule Builder",
+    "url": "https://devplaybook.cc/tools/prometheus-alert-rule-builder",
+    "description": "Build Prometheus alerting rules with a visual form. Configure alert name, PromQL expression, for duration, labels, and annotations. Preview complete alerting_rules.yml.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Prometheus Alert Rule Builder</h1>
+  <p class="text-text-muted mb-4">Build Prometheus alerting rules visually. Add multiple alerts with PromQL expressions, severity labels, and annotations, then export a complete <code class="font-mono text-xs bg-bg-card border border-border px-1.5 py-0.5 rounded">alerting_rules.yml</code> file.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multiple rules in one file</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Client-side PromQL validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> $labels / $value variables</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs entirely in your browser</span>
+  </div>
+
+  <!-- Group config -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+    <div>
+      <label class="block text-sm font-medium mb-2">Rule Group Name</label>
+      <input id="group-name" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary" placeholder="infrastructure" value="infrastructure" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2">Evaluation Interval</label>
+      <select id="group-interval" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+        <option value="15s">15s</option>
+        <option value="30s" selected>30s</option>
+        <option value="1m">1m</option>
+        <option value="2m">2m</option>
+        <option value="5m">5m</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Rules list -->
+  <div class="mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <label class="text-sm font-medium">Alert Rules</label>
+      <button id="btn-add-rule" class="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        <span class="text-base leading-none">+</span> Add Rule
+      </button>
+    </div>
+    <div id="rules-list" class="space-y-4"></div>
+  </div>
+
+  <div class="flex gap-3 mb-6 flex-wrap">
+    <button id="btn-generate" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">Generate YAML</button>
+    <button id="btn-example" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Load SRE Examples</button>
+    <button id="btn-clear" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Clear All</button>
+  </div>
+
+  <!-- Validation -->
+  <div id="validation-section" class="hidden mb-4"></div>
+
+  <!-- Output -->
+  <div id="output-section" class="hidden">
+    <h2 class="text-lg font-semibold mb-3">Generated alerting_rules.yml</h2>
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs text-text-muted font-mono">alerting_rules.yml</span>
+        <button id="btn-copy" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+      </div>
+      <pre id="yaml-output" class="font-mono text-sm whitespace-pre-wrap break-words text-green-300 overflow-x-auto max-h-[600px] overflow-y-auto"></pre>
+    </div>
+    <div class="mt-4 p-4 bg-bg-card border border-border rounded-lg">
+      <h3 class="text-sm font-semibold mb-2">Load into Prometheus</h3>
+      <pre class="font-mono text-xs text-text-muted whitespace-pre-wrap"># In prometheus.yml
+rule_files:
+  - "alerting_rules.yml"
+
+# Reload config (no restart):
+# curl -X POST http://localhost:9090/-/reload</pre>
+    </div>
+  </div>
+
+  <ToolPageCta />
+</BaseLayout>
+
+<script>
+let rules = [];
+let ruleIdSeq = 0;
+
+const SEVERITY_COLORS = {
+  info: 'text-blue-400',
+  warning: 'text-yellow-400',
+  critical: 'text-red-400',
+  page: 'text-red-500',
+};
+
+const FOR_DURATIONS = ['0s','1m','2m','5m','10m','15m','30m','1h','2h','6h','24h'];
+
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function validatePromQL(expr) {
+  if (!expr || !expr.trim()) return { valid: false, msg: 'Expression is empty' };
+  // Basic bracket balance check
+  let depth = 0;
+  let curlDepth = 0;
+  for (const c of expr) {
+    if (c === '(') depth++;
+    else if (c === ')') { depth--; if (depth < 0) return { valid: false, msg: 'Unbalanced parentheses' }; }
+    else if (c === '{') curlDepth++;
+    else if (c === '}') { curlDepth--; if (curlDepth < 0) return { valid: false, msg: 'Unbalanced curly braces' }; }
+  }
+  if (depth !== 0) return { valid: false, msg: 'Unbalanced parentheses' };
+  if (curlDepth !== 0) return { valid: false, msg: 'Unbalanced curly braces' };
+  // Check for empty metric names
+  if (/^\s*[><=!]/.test(expr)) return { valid: false, msg: 'Expression starts with operator' };
+  return { valid: true, msg: 'Syntax looks valid' };
+}
+
+function renderRules() {
+  const list = document.getElementById('rules-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (rules.length === 0) {
+    list.innerHTML = '<p class="text-sm text-text-muted text-center py-8 border border-dashed border-border rounded-lg">No rules yet. Click &quot;+ Add Rule&quot; or &quot;Load SRE Examples&quot; to begin.</p>';
+    return;
+  }
+  rules.forEach((rule, idx) => {
+    const sev = rule.severity || 'warning';
+    const sevColor = SEVERITY_COLORS[sev] || 'text-yellow-400';
+    const validation = validatePromQL(rule.expr);
+    const div = document.createElement('div');
+    div.className = 'border border-border rounded-lg p-4 bg-bg-card';
+    div.innerHTML = `
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full border ${sev === 'critical' || sev === 'page' ? 'bg-red-500/10 border-red-500/30' : sev === 'info' ? 'bg-blue-500/10 border-blue-500/30' : 'bg-yellow-500/10 border-yellow-500/30'} ${sevColor}">${sev.toUpperCase()}</span>
+          <span class="text-sm font-medium font-mono">${esc(rule.name) || '<unnamed>'}</span>
+        </div>
+        <button class="btn-rm-rule text-text-muted hover:text-red-400 transition-colors text-xl leading-none" data-idx="${idx}" aria-label="Remove">&#215;</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Alert Name</label>
+          <input class="r-name w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" value="${esc(rule.name)}" data-idx="${idx}" placeholder="HighErrorRate" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">For Duration</label>
+          <select class="r-for w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" data-idx="${idx}">
+            ${FOR_DURATIONS.map(d => `<option value="${d}"${rule.for===d?' selected':''}>${d}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="mb-4">
+        <label class="block text-xs text-text-muted mb-1">PromQL Expression</label>
+        <input class="r-expr w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary ${validation.valid ? 'border-green-500/50' : rule.expr ? 'border-red-500/50' : ''}" value="${esc(rule.expr)}" data-idx="${idx}" placeholder='rate(http_requests_total{code=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05' />
+        ${rule.expr ? `<p class="text-xs mt-1 ${validation.valid ? 'text-green-400' : 'text-red-400'}">${validation.valid ? '✓' : '✗'} ${validation.msg}</p>` : ''}
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Severity</label>
+          <select class="r-severity w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" data-idx="${idx}">
+            ${['info','warning','critical','page'].map(s => `<option value="${s}"${rule.severity===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Extra Labels (key=value, comma-separated)</label>
+          <input class="r-labels w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" value="${esc(rule.extraLabels)}" data-idx="${idx}" placeholder="team=platform, env=prod" />
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">Summary Annotation</label>
+        <input class="r-summary w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" value="${esc(rule.summary)}" data-idx="${idx}" placeholder="High error rate on {{ $labels.job }}" />
+      </div>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Description Annotation</label>
+        <textarea class="r-description w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary resize-none" rows="2" data-idx="${idx}" placeholder="Error rate is {{ $value | humanizePercentage }} on {{ $labels.instance }}">${esc(rule.description)}</textarea>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll('.btn-rm-rule').forEach(b => b.addEventListener('click', () => { rules.splice(+b.dataset.idx, 1); renderRules(); }));
+  list.querySelectorAll('.r-name').forEach(i => i.addEventListener('input', () => { rules[+i.dataset.idx].name = i.value; renderRules(); }));
+  list.querySelectorAll('.r-for').forEach(s => s.addEventListener('change', () => { rules[+s.dataset.idx].for = s.value; }));
+  list.querySelectorAll('.r-expr').forEach(i => i.addEventListener('input', () => { rules[+i.dataset.idx].expr = i.value; renderRules(); }));
+  list.querySelectorAll('.r-severity').forEach(s => s.addEventListener('change', () => { rules[+s.dataset.idx].severity = s.value; renderRules(); }));
+  list.querySelectorAll('.r-labels').forEach(i => i.addEventListener('input', () => { rules[+i.dataset.idx].extraLabels = i.value; }));
+  list.querySelectorAll('.r-summary').forEach(i => i.addEventListener('input', () => { rules[+i.dataset.idx].summary = i.value; }));
+  list.querySelectorAll('.r-description').forEach(t => t.addEventListener('input', () => { rules[+t.dataset.idx].description = t.value; }));
+}
+
+function addRule(overrides = {}) {
+  rules.push({
+    _id: ++ruleIdSeq,
+    name: '',
+    expr: '',
+    for: '5m',
+    severity: 'warning',
+    extraLabels: '',
+    summary: '',
+    description: '',
+    ...overrides
+  });
+  renderRules();
+}
+
+document.getElementById('btn-add-rule')?.addEventListener('click', () => addRule());
+
+document.getElementById('btn-clear')?.addEventListener('click', () => {
+  if (rules.length > 0 && !confirm('Clear all rules?')) return;
+  rules = [];
+  renderRules();
+  document.getElementById('output-section').classList.add('hidden');
+  document.getElementById('validation-section').classList.add('hidden');
+});
+
+document.getElementById('btn-example')?.addEventListener('click', () => {
+  rules = [];
+  document.getElementById('group-name').value = 'sre-alerts';
+  addRule({
+    name: 'HighErrorRate',
+    expr: 'rate(http_requests_total{code=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05',
+    for: '5m',
+    severity: 'critical',
+    extraLabels: 'team=platform',
+    summary: 'High HTTP error rate on {{ $labels.job }}',
+    description: 'Error rate is {{ $value | humanizePercentage }} (threshold: 5%) on {{ $labels.instance }}. Check application logs immediately.'
+  });
+  addRule({
+    name: 'HighLatencyP99',
+    expr: 'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 1',
+    for: '10m',
+    severity: 'warning',
+    extraLabels: 'team=platform',
+    summary: 'P99 latency above 1s on {{ $labels.job }}',
+    description: 'P99 request latency is {{ $value | humanizeDuration }} on {{ $labels.instance }}.'
+  });
+  addRule({
+    name: 'InstanceDown',
+    expr: 'up == 0',
+    for: '2m',
+    severity: 'critical',
+    extraLabels: 'team=infrastructure',
+    summary: 'Instance {{ $labels.instance }} is down',
+    description: 'Job {{ $labels.job }} instance {{ $labels.instance }} has been unreachable for more than 2 minutes.'
+  });
+  addRule({
+    name: 'HighCpuUsage',
+    expr: '100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85',
+    for: '10m',
+    severity: 'warning',
+    extraLabels: 'team=infrastructure',
+    summary: 'CPU usage above 85% on {{ $labels.instance }}',
+    description: 'CPU usage is {{ $value | humanize }}% on {{ $labels.instance }}.'
+  });
+  renderRules();
+});
+
+function parseLabels(raw) {
+  const obj = {};
+  (raw || '').split(',').map(s => s.trim()).filter(Boolean).forEach(kv => {
+    const eq = kv.indexOf('=');
+    if (eq > 0) obj[kv.slice(0,eq).trim()] = kv.slice(eq+1).trim();
+  });
+  return obj;
+}
+
+function toYamlString(str) {
+  // Use double-quoted string if it contains template variables or special chars
+  if (!str) return '""';
+  if (/[{}\[\]|>&*!]/.test(str) || str.includes('\n') || str.includes(':')) {
+    return `'${str.replace(/'/g, "''")}'`;
+  }
+  return str;
+}
+
+function generateYAML() {
+  const groupName = (document.getElementById('group-name')?.value || 'alerts').trim();
+  const interval = document.getElementById('group-interval')?.value || '30s';
+
+  // Read live values
+  const liveRules = rules.map((r, idx) => {
+    const g = (cls) => document.querySelector(`${cls}[data-idx="${idx}"]`);
+    return {
+      ...r,
+      name: g('.r-name')?.value ?? r.name,
+      expr: g('.r-expr')?.value ?? r.expr,
+      for: g('.r-for')?.value ?? r.for,
+      severity: g('.r-severity')?.value ?? r.severity,
+      extraLabels: g('.r-labels')?.value ?? r.extraLabels,
+      summary: g('.r-summary')?.value ?? r.summary,
+      description: g('.r-description')?.value ?? r.description,
+    };
+  });
+
+  if (liveRules.length === 0) { alert('Add at least one rule first.'); return; }
+
+  // Validate
+  const errors = [];
+  liveRules.forEach((r, i) => {
+    if (!r.name) errors.push(`Rule ${i+1}: Alert name is required`);
+    if (!r.expr) errors.push(`Rule ${i+1}: PromQL expression is required`);
+    else {
+      const v = validatePromQL(r.expr);
+      if (!v.valid) errors.push(`Rule ${i+1} (${r.name || 'unnamed'}): ${v.msg}`);
+    }
+  });
+
+  const valSection = document.getElementById('validation-section');
+  if (errors.length > 0) {
+    valSection.className = 'mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg';
+    valSection.innerHTML = `<p class="text-sm font-semibold text-red-400 mb-2">&#9888; Validation Errors</p><ul class="text-sm text-red-300 space-y-1">${errors.map(e => `<li>• ${e}</li>`).join('')}</ul>`;
+    valSection.classList.remove('hidden');
+    return;
+  } else {
+    valSection.classList.add('hidden');
+  }
+
+  let yaml = `groups:\n  - name: ${groupName}\n    interval: ${interval}\n    rules:\n`;
+
+  liveRules.forEach(r => {
+    const extraLabels = parseLabels(r.extraLabels);
+    yaml += `      - alert: ${r.name}\n`;
+    yaml += `        expr: ${toYamlString(r.expr)}\n`;
+    yaml += `        for: ${r.for}\n`;
+    yaml += `        labels:\n`;
+    yaml += `          severity: ${r.severity}\n`;
+    Object.entries(extraLabels).forEach(([k, v]) => { yaml += `          ${k}: ${v}\n`; });
+    yaml += `        annotations:\n`;
+    if (r.summary) yaml += `          summary: ${toYamlString(r.summary)}\n`;
+    if (r.description) yaml += `          description: ${toYamlString(r.description)}\n`;
+    yaml += '\n';
+  });
+
+  document.getElementById('yaml-output').textContent = yaml.trimEnd();
+  document.getElementById('output-section').classList.remove('hidden');
+  setTimeout(() => document.getElementById('output-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
+document.getElementById('btn-generate')?.addEventListener('click', generateYAML);
+
+document.getElementById('btn-copy')?.addEventListener('click', () => {
+  const el = document.getElementById('yaml-output');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const b = document.getElementById('btn-copy');
+    b.textContent = 'Copied!';
+    setTimeout(() => b.textContent = 'Copy', 2000);
+  });
+});
+
+renderRules();
+</script>
