@@ -1,0 +1,194 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a prompt template?", answer: "A prompt template is a reusable text structure with {{variable}} placeholders. Instead of rewriting prompts from scratch, you define the shape once and fill in the variables. Useful for batch processing, team-wide prompt libraries, and consistent AI outputs." },
+  { question: "What syntax does this tool use for variables?", answer: "This tool uses {{variable_name}} double-curly-brace syntax, which is common in Handlebars, Jinja2, and LangChain. Variables can be any alphanumeric string with underscores. Example: 'Write a {{tone}} email about {{topic}}.'." },
+  { question: "Can I use this with ChatGPT, Claude, and Gemini?", answer: "Yes. This tool generates the filled text string — paste it directly into ChatGPT, Claude.ai, Gemini, or any API client. It doesn't call any AI API; it just builds the text locally in your browser." },
+  { question: "How do I save my templates?", answer: "Use the Export JSON button to download your template as a JSON file. Load it back with the Import button. You can also copy the raw template text and store it in Notion, GitHub, or any text editor." },
+];
+---
+
+<BaseLayout
+  title="AI Prompt Template Builder — {{variable}} Placeholders for ChatGPT & Claude"
+  description="Build reusable AI prompt templates with {{variable}} placeholders. Fill in values, preview the complete prompt, and copy to ChatGPT, Claude, or Gemini. Export as JSON."
+  tool="AI prompt template builder, prompt variables, ChatGPT template, Claude prompt builder, LangChain prompt"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Prompt Template Builder</h1>
+  <p class="text-text-muted mb-6">Create reusable prompt templates with <code class="text-primary">{'{{variable}}'}</code> placeholders. Fill in the values, preview the result, and copy to any AI tool.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auto-detects variables</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live preview</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Export / Import JSON</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-medium">Template</label>
+        <div class="flex gap-2">
+          <button id="load-example" class="text-xs text-primary hover:underline">Load example</button>
+          <button id="clear-template" class="text-xs text-text-muted hover:text-primary transition-colors">Clear</button>
+        </div>
+      </div>
+      <textarea
+        id="template"
+        rows="10"
+        placeholder={`Write a {{tone}} email to {{recipient}} about {{topic}}.\n\nContext: {{context}}\n\nKeep it under {{word_limit}} words.`}
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+      ></textarea>
+      <p class="text-xs text-text-muted mt-1">Use <code class="text-primary">{'{{variable_name}}'}</code> for placeholders</p>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium mb-2">Variables</label>
+      <div id="variables-panel" class="space-y-2 min-h-[100px]">
+        <p class="text-sm text-text-muted">Type a template on the left to auto-detect variables.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-6">
+    <div class="flex items-center justify-between mb-2">
+      <label class="text-sm font-medium">Preview</label>
+      <button id="copy-preview" class="text-xs px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">Copy Prompt</button>
+    </div>
+    <div id="preview" class="bg-bg-card border border-border rounded-lg p-4 text-sm whitespace-pre-wrap min-h-[80px] text-text-muted">Fill in variables to see the preview.</div>
+  </div>
+
+  <div class="flex gap-3 mb-8">
+    <button id="export-json" class="text-sm px-4 py-2 border border-border rounded-lg hover:border-primary hover:text-primary transition-colors">Export JSON</button>
+    <label class="text-sm px-4 py-2 border border-border rounded-lg hover:border-primary hover:text-primary transition-colors cursor-pointer">
+      Import JSON
+      <input id="import-json" type="file" accept=".json" class="hidden" />
+    </label>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Prompt Template Builder" relatedTags={['ai', 'prompt-engineering', 'chatgpt', 'claude', 'llm']} />
+</BaseLayout>
+
+<script>
+  const templateEl = document.getElementById('template') as HTMLTextAreaElement;
+  const varsPanel = document.getElementById('variables-panel')!;
+  const previewEl = document.getElementById('preview')!;
+  const copyBtn = document.getElementById('copy-preview')!;
+  const exportBtn = document.getElementById('export-json')!;
+  const importEl = document.getElementById('import-json') as HTMLInputElement;
+  const loadExampleBtn = document.getElementById('load-example')!;
+  const clearBtn = document.getElementById('clear-template')!;
+
+  const EXAMPLE = `You are a {{role}} expert. Your task is to {{task}}.
+
+Audience: {{audience}}
+Tone: {{tone}}
+Format: {{format}}
+
+Additional context: {{context}}
+
+Please provide a comprehensive response that {{goal}}.`;
+
+  const varValues: Record<string, string> = {};
+
+  function extractVars(tmpl: string): string[] {
+    const matches = tmpl.match(/\{\{(\w+)\}\}/g) || [];
+    return [...new Set(matches.map(m => m.slice(2, -2)))];
+  }
+
+  function renderPreview() {
+    const tmpl = templateEl.value;
+    let result = tmpl;
+    for (const [k, v] of Object.entries(varValues)) {
+      result = result.split(`{{${k}}}`).join(v || `{{${k}}}`);
+    }
+    const hasUnfilled = result.match(/\{\{\w+\}\}/);
+    previewEl.textContent = result || 'Fill in variables to see the preview.';
+    previewEl.className = `bg-bg-card border border-border rounded-lg p-4 text-sm whitespace-pre-wrap min-h-[80px] ${hasUnfilled ? 'text-text-muted' : 'text-text'}`;
+  }
+
+  function renderVars() {
+    const vars = extractVars(templateEl.value);
+    if (vars.length === 0) {
+      varsPanel.innerHTML = '<p class="text-sm text-text-muted">Type a template on the left to auto-detect variables.</p>';
+      renderPreview();
+      return;
+    }
+
+    // Remove stale keys
+    for (const k of Object.keys(varValues)) {
+      if (!vars.includes(k)) delete varValues[k];
+    }
+
+    varsPanel.innerHTML = vars.map(v => `
+      <div class="flex items-center gap-2">
+        <label class="text-xs font-mono text-primary w-32 shrink-0 truncate">{{${v}}}</label>
+        <input
+          type="text"
+          data-var="${v}"
+          value="${(varValues[v] || '').replace(/"/g, '&quot;')}"
+          placeholder="${v.replace(/_/g, ' ')}"
+          class="flex-1 bg-bg-card border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
+        />
+      </div>
+    `).join('');
+
+    varsPanel.querySelectorAll('input[data-var]').forEach(el => {
+      el.addEventListener('input', (e) => {
+        const key = (e.target as HTMLInputElement).getAttribute('data-var')!;
+        varValues[key] = (e.target as HTMLInputElement).value;
+        renderPreview();
+      });
+    });
+
+    renderPreview();
+  }
+
+  templateEl.addEventListener('input', renderVars);
+
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(previewEl.textContent || '');
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = 'Copy Prompt'; }, 1500);
+  });
+
+  exportBtn.addEventListener('click', () => {
+    const data = { template: templateEl.value, variables: varValues };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'prompt-template.json';
+    a.click();
+  });
+
+  importEl.addEventListener('change', () => {
+    const file = importEl.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        if (data.template) templateEl.value = data.template;
+        if (data.variables) Object.assign(varValues, data.variables);
+        renderVars();
+      } catch {}
+    };
+    reader.readAsText(file);
+  });
+
+  loadExampleBtn.addEventListener('click', () => {
+    templateEl.value = EXAMPLE;
+    renderVars();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    templateEl.value = '';
+    for (const k of Object.keys(varValues)) delete varValues[k];
+    renderVars();
+  });
+
+  renderVars();
+</script>

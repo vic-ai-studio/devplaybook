@@ -1,0 +1,215 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Zod and why use it?", answer: "Zod is a TypeScript-first schema validation library. Define your data shape once and get static TypeScript types inferred automatically. Use it to validate API responses, form inputs, environment variables, and more — with runtime safety and zero extra type annotations." },
+  { question: "What JSON Schema features are supported?", answer: "This tool supports common JSON Schema features: string, number, integer, boolean, null, object, array, enum, required fields, optional properties, min/maxLength, min/maxItems, minimum/maximum, and $ref for named schemas." },
+  { question: "What does this converter NOT support?", answer: "Complex JSON Schema features like $defs/$ref lookups across files, allOf/anyOf/oneOf (partial support), if/then/else, and advanced formats (email, uri) are simplified or skipped. For production use, consider json-schema-to-zod npm package." },
+  { question: "How do I use the generated Zod schema?", answer: "Install Zod: npm install zod. Import and use: import { z } from 'zod'; then paste the generated schema. Call YourSchema.parse(data) to validate and get typed output, or YourSchema.safeParse(data) for non-throwing validation." },
+];
+---
+
+<BaseLayout
+  title="JSON Schema to Zod Converter — TypeScript Schema Generator"
+  description="Convert JSON Schema to Zod TypeScript validation code. Paste any JSON Schema (Draft-07 or 2020-12) and get a ready-to-use Zod schema. Free, runs in browser."
+  tool="JSON Schema to Zod, JSON Schema converter, Zod schema generator, TypeScript validation, Zod TypeScript"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">JSON Schema to Zod Converter</h1>
+  <p class="text-text-muted mb-6">Paste a JSON Schema and get a TypeScript Zod schema instantly. Supports objects, arrays, enums, optional fields, and constraints.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Draft-07 & 2020-12</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Objects, arrays, enums</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Optional fields</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-medium">JSON Schema Input</label>
+        <div class="flex gap-2">
+          <button id="load-example" class="text-xs text-primary hover:underline">Example</button>
+          <button id="clear-input" class="text-xs text-text-muted hover:text-primary transition-colors">Clear</button>
+        </div>
+      </div>
+      <textarea
+        id="json-schema"
+        rows="18"
+        placeholder='{\n  "type": "object",\n  "properties": {\n    "name": { "type": "string" },\n    "age": { "type": "integer", "minimum": 0 }\n  },\n  "required": ["name"]\n}'
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+        spellcheck="false"
+      ></textarea>
+      <div id="error" class="hidden text-xs text-red-400 mt-1"></div>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-medium">Zod Schema Output</label>
+        <button id="copy-output" class="text-xs px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">Copy</button>
+      </div>
+      <pre id="zod-output" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono overflow-auto min-h-[300px] whitespace-pre text-text-muted">// Zod output will appear here</pre>
+    </div>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-4 mb-8">
+    <p class="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Usage</p>
+    <pre class="text-xs font-mono text-text">npm install zod
+
+import { z } from 'zod';
+
+// Paste generated schema here
+const Schema = z.object({ ... });
+
+// Validate data
+const result = Schema.safeParse(data);
+if (result.success) {
+  console.log(result.data); // typed output
+}</pre>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="JSON Schema to Zod" relatedTags={['json', 'typescript', 'validation', 'zod', 'schema']} />
+</BaseLayout>
+
+<script>
+  const EXAMPLE = JSON.stringify({
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "User",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1 },
+      "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+      "age": { "type": "integer", "minimum": 0, "maximum": 150 },
+      "email": { "type": "string" },
+      "role": { "type": "string", "enum": ["admin", "user", "guest"] },
+      "tags": { "type": "array", "items": { "type": "string" }, "maxItems": 10 },
+      "address": {
+        "type": "object",
+        "properties": {
+          "street": { "type": "string" },
+          "city": { "type": "string" }
+        },
+        "required": ["city"]
+      },
+      "active": { "type": "boolean" }
+    },
+    "required": ["id", "name", "role"]
+  }, null, 2);
+
+  const inputEl = document.getElementById('json-schema') as HTMLTextAreaElement;
+  const outputEl = document.getElementById('zod-output')!;
+  const errorEl = document.getElementById('error')!;
+  const copyBtn = document.getElementById('copy-output')!;
+  const loadExBtn = document.getElementById('load-example')!;
+  const clearBtn = document.getElementById('clear-input')!;
+
+  function schemaToZod(schema: any, indent = 0, varName = 'Schema'): string {
+    const i = '  '.repeat(indent);
+
+    if (schema === true || schema === false) return 'z.any()';
+
+    const type = schema.type;
+
+    if (schema.enum) {
+      const vals = schema.enum.map((v: any) => JSON.stringify(v)).join(', ');
+      if (schema.enum.length === 1) return `z.literal(${JSON.stringify(schema.enum[0])})`;
+      return `z.enum([${vals}])`;
+    }
+
+    if (Array.isArray(type)) {
+      const parts = type.filter((t: string) => t !== 'null').map((t: string) => schemaToZod({ ...schema, type: t }, indent));
+      const base = parts.length === 1 ? parts[0] : `z.union([${parts.join(', ')}])`;
+      return type.includes('null') ? `${base}.nullable()` : base;
+    }
+
+    switch (type) {
+      case 'string': {
+        let s = 'z.string()';
+        if (schema.minLength !== undefined) s += `.min(${schema.minLength})`;
+        if (schema.maxLength !== undefined) s += `.max(${schema.maxLength})`;
+        if (schema.pattern) s += `.regex(/${schema.pattern}/)`;
+        return s;
+      }
+      case 'number':
+      case 'integer': {
+        let s = type === 'integer' ? 'z.number().int()' : 'z.number()';
+        if (schema.minimum !== undefined) s += `.min(${schema.minimum})`;
+        if (schema.maximum !== undefined) s += `.max(${schema.maximum})`;
+        return s;
+      }
+      case 'boolean': return 'z.boolean()';
+      case 'null': return 'z.null()';
+      case 'array': {
+        const items = schema.items ? schemaToZod(schema.items, indent) : 'z.any()';
+        let s = `z.array(${items})`;
+        if (schema.minItems !== undefined) s += `.min(${schema.minItems})`;
+        if (schema.maxItems !== undefined) s += `.max(${schema.maxItems})`;
+        return s;
+      }
+      case 'object': {
+        const props = schema.properties || {};
+        const required: string[] = schema.required || [];
+        const keys = Object.keys(props);
+        if (keys.length === 0) return 'z.object({})';
+
+        const lines = keys.map(k => {
+          let valZod = schemaToZod(props[k], indent + 1);
+          if (!required.includes(k)) valZod += '.optional()';
+          return `${i}  ${JSON.stringify(k)}: ${valZod},`;
+        });
+
+        return `z.object({\n${lines.join('\n')}\n${i}})`;
+      }
+      default: return 'z.any()';
+    }
+  }
+
+  function convert() {
+    const raw = inputEl.value.trim();
+    if (!raw) {
+      outputEl.textContent = '// Zod output will appear here';
+      outputEl.classList.add('text-text-muted');
+      errorEl.classList.add('hidden');
+      return;
+    }
+
+    try {
+      const schema = JSON.parse(raw);
+      const name = schema.title ? schema.title.replace(/\W+/g, '') : 'Schema';
+      const zodStr = schemaToZod(schema);
+      const output = `import { z } from 'zod';\n\nexport const ${name} = ${zodStr};\n\nexport type ${name} = z.infer<typeof ${name}>;`;
+      outputEl.textContent = output;
+      outputEl.classList.remove('text-text-muted');
+      outputEl.classList.add('text-text');
+      errorEl.classList.add('hidden');
+    } catch (e: any) {
+      outputEl.textContent = '// Zod output will appear here';
+      outputEl.classList.add('text-text-muted');
+      errorEl.textContent = 'Invalid JSON: ' + e.message;
+      errorEl.classList.remove('hidden');
+    }
+  }
+
+  inputEl.addEventListener('input', convert);
+
+  copyBtn.addEventListener('click', () => {
+    const text = outputEl.textContent || '';
+    if (text.startsWith('//')) return;
+    navigator.clipboard.writeText(text);
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+  });
+
+  loadExBtn.addEventListener('click', () => {
+    inputEl.value = EXAMPLE;
+    convert();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    inputEl.value = '';
+    convert();
+  });
+</script>

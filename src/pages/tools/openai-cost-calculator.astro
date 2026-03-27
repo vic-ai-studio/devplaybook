@@ -1,0 +1,164 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "Why are input and output tokens priced differently?", answer: "Output generation requires more compute than reading input. OpenAI charges output tokens 3–5x more than input tokens. For GPT-4o: input is $5/1M, output is $15/1M. Budget accordingly — especially for long responses." },
+  { question: "What counts as an input token?", answer: "Everything sent to the API in one request: system prompt, conversation history, user message, and any function/tool definitions. Cached input (Prompt Caching) may be cheaper on supported models." },
+  { question: "What is context window and why does it matter?", answer: "The context window is the max tokens per request (input + output combined). GPT-4o: 128K tokens. Exceeding the context window returns an error. Long conversation histories grow your input token count each turn." },
+  { question: "How do I reduce OpenAI API costs?", answer: "Use GPT-4o Mini instead of GPT-4o for high-volume tasks (~33x cheaper). Cache system prompts with Prompt Caching. Limit conversation history tokens. Use streaming to display partial results faster. Batch non-realtime workloads with the Batch API (50% discount)." },
+];
+
+const MODELS = [
+  { name: 'GPT-4o', inputPriceM: 5.00, outputPriceM: 15.00, contextK: 128 },
+  { name: 'GPT-4o Mini', inputPriceM: 0.15, outputPriceM: 0.60, contextK: 128 },
+  { name: 'GPT-4 Turbo', inputPriceM: 10.00, outputPriceM: 30.00, contextK: 128 },
+  { name: 'GPT-4', inputPriceM: 30.00, outputPriceM: 60.00, contextK: 8 },
+  { name: 'GPT-3.5 Turbo', inputPriceM: 0.50, outputPriceM: 1.50, contextK: 16 },
+  { name: 'o1', inputPriceM: 15.00, outputPriceM: 60.00, contextK: 200 },
+  { name: 'o1 Mini', inputPriceM: 3.00, outputPriceM: 12.00, contextK: 128 },
+  { name: 'o3 Mini', inputPriceM: 1.10, outputPriceM: 4.40, contextK: 200 },
+];
+---
+
+<BaseLayout
+  title="OpenAI API Cost Calculator — GPT-4o, GPT-4, GPT-3.5 Pricing"
+  description="Calculate OpenAI API costs for GPT-4o, GPT-4 Turbo, GPT-3.5, o1, and o3 Mini. Enter input tokens, output tokens, and daily requests for accurate monthly cost estimates."
+  tool="OpenAI cost calculator, GPT-4o pricing, GPT-4 API cost, ChatGPT API pricing, OpenAI token cost"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">OpenAI API Cost Calculator</h1>
+  <p class="text-text-muted mb-6">Estimate your OpenAI API spend. Enter average token counts per request and volume to get per-request and monthly cost breakdowns for each model.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GPT-4o, GPT-4, o1, o3</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Monthly projection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Side-by-side comparison</span>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 bg-bg-card border border-border rounded-xl p-4">
+    <div>
+      <label class="block text-sm font-medium mb-1">Avg input tokens / request</label>
+      <input id="input-tokens" type="number" value="1000" min="1" class="w-full bg-bg border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+      <p class="text-xs text-text-muted mt-1">System prompt + user message</p>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Avg output tokens / request</label>
+      <input id="output-tokens" type="number" value="500" min="0" class="w-full bg-bg border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+      <p class="text-xs text-text-muted mt-1">Model response length</p>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Requests per month</label>
+      <input id="monthly-reqs" type="number" value="10000" min="1" class="w-full bg-bg border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+  </div>
+
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm min-w-[600px]">
+      <thead>
+        <tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-3 pr-4 font-medium">Model</th>
+          <th class="text-right pb-3 pr-4 font-medium">Context</th>
+          <th class="text-right pb-3 pr-4 font-medium">Input/1M</th>
+          <th class="text-right pb-3 pr-4 font-medium">Output/1M</th>
+          <th class="text-right pb-3 pr-4 font-medium">Per Request</th>
+          <th class="text-right pb-3 font-medium">Monthly</th>
+        </tr>
+      </thead>
+      <tbody id="model-rows" class="divide-y divide-border"></tbody>
+    </table>
+  </div>
+
+  <div id="summary" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"></div>
+
+  <p class="text-xs text-text-muted mb-8">Prices as of Q1 2025. Verify at <strong>platform.openai.com/pricing</strong>. Batch API offers 50% discount for non-realtime workloads. Prompt Caching reduces cost for repeated system prompts.</p>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="OpenAI Cost Calculator" relatedTags={['ai', 'openai', 'gpt-4', 'api', 'cost']} />
+</BaseLayout>
+
+<script>
+  const MODELS = [
+    { name: 'GPT-4o', inputPriceM: 5.00, outputPriceM: 15.00, contextK: 128 },
+    { name: 'GPT-4o Mini', inputPriceM: 0.15, outputPriceM: 0.60, contextK: 128 },
+    { name: 'GPT-4 Turbo', inputPriceM: 10.00, outputPriceM: 30.00, contextK: 128 },
+    { name: 'GPT-4', inputPriceM: 30.00, outputPriceM: 60.00, contextK: 8 },
+    { name: 'GPT-3.5 Turbo', inputPriceM: 0.50, outputPriceM: 1.50, contextK: 16 },
+    { name: 'o1', inputPriceM: 15.00, outputPriceM: 60.00, contextK: 200 },
+    { name: 'o1 Mini', inputPriceM: 3.00, outputPriceM: 12.00, contextK: 128 },
+    { name: 'o3 Mini', inputPriceM: 1.10, outputPriceM: 4.40, contextK: 200 },
+  ];
+
+  const inputEl = document.getElementById('input-tokens') as HTMLInputElement;
+  const outputEl = document.getElementById('output-tokens') as HTMLInputElement;
+  const monthlyEl = document.getElementById('monthly-reqs') as HTMLInputElement;
+  const tableBody = document.getElementById('model-rows')!;
+  const summaryEl = document.getElementById('summary')!;
+
+  function fmt(n: number): string {
+    if (n >= 1000) return '$' + (n / 1000).toFixed(2) + 'K';
+    if (n >= 1) return '$' + n.toFixed(2);
+    if (n >= 0.01) return '$' + n.toFixed(3);
+    return '<$0.01';
+  }
+
+  function fmtP(n: number): string {
+    return '$' + n.toFixed(n < 1 ? 3 : 2) + '/1M';
+  }
+
+  function update() {
+    const inputT = Math.max(1, parseInt(inputEl.value) || 1);
+    const outputT = Math.max(0, parseInt(outputEl.value) || 0);
+    const monthly = Math.max(1, parseInt(monthlyEl.value) || 1);
+
+    const rows = MODELS.map(m => {
+      const inputCost = (inputT / 1_000_000) * m.inputPriceM;
+      const outputCost = (outputT / 1_000_000) * m.outputPriceM;
+      const perReq = inputCost + outputCost;
+      const monthlyC = perReq * monthly;
+
+      return { ...m, perReq, monthlyC };
+    });
+
+    const cheapest = rows.reduce((a, b) => a.monthlyC < b.monthlyC ? a : b);
+    const mostPop = rows.find(r => r.name === 'GPT-4o')!;
+
+    tableBody.innerHTML = rows.map(r => `
+      <tr class="hover:bg-bg-card/50 transition-colors ${r.name === cheapest.name ? 'bg-green-500/5' : ''}">
+        <td class="py-3 pr-4">
+          <span class="font-semibold">${r.name}</span>
+          ${r.name === cheapest.name ? '<span class="ml-2 text-xs px-1.5 py-0.5 bg-green-500/10 text-green-500 rounded">cheapest</span>' : ''}
+        </td>
+        <td class="py-3 pr-4 text-right text-text-muted">${r.contextK}K</td>
+        <td class="py-3 pr-4 text-right tabular-nums text-text-muted">${fmtP(r.inputPriceM)}</td>
+        <td class="py-3 pr-4 text-right tabular-nums text-text-muted">${fmtP(r.outputPriceM)}</td>
+        <td class="py-3 pr-4 text-right tabular-nums">${r.perReq < 0.00001 ? '<$0.0001' : '$' + r.perReq.toFixed(5)}</td>
+        <td class="py-3 text-right tabular-nums font-medium ${r.monthlyC > 500 ? 'text-red-400' : r.monthlyC > 50 ? 'text-yellow-400' : 'text-green-400'}">${fmt(r.monthlyC)}</td>
+      </tr>
+    `).join('');
+
+    const savings = mostPop ? ((mostPop.monthlyC - cheapest.monthlyC) / mostPop.monthlyC * 100).toFixed(0) : '0';
+
+    summaryEl.innerHTML = `
+      <div class="bg-bg-card border border-border rounded-xl p-4">
+        <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Cheapest Option</p>
+        <p class="font-bold text-green-400 text-lg">${cheapest.name}</p>
+        <p class="text-sm text-text-muted">${fmt(cheapest.monthlyC)}/month</p>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4">
+        <p class="text-xs text-text-muted uppercase tracking-wide mb-1">GPT-4o Monthly</p>
+        <p class="font-bold text-primary text-lg">${fmt(mostPop.monthlyC)}</p>
+        <p class="text-sm text-text-muted">${(mostPop.perReq * 100000).toFixed(3)}¢ per 1K reqs</p>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4">
+        <p class="text-xs text-text-muted uppercase tracking-wide mb-1">vs GPT-4o Mini</p>
+        <p class="font-bold text-yellow-400 text-lg">${savings}% cheaper</p>
+        <p class="text-sm text-text-muted">switching to Mini</p>
+      </div>
+    `;
+  }
+
+  [inputEl, outputEl, monthlyEl].forEach(el => el.addEventListener('input', update));
+  update();
+</script>
