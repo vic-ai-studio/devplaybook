@@ -166,6 +166,29 @@ export default function ColorPaletteGenerator() {
     setTimeout(() => setCopied(null), 1500);
   }
 
+  async function copyTailwind() {
+    if (!validHex || palette.length === 0) return;
+    let config: Record<string, string> = {};
+    if (mode === 'shades') {
+      palette.forEach(s => { config[s.label] = s.hex; });
+    } else {
+      palette.forEach(s => { config[s.label.toLowerCase().replace(/[^a-z0-9]/g, '-')] = s.hex; });
+    }
+    const text = `// tailwind.config.js\nmodule.exports = {\n  theme: {\n    extend: {\n      colors: {\n        brand: ${JSON.stringify(config, null, 8).replace(/^/gm, '        ').trimStart()},\n      },\n    },\n  },\n};`;
+    await navigator.clipboard.writeText(text);
+    setCopied('tailwind');
+    setTimeout(() => setCopied(null), 1500);
+  }
+
+  async function copyJson() {
+    if (!validHex || palette.length === 0) return;
+    const obj: Record<string, string> = {};
+    palette.forEach(s => { obj[s.label] = s.hex; });
+    await navigator.clipboard.writeText(JSON.stringify({ palette: obj, mode, source: validHex }, null, 2));
+    setCopied('json');
+    setTimeout(() => setCopied(null), 1500);
+  }
+
   const MODES: { value: PaletteMode; label: string; desc: string }[] = [
     { value: 'shades', label: 'Shades', desc: '11-step tint/shade scale (Tailwind-style)' },
     { value: 'complementary', label: 'Complementary', desc: 'Base + opposite hue on color wheel' },
@@ -250,7 +273,15 @@ export default function ColorPaletteGenerator() {
             <div class="flex gap-2 flex-wrap">
               <button onClick={copyCss}
                 class="text-xs bg-bg border border-border hover:border-primary px-3 py-1.5 rounded-lg transition-colors">
-                {copied === 'css' ? '✓ Copied!' : 'Copy CSS vars'}
+                {copied === 'css' ? '✓ Copied!' : 'CSS vars'}
+              </button>
+              <button onClick={copyTailwind}
+                class="text-xs bg-bg border border-border hover:border-primary px-3 py-1.5 rounded-lg transition-colors">
+                {copied === 'tailwind' ? '✓ Copied!' : 'Tailwind config'}
+              </button>
+              <button onClick={copyJson}
+                class="text-xs bg-bg border border-border hover:border-primary px-3 py-1.5 rounded-lg transition-colors">
+                {copied === 'json' ? '✓ Copied!' : 'JSON'}
               </button>
               <button onClick={copyAll}
                 class="text-xs bg-primary hover:bg-primary/80 text-white px-3 py-1.5 rounded-lg transition-colors">
