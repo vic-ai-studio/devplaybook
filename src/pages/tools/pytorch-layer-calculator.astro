@@ -1,0 +1,380 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What are parameters in a neural network?",
+    answer: "Parameters are the learnable weights and biases in a neural network model. During training, these values are updated via backpropagation to minimize the loss. A Linear(in=128, out=64) layer has 128×64=8,192 weights plus 64 biases = 8,256 parameters. The total parameter count determines model complexity, memory usage, and training time."
+  },
+  {
+    question: "How is memory usage calculated for a PyTorch model?",
+    answer: "Model memory = total parameters × bytes per parameter. float32 (default) uses 4 bytes per parameter; float16/bfloat16 uses 2 bytes; int8 uses 1 byte. A model with 1M float32 parameters uses ~4 MB for weights alone. During training, you also need memory for gradients (~same as weights) and optimizer states (Adam uses ~2× more). Total training memory is roughly 3-4× the model size."
+  },
+  {
+    question: "What is the difference between Linear and Conv2d?",
+    answer: "Linear (fully connected) layer connects every input to every output. Parameters = in_features × out_features + bias. Conv2d applies convolutional filters over spatial data (images). Parameters = out_channels × in_channels × kernel_h × kernel_w + bias. Conv2d is much more parameter-efficient for spatial data because filters share weights across positions."
+  },
+  {
+    question: "What does the embedding layer do?",
+    answer: "An Embedding layer maps integer token IDs to dense vectors. It's like a lookup table: vocab_size × embedding_dim. For example, Embedding(50000, 768) maps 50K token IDs to 768-dimensional vectors — used in transformers and NLP models. Parameters = vocab_size × embedding_dim (no bias)."
+  },
+  {
+    question: "What is BatchNorm and why is it used?",
+    answer: "BatchNormalization (BatchNorm1d/2d) normalizes layer activations across the batch dimension, stabilizing training and allowing higher learning rates. It has 2 learnable parameters per feature (gamma and beta): BatchNorm1d(64) has 128 parameters. LayerNorm normalizes across feature dimensions instead — preferred in Transformers."
+  },
+  {
+    question: "What is an LSTM and when should I use it?",
+    answer: "LSTM (Long Short-Term Memory) is a recurrent network layer that processes sequences. It maintains a cell state and hidden state to capture long-range dependencies. Parameters = 4 × (hidden × (input + hidden) + hidden). Use LSTM for time series, text sequences, and audio when order matters. For modern NLP, Transformer-based models (attention) often outperform LSTMs but require more memory."
+  },
+];
+---
+
+<BaseLayout
+  title="PyTorch Layer Calculator — Neural Network Parameter & Memory Counter"
+  description="Build a PyTorch neural network visually. Add layers (Linear, Conv2d, LSTM, Transformer, Embedding), see parameter count and memory usage per layer. Generate PyTorch model code. Free browser tool."
+  tool="PyTorch Layer Calculator, Neural Network Parameter Calculator, PyTorch Model Builder, PyTorch Parameter Count, Deep Learning Model Size Calculator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "PyTorch Layer Calculator",
+    "url": "https://devplaybook.cc/tools/pytorch-layer-calculator",
+    "description": "Build PyTorch neural network models visually. Calculate total parameters and memory usage per layer. Generate model code.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">PyTorch Layer Calculator</h1>
+  <p class="text-text-muted mb-4">
+    Build a neural network layer stack visually. Add layers, configure parameters, and see the total parameter count, memory usage, and generated PyTorch model code — all in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 8 layer types</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Per-layer param count</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Generated PyTorch code</span>
+  </div>
+
+  <div id="pytorch-app" class="space-y-5">
+    <!-- Add Layer -->
+    <div class="bg-surface border border-border rounded-xl p-4 space-y-3">
+      <p class="text-sm font-semibold">Add Layer</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Layer Type</label>
+          <select id="layer-type" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-accent">
+            <option value="Linear">Linear (Fully Connected)</option>
+            <option value="Conv2d">Conv2d (Convolutional)</option>
+            <option value="LSTM">LSTM (Recurrent)</option>
+            <option value="Embedding">Embedding</option>
+            <option value="TransformerEncoder">TransformerEncoder</option>
+            <option value="BatchNorm1d">BatchNorm1d</option>
+            <option value="BatchNorm2d">BatchNorm2d</option>
+            <option value="LayerNorm">LayerNorm</option>
+          </select>
+        </div>
+        <div id="param-a-wrap">
+          <label class="block text-xs text-text-muted mb-1" id="param-a-label">in_features</label>
+          <input id="param-a" type="number" value="128" min="1" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text font-mono focus:outline-none focus:border-accent" />
+        </div>
+        <div id="param-b-wrap">
+          <label class="block text-xs text-text-muted mb-1" id="param-b-label">out_features</label>
+          <input id="param-b" type="number" value="64" min="1" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text font-mono focus:outline-none focus:border-accent" />
+        </div>
+        <div id="param-c-wrap" class="hidden">
+          <label class="block text-xs text-text-muted mb-1" id="param-c-label">kernel_size</label>
+          <input id="param-c" type="number" value="3" min="1" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text font-mono focus:outline-none focus:border-accent" />
+        </div>
+        <div id="param-d-wrap" class="hidden">
+          <label class="block text-xs text-text-muted mb-1" id="param-d-label">num_layers</label>
+          <input id="param-d" type="number" value="2" min="1" max="64" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text font-mono focus:outline-none focus:border-accent" />
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="flex items-center gap-2 text-xs text-text-muted cursor-pointer">
+          <input type="checkbox" id="has-bias" checked class="accent-accent" />
+          bias=True
+        </label>
+        <button id="btn-add-layer" class="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium transition-colors">Add Layer</button>
+      </div>
+    </div>
+
+    <!-- Layer Stack -->
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-semibold">Layer Stack</p>
+        <button id="btn-clear-all" class="text-xs text-text-muted hover:text-red-400 transition-colors">Clear all</button>
+      </div>
+      <div id="layer-list" class="space-y-2">
+        <p id="empty-msg" class="text-center py-6 text-xs text-text-muted">No layers added yet. Add a layer above to start building.</p>
+      </div>
+    </div>
+
+    <!-- Totals -->
+    <div id="totals-panel" class="hidden">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-surface border border-border rounded-xl p-4 text-center">
+          <p class="text-xs text-text-muted mb-1">Total Parameters</p>
+          <p id="total-params" class="text-2xl font-bold text-text font-mono">0</p>
+        </div>
+        <div class="bg-surface border border-border rounded-xl p-4 text-center">
+          <p class="text-xs text-text-muted mb-1">Memory (float32)</p>
+          <p id="total-memory" class="text-2xl font-bold text-accent font-mono">0 KB</p>
+        </div>
+        <div class="bg-surface border border-border rounded-xl p-4 text-center">
+          <p class="text-xs text-text-muted mb-1">Memory (float16)</p>
+          <p id="total-memory-fp16" class="text-2xl font-bold text-text font-mono">0 KB</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Code Output -->
+    <div id="code-panel" class="hidden space-y-2">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-semibold">Generated PyTorch Code</p>
+        <button id="btn-copy-code" class="text-xs text-accent hover:underline font-medium">Copy code</button>
+      </div>
+      <pre id="code-output" class="bg-surface border border-border rounded-lg p-4 text-xs font-mono overflow-auto text-text leading-relaxed whitespace-pre"></pre>
+    </div>
+
+    <!-- Presets -->
+    <div>
+      <p class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Model Presets</p>
+      <div class="flex flex-wrap gap-2">
+        <button class="model-preset px-3 py-1.5 bg-surface border border-border hover:border-accent/50 text-text text-xs rounded-lg transition-colors" data-preset="mlp">Simple MLP</button>
+        <button class="model-preset px-3 py-1.5 bg-surface border border-border hover:border-accent/50 text-text text-xs rounded-lg transition-colors" data-preset="cnn">CNN Backbone</button>
+        <button class="model-preset px-3 py-1.5 bg-surface border border-border hover:border-accent/50 text-text text-xs rounded-lg transition-colors" data-preset="lstm">LSTM Sequence</button>
+        <button class="model-preset px-3 py-1.5 bg-surface border border-border hover:border-accent/50 text-text text-xs rounded-lg transition-colors" data-preset="transformer">Transformer Block</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      let layers = [];
+      let nextId = 1;
+
+      const layerConfigs = {
+        Linear: { labels: ['in_features', 'out_features', null, null], defaults: [128, 64, null, null] },
+        Conv2d: { labels: ['in_channels', 'out_channels', 'kernel_size', null], defaults: [3, 64, 3, null] },
+        LSTM: { labels: ['input_size', 'hidden_size', null, 'num_layers'], defaults: [128, 256, null, 2] },
+        Embedding: { labels: ['vocab_size', 'embedding_dim', null, null], defaults: [50000, 128, null, null] },
+        TransformerEncoder: { labels: ['d_model', 'nhead', 'dim_feedforward', 'num_layers'], defaults: [512, 8, 2048, 6] },
+        BatchNorm1d: { labels: ['num_features', null, null, null], defaults: [64, null, null, null] },
+        BatchNorm2d: { labels: ['num_features', null, null, null], defaults: [64, null, null, null] },
+        LayerNorm: { labels: ['normalized_shape', null, null, null], defaults: [512, null, null, null] },
+      };
+
+      function calcParams(layer) {
+        const { type, a, b, c, d, bias } = layer;
+        const B = bias ? 1 : 0;
+        switch (type) {
+          case 'Linear': return a * b + (B ? b : 0);
+          case 'Conv2d': return b * a * c * c + (B ? b : 0);
+          case 'LSTM': {
+            const singleLayer = 4 * ((a + b) * b + b);
+            const extraLayers = (d - 1) * 4 * (2 * b * b + b);
+            return singleLayer + extraLayers;
+          }
+          case 'Embedding': return a * b;
+          case 'TransformerEncoder': {
+            const c2 = c || 2048;
+            const perLayer = 4 * a * a + 2 * a * c2 + 4 * a + 2 * c2 + 8 * a;
+            return perLayer * d;
+          }
+          case 'BatchNorm1d': case 'BatchNorm2d': return 2 * a;
+          case 'LayerNorm': return 2 * a;
+          default: return 0;
+        }
+      }
+
+      function formatParams(n) {
+        if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+        if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+        if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+        return n.toLocaleString();
+      }
+
+      function formatMem(params, bytesPerParam) {
+        const bytes = params * bytesPerParam;
+        if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+        if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(2)} MB`;
+        if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(1)} KB`;
+        return `${bytes} B`;
+      }
+
+      function layerCode(layer) {
+        const { type, a, b, c, d, bias } = layer;
+        const B = `bias=${bias ? 'True' : 'False'}`;
+        switch (type) {
+          case 'Linear': return `nn.Linear(${a}, ${b}, ${B})`;
+          case 'Conv2d': return `nn.Conv2d(${a}, ${b}, kernel_size=${c}, ${B})`;
+          case 'LSTM': return `nn.LSTM(input_size=${a}, hidden_size=${b}, num_layers=${d}, batch_first=True)`;
+          case 'Embedding': return `nn.Embedding(${a}, ${b})`;
+          case 'TransformerEncoder': {
+            const ff = c || 2048;
+            return `nn.TransformerEncoder(\n    nn.TransformerEncoderLayer(d_model=${a}, nhead=${b}, dim_feedforward=${ff}, batch_first=True),\n    num_layers=${d}\n)`;
+          }
+          case 'BatchNorm1d': return `nn.BatchNorm1d(${a})`;
+          case 'BatchNorm2d': return `nn.BatchNorm2d(${a})`;
+          case 'LayerNorm': return `nn.LayerNorm(${a})`;
+          default: return `# ${type}`;
+        }
+      }
+
+      function generateCode() {
+        if (layers.length === 0) return '';
+        const lines = ['import torch', 'import torch.nn as nn', '', 'class Model(nn.Module):', '    def __init__(self):',
+          '        super().__init__()', '        self.layers = nn.Sequential('];
+        layers.forEach(l => {
+          const code = layerCode(l);
+          const multiline = code.includes('\n');
+          if (multiline) {
+            const indented = code.split('\n').map(line => '            ' + line).join('\n');
+            lines.push(indented + ',');
+          } else {
+            lines.push(`            ${code},`);
+          }
+        });
+        lines.push('        )');
+        lines.push('');
+        lines.push('    def forward(self, x):');
+        lines.push('        return self.layers(x)');
+        lines.push('');
+        lines.push('model = Model()');
+        lines.push(`print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")`);
+        return lines.join('\n');
+      }
+
+      function render() {
+        const list = document.getElementById('layer-list');
+        const empty = document.getElementById('empty-msg');
+        const totalsPanel = document.getElementById('totals-panel');
+        const codePanel = document.getElementById('code-panel');
+
+        if (layers.length === 0) {
+          list.innerHTML = '';
+          list.appendChild(empty);
+          empty.classList.remove('hidden');
+          totalsPanel.classList.add('hidden');
+          codePanel.classList.add('hidden');
+          return;
+        }
+        empty.classList.add('hidden');
+        totalsPanel.classList.remove('hidden');
+        codePanel.classList.remove('hidden');
+
+        let totalParams = 0;
+        list.innerHTML = layers.map((l, idx) => {
+          const params = calcParams(l);
+          totalParams += params;
+          return `<div class="flex items-center gap-3 bg-surface border border-border rounded-lg px-4 py-2.5">
+            <span class="text-xs text-text-muted w-5 text-right">${idx + 1}</span>
+            <span class="flex-1 text-sm font-mono text-text">${layerCode(l).split('\n')[0]}</span>
+            <span class="text-xs font-mono text-accent">${formatParams(params)} params</span>
+            <button class="del-btn text-xs text-text-muted hover:text-red-400 transition-colors" data-idx="${idx}">✕</button>
+          </div>`;
+        }).join('');
+
+        list.querySelectorAll('.del-btn').forEach(btn => {
+          btn.addEventListener('click', function () {
+            layers.splice(parseInt(this.dataset.idx), 1);
+            render();
+          });
+        });
+
+        document.getElementById('total-params').textContent = formatParams(totalParams);
+        document.getElementById('total-memory').textContent = formatMem(totalParams, 4);
+        document.getElementById('total-memory-fp16').textContent = formatMem(totalParams, 2);
+        document.getElementById('code-output').textContent = generateCode();
+      }
+
+      function updateParamFields() {
+        const type = document.getElementById('layer-type').value;
+        const cfg = layerConfigs[type];
+        const ids = ['param-a', 'param-b', 'param-c', 'param-d'];
+        const labels = ['param-a-label', 'param-b-label', 'param-c-label', 'param-d-label'];
+        const wraps = ['param-a-wrap', 'param-b-wrap', 'param-c-wrap', 'param-d-wrap'];
+        ids.forEach((id, i) => {
+          const hasLabel = cfg.labels[i] !== null;
+          document.getElementById(wraps[i]).classList.toggle('hidden', !hasLabel);
+          if (hasLabel) {
+            document.getElementById(labels[i]).textContent = cfg.labels[i];
+            document.getElementById(id).value = cfg.defaults[i];
+          }
+        });
+      }
+
+      document.getElementById('layer-type').addEventListener('change', updateParamFields);
+
+      document.getElementById('btn-add-layer').addEventListener('click', function () {
+        const type = document.getElementById('layer-type').value;
+        const a = parseInt(document.getElementById('param-a').value) || 1;
+        const b = parseInt(document.getElementById('param-b').value) || 1;
+        const c = parseInt(document.getElementById('param-c').value) || 1;
+        const d = parseInt(document.getElementById('param-d').value) || 1;
+        const bias = document.getElementById('has-bias').checked;
+        layers.push({ id: nextId++, type, a, b, c, d, bias });
+        render();
+      });
+
+      document.getElementById('btn-clear-all').addEventListener('click', function () {
+        if (layers.length === 0) return;
+        layers = [];
+        render();
+      });
+
+      document.getElementById('btn-copy-code').addEventListener('click', function () {
+        const code = document.getElementById('code-output').textContent;
+        navigator.clipboard.writeText(code).then(() => {
+          this.textContent = 'Copied!';
+          setTimeout(() => { this.textContent = 'Copy code'; }, 2000);
+        });
+      });
+
+      const presets = {
+        mlp: [
+          { type: 'Linear', a: 784, b: 256, c: 3, d: 2, bias: true },
+          { type: 'BatchNorm1d', a: 256, b: 64, c: 3, d: 2, bias: true },
+          { type: 'Linear', a: 256, b: 128, c: 3, d: 2, bias: true },
+          { type: 'Linear', a: 128, b: 10, c: 3, d: 2, bias: true },
+        ],
+        cnn: [
+          { type: 'Conv2d', a: 3, b: 64, c: 3, d: 2, bias: false },
+          { type: 'BatchNorm2d', a: 64, b: 128, c: 3, d: 2, bias: true },
+          { type: 'Conv2d', a: 64, b: 128, c: 3, d: 2, bias: false },
+          { type: 'Conv2d', a: 128, b: 256, c: 3, d: 2, bias: false },
+        ],
+        lstm: [
+          { type: 'Embedding', a: 10000, b: 128, c: 3, d: 2, bias: true },
+          { type: 'LSTM', a: 128, b: 256, c: 3, d: 2, bias: true },
+          { type: 'Linear', a: 256, b: 128, c: 3, d: 2, bias: true },
+          { type: 'Linear', a: 128, b: 2, c: 3, d: 2, bias: true },
+        ],
+        transformer: [
+          { type: 'Embedding', a: 32000, b: 512, c: 3, d: 1, bias: true },
+          { type: 'TransformerEncoder', a: 512, b: 8, c: 2048, d: 6, bias: true },
+          { type: 'Linear', a: 512, b: 32000, c: 3, d: 2, bias: true },
+        ],
+      };
+
+      document.querySelectorAll('.model-preset').forEach(btn => {
+        btn.addEventListener('click', function () {
+          const p = presets[this.dataset.preset];
+          if (!p) return;
+          layers = p.map(l => ({ ...l, id: nextId++ }));
+          render();
+        });
+      });
+
+      updateParamFields();
+      render();
+    })();
+  </script>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="PyTorch Layer Calculator" relatedTags={['python', 'pytorch', 'machine-learning', 'deep-learning', 'neural-networks', 'ai']} />
+</BaseLayout>
