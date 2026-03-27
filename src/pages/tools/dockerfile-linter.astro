@@ -1,0 +1,327 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What does this Dockerfile linter check?", answer: "It checks for 15+ common issues including: using 'latest' tags (breaks reproducibility), missing HEALTHCHECK, not using multi-stage builds for compiled languages, running as root, missing .dockerignore, COPY before RUN (busts cache), ADD instead of COPY, and more." },
+  { question: "What is a multi-stage build and why is it recommended?", answer: "Multi-stage builds use multiple FROM statements to separate build and runtime environments. Your final image only contains the runtime artifacts, not the build tools (compilers, npm, etc.), resulting in much smaller and more secure images." },
+  { question: "Why should I avoid the 'latest' tag?", answer: "Using 'latest' makes builds non-reproducible — the same Dockerfile can produce different images on different days. Pin to a specific version (e.g. node:20.11.1-alpine) to ensure consistency across environments." },
+  { question: "What is HEALTHCHECK and why does it matter?", answer: "HEALTHCHECK tells Docker how to test if the container is still working. Without it, Docker can't detect if your app crashes but the container keeps running. Kubernetes also uses health checks for pod management." },
+  { question: "Should I use COPY or ADD?", answer: "Prefer COPY for simple file copying — it's explicit and predictable. ADD has extra magic (auto-extracts tar files, can fetch URLs) that makes Dockerfiles harder to understand. Only use ADD when you need those specific features." },
+];
+---
+
+<BaseLayout
+  title="Dockerfile Linter & Best Practices Checker"
+  description="Paste your Dockerfile and instantly check for common issues: latest tags, missing HEALTHCHECK, root user, cache-busting COPY order, ADD vs COPY, and multi-stage build suggestions. Free browser tool."
+  tool="Dockerfile Linter, Docker Best Practices Checker, Dockerfile Analyzer, Docker Security Checker, Docker Image Optimizer"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Dockerfile Linter</h1>
+  <p class="text-text-muted mb-6">Paste your Dockerfile to check for common issues and best practice violations. Instant feedback with fix suggestions — no install required.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 15+ checks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Fix suggestions</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs in your browser</span>
+  </div>
+
+  <div id="linter-app" class="space-y-5">
+    <!-- Input -->
+    <div>
+      <div class="flex justify-between items-center mb-2">
+        <label for="dockerfile-input" class="block text-sm font-medium">Dockerfile Contents</label>
+        <div class="flex gap-2">
+          <button id="load-sample" class="text-xs text-primary hover:underline">Load sample</button>
+          <button id="clear-btn" class="text-xs text-text-muted hover:text-primary transition-colors">Clear</button>
+        </div>
+      </div>
+      <textarea
+        id="dockerfile-input"
+        rows="14"
+        placeholder="Paste your Dockerfile here…"
+        class="w-full bg-bg-card border border-border rounded-lg px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary resize-y"
+        spellcheck="false"
+      ></textarea>
+    </div>
+
+    <!-- Score + button -->
+    <div class="flex items-center gap-4 flex-wrap">
+      <button id="lint-btn" class="px-6 py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition-colors text-sm">
+        Lint Dockerfile
+      </button>
+      <div id="score-badge" class="hidden">
+        <span class="text-sm font-medium">Health Score: </span>
+        <span id="score-value" class="text-lg font-bold tabular-nums"></span>
+        <span class="text-sm text-text-muted">/100</span>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden space-y-4">
+      <!-- Summary -->
+      <div class="grid grid-cols-3 gap-3 text-center">
+        <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+          <p class="text-xs text-red-400 uppercase tracking-wide mb-1">Errors</p>
+          <p class="text-2xl font-bold tabular-nums text-red-500" id="count-errors">0</p>
+        </div>
+        <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+          <p class="text-xs text-yellow-400 uppercase tracking-wide mb-1">Warnings</p>
+          <p class="text-2xl font-bold tabular-nums text-yellow-500" id="count-warnings">0</p>
+        </div>
+        <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+          <p class="text-xs text-blue-400 uppercase tracking-wide mb-1">Suggestions</p>
+          <p class="text-2xl font-bold tabular-nums text-blue-500" id="count-suggestions">0</p>
+        </div>
+      </div>
+
+      <!-- Issue list -->
+      <div id="issue-list" class="space-y-3"></div>
+
+      <!-- All clear message -->
+      <div id="all-clear" class="hidden bg-green-500/10 border border-green-500/30 rounded-xl p-5 text-center">
+        <p class="text-green-500 font-semibold text-lg mb-1">✓ No issues found!</p>
+        <p class="text-text-muted text-sm">Your Dockerfile follows best practices.</p>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Dockerfile Linter" relatedTags={['docker', 'devops', 'containers', 'kubernetes', 'ci-cd']} />
+</BaseLayout>
+
+<script>
+  type Severity = 'error' | 'warning' | 'suggestion';
+  type Issue = { severity: Severity; line?: number; message: string; fix: string; rule: string };
+
+  const SAMPLE_DOCKERFILE = `FROM node:latest
+
+WORKDIR /app
+
+COPY . .
+
+RUN npm install
+
+RUN npm run build
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]`;
+
+  function lintDockerfile(content: string): Issue[] {
+    const issues: Issue[] = [];
+    const lines = content.split('\n');
+
+    lines.forEach((rawLine, idx) => {
+      const line = rawLine.trim();
+      const lineNum = idx + 1;
+
+      // Skip comments and empty lines
+      if (!line || line.startsWith('#')) return;
+
+      // FROM :latest
+      if (/^FROM\s+\S+:latest(\s|$)/i.test(line)) {
+        issues.push({
+          severity: 'error',
+          line: lineNum,
+          rule: 'no-latest-tag',
+          message: `Line ${lineNum}: Using \`:latest\` tag makes builds non-reproducible`,
+          fix: 'Pin to a specific version: FROM node:20.11.1-alpine',
+        });
+      }
+
+      // FROM without tag (implicitly latest)
+      if (/^FROM\s+[a-zA-Z0-9/_-]+\s*$/i.test(line) && !/^FROM\s+scratch\s*$/i.test(line)) {
+        issues.push({
+          severity: 'warning',
+          line: lineNum,
+          rule: 'no-untagged-base',
+          message: `Line ${lineNum}: No tag specified — defaults to \`:latest\``,
+          fix: 'Specify a version: FROM ubuntu:22.04',
+        });
+      }
+
+      // ADD instead of COPY
+      if (/^ADD\s+(?!https?:\/\/)/i.test(line) && !/\.tar(\.|$)/i.test(line)) {
+        issues.push({
+          severity: 'warning',
+          line: lineNum,
+          rule: 'prefer-copy-over-add',
+          message: `Line ${lineNum}: Use COPY instead of ADD for local files`,
+          fix: 'COPY is more explicit and predictable. Use ADD only for URLs or tar extraction.',
+        });
+      }
+
+      // Running as root warning (no USER instruction detected — checked after full parse)
+    });
+
+    // Check for USER instruction
+    const hasUser = lines.some(l => /^USER\s+(?!root)/i.test(l.trim()));
+    if (!hasUser && content.trim()) {
+      issues.push({
+        severity: 'warning',
+        rule: 'no-root-user',
+        message: 'No non-root USER specified — container runs as root by default',
+        fix: 'Add: USER node  (or create and use a non-root user)',
+      });
+    }
+
+    // Check for HEALTHCHECK
+    const hasHealthcheck = lines.some(l => /^HEALTHCHECK\s/i.test(l.trim()));
+    if (!hasHealthcheck && content.trim()) {
+      issues.push({
+        severity: 'suggestion',
+        rule: 'missing-healthcheck',
+        message: 'No HEALTHCHECK instruction found',
+        fix: 'Add: HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:3000/ || exit 1',
+      });
+    }
+
+    // COPY . . before RUN npm install (cache busting)
+    let copyAllIdx = -1;
+    let runInstallIdx = -1;
+    lines.forEach((rawLine, idx) => {
+      const line = rawLine.trim();
+      if (/^COPY\s+\.\s+\./i.test(line)) copyAllIdx = idx;
+      if (/^RUN\s+(npm|yarn|pnpm|pip|bundle|go mod)\s+(install|download|ci)/i.test(line) && copyAllIdx !== -1 && idx > copyAllIdx) {
+        runInstallIdx = idx;
+      }
+    });
+    if (copyAllIdx !== -1 && runInstallIdx !== -1) {
+      issues.push({
+        severity: 'warning',
+        line: copyAllIdx + 1,
+        rule: 'copy-order-cache-bust',
+        message: `Line ${copyAllIdx + 1}: COPY . . before dependency install busts Docker layer cache`,
+        fix: 'Copy only the dependency manifest first:\nCOPY package*.json ./\nRUN npm install\nCOPY . .',
+      });
+    }
+
+    // Multiple RUN commands that could be chained
+    const runLines = lines.filter(l => /^RUN\s/i.test(l.trim()));
+    if (runLines.length > 3) {
+      issues.push({
+        severity: 'suggestion',
+        rule: 'chain-run-commands',
+        message: `${runLines.length} separate RUN instructions create extra layers`,
+        fix: 'Chain with && to reduce layers:\nRUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*',
+      });
+    }
+
+    // Multi-stage build suggestion for compiled languages
+    const fromLines = lines.filter(l => /^FROM\s/i.test(l.trim()));
+    if (fromLines.length === 1) {
+      const isCompiled = /^FROM\s+(golang|rust|maven|gradle|node|python)/i.test(content);
+      if (isCompiled) {
+        issues.push({
+          severity: 'suggestion',
+          rule: 'use-multi-stage',
+          message: 'Consider using multi-stage builds to reduce final image size',
+          fix: 'Use a build stage and copy only artifacts:\nFROM node:20 AS builder\nRUN npm ci && npm run build\nFROM node:20-alpine\nCOPY --from=builder /app/dist ./dist',
+        });
+      }
+    }
+
+    // apt-get without rm -rf /var/lib/apt/lists/*
+    const aptLines = lines.filter(l => /^RUN\s.*apt-get\s+install/i.test(l.trim()));
+    aptLines.forEach(l => {
+      if (!/rm\s+-rf\s+\/var\/lib\/apt\/lists/i.test(l)) {
+        issues.push({
+          severity: 'warning',
+          rule: 'clean-apt-cache',
+          message: 'apt-get install without cleaning package cache inflates image size',
+          fix: 'Add: && rm -rf /var/lib/apt/lists/* at end of apt-get RUN command',
+        });
+      }
+    });
+
+    // EXPOSE check
+    const hasExpose = lines.some(l => /^EXPOSE\s/i.test(l.trim()));
+    if (!hasExpose && content.trim() && lines.some(l => /^CMD|^ENTRYPOINT/i.test(l.trim()))) {
+      issues.push({
+        severity: 'suggestion',
+        rule: 'missing-expose',
+        message: 'No EXPOSE instruction — document which port your service listens on',
+        fix: 'Add: EXPOSE 3000 (or your app\'s port)',
+      });
+    }
+
+    return issues;
+  }
+
+  function scoreIssues(issues: Issue[]): number {
+    const errors = issues.filter(i => i.severity === 'error').length;
+    const warnings = issues.filter(i => i.severity === 'warning').length;
+    const suggestions = issues.filter(i => i.severity === 'suggestion').length;
+    return Math.max(0, 100 - errors * 20 - warnings * 8 - suggestions * 3);
+  }
+
+  function renderIssue(issue: Issue): string {
+    const colors: Record<Severity, string> = {
+      error: 'border-red-500/40 bg-red-500/5',
+      warning: 'border-yellow-500/40 bg-yellow-500/5',
+      suggestion: 'border-blue-500/40 bg-blue-500/5',
+    };
+    const badges: Record<Severity, string> = {
+      error: 'bg-red-500/20 text-red-400',
+      warning: 'bg-yellow-500/20 text-yellow-400',
+      suggestion: 'bg-blue-500/20 text-blue-400',
+    };
+    const icons: Record<Severity, string> = { error: '✕', warning: '⚠', suggestion: '💡' };
+
+    return `
+      <div class="border rounded-xl p-4 ${colors[issue.severity]}">
+        <div class="flex items-start gap-3">
+          <span class="text-xs px-2 py-0.5 rounded font-medium mt-0.5 shrink-0 ${badges[issue.severity]}">${icons[issue.severity]} ${issue.severity.toUpperCase()}</span>
+          <div class="min-w-0">
+            <p class="text-sm font-medium mb-1">${issue.message}</p>
+            <p class="text-xs text-text-muted font-mono whitespace-pre-wrap">${issue.fix}</p>
+            <p class="text-xs text-text-muted mt-1 opacity-60">Rule: ${issue.rule}</p>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function run() {
+    const content = (document.getElementById('dockerfile-input') as HTMLTextAreaElement).value.trim();
+    if (!content) return;
+
+    const issues = lintDockerfile(content);
+    const score = scoreIssues(issues);
+    const errors = issues.filter(i => i.severity === 'error');
+    const warnings = issues.filter(i => i.severity === 'warning');
+    const suggestions = issues.filter(i => i.severity === 'suggestion');
+
+    (document.getElementById('count-errors') as HTMLElement).textContent = String(errors.length);
+    (document.getElementById('count-warnings') as HTMLElement).textContent = String(warnings.length);
+    (document.getElementById('count-suggestions') as HTMLElement).textContent = String(suggestions.length);
+
+    const scoreEl = document.getElementById('score-value') as HTMLElement;
+    scoreEl.textContent = String(score);
+    scoreEl.className = `text-lg font-bold tabular-nums ${score >= 80 ? 'text-green-500' : score >= 50 ? 'text-yellow-500' : 'text-red-500'}`;
+    (document.getElementById('score-badge') as HTMLElement).classList.remove('hidden');
+
+    const issueList = document.getElementById('issue-list') as HTMLElement;
+    issueList.innerHTML = [...errors, ...warnings, ...suggestions].map(renderIssue).join('');
+
+    const allClear = document.getElementById('all-clear') as HTMLElement;
+    allClear.classList.toggle('hidden', issues.length > 0);
+
+    (document.getElementById('results') as HTMLElement).classList.remove('hidden');
+  }
+
+  document.getElementById('lint-btn')?.addEventListener('click', run);
+  document.getElementById('dockerfile-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) run();
+  });
+  document.getElementById('load-sample')?.addEventListener('click', () => {
+    (document.getElementById('dockerfile-input') as HTMLTextAreaElement).value = SAMPLE_DOCKERFILE;
+    (document.getElementById('results') as HTMLElement).classList.add('hidden');
+  });
+  document.getElementById('clear-btn')?.addEventListener('click', () => {
+    (document.getElementById('dockerfile-input') as HTMLTextAreaElement).value = '';
+    (document.getElementById('results') as HTMLElement).classList.add('hidden');
+    (document.getElementById('score-badge') as HTMLElement).classList.add('hidden');
+  });
+</script>

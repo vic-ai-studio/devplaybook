@@ -1,0 +1,272 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the difference between CPU requests and limits?", answer: "Requests are what Kubernetes uses for scheduling — the node must have this much CPU available. Limits are the maximum a container can use. If a container exceeds its CPU limit, it is throttled. If it exceeds its memory limit, it is killed (OOMKilled)." },
+  { question: "What units are used for CPU in Kubernetes?", answer: "CPU is measured in cores or millicores. 1 CPU = 1000m. So 0.5 CPU = 500m. Memory is specified in bytes, but common suffixes are Mi (mebibytes) and Gi (gibibytes). 1Gi = 1024Mi." },
+  { question: "How should I set resource requests and limits?", answer: "Start with conservative estimates, then measure actual usage with kubectl top pods. Set requests to the average usage and limits to 2-3x the average (or peak) to handle spikes. Never set limits much lower than requests." },
+  { question: "What is the cost estimate based on?", answer: "Cost is estimated using average cloud pricing: ~$0.048/vCPU-hour and ~$0.006/GB-hour (roughly Google GKE/AWS EKS standard nodes). Actual costs vary by cloud provider, region, node type, and reserved pricing." },
+  { question: "What does 'guaranteed' vs 'burstable' QoS mean?", answer: "If requests === limits for all containers, the pod gets 'Guaranteed' QoS — highest priority, last to be evicted. If requests < limits, it's 'Burstable'. If no requests/limits are set, it's 'BestEffort' — first to be killed under pressure." },
+];
+---
+
+<BaseLayout
+  title="Kubernetes Resource Calculator — CPU & Memory Usage + Cost Estimate"
+  description="Calculate total CPU and memory requirements for your Kubernetes workloads. Input pod resource requests and limits, replica count, and get total cluster resource usage with cost estimates. Free browser tool."
+  tool="Kubernetes Resource Calculator, K8s CPU Memory Calculator, Pod Resource Estimator, Kubernetes Cost Calculator, K8s Capacity Planning"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Kubernetes Resource Calculator</h1>
+  <p class="text-text-muted mb-6">Calculate total CPU and memory requirements across your Kubernetes workloads. Add multiple deployments to plan cluster capacity and estimate cloud costs.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multiple workloads</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost estimate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> QoS class detection</span>
+  </div>
+
+  <div id="k8s-app" class="space-y-6">
+    <!-- Workload list -->
+    <div>
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-sm font-semibold">Workloads</p>
+        <button id="add-workload" class="text-xs px-3 py-1.5 bg-primary/10 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition-colors">+ Add Workload</button>
+      </div>
+      <div id="workload-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Totals -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <p class="text-sm font-semibold mb-4">Total Cluster Requirements</p>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center mb-4">
+        <div>
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">CPU Requests</p>
+          <p class="text-xl font-bold tabular-nums text-primary" id="total-cpu-req">0m</p>
+        </div>
+        <div>
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">CPU Limits</p>
+          <p class="text-xl font-bold tabular-nums" id="total-cpu-lim">0m</p>
+        </div>
+        <div>
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Memory Requests</p>
+          <p class="text-xl font-bold tabular-nums text-primary" id="total-mem-req">0 Mi</p>
+        </div>
+        <div>
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Memory Limits</p>
+          <p class="text-xl font-bold tabular-nums" id="total-mem-lim">0 Mi</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center border-t border-border pt-4">
+        <div>
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Hourly Cost Est.</p>
+          <p class="text-xl font-bold tabular-nums" id="cost-hour">$0.000</p>
+        </div>
+        <div>
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Daily Cost Est.</p>
+          <p class="text-xl font-bold tabular-nums" id="cost-day">$0.00</p>
+        </div>
+        <div>
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Monthly Cost Est.</p>
+          <p class="text-xl font-bold tabular-nums text-primary" id="cost-month">$0.00</p>
+        </div>
+      </div>
+      <p class="text-xs text-text-muted mt-3">Cost estimate based on average cloud pricing (~$0.048/vCPU-hour, ~$0.006/GB-hour). Actual costs vary by provider and region.</p>
+    </div>
+
+    <!-- Node fit calculator -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <p class="text-sm font-semibold mb-3">Node Capacity Planner</p>
+      <p class="text-xs text-text-muted mb-4">How many nodes do you need? Enter your node size to find out.</p>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Node CPU (cores)</label>
+          <input type="number" id="node-cpu" value="4" min="1" max="1000" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Node Memory (GB)</label>
+          <input type="number" id="node-mem" value="16" min="1" max="10000" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div class="flex items-end">
+          <div class="w-full bg-primary/10 border border-primary/30 rounded-xl p-3 text-center">
+            <p class="text-xs text-text-muted mb-1">Nodes Needed</p>
+            <p class="text-xl font-bold text-primary tabular-nums" id="nodes-needed">1</p>
+          </div>
+        </div>
+        <div class="flex items-end">
+          <div class="w-full bg-bg-card border border-border rounded-xl p-3 text-center">
+            <p class="text-xs text-text-muted mb-1">Avg Utilization</p>
+            <p class="text-xl font-bold tabular-nums" id="node-util">0%</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Kubernetes Resource Calculator" relatedTags={['kubernetes', 'devops', 'docker', 'cloud', 'infrastructure']} />
+</BaseLayout>
+
+<script>
+  type Workload = { id: number; name: string; cpuReqM: number; cpuLimM: number; memReqMi: number; memLimMi: number; replicas: number };
+
+  let workloads: Workload[] = [];
+  let nextId = 1;
+
+  const CPU_PRICE_PER_CORE_HOUR = 0.048;
+  const MEM_PRICE_PER_GB_HOUR = 0.006;
+
+  function addWorkload(preset?: Partial<Workload>) {
+    const id = nextId++;
+    const w: Workload = {
+      id,
+      name: preset?.name ?? `Deployment ${id}`,
+      cpuReqM: preset?.cpuReqM ?? 100,
+      cpuLimM: preset?.cpuLimM ?? 500,
+      memReqMi: preset?.memReqMi ?? 128,
+      memLimMi: preset?.memLimMi ?? 256,
+      replicas: preset?.replicas ?? 2,
+    };
+    workloads.push(w);
+    renderWorkloads();
+    updateTotals();
+  }
+
+  function removeWorkload(id: number) {
+    workloads = workloads.filter(w => w.id !== id);
+    renderWorkloads();
+    updateTotals();
+  }
+
+  function updateWorkload(id: number, field: keyof Workload, value: string) {
+    const w = workloads.find(w => w.id === id);
+    if (!w) return;
+    if (field === 'name') (w as any)[field] = value;
+    else (w as any)[field] = Math.max(0, Number(value) || 0);
+    updateTotals();
+  }
+
+  function qosClass(w: Workload): string {
+    if (w.cpuReqM === w.cpuLimM && w.memReqMi === w.memLimMi && w.cpuReqM > 0) return 'Guaranteed';
+    if (w.cpuReqM > 0 || w.memReqMi > 0) return 'Burstable';
+    return 'BestEffort';
+  }
+
+  function renderWorkloads() {
+    const container = document.getElementById('workload-list') as HTMLElement;
+    if (workloads.length === 0) {
+      container.innerHTML = `<p class="text-sm text-text-muted text-center py-6">No workloads yet. Click "+ Add Workload" to start.</p>`;
+      return;
+    }
+    container.innerHTML = workloads.map(w => {
+      const qos = qosClass(w);
+      const qosColor = qos === 'Guaranteed' ? 'text-green-500' : qos === 'Burstable' ? 'text-yellow-500' : 'text-red-500';
+      return `
+        <div class="bg-bg-card border border-border rounded-xl p-4" data-id="${w.id}">
+          <div class="flex justify-between items-center mb-3">
+            <input type="text" value="${w.name}" placeholder="Deployment name"
+              class="text-sm font-semibold bg-transparent border-none outline-none focus:ring-0 w-full mr-2"
+              onchange="window._k8sUpdate(${w.id}, 'name', this.value)" />
+            <div class="flex items-center gap-3 shrink-0">
+              <span class="text-xs ${qosColor} font-medium">${qos} QoS</span>
+              <button onclick="window._k8sRemove(${w.id})" class="text-text-muted hover:text-red-500 transition-colors text-lg leading-none">×</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">CPU Request (m)</label>
+              <input type="number" value="${w.cpuReqM}" min="0" class="w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                oninput="window._k8sUpdate(${w.id}, 'cpuReqM', this.value)" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">CPU Limit (m)</label>
+              <input type="number" value="${w.cpuLimM}" min="0" class="w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                oninput="window._k8sUpdate(${w.id}, 'cpuLimM', this.value)" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Mem Request (Mi)</label>
+              <input type="number" value="${w.memReqMi}" min="0" class="w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                oninput="window._k8sUpdate(${w.id}, 'memReqMi', this.value)" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Mem Limit (Mi)</label>
+              <input type="number" value="${w.memLimMi}" min="0" class="w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                oninput="window._k8sUpdate(${w.id}, 'memLimMi', this.value)" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Replicas</label>
+              <input type="number" value="${w.replicas}" min="1" class="w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                oninput="window._k8sUpdate(${w.id}, 'replicas', this.value)" />
+            </div>
+          </div>
+          <p class="text-xs text-text-muted mt-2">
+            Total: <strong>${(w.cpuReqM * w.replicas).toLocaleString()}m</strong> CPU req /
+            <strong>${(w.memReqMi * w.replicas).toLocaleString()} Mi</strong> mem req
+            across ${w.replicas} replica${w.replicas !== 1 ? 's' : ''}
+          </p>
+        </div>`;
+    }).join('');
+  }
+
+  function updateTotals() {
+    let totalCpuReq = 0, totalCpuLim = 0, totalMemReqMi = 0, totalMemLimMi = 0;
+    workloads.forEach(w => {
+      totalCpuReq += w.cpuReqM * w.replicas;
+      totalCpuLim += w.cpuLimM * w.replicas;
+      totalMemReqMi += w.memReqMi * w.replicas;
+      totalMemLimMi += w.memLimMi * w.replicas;
+    });
+
+    const cpuCores = totalCpuReq / 1000;
+    const memGB = totalMemReqMi / 1024;
+    const costHour = cpuCores * CPU_PRICE_PER_CORE_HOUR + memGB * MEM_PRICE_PER_GB_HOUR;
+    const costDay = costHour * 24;
+    const costMonth = costDay * 30;
+
+    const fmt = (n: number) => n >= 1000 ? `${(n/1000).toFixed(2)} cores` : `${n}m`;
+    const fmtMem = (n: number) => n >= 1024 ? `${(n/1024).toFixed(2)} Gi` : `${n} Mi`;
+
+    (document.getElementById('total-cpu-req') as HTMLElement).textContent = fmt(totalCpuReq);
+    (document.getElementById('total-cpu-lim') as HTMLElement).textContent = fmt(totalCpuLim);
+    (document.getElementById('total-mem-req') as HTMLElement).textContent = fmtMem(totalMemReqMi);
+    (document.getElementById('total-mem-lim') as HTMLElement).textContent = fmtMem(totalMemLimMi);
+
+    (document.getElementById('cost-hour') as HTMLElement).textContent = `$${costHour.toFixed(3)}`;
+    (document.getElementById('cost-day') as HTMLElement).textContent = `$${costDay.toFixed(2)}`;
+    (document.getElementById('cost-month') as HTMLElement).textContent = `$${costMonth.toFixed(2)}`;
+
+    // Node planner
+    const nodeCpuCores = Number((document.getElementById('node-cpu') as HTMLInputElement).value) || 4;
+    const nodeMemGB = Number((document.getElementById('node-mem') as HTMLInputElement).value) || 16;
+    const nodeMemMi = nodeMemGB * 1024 * 0.9; // 90% allocatable
+    const nodeCpuM = nodeCpuCores * 1000 * 0.9;
+    const nodesByCpu = totalCpuReq > 0 ? Math.ceil(totalCpuReq / nodeCpuM) : 1;
+    const nodesByMem = totalMemReqMi > 0 ? Math.ceil(totalMemReqMi / nodeMemMi) : 1;
+    const nodesNeeded = Math.max(nodesByCpu, nodesByMem, workloads.length > 0 ? 1 : 0);
+
+    const utilCpu = nodesNeeded > 0 ? (totalCpuReq / (nodesNeeded * nodeCpuM)) * 100 : 0;
+    const utilMem = nodesNeeded > 0 ? (totalMemReqMi / (nodesNeeded * nodeMemMi)) * 100 : 0;
+    const util = Math.max(utilCpu, utilMem);
+
+    (document.getElementById('nodes-needed') as HTMLElement).textContent = String(nodesNeeded);
+    const utilEl = document.getElementById('node-util') as HTMLElement;
+    utilEl.textContent = `${util.toFixed(0)}%`;
+    utilEl.className = `text-xl font-bold tabular-nums ${util > 80 ? 'text-red-500' : util > 60 ? 'text-yellow-500' : 'text-green-500'}`;
+  }
+
+  // Expose to inline handlers
+  (window as any)._k8sUpdate = (id: number, field: keyof Workload, value: string) => {
+    updateWorkload(id, field, value);
+    renderWorkloads();
+  };
+  (window as any)._k8sRemove = removeWorkload;
+
+  document.getElementById('add-workload')?.addEventListener('click', () => addWorkload());
+  document.getElementById('node-cpu')?.addEventListener('input', updateTotals);
+  document.getElementById('node-mem')?.addEventListener('input', updateTotals);
+
+  // Seed with 2 example workloads
+  addWorkload({ name: 'api-server', cpuReqM: 250, cpuLimM: 1000, memReqMi: 256, memLimMi: 512, replicas: 3 });
+  addWorkload({ name: 'worker', cpuReqM: 100, cpuLimM: 500, memReqMi: 128, memLimMi: 256, replicas: 2 });
+</script>
