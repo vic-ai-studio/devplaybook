@@ -1,0 +1,682 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "Why do I get a CORS error when querying my API?",
+    answer: "CORS (Cross-Origin Resource Sharing) blocks browser requests to APIs that haven't whitelisted your origin. This is a browser security policy, not a GraphQL limitation. Solutions: (1) Configure your server to send Access-Control-Allow-Origin headers for your domain, (2) Use a proxy or tunnel like ngrok to forward requests, (3) Use a dedicated GraphQL client like Apollo Studio or Insomnia for APIs without CORS headers, or (4) Add a server-side proxy endpoint in your own backend."
+  },
+  {
+    question: "What is GraphQL and how is it different from REST?",
+    answer: "GraphQL is a query language for APIs that lets clients request exactly the data they need, nothing more. Unlike REST where the server defines the shape of each endpoint's response, in GraphQL the client writes a query specifying which fields it wants. This eliminates over-fetching (getting too much data) and under-fetching (needing multiple requests). A single GraphQL endpoint handles all operations via POST requests."
+  },
+  {
+    question: "What are GraphQL variables and how do I use them?",
+    answer: "Variables let you pass dynamic values into queries without string interpolation. Define a variable in your query with a $ prefix: query GetUser($id: ID!) { user(id: $id) { name } }. Then in the Variables panel, provide the values as JSON: { \"id\": \"123\" }. This is safer than building query strings and enables query reuse with different inputs."
+  },
+  {
+    question: "What does 'Introspect Schema' do?",
+    answer: "Schema introspection sends a special __schema query to the GraphQL endpoint that returns the full type system — all available queries, mutations, subscriptions, types, and their fields. This is how GraphQL IDEs like GraphiQL auto-complete your queries. Use it to explore an unfamiliar API without needing external documentation."
+  },
+  {
+    question: "What's the difference between a query and a mutation?",
+    answer: "Queries are read-only operations that fetch data. Mutations modify data (create, update, delete) and should be used for any operation with side effects. Both look syntactically similar, but the keyword at the start tells the server which type it is: query { ... } vs mutation { ... }. If you omit the keyword entirely, GraphQL treats it as a query by default."
+  },
+  {
+    question: "Can I use this tool with a GraphQL API behind authentication?",
+    answer: "Yes. Expand the Headers section and add an Authorization header with your token, for example: key = Authorization, value = Bearer your-token-here. The tool will include this header with every request. Make sure your API also has CORS configured to allow the Authorization header from browser origins."
+  }
+];
+---
+
+<BaseLayout
+  title="GraphQL Playground Lite — Browser GraphQL Client | DevPlaybook"
+  description="Lightweight browser-based GraphQL client. Send queries and mutations, inspect schema via introspection, use variables, manage headers, and view syntax-highlighted JSON responses. Free, no install."
+  tool="GraphQL playground, GraphQL client, GraphQL tester, GraphQL explorer, GraphQL query tool, schema introspection"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "GraphQL Playground Lite",
+    "url": "https://devplaybook.cc/tools/graphql-playground-lite",
+    "description": "Lightweight browser-based GraphQL client for sending queries, mutations, and introspection requests with header management and syntax-highlighted responses.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })}></script>
+
+  <h1 class="text-3xl font-bold mb-2">GraphQL Playground Lite</h1>
+  <p class="text-text-muted mb-4">A lightweight browser GraphQL client — send queries, inspect schemas, and explore APIs without installing anything.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Query & mutation execution</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Schema introspection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Custom headers + variables</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Syntax-highlighted response</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Query history (localStorage)</span>
+  </div>
+
+  <!-- CORS notice -->
+  <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3 mb-5 flex gap-3 text-sm">
+    <span class="text-yellow-400 shrink-0 mt-0.5">⚠</span>
+    <div>
+      <span class="text-yellow-300 font-medium">CORS notice:</span>
+      <span class="text-text-muted"> Browser requests are subject to CORS restrictions. This tool works with APIs that allow cross-origin requests. For private/local APIs, configure CORS headers or use a dedicated desktop client.</span>
+    </div>
+  </div>
+
+  <!-- Top bar: Endpoint + Execute -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <label class="block text-sm font-medium mb-2">GraphQL Endpoint</label>
+    <div class="flex gap-2">
+      <input
+        id="endpoint-input"
+        type="url"
+        placeholder="https://countries.trevorblades.com/"
+        value="https://countries.trevorblades.com/"
+        class="flex-1 bg-bg border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary transition-colors"
+      />
+      <button
+        id="execute-btn"
+        class="px-5 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors flex items-center gap-2 whitespace-nowrap"
+      >
+        <span id="execute-label">Run Query</span>
+        <span id="execute-spinner" class="hidden w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+      </button>
+      <button
+        id="introspect-btn"
+        class="px-4 py-2 bg-bg border border-border rounded-lg text-sm hover:border-primary transition-colors whitespace-nowrap"
+        title="Run __schema introspection query"
+      >Introspect</button>
+    </div>
+    <p class="text-xs text-text-muted mt-2">Tip: Press <kbd class="bg-bg border border-border rounded px-1 py-0.5 font-mono text-xs">Ctrl+Enter</kbd> in the query editor to execute.</p>
+  </div>
+
+  <!-- Headers (collapsible) -->
+  <details id="headers-section" class="bg-bg-card border border-border rounded-lg mb-4 group">
+    <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none text-sm font-medium list-none">
+      <span>Headers <span id="header-count" class="text-xs text-text-muted font-normal ml-1">(0)</span></span>
+      <span class="text-text-muted text-xs group-open:hidden">▼ expand</span>
+      <span class="text-text-muted text-xs hidden group-open:inline">▲ collapse</span>
+    </summary>
+    <div class="px-4 pb-4">
+      <div id="headers-list" class="space-y-2 mb-3"></div>
+      <button
+        id="add-header-btn"
+        class="px-3 py-1.5 bg-bg border border-border rounded text-xs hover:border-primary transition-colors"
+      >+ Add header</button>
+    </div>
+  </details>
+
+  <!-- Main editor + response row -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+
+    <!-- Query Editor + Variables -->
+    <div class="flex flex-col gap-4">
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <div class="flex items-center justify-between mb-2">
+          <label class="block text-sm font-medium">Query / Mutation</label>
+          <div class="flex items-center gap-2">
+            <select id="example-select" class="text-xs bg-bg border border-border rounded px-2 py-1 text-text-muted focus:outline-none focus:border-primary cursor-pointer">
+              <option value="">— Examples —</option>
+              <option value="hello">Countries API — list</option>
+              <option value="country">Countries API — single</option>
+              <option value="custom">Blank mutation template</option>
+            </select>
+            <button id="format-btn" class="px-2 py-1 bg-bg border border-border rounded text-xs hover:border-primary transition-colors" title="Format query (Ctrl+Shift+F)">Format</button>
+          </div>
+        </div>
+        <textarea
+          id="query-editor"
+          rows="12"
+          spellcheck="false"
+          class="w-full bg-bg border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y transition-colors"
+          placeholder="{ countries { code name emoji } }"
+        >{ countries { code name emoji capital } }</textarea>
+      </div>
+
+      <!-- Variables (collapsible) -->
+      <details id="variables-section" class="bg-bg-card border border-border rounded-lg group">
+        <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none text-sm font-medium list-none">
+          <span>Variables <span class="text-xs text-text-muted font-normal">(JSON)</span></span>
+          <span class="text-text-muted text-xs group-open:hidden">▼ expand</span>
+          <span class="text-text-muted text-xs hidden group-open:inline">▲ collapse</span>
+        </summary>
+        <div class="px-4 pb-4">
+          <textarea
+            id="variables-editor"
+            rows="5"
+            spellcheck="false"
+            class="w-full bg-bg border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+            placeholder='{ "id": "US" }'
+          ></textarea>
+          <p id="vars-error" class="text-red-400 text-xs mt-1 hidden">Invalid JSON</p>
+        </div>
+      </details>
+    </div>
+
+    <!-- Response Panel -->
+    <div class="bg-bg-card border border-border rounded-lg p-4 flex flex-col">
+      <div class="flex items-center justify-between mb-3">
+        <label class="block text-sm font-medium">Response</label>
+        <div class="flex items-center gap-3">
+          <span id="response-meta" class="text-xs text-text-muted hidden"></span>
+          <button id="copy-response-btn" class="text-xs text-text-muted hover:text-primary transition-colors hidden">Copy</button>
+        </div>
+      </div>
+      <!-- Tab bar -->
+      <div class="flex gap-1 mb-3 border-b border-border pb-2">
+        <button id="tab-response" class="tab-btn px-3 py-1 text-xs rounded font-medium">Response</button>
+        <button id="tab-schema" class="tab-btn px-3 py-1 text-xs rounded font-medium hidden">Schema</button>
+        <button id="tab-history" class="tab-btn px-3 py-1 text-xs rounded font-medium">History</button>
+      </div>
+
+      <!-- Response content -->
+      <div id="panel-response" class="flex-1 min-h-[320px]">
+        <div id="response-placeholder" class="h-full flex items-center justify-center text-text-muted text-sm">
+          Run a query to see the response here.
+        </div>
+        <div id="response-loading" class="hidden h-full flex items-center justify-center">
+          <div class="text-center">
+            <div class="w-8 h-8 border-2 border-border border-t-primary rounded-full animate-spin mx-auto mb-3"></div>
+            <p class="text-text-muted text-sm">Executing query...</p>
+          </div>
+        </div>
+        <pre id="response-output" class="hidden text-xs font-mono overflow-auto max-h-[480px] leading-relaxed"></pre>
+        <div id="response-error" class="hidden bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm">
+          <p class="text-red-400 font-medium mb-1">Error</p>
+          <p id="response-error-msg" class="text-text-muted text-xs font-mono"></p>
+        </div>
+        <div id="graphql-errors" class="hidden mt-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+          <p class="text-yellow-400 text-xs font-medium mb-1">GraphQL Errors</p>
+          <div id="graphql-errors-list" class="text-xs font-mono text-text-muted space-y-1"></div>
+        </div>
+      </div>
+
+      <!-- Schema panel -->
+      <div id="panel-schema" class="hidden flex-1 min-h-[320px] overflow-auto">
+        <p class="text-text-muted text-sm mb-3">Click <strong>Introspect</strong> to load the schema.</p>
+        <div id="schema-types" class="space-y-1 text-xs font-mono"></div>
+      </div>
+
+      <!-- History panel -->
+      <div id="panel-history" class="hidden flex-1 min-h-[320px] overflow-auto">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs text-text-muted">Last 5 queries (click to restore)</p>
+          <button id="clear-history-btn" class="text-xs text-red-400 hover:text-red-300 transition-colors">Clear</button>
+        </div>
+        <div id="history-list" class="space-y-2"></div>
+        <p id="history-empty" class="text-text-muted text-sm">No history yet.</p>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .tab-btn { color: var(--color-text-muted, #9ca3af); transition: background 0.15s, color 0.15s; }
+    .tab-btn.active { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+    .tab-btn:hover:not(.active) { background: rgba(255,255,255,0.05); }
+    /* JSON syntax highlighting */
+    .json-key { color: #93c5fd; }
+    .json-str { color: #86efac; }
+    .json-num { color: #fdba74; }
+    .json-bool { color: #c084fc; }
+    .json-null { color: #9ca3af; }
+    .history-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .history-item:hover { border-color: rgba(99,102,241,0.5); }
+  </style>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="GraphQL Playground Lite" relatedTags={['graphql', 'api', 'query', 'schema', 'rest', 'http']} />
+</BaseLayout>
+
+<script lang="ts">
+  // ── Utilities ─────────────────────────────────────────────────────────────
+  function escHtml(s: string): string {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function formatBytes(n: number): string {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  // ── JSON syntax highlighter ───────────────────────────────────────────────
+  function highlightJson(json: string): string {
+    // Tokenize and colorize JSON
+    return json.replace(
+      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+      (match) => {
+        let cls = 'json-num';
+        if (/^"/.test(match)) {
+          cls = /:$/.test(match) ? 'json-key' : 'json-str';
+        } else if (/true|false/.test(match)) {
+          cls = 'json-bool';
+        } else if (/null/.test(match)) {
+          cls = 'json-null';
+        }
+        return `<span class="${cls}">${escHtml(match)}</span>`;
+      }
+    );
+  }
+
+  // ── Basic query formatter ─────────────────────────────────────────────────
+  function formatGraphQL(query: string): string {
+    let indent = 0;
+    let result = '';
+    let i = 0;
+    query = query.trim();
+    while (i < query.length) {
+      const ch = query[i];
+      if (ch === '{') {
+        result += ' {\n' + '  '.repeat(++indent);
+      } else if (ch === '}') {
+        indent = Math.max(0, indent - 1);
+        result = result.trimEnd() + '\n' + '  '.repeat(indent) + '}\n' + '  '.repeat(indent);
+      } else if (ch === ',') {
+        result += '\n' + '  '.repeat(indent);
+      } else if (ch === '\n' || ch === '\r') {
+        if (result.length > 0 && result[result.length - 1] !== '\n') {
+          result += '\n' + '  '.repeat(indent);
+        }
+      } else {
+        result += ch;
+      }
+      i++;
+    }
+    // Collapse excessive blank lines
+    return result.replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  // ── History helpers ───────────────────────────────────────────────────────
+  const HISTORY_KEY = 'devplaybook_gql_history';
+
+  function loadHistory(): Array<{ endpoint: string; query: string; ts: number }> {
+    try {
+      return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    } catch { return []; }
+  }
+
+  function saveHistory(item: { endpoint: string; query: string; ts: number }) {
+    const hist = loadHistory().filter(h => h.query.trim() !== item.query.trim());
+    hist.unshift(item);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(hist.slice(0, 5)));
+  }
+
+  function renderHistory() {
+    const hist = loadHistory();
+    const listEl = document.getElementById('history-list') as HTMLElement;
+    const emptyEl = document.getElementById('history-empty') as HTMLElement;
+    listEl.innerHTML = '';
+    if (hist.length === 0) {
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+    emptyEl.classList.add('hidden');
+    hist.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'history-item';
+      const date = new Date(item.ts).toLocaleTimeString();
+      el.innerHTML = `
+        <div class="text-xs text-text-muted mb-1">${escHtml(item.endpoint)} <span class="float-right">${date}</span></div>
+        <pre class="text-xs font-mono text-text truncate whitespace-nowrap overflow-hidden">${escHtml(item.query.slice(0, 120))}${item.query.length > 120 ? '…' : ''}</pre>
+      `;
+      el.addEventListener('click', () => {
+        (document.getElementById('endpoint-input') as HTMLInputElement).value = item.endpoint;
+        (document.getElementById('query-editor') as HTMLTextAreaElement).value = item.query;
+        switchTab('response');
+      });
+      listEl.appendChild(el);
+    });
+  }
+
+  // ── Tab switcher ──────────────────────────────────────────────────────────
+  type TabName = 'response' | 'schema' | 'history';
+
+  function switchTab(tab: TabName) {
+    const tabs: TabName[] = ['response', 'schema', 'history'];
+    tabs.forEach(t => {
+      document.getElementById(`tab-${t}`)?.classList.toggle('active', t === tab);
+      const panel = document.getElementById(`panel-${t}`);
+      if (panel) panel.classList.toggle('hidden', t !== tab);
+    });
+    if (tab === 'history') renderHistory();
+  }
+
+  // ── Headers management ────────────────────────────────────────────────────
+  let headerRows: Array<{ key: string; value: string }> = [];
+
+  function renderHeaders() {
+    const listEl = document.getElementById('headers-list') as HTMLElement;
+    const countEl = document.getElementById('header-count') as HTMLElement;
+    listEl.innerHTML = '';
+    headerRows.forEach((row, idx) => {
+      const div = document.createElement('div');
+      div.className = 'flex gap-2 items-center';
+      div.innerHTML = `
+        <input type="text" placeholder="Key (e.g. Authorization)" value="${escHtml(row.key)}"
+          class="flex-1 bg-bg border border-border rounded px-3 py-1.5 text-xs font-mono focus:outline-none focus:border-primary"
+          data-idx="${idx}" data-field="key" />
+        <input type="text" placeholder="Value (e.g. Bearer token)" value="${escHtml(row.value)}"
+          class="flex-1 bg-bg border border-border rounded px-3 py-1.5 text-xs font-mono focus:outline-none focus:border-primary"
+          data-idx="${idx}" data-field="value" />
+        <button class="remove-header-btn text-red-400 hover:text-red-300 text-xs px-2 py-1.5 transition-colors" data-idx="${idx}">✕</button>
+      `;
+      listEl.appendChild(div);
+    });
+    // Bind input changes
+    listEl.querySelectorAll('input').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const idx = Number((inp as HTMLElement).dataset.idx);
+        const field = (inp as HTMLElement).dataset.field as 'key' | 'value';
+        headerRows[idx][field] = inp.value;
+        const active = headerRows.filter(r => r.key.trim()).length;
+        countEl.textContent = `(${active})`;
+      });
+    });
+    listEl.querySelectorAll('.remove-header-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        headerRows.splice(Number((btn as HTMLElement).dataset.idx), 1);
+        renderHeaders();
+      });
+    });
+    const active = headerRows.filter(r => r.key.trim()).length;
+    countEl.textContent = `(${active})`;
+  }
+
+  function buildHeaders(): Record<string, string> {
+    const out: Record<string, string> = { 'Content-Type': 'application/json' };
+    headerRows.forEach(({ key, value }) => {
+      if (key.trim()) out[key.trim()] = value;
+    });
+    return out;
+  }
+
+  // ── Execute query ─────────────────────────────────────────────────────────
+  async function executeQuery(queryOverride?: string) {
+    const endpoint = (document.getElementById('endpoint-input') as HTMLInputElement).value.trim();
+    const query = queryOverride ?? (document.getElementById('query-editor') as HTMLTextAreaElement).value.trim();
+    const varsRaw = (document.getElementById('variables-editor') as HTMLTextAreaElement).value.trim();
+    const varsError = document.getElementById('vars-error') as HTMLElement;
+    const executeBtn = document.getElementById('execute-btn') as HTMLButtonElement;
+    const executeLabel = document.getElementById('execute-label') as HTMLElement;
+    const executeSpinner = document.getElementById('execute-spinner') as HTMLElement;
+
+    if (!endpoint) { showError('Please enter a GraphQL endpoint URL.'); return; }
+    if (!query) { showError('Please enter a GraphQL query.'); return; }
+
+    // Validate variables JSON
+    let variables: unknown = undefined;
+    if (varsRaw) {
+      try {
+        variables = JSON.parse(varsRaw);
+        varsError.classList.add('hidden');
+      } catch {
+        varsError.classList.remove('hidden');
+        return;
+      }
+    }
+
+    // Show loading
+    executeBtn.disabled = true;
+    executeLabel.textContent = 'Running…';
+    executeSpinner.classList.remove('hidden');
+    switchTab('response');
+    document.getElementById('response-placeholder')?.classList.add('hidden');
+    document.getElementById('response-loading')?.classList.remove('hidden');
+    document.getElementById('response-output')?.classList.add('hidden');
+    document.getElementById('response-error')?.classList.add('hidden');
+    document.getElementById('graphql-errors')?.classList.add('hidden');
+    document.getElementById('response-meta')?.classList.add('hidden');
+    document.getElementById('copy-response-btn')?.classList.add('hidden');
+
+    const t0 = performance.now();
+    try {
+      const body: Record<string, unknown> = { query };
+      if (variables !== undefined) body.variables = variables;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify(body),
+      });
+
+      const elapsed = Math.round(performance.now() - t0);
+      const raw = await res.text();
+      const size = new TextEncoder().encode(raw).length;
+
+      const metaEl = document.getElementById('response-meta') as HTMLElement;
+      metaEl.textContent = `${elapsed}ms · ${formatBytes(size)} · HTTP ${res.status}`;
+      metaEl.classList.remove('hidden');
+
+      if (!res.ok && res.headers.get('content-type')?.includes('text/html')) {
+        showError(`HTTP ${res.status} ${res.statusText}\n\n${raw.slice(0, 400)}`);
+        return;
+      }
+
+      let data: unknown;
+      try { data = JSON.parse(raw); } catch { showError(`Non-JSON response (HTTP ${res.status}):\n${raw.slice(0, 600)}`); return; }
+
+      // Show pretty JSON
+      const prettyJson = JSON.stringify(data, null, 2);
+      const outputEl = document.getElementById('response-output') as HTMLElement;
+      document.getElementById('response-loading')?.classList.add('hidden');
+      outputEl.innerHTML = highlightJson(escHtml(prettyJson));
+      outputEl.classList.remove('hidden');
+
+      // GraphQL errors array
+      if (data && typeof data === 'object' && 'errors' in data && Array.isArray((data as any).errors)) {
+        const errList = document.getElementById('graphql-errors-list') as HTMLElement;
+        errList.innerHTML = (data as any).errors.map((e: any) => `<div>${escHtml(e.message || JSON.stringify(e))}</div>`).join('');
+        document.getElementById('graphql-errors')?.classList.remove('hidden');
+      }
+
+      const copyBtn = document.getElementById('copy-response-btn') as HTMLElement;
+      copyBtn.classList.remove('hidden');
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(prettyJson).then(() => {
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
+        });
+      };
+
+      // Save to history
+      saveHistory({ endpoint, query, ts: Date.now() });
+
+    } catch (err: any) {
+      document.getElementById('response-loading')?.classList.add('hidden');
+      showError(err?.message || 'Network error. Check the endpoint URL and CORS settings.');
+    } finally {
+      executeBtn.disabled = false;
+      executeLabel.textContent = 'Run Query';
+      executeSpinner.classList.add('hidden');
+    }
+  }
+
+  function showError(msg: string) {
+    document.getElementById('response-loading')?.classList.add('hidden');
+    document.getElementById('response-placeholder')?.classList.add('hidden');
+    const errEl = document.getElementById('response-error') as HTMLElement;
+    const errMsg = document.getElementById('response-error-msg') as HTMLElement;
+    errMsg.textContent = msg;
+    errEl.classList.remove('hidden');
+  }
+
+  // ── Introspect schema ─────────────────────────────────────────────────────
+  const INTROSPECTION_QUERY = `{
+  __schema {
+    queryType { name }
+    mutationType { name }
+    types {
+      name
+      kind
+      description
+      fields {
+        name
+        type { name kind ofType { name kind } }
+      }
+    }
+  }
+}`;
+
+  async function introspectSchema() {
+    const endpoint = (document.getElementById('endpoint-input') as HTMLInputElement).value.trim();
+    if (!endpoint) { showError('Please enter a GraphQL endpoint URL.'); return; }
+
+    const btn = document.getElementById('introspect-btn') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify({ query: INTROSPECTION_QUERY }),
+      });
+      const data = await res.json() as any;
+      const schema = data?.data?.__schema;
+      if (!schema) {
+        showError('Introspection failed. The API may have introspection disabled.');
+        switchTab('response');
+        return;
+      }
+
+      const typesEl = document.getElementById('schema-types') as HTMLElement;
+      const schemaTab = document.getElementById('tab-schema') as HTMLElement;
+      schemaTab.classList.remove('hidden');
+
+      const userTypes = (schema.types as any[]).filter(t => !t.name.startsWith('__') && t.kind !== 'SCALAR' && t.kind !== 'ENUM');
+      typesEl.innerHTML = userTypes.map(t => {
+        const fields = (t.fields || []).map((f: any) => {
+          const typeName = f.type?.name || f.type?.ofType?.name || f.type?.kind || '';
+          return `  <span class="text-text-muted ml-4">  ${escHtml(f.name)}</span><span class="text-text-muted">: </span><span style="color:#fdba74">${escHtml(typeName)}</span>`;
+        }).join('\n');
+        return `<div class="mb-3"><span class="text-xs text-text-muted uppercase mr-1">${escHtml(t.kind)}</span><span style="color:#93c5fd" class="font-semibold">${escHtml(t.name)}</span>${fields ? '\n' + fields : ''}</div>`;
+      }).join('');
+
+      switchTab('schema');
+    } catch (err: any) {
+      showError('Introspection request failed: ' + (err?.message || 'Network error'));
+      switchTab('response');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Introspect';
+    }
+  }
+
+  // ── Example queries ───────────────────────────────────────────────────────
+  const EXAMPLES: Record<string, { endpoint?: string; query: string; variables?: string }> = {
+    hello: {
+      endpoint: 'https://countries.trevorblades.com/',
+      query: `{
+  countries {
+    code
+    name
+    emoji
+    capital
+    currency
+    continent {
+      name
+    }
+  }
+}`,
+    },
+    country: {
+      endpoint: 'https://countries.trevorblades.com/',
+      query: `query GetCountry($code: ID!) {
+  country(code: $code) {
+    name
+    native
+    capital
+    emoji
+    currency
+    languages {
+      code
+      name
+    }
+  }
+}`,
+      variables: '{ "code": "US" }',
+    },
+    custom: {
+      query: `mutation CreateItem($input: CreateItemInput!) {
+  createItem(input: $input) {
+    id
+    name
+    createdAt
+  }
+}`,
+      variables: '{ "input": { "name": "My item" } }',
+    },
+  };
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    // Default header row
+    headerRows.push({ key: '', value: '' });
+    renderHeaders();
+
+    // Add header
+    document.getElementById('add-header-btn')?.addEventListener('click', () => {
+      headerRows.push({ key: '', value: '' });
+      renderHeaders();
+      (document.getElementById('headers-section') as HTMLDetailsElement).open = true;
+    });
+
+    // Execute button
+    document.getElementById('execute-btn')?.addEventListener('click', () => executeQuery());
+
+    // Introspect button
+    document.getElementById('introspect-btn')?.addEventListener('click', introspectSchema);
+
+    // Ctrl+Enter in query editor
+    document.getElementById('query-editor')?.addEventListener('keydown', (e) => {
+      const ke = e as KeyboardEvent;
+      if (ke.ctrlKey && ke.key === 'Enter') { ke.preventDefault(); executeQuery(); }
+      if (ke.ctrlKey && ke.shiftKey && ke.key === 'F') { ke.preventDefault(); formatQuery(); }
+    });
+
+    // Format button
+    document.getElementById('format-btn')?.addEventListener('click', formatQuery);
+
+    function formatQuery() {
+      const ta = document.getElementById('query-editor') as HTMLTextAreaElement;
+      try { ta.value = formatGraphQL(ta.value); } catch { /* ignore */ }
+    }
+
+    // Example dropdown
+    document.getElementById('example-select')?.addEventListener('change', (e) => {
+      const val = (e.target as HTMLSelectElement).value;
+      if (!val || !EXAMPLES[val]) return;
+      const ex = EXAMPLES[val];
+      if (ex.endpoint) (document.getElementById('endpoint-input') as HTMLInputElement).value = ex.endpoint;
+      (document.getElementById('query-editor') as HTMLTextAreaElement).value = ex.query;
+      (document.getElementById('variables-editor') as HTMLTextAreaElement).value = ex.variables || '';
+      if (ex.variables) (document.getElementById('variables-section') as HTMLDetailsElement).open = true;
+      (e.target as HTMLSelectElement).value = '';
+    });
+
+    // Tabs
+    document.getElementById('tab-response')?.addEventListener('click', () => switchTab('response'));
+    document.getElementById('tab-schema')?.addEventListener('click', () => switchTab('schema'));
+    document.getElementById('tab-history')?.addEventListener('click', () => switchTab('history'));
+
+    // Clear history
+    document.getElementById('clear-history-btn')?.addEventListener('click', () => {
+      localStorage.removeItem(HISTORY_KEY);
+      renderHistory();
+    });
+
+    // Init tabs
+    switchTab('response');
+  });
+</script>
