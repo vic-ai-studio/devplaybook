@@ -1,9 +1,8 @@
 ---
 title: 'Hono vs Fastify vs Elysia: Modern JavaScript Backend Frameworks 2026'
 description: 'Compare Hono, Fastify, and Elysia — the fastest JavaScript/TypeScript backend frameworks in 2026. Benchmarks, DX, edge compatibility, and which to choose.'
-pubDate: '2026-03-27'
+date: "2026-03-27"
 author: "DevPlaybook Team"
-date: '2026-03-27'
 readingTime: '12 min read'
 tags: ['hono', 'fastify', 'elysia', 'nodejs', 'bun', 'backend', 'typescript']
 ---

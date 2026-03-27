@@ -1,9 +1,8 @@
 ---
 title: 'SolidJS vs Qwik vs Fresh: Next-Gen JavaScript Frameworks 2026'
 description: 'Compare SolidJS, Qwik, and Deno Fresh — three innovative frameworks redefining JavaScript performance with fine-grained reactivity, resumability, and zero-hydration.'
-pubDate: '2026-03-27'
+date: "2026-03-27"
 tags: ['solidjs', 'qwik', 'deno-fresh', 'javascript', 'web-framework']
-date: '2026-03-27'
 author: 'DevPlaybook Team'
 readingTime: '11 min read'
 ---

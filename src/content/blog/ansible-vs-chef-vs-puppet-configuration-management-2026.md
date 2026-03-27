@@ -1,7 +1,7 @@
 ---
 title: "Ansible vs Chef vs Puppet: Configuration Management Tools Compared 2026"
 description: "Ansible vs Chef vs Puppet — compare agentless vs agent-based architecture, YAML vs Ruby DSL, scalability, Windows support, and cloud integration. Find the right config management tool for 2026."
-pubDate: 2026-03-27
+date: "2026-03-27"
 author: "DevPlaybook Team"
 tags: ["ansible", "chef", "puppet", "configuration-management", "devops", "automation", "infrastructure"]
 readingTime: "10 min read"

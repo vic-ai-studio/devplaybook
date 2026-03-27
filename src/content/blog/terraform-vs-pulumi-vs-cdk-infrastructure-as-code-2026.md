@@ -1,7 +1,7 @@
 ---
 title: "Terraform vs Pulumi vs AWS CDK: Best Infrastructure as Code Tool 2026"
 description: "Terraform vs Pulumi vs AWS CDK — a deep comparison of language support, state management, cloud coverage, testing, and team fit. Find the right IaC tool for 2026."
-pubDate: 2026-03-27
+date: "2026-03-27"
 author: "DevPlaybook Team"
 tags: ["terraform", "pulumi", "aws-cdk", "infrastructure-as-code", "devops", "cloud", "iac"]
 readingTime: "10 min read"
