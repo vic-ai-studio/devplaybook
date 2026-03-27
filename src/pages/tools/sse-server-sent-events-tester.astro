@@ -1,0 +1,459 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What are Server-Sent Events (SSE)?",
+    answer: "Server-Sent Events is a browser API (EventSource) that allows a server to push updates to the client over a single, long-lived HTTP connection. Unlike WebSockets, SSE is one-directional (server → client only), uses plain HTTP, and automatically reconnects. It's ideal for live feeds, notifications, progress updates, and streaming AI responses."
+  },
+  {
+    question: "What is the difference between SSE, WebSocket, and Long Polling?",
+    answer: "SSE (Server-Sent Events) is one-way server→client over HTTP/1.1, with automatic reconnect and built-in event IDs — simple to implement on any HTTP server. WebSockets are full-duplex bidirectional, require an upgrade handshake, and suit real-time chat or games. Long Polling repeatedly fires HTTP requests and waits — it works everywhere but is inefficient and adds latency. For read-only streams (dashboards, notifications, AI responses), SSE is the simplest and most efficient choice."
+  },
+  {
+    question: "How do I test SSE endpoints in development?",
+    answer: "You can test SSE endpoints using this browser-based tester (note CORS restrictions apply), curl (curl -N http://localhost:3000/events), or browser DevTools → Network → filter by 'EventStream'. For local dev, the endpoint must serve text/event-stream with CORS headers if testing from a different origin. Use the mock demo in this tool to see the SSE format without needing a real server."
+  },
+  {
+    question: "What is the EventSource API?",
+    answer: "EventSource is the browser API for consuming SSE streams. Usage: const es = new EventSource('/events'); es.onmessage = e => console.log(e.data); es.addEventListener('myEvent', e => ...); es.onerror = e => .... The browser automatically reconnects on disconnect using the Last-Event-ID header. EventSource only supports GET requests and cannot send custom request headers directly — use a fetch-based polyfill or backend auth proxy if you need headers or POST."
+  },
+  {
+    question: "How do I add custom event types in SSE?",
+    answer: "In SSE, each message block can have an event: field to specify a named event type. Example server output: event: userJoined\\ndata: {\\\"user\\\": \\\"Alice\\\"}\\n\\n. On the client, listen with: es.addEventListener('userJoined', e => console.log(JSON.parse(e.data))). Messages without an event: field are dispatched as the default 'message' event and caught by es.onmessage."
+  }
+];
+---
+
+<BaseLayout
+  title="SSE Tester — Test Server-Sent Events Endpoints in Real-Time"
+  description="Test Server-Sent Events (SSE) endpoints in your browser. View live event streams, see timestamps, event types, and formatted JSON data. Includes a mock SSE demo to explore the EventSource API."
+  tool="SSE Tester, Server-Sent Events, EventSource API, SSE endpoint tester, SSE stream viewer, real-time events, event stream debugger"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "SSE Server-Sent Events Tester",
+    "url": "https://devplaybook.cc/tools/sse-server-sent-events-tester",
+    "description": "Test and debug Server-Sent Events (SSE) endpoints in real-time. View event streams, timestamps, event types, and formatted JSON data in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">SSE Server-Sent Events Tester</h1>
+  <p class="text-text-muted mb-4">Test Server-Sent Events endpoints in real-time. View live event streams, timestamps, event types, and formatted JSON data. Use the mock demo to explore SSE without a real server.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live SSE stream viewer</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Custom headers support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Event counter & duration timer</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Mock demo built-in</span>
+  </div>
+
+  <!-- Connection Panel -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="mb-3">
+      <label class="block text-sm font-medium mb-1.5" for="sse-url">SSE Endpoint URL</label>
+      <input
+        id="sse-url"
+        type="url"
+        class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary"
+        placeholder="https://your-api.com/events or http://localhost:3000/stream"
+        value=""
+      />
+    </div>
+
+    <!-- Custom Headers -->
+    <div class="mb-3">
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-medium">Custom Headers</label>
+        <button id="btn-add-header" class="text-xs px-2 py-1 bg-bg-card border border-border rounded hover:border-primary transition-colors">+ Add Header</button>
+      </div>
+      <div id="headers-list" class="space-y-2"></div>
+      <p class="text-xs text-text-muted mt-1">Note: Native EventSource does not support custom headers. Headers are simulated via fetch-based streaming when provided.</p>
+    </div>
+
+    <!-- Controls row -->
+    <div class="flex items-center gap-3 flex-wrap">
+      <button id="btn-connect" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">Connect</button>
+      <button id="btn-disconnect" class="hidden px-4 py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors">Disconnect</button>
+      <button id="btn-mock-demo" class="px-4 py-2 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Run Mock Demo</button>
+
+      <!-- Status indicator -->
+      <div class="flex items-center gap-2 ml-auto">
+        <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+        <span id="status-text" class="text-sm text-text-muted">Disconnected</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="flex gap-4 mb-4 text-sm">
+    <div class="bg-bg-card border border-border rounded-lg px-3 py-2 flex items-center gap-2">
+      <span class="text-text-muted">Events:</span>
+      <span id="event-count" class="font-mono font-medium">0</span>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg px-3 py-2 flex items-center gap-2">
+      <span class="text-text-muted">Duration:</span>
+      <span id="duration-display" class="font-mono font-medium">0s</span>
+    </div>
+  </div>
+
+  <!-- CORS notice -->
+  <div id="cors-notice" class="hidden mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 text-sm">
+    <strong>CORS Notice:</strong> Connecting to external SSE endpoints from a browser requires the server to send <code class="bg-yellow-500/10 px-1 rounded">Access-Control-Allow-Origin</code> headers. Most public APIs block cross-origin EventSource connections. Use the mock demo to explore SSE locally, or run this test against your own dev server.
+  </div>
+
+  <!-- Log area -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-sm font-medium">Event Log</span>
+      <div class="flex gap-2">
+        <button id="btn-copy-events" class="px-3 py-1.5 bg-surface border border-border rounded text-xs hover:border-primary transition-colors">Copy as JSON</button>
+        <button id="btn-clear-log" class="px-3 py-1.5 bg-surface border border-border rounded text-xs hover:border-primary transition-colors">Clear</button>
+      </div>
+    </div>
+    <div
+      id="event-log"
+      class="font-mono text-xs space-y-2 max-h-96 overflow-y-auto"
+      style="min-height: 120px;"
+    >
+      <p class="text-text-muted italic">Events will appear here once connected...</p>
+    </div>
+  </div>
+
+  <ToolPageCta />
+
+  <FaqSection faqs={faq} />
+
+  <script>
+    // --- State ---
+    let eventSource = null;
+    let mockTimer = null;
+    let startTime = null;
+    let durationInterval = null;
+    let eventCount = 0;
+    let allEvents = [];
+    let headerCount = 0;
+
+    // --- Elements ---
+    const urlInput = document.getElementById('sse-url');
+    const btnConnect = document.getElementById('btn-connect');
+    const btnDisconnect = document.getElementById('btn-disconnect');
+    const btnMock = document.getElementById('btn-mock-demo');
+    const btnAddHeader = document.getElementById('btn-add-header');
+    const btnCopyEvents = document.getElementById('btn-copy-events');
+    const btnClearLog = document.getElementById('btn-clear-log');
+    const headersList = document.getElementById('headers-list');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const eventCountEl = document.getElementById('event-count');
+    const durationEl = document.getElementById('duration-display');
+    const eventLog = document.getElementById('event-log');
+    const corsNotice = document.getElementById('cors-notice');
+
+    // --- Status helpers ---
+    function setStatus(state) {
+      const states = {
+        disconnected: { color: 'bg-gray-400', text: 'Disconnected' },
+        connecting: { color: 'bg-yellow-400', text: 'Connecting...' },
+        connected: { color: 'bg-green-500', text: 'Connected' },
+        error: { color: 'bg-red-500', text: 'Error' },
+        mock: { color: 'bg-blue-400', text: 'Mock Demo Running' }
+      };
+      const s = states[state] || states.disconnected;
+      statusDot.className = `w-2.5 h-2.5 rounded-full ${s.color}`;
+      statusText.textContent = s.text;
+    }
+
+    function startTimer() {
+      startTime = Date.now();
+      durationInterval = setInterval(() => {
+        const sec = Math.floor((Date.now() - startTime) / 1000);
+        durationEl.textContent = sec < 60 ? `${sec}s` : `${Math.floor(sec/60)}m ${sec%60}s`;
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(durationInterval);
+      durationInterval = null;
+    }
+
+    function resetStats() {
+      eventCount = 0;
+      allEvents = [];
+      eventCountEl.textContent = '0';
+      durationEl.textContent = '0s';
+    }
+
+    // --- Log entry ---
+    function appendEvent(eventType, data, isRaw) {
+      eventCount++;
+      eventCountEl.textContent = eventCount;
+
+      const ts = new Date().toISOString().replace('T', ' ').replace('Z', '');
+      let parsedJson = null;
+      let isValidJson = false;
+      try {
+        parsedJson = JSON.parse(data);
+        isValidJson = true;
+      } catch (e) {}
+
+      const eventObj = { timestamp: ts, type: eventType, data: isValidJson ? parsedJson : data };
+      allEvents.push(eventObj);
+
+      // Remove placeholder text
+      const placeholder = eventLog.querySelector('.italic');
+      if (placeholder) placeholder.remove();
+
+      const entry = document.createElement('div');
+      entry.className = 'bg-surface border border-border rounded p-2.5 space-y-1.5';
+
+      const header = document.createElement('div');
+      header.className = 'flex items-center gap-2 flex-wrap';
+      header.innerHTML = `
+        <span class="text-text-muted text-xs">${ts}</span>
+        <span class="px-1.5 py-0.5 rounded text-xs font-medium ${eventType === 'message' ? 'bg-blue-500/20 text-blue-300' : 'bg-purple-500/20 text-purple-300'}">${escapeHtml(eventType)}</span>
+      `;
+      entry.appendChild(header);
+
+      if (isValidJson) {
+        const formatted = document.createElement('pre');
+        formatted.className = 'text-green-300 text-xs whitespace-pre-wrap break-all';
+        formatted.textContent = JSON.stringify(parsedJson, null, 2);
+        entry.appendChild(formatted);
+
+        const toggleWrapper = document.createElement('div');
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'text-xs text-text-muted hover:text-foreground transition-colors';
+        toggleBtn.textContent = 'Show raw';
+        const rawEl = document.createElement('pre');
+        rawEl.className = 'text-text-muted text-xs whitespace-pre-wrap break-all hidden mt-1';
+        rawEl.textContent = data;
+        toggleBtn.addEventListener('click', () => {
+          const hidden = rawEl.classList.toggle('hidden');
+          toggleBtn.textContent = hidden ? 'Show raw' : 'Hide raw';
+        });
+        toggleWrapper.appendChild(toggleBtn);
+        toggleWrapper.appendChild(rawEl);
+        entry.appendChild(toggleWrapper);
+      } else {
+        const raw = document.createElement('pre');
+        raw.className = 'text-text-muted text-xs whitespace-pre-wrap break-all';
+        raw.textContent = data;
+        entry.appendChild(raw);
+      }
+
+      eventLog.appendChild(entry);
+      eventLog.scrollTop = eventLog.scrollHeight;
+    }
+
+    function appendSystemMessage(msg, type) {
+      const colors = { info: 'text-text-muted', error: 'text-red-400', success: 'text-green-400', warn: 'text-yellow-400' };
+      const el = document.createElement('p');
+      el.className = `text-xs italic ${colors[type] || colors.info}`;
+      el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      const placeholder = eventLog.querySelector('.italic');
+      if (placeholder) placeholder.remove();
+      eventLog.appendChild(el);
+      eventLog.scrollTop = eventLog.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // --- Headers ---
+    btnAddHeader.addEventListener('click', () => {
+      headerCount++;
+      const id = headerCount;
+      const row = document.createElement('div');
+      row.id = `header-row-${id}`;
+      row.className = 'flex gap-2 items-center';
+      row.innerHTML = `
+        <input type="text" placeholder="Authorization" class="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary header-key" />
+        <input type="text" placeholder="Bearer token..." class="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary header-val" />
+        <button onclick="document.getElementById('header-row-${id}').remove()" class="text-xs text-red-400 hover:text-red-300 px-1">✕</button>
+      `;
+      headersList.appendChild(row);
+    });
+
+    function getHeaders() {
+      const headers = {};
+      headersList.querySelectorAll('div[id^="header-row-"]').forEach(row => {
+        const k = row.querySelector('.header-key').value.trim();
+        const v = row.querySelector('.header-val').value.trim();
+        if (k) headers[k] = v;
+      });
+      return headers;
+    }
+
+    // --- Connect ---
+    btnConnect.addEventListener('click', () => {
+      const url = urlInput.value.trim();
+      if (!url) {
+        appendSystemMessage('Please enter a URL first.', 'error');
+        return;
+      }
+      corsNotice.classList.remove('hidden');
+      connectSSE(url);
+    });
+
+    function connectSSE(url) {
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      resetStats();
+      setStatus('connecting');
+      btnConnect.classList.add('hidden');
+      btnDisconnect.classList.remove('hidden');
+      appendSystemMessage(`Connecting to ${url}`, 'info');
+      startTimer();
+
+      const headers = getHeaders();
+
+      if (Object.keys(headers).length > 0) {
+        // fetch-based streaming for custom headers
+        fetchSSEStream(url, headers);
+        return;
+      }
+
+      try {
+        eventSource = new EventSource(url);
+        eventSource.onopen = () => {
+          setStatus('connected');
+          appendSystemMessage('Connection established.', 'success');
+        };
+        eventSource.onmessage = (e) => {
+          appendEvent('message', e.data, false);
+        };
+        eventSource.onerror = (e) => {
+          if (eventSource.readyState === EventSource.CLOSED) {
+            setStatus('error');
+            appendSystemMessage('Connection closed or failed. Check CORS headers on the server.', 'error');
+            disconnectAll();
+          } else {
+            setStatus('error');
+            appendSystemMessage('Connection error. The browser will attempt to reconnect...', 'warn');
+          }
+        };
+      } catch (err) {
+        setStatus('error');
+        appendSystemMessage(`Failed to connect: ${err.message}`, 'error');
+        disconnectAll();
+      }
+    }
+
+    async function fetchSSEStream(url, headers) {
+      try {
+        const response = await fetch(url, {
+          headers: { 'Accept': 'text/event-stream', ...headers }
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} ${response.statusText}`);
+        }
+        setStatus('connected');
+        appendSystemMessage('Connection established (fetch mode).', 'success');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let currentEvent = 'message';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            appendSystemMessage('Stream ended.', 'info');
+            disconnectAll();
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (line.startsWith('event:')) {
+              currentEvent = line.slice(6).trim();
+            } else if (line.startsWith('data:')) {
+              const data = line.slice(5).trim();
+              appendEvent(currentEvent, data, false);
+              currentEvent = 'message';
+            } else if (line === '') {
+              currentEvent = 'message';
+            }
+          }
+        }
+      } catch (err) {
+        setStatus('error');
+        appendSystemMessage(`Fetch error: ${err.message}. Check CORS headers.`, 'error');
+        disconnectAll();
+      }
+    }
+
+    function disconnectAll() {
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      if (mockTimer) { clearTimeout(mockTimer); mockTimer = null; }
+      stopTimer();
+      setStatus('disconnected');
+      btnConnect.classList.remove('hidden');
+      btnDisconnect.classList.add('hidden');
+    }
+
+    btnDisconnect.addEventListener('click', () => {
+      disconnectAll();
+      appendSystemMessage('Disconnected by user.', 'info');
+    });
+
+    // --- Mock Demo ---
+    const mockEvents = [
+      { delay: 300, type: 'message', data: 'Connected to mock SSE stream.' },
+      { delay: 900, type: 'ping', data: JSON.stringify({ heartbeat: true, ts: Date.now() }) },
+      { delay: 1600, type: 'message', data: JSON.stringify({ user: 'alice', action: 'joined', room: 'general' }) },
+      { delay: 2400, type: 'update', data: JSON.stringify({ metric: 'cpu_usage', value: 42.7, unit: '%' }) },
+      { delay: 3200, type: 'message', data: 'Plain text event — not all events are JSON.' },
+      { delay: 4000, type: 'notification', data: JSON.stringify({ id: 'notif_001', title: 'Build succeeded', status: 'success' }) },
+      { delay: 4800, type: 'ping', data: JSON.stringify({ heartbeat: true, ts: Date.now() + 4500 }) },
+      { delay: 5600, type: 'update', data: JSON.stringify({ metric: 'memory_mb', value: 1024, total: 4096 }) },
+      { delay: 6400, type: 'message', data: JSON.stringify({ chunk: 'Streaming AI response chunk #1...' }) },
+      { delay: 7000, type: 'close', data: JSON.stringify({ reason: 'Mock stream finished', totalEvents: 9 }) },
+    ];
+
+    btnMock.addEventListener('click', () => {
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      resetStats();
+      setStatus('mock');
+      btnConnect.classList.add('hidden');
+      btnDisconnect.classList.remove('hidden');
+      corsNotice.classList.add('hidden');
+      appendSystemMessage('Starting mock SSE demo (simulated stream, no real server needed)...', 'info');
+      startTimer();
+
+      mockEvents.forEach((ev, i) => {
+        mockTimer = setTimeout(() => {
+          appendEvent(ev.type, ev.data, false);
+          if (i === mockEvents.length - 1) {
+            setTimeout(() => {
+              appendSystemMessage('Mock demo complete. All events delivered.', 'success');
+              disconnectAll();
+            }, 400);
+          }
+        }, ev.delay);
+      });
+    });
+
+    // --- Copy events ---
+    btnCopyEvents.addEventListener('click', () => {
+      const json = JSON.stringify(allEvents, null, 2);
+      navigator.clipboard.writeText(json).then(() => {
+        const orig = btnCopyEvents.textContent;
+        btnCopyEvents.textContent = 'Copied!';
+        setTimeout(() => { btnCopyEvents.textContent = orig; }, 1500);
+      });
+    });
+
+    // --- Clear log ---
+    btnClearLog.addEventListener('click', () => {
+      eventLog.innerHTML = '<p class="text-text-muted italic">Events will appear here once connected...</p>';
+      resetStats();
+    });
+  </script>
+</BaseLayout>

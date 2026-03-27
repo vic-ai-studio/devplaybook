@@ -1,0 +1,809 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is HCL and why does formatting matter?",
+    answer: "HCL (HashiCorp Configuration Language) is the declarative language used by Terraform to define infrastructure. Consistent formatting makes diffs smaller in code review, reduces merge conflicts, and makes large configs easier to navigate. The official terraform fmt command enforces a canonical style, and this tool applies the same rules in your browser."
+  },
+  {
+    question: "What does terraform fmt actually do?",
+    answer: "terraform fmt reformats HCL files to canonical style: 2-space indentation, aligned = signs within blocks, normalized blank lines, and consistent brace placement. It does not change logic — only whitespace and alignment. You should run it as a pre-commit hook or in CI to keep your codebase consistent."
+  },
+  {
+    question: "Should I sort attributes alphabetically?",
+    answer: "Alphabetical sorting is optional and depends on team preference. It makes it easier to find attributes in large blocks and reduces the chance of duplicate keys, but it can make logically-related attributes (like ingress/egress rules) feel disconnected. This formatter lets you toggle it on or off."
+  },
+  {
+    question: "What Terraform block types are supported?",
+    answer: "This formatter recognises terraform, provider, resource, data, variable, output, locals, module, and moved blocks. Each block is parsed individually so indentation and alignment are correctly scoped to their own block level."
+  },
+  {
+    question: "What does the 'Extract Variables' button do?",
+    answer: "It scans your HCL for every var.xxx reference and generates a variables.tf skeleton with an empty variable block for each unique variable name. This is handy when you've written a module and need to declare all its input variables quickly."
+  },
+  {
+    question: "What are the deprecated 0.11-style patterns this tool detects?",
+    answer: "Terraform 0.12 introduced first-class expressions. Common 0.11 patterns that still work but are discouraged include: string-wrapping references like \"${var.name}\" (should be just var.name), and list() / map() constructor functions that were replaced by literal syntax. This tool flags them so you can modernise your configs."
+  }
+];
+---
+
+<BaseLayout
+  title="Terraform HCL Formatter — Format & Validate HCL Online"
+  description="Format and validate Terraform HCL code in your browser. Aligns = signs, normalizes indentation, detects mismatched braces and deprecated syntax, and extracts variable skeletons. Free, no signup."
+  tool="terraform hcl formatter, terraform fmt online, hcl formatter, terraform validator, hcl validator, terraform format, extract terraform variables"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Terraform HCL Formatter",
+    "url": "https://devplaybook.cc/tools/terraform-hcl-formatter",
+    "description": "Format, validate, and extract variables from Terraform HCL code. Runs entirely in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Terraform HCL Formatter</h1>
+  <p class="text-text-muted mb-4">Format and validate Terraform HCL like <code class="font-mono text-xs bg-bg-card border border-border px-1 rounded">terraform fmt</code> — right in your browser. Aligns <code class="font-mono text-xs bg-bg-card border border-border px-1 rounded">=</code> signs, normalizes indentation, validates syntax, detects deprecated patterns, and extracts variable skeletons.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Aligns = signs per block</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Validates HCL syntax</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Detects deprecated 0.11 patterns</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Extracts variables.tf skeleton</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 100% runs in your browser</span>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="flex flex-wrap items-center gap-2 mb-3">
+    <select id="example-select" class="px-3 py-2 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors focus:outline-none focus:border-primary cursor-pointer">
+      <option value="">Load example HCL…</option>
+      <option value="ec2">EC2 + Security Group</option>
+      <option value="rds">RDS Database</option>
+      <option value="lambda">Lambda Function</option>
+      <option value="s3">S3 Bucket</option>
+    </select>
+
+    <label class="flex items-center gap-2 px-3 py-2 bg-bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-primary transition-colors select-none">
+      <input type="checkbox" id="sort-attrs" class="w-3 h-3 accent-primary" />
+      Sort attributes A–Z
+    </label>
+
+    <div class="flex-1"></div>
+
+    <button id="format-btn" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">Format HCL</button>
+    <button id="validate-btn" class="px-3 py-2 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Validate</button>
+    <button id="extract-btn" class="px-3 py-2 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Extract Variables</button>
+    <button id="clear-btn" class="px-3 py-2 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Clear</button>
+  </div>
+
+  <!-- Two-panel layout -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <!-- Input -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden flex flex-col">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-border flex-shrink-0">
+        <span class="text-sm font-medium">Input HCL</span>
+        <span id="input-line-count" class="text-xs text-text-muted"></span>
+      </div>
+      <textarea
+        id="hcl-input"
+        class="w-full flex-1 bg-transparent p-4 text-sm font-mono focus:outline-none resize-none"
+        rows="22"
+        placeholder="Paste your Terraform HCL here…"
+        spellcheck="false"
+      ></textarea>
+    </div>
+
+    <!-- Output -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden flex flex-col">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-border flex-shrink-0">
+        <span class="text-sm font-medium">Output</span>
+        <div class="flex items-center gap-2">
+          <span id="output-status" class="text-xs"></span>
+          <button id="copy-btn" class="px-2 py-1 text-xs bg-bg-card border border-border rounded hover:border-primary transition-colors">Copy</button>
+        </div>
+      </div>
+      <pre
+        id="hcl-output"
+        class="flex-1 p-4 text-sm font-mono overflow-auto whitespace-pre-wrap leading-relaxed"
+        style="min-height: 22rem;"
+      ><span class="text-text-muted italic">Formatted HCL will appear here…</span></pre>
+    </div>
+  </div>
+
+  <!-- Validation results -->
+  <div id="validation-panel" class="hidden bg-bg-card border border-border rounded-lg mb-4 overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-2 border-b border-border">
+      <span class="text-sm font-medium">Validation Results</span>
+      <span id="validation-summary" class="text-xs text-text-muted"></span>
+    </div>
+    <div id="validation-list" class="p-4 space-y-2"></div>
+  </div>
+
+  <!-- Extract variables panel -->
+  <div id="extract-panel" class="hidden bg-bg-card border border-border rounded-lg mb-4 overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-2 border-b border-border">
+      <span class="text-sm font-medium">Extracted variables.tf Skeleton</span>
+      <button id="copy-extract-btn" class="px-2 py-1 text-xs bg-bg-card border border-border rounded hover:border-primary transition-colors">Copy</button>
+    </div>
+    <pre id="extract-output" class="p-4 text-sm font-mono whitespace-pre-wrap overflow-auto"></pre>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Terraform HCL Formatter" relatedTags={['terraform', 'hcl', 'infrastructure', 'devops', 'iac', 'aws']} />
+</BaseLayout>
+
+<script>
+// ─── Example HCL snippets ─────────────────────────────────────────────────────
+const EXAMPLES: Record<string, string> = {
+  ec2: `terraform {
+required_version = ">= 1.5.0"
+required_providers {
+aws = {
+source = "hashicorp/aws"
+version = "~> 5.0"
+}
+}
+}
+
+provider "aws" {
+region = var.aws_region
+}
+
+resource "aws_security_group" "web" {
+name = "\${var.app_name}-sg"
+description = "Web server security group"
+vpc_id   = var.vpc_id
+
+ingress {
+from_port   = 443
+protocol    = "tcp"
+to_port = 443
+cidr_blocks = ["0.0.0.0/0"]
+}
+
+ingress {
+from_port = 80
+to_port = 80
+protocol = "tcp"
+cidr_blocks = ["0.0.0.0/0"]
+}
+
+egress {
+from_port   = 0
+to_port = 0
+protocol    = "-1"
+cidr_blocks = ["0.0.0.0/0"]
+}
+
+tags = {
+Name = "\${var.app_name}-sg"
+Environment = var.environment
+}
+}
+
+resource "aws_instance" "web" {
+ami           = var.ami_id
+instance_type = var.instance_type
+subnet_id = var.subnet_id
+vpc_security_group_ids = [aws_security_group.web.id]
+key_name = var.key_name
+
+root_block_device {
+volume_size = 20
+volume_type = "gp3"
+encrypted = true
+}
+
+tags = {
+Name = var.app_name
+Environment = var.environment
+}
+}`,
+
+  rds: `resource "aws_db_subnet_group" "main" {
+name       = "\${var.app_name}-db-subnet-group"
+subnet_ids = var.private_subnet_ids
+
+tags = {
+Name = "\${var.app_name}-db-subnet-group"
+}
+}
+
+resource "aws_security_group" "rds" {
+name = "\${var.app_name}-rds-sg"
+vpc_id = var.vpc_id
+
+ingress {
+from_port = 5432
+to_port = 5432
+protocol = "tcp"
+security_groups = [var.app_sg_id]
+}
+}
+
+resource "aws_db_instance" "main" {
+identifier = var.db_identifier
+engine = "postgres"
+engine_version   = "15.3"
+instance_class = var.db_instance_class
+db_name                 = var.db_name
+username = var.db_username
+password              = var.db_password
+db_subnet_group_name = aws_db_subnet_group.main.name
+vpc_security_group_ids = [aws_security_group.rds.id]
+backup_retention_period = 7
+skip_final_snapshot    = false
+final_snapshot_identifier = "\${var.db_identifier}-final"
+storage_encrypted = true
+multi_az = var.enable_multi_az
+
+tags = {
+Name = var.db_identifier
+Environment = var.environment
+}
+}`,
+
+  lambda: `resource "aws_iam_role" "lambda" {
+name = "\${var.function_name}-role"
+
+assume_role_policy = jsonencode({
+Version = "2012-10-17"
+Statement = [{
+Action = "sts:AssumeRole"
+Effect = "Allow"
+Principal = {
+Service = "lambda.amazonaws.com"
+}
+}]
+})
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_basic" {
+role = aws_iam_role.lambda.name
+policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_lambda_function" "main" {
+filename         = var.deployment_package
+function_name = var.function_name
+role = aws_iam_role.lambda.arn
+handler = var.handler
+runtime = "python3.11"
+timeout   = var.timeout
+memory_size = var.memory_size
+
+environment {
+variables = {
+LOG_LEVEL = "INFO"
+APP_ENV = var.environment
+}
+}
+
+tags = {
+Name = var.function_name
+Environment = var.environment
+}
+}
+
+resource "aws_cloudwatch_log_group" "lambda" {
+name = "/aws/lambda/\${var.function_name}"
+retention_in_days = 14
+}`,
+
+  s3: `resource "aws_s3_bucket" "main" {
+bucket = var.bucket_name
+
+tags = {
+Name = var.bucket_name
+Environment = var.environment
+}
+}
+
+resource "aws_s3_bucket_versioning" "main" {
+bucket = aws_s3_bucket.main.id
+versioning_configuration {
+status = "Enabled"
+}
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "main" {
+bucket = aws_s3_bucket.main.id
+
+rule {
+apply_server_side_encryption_by_default {
+sse_algorithm = "AES256"
+}
+}
+}
+
+resource "aws_s3_bucket_public_access_block" "main" {
+bucket = aws_s3_bucket.main.id
+block_public_acls = true
+block_public_policy = true
+ignore_public_acls = true
+restrict_public_buckets = true
+}`,
+};
+
+// ─── HCL block types ──────────────────────────────────────────────────────────
+const BLOCK_KEYWORDS = new Set([
+  'terraform', 'provider', 'resource', 'data', 'variable', 'output',
+  'locals', 'module', 'moved', 'required_providers', 'required_version',
+  'backend', 'ingress', 'egress', 'root_block_device', 'environment',
+  'versioning_configuration', 'rule', 'apply_server_side_encryption_by_default',
+]);
+
+// ─── Syntax highlighting ──────────────────────────────────────────────────────
+function highlightHcl(code: string): string {
+  // Simple token-by-token highlighting for display
+  const lines = code.split('\n');
+  return lines.map(line => {
+    // Comment
+    if (/^\s*#/.test(line)) {
+      return `<span class="text-text-muted italic">${escapeHtml(line)}</span>`;
+    }
+
+    // Block declarations: keyword "label" "label" {
+    const blockMatch = line.match(/^(\s*)(terraform|provider|resource|data|variable|output|locals|module|moved|backend)\s*(.*)?(\{)\s*$/);
+    if (blockMatch) {
+      const indent = escapeHtml(blockMatch[1]);
+      const kw = `<span class="text-purple-400 font-semibold">${escapeHtml(blockMatch[2])}</span>`;
+      const rest = escapeHtml(blockMatch[3] || '');
+      const brace = `<span class="text-text-muted">{</span>`;
+      return `${indent}${kw} ${rest}${brace}`;
+    }
+
+    // Closing brace
+    if (/^\s*\}\s*$/.test(line)) {
+      return `<span class="text-text-muted">${escapeHtml(line)}</span>`;
+    }
+
+    // key = value lines
+    const kvMatch = line.match(/^(\s*)([\w-]+)(\s*=\s*)(.*)$/);
+    if (kvMatch) {
+      const indent = escapeHtml(kvMatch[1]);
+      const key = `<span class="text-blue-300">${escapeHtml(kvMatch[2])}</span>`;
+      const eq = `<span class="text-text-muted">${escapeHtml(kvMatch[3])}</span>`;
+      const val = highlightValue(kvMatch[4]);
+      return `${indent}${key}${eq}${val}`;
+    }
+
+    // Nested block open line (word {)
+    const nestedBlock = line.match(/^(\s*)([\w-]+)(\s*\{)\s*$/);
+    if (nestedBlock) {
+      const indent = escapeHtml(nestedBlock[1]);
+      const label = `<span class="text-cyan-400">${escapeHtml(nestedBlock[2])}</span>`;
+      const brace = `<span class="text-text-muted">{</span>`;
+      return `${indent}${label}${brace}`;
+    }
+
+    return escapeHtml(line);
+  }).join('\n');
+}
+
+function highlightValue(val: string): string {
+  val = val.trim();
+  // Boolean
+  if (val === 'true' || val === 'false') {
+    return `<span class="text-orange-400">${escapeHtml(val)}</span>`;
+  }
+  // Number
+  if (/^-?\d+(\.\d+)?$/.test(val)) {
+    return `<span class="text-yellow-400">${escapeHtml(val)}</span>`;
+  }
+  // String (quoted)
+  if (/^"/.test(val)) {
+    return `<span class="text-green-400">${escapeHtml(val)}</span>`;
+  }
+  // Reference (var., local., data., resource.)
+  if (/^(var|local|data|module|aws_|google_|azurerm_)/.test(val)) {
+    return `<span class="text-amber-300">${escapeHtml(val)}</span>`;
+  }
+  // Function call
+  if (/^\w+\(/.test(val)) {
+    return `<span class="text-pink-400">${escapeHtml(val)}</span>`;
+  }
+  return escapeHtml(val);
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ─── HCL Formatter ────────────────────────────────────────────────────────────
+interface FormatOptions {
+  sortAttributes: boolean;
+}
+
+function formatHcl(input: string, opts: FormatOptions): string {
+  const lines = input.split('\n');
+  const result: string[] = [];
+  let depth = 0;
+  let blockLines: string[] = []; // current block's attribute lines (for alignment)
+  let blockStart = 0;
+
+  // First pass: normalize indentation and collect blocks for alignment
+  const normalized = firstPassNormalize(lines);
+  // Second pass: align = signs within each block scope
+  const aligned = secondPassAlign(normalized, opts.sortAttributes);
+  // Third pass: normalize blank lines
+  return thirdPassBlankLines(aligned);
+}
+
+function firstPassNormalize(lines: string[]): string[] {
+  const out: string[] = [];
+  let depth = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
+
+    if (trimmed === '') {
+      out.push('');
+      continue;
+    }
+
+    if (trimmed === '}') {
+      depth = Math.max(0, depth - 1);
+      out.push('  '.repeat(depth) + '}');
+      continue;
+    }
+
+    // Lines ending with { open a new block
+    if (trimmed.endsWith('{')) {
+      out.push('  '.repeat(depth) + trimmed);
+      depth++;
+      continue;
+    }
+
+    // Comment line
+    if (trimmed.startsWith('#')) {
+      out.push('  '.repeat(depth) + trimmed);
+      continue;
+    }
+
+    // Normal line
+    out.push('  '.repeat(depth) + trimmed);
+  }
+
+  return out;
+}
+
+function secondPassAlign(lines: string[], sortAttributes: boolean): string[] {
+  // Find blocks (between matching { }) and align = signs within each block
+  const out: string[] = [...lines];
+
+  // Collect ranges of consecutive key=value lines at the same depth
+  let i = 0;
+  while (i < out.length) {
+    // Find a run of attribute lines (contain = but not block opens)
+    const runStart = i;
+    const baseIndent = getIndent(out[i]);
+    const attrPattern = /^(\s+)([\w-]+)\s*=\s*(.*)$/;
+    const runLines: number[] = [];
+
+    let j = i;
+    while (j < out.length) {
+      const line = out[j];
+      if (line.trim() === '' || line.trim() === '{' || line.trim() === '}') {
+        if (runLines.length > 0) break;
+        j++;
+        continue;
+      }
+      // Must be at same indent
+      if (getIndent(line) !== baseIndent) break;
+      // Must match attr pattern and not be a block open
+      if (attrPattern.test(line) && !line.trimEnd().endsWith('{')) {
+        runLines.push(j);
+        j++;
+      } else {
+        if (runLines.length > 0) break;
+        j++;
+      }
+    }
+
+    if (runLines.length > 1) {
+      // Find max key length in this run
+      let maxKeyLen = 0;
+      const parsed: Array<{ indent: string; key: string; value: string }> = [];
+      for (const idx of runLines) {
+        const m = out[idx].match(/^(\s*)([\w-]+)\s*=\s*(.*)$/);
+        if (m) {
+          maxKeyLen = Math.max(maxKeyLen, m[2].length);
+          parsed.push({ indent: m[1], key: m[2], value: m[3] });
+        }
+      }
+
+      // Sort if requested
+      if (sortAttributes) {
+        parsed.sort((a, b) => a.key.localeCompare(b.key));
+      }
+
+      for (let k = 0; k < runLines.length; k++) {
+        const { indent, key, value } = parsed[k];
+        const padded = key + ' '.repeat(maxKeyLen - key.length);
+        out[runLines[k]] = `${indent}${padded} = ${value}`;
+      }
+    }
+
+    i = j === i ? i + 1 : j;
+  }
+
+  return out;
+}
+
+function thirdPassBlankLines(lines: string[]): string[] {
+  const out: string[] = [];
+  let blankCount = 0;
+
+  for (const line of lines) {
+    if (line.trim() === '') {
+      blankCount++;
+      if (blankCount <= 1) out.push('');
+    } else {
+      blankCount = 0;
+      out.push(line);
+    }
+  }
+
+  // Remove leading/trailing blank lines
+  while (out.length > 0 && out[0].trim() === '') out.shift();
+  while (out.length > 0 && out[out.length - 1].trim() === '') out.pop();
+
+  return out;
+}
+
+function getIndent(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+// ─── HCL Validator ────────────────────────────────────────────────────────────
+interface ValidationIssue {
+  level: 'error' | 'warning' | 'info';
+  message: string;
+  line?: number;
+}
+
+function validateHcl(input: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const lines = input.split('\n');
+
+  // 1. Brace balance
+  let depth = 0;
+  const openStack: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Skip comments and strings (simplified)
+    if (line.trim().startsWith('#')) continue;
+    for (const ch of line) {
+      if (ch === '{') { depth++; openStack.push(i + 1); }
+      if (ch === '}') {
+        depth--;
+        if (openStack.length) openStack.pop();
+        if (depth < 0) {
+          issues.push({ level: 'error', message: `Unexpected closing brace }`, line: i + 1 });
+          depth = 0;
+        }
+      }
+    }
+  }
+  if (depth > 0) {
+    issues.push({ level: 'error', message: `${depth} unclosed block(s) — missing closing brace(s)`, line: openStack[openStack.length - 1] });
+  }
+
+  // 2. Deprecated 0.11 string interpolation (wrapping bare references)
+  const deprecatedInterp = /"\$\{(var\.|local\.|data\.|module\.|[a-z_]+\.[a-z_]+\.)[^}]+\}"/;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim().startsWith('#')) continue;
+    // Check for "${var.x}" without any other string content (pure reference)
+    const m = line.match(/=\s*"\$\{([^}]+)\}"\s*$/);
+    if (m && !m[1].includes(' ') && !m[1].includes('+') && !m[1].includes('(')) {
+      issues.push({
+        level: 'warning',
+        message: `Deprecated 0.11 pattern: "\${${m[1]}}" should be just ${m[1]}`,
+        line: i + 1
+      });
+    }
+  }
+
+  // 3. Double quotes around references (e.g. = "var.foo" literally)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim().startsWith('#')) continue;
+    const m = line.match(/=\s*"(var\.[a-z_]+|local\.[a-z_]+|data\.[a-z_]+\.[a-z_]+)"\s*$/);
+    if (m) {
+      issues.push({
+        level: 'warning',
+        message: `Possible mistake: "${m[1]}" is a string literal, not a reference. Remove quotes.`,
+        line: i + 1
+      });
+    }
+  }
+
+  // 4. list() and map() deprecated constructors
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/\b(list|map)\(/.test(line) && !line.trim().startsWith('#')) {
+      issues.push({
+        level: 'warning',
+        message: `Deprecated 0.11 function: list() or map() — use [] or {} literal syntax`,
+        line: i + 1
+      });
+    }
+  }
+
+  // 5. Missing required_version in terraform block
+  const hasTerraformBlock = /\bterraform\s*\{/.test(input);
+  const hasRequiredVersion = /required_version/.test(input);
+  if (hasTerraformBlock && !hasRequiredVersion) {
+    issues.push({ level: 'warning', message: 'terraform block is missing required_version — pin your Terraform version for reproducibility' });
+  }
+
+  // 6. count.index with static resources (hint about for_each)
+  if (/count\.index/.test(input)) {
+    issues.push({ level: 'info', message: 'count.index detected — consider for_each with a map for more readable state keys (e.g. resource["name"] instead of resource[0])' });
+  }
+
+  return issues;
+}
+
+// ─── Extract variables ────────────────────────────────────────────────────────
+function extractVariables(input: string): string {
+  const varRefs = new Set<string>();
+  const regex = /\bvar\.([a-zA-Z_][a-zA-Z0-9_]*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(input)) !== null) {
+    varRefs.add(m[1]);
+  }
+
+  if (varRefs.size === 0) return '# No var.xxx references found in the input.';
+
+  const sorted = [...varRefs].sort();
+  return sorted.map(v => `variable "${v}" {\n  description = ""\n  type        = string\n  # default   = ""\n}\n`).join('\n');
+}
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+const inputEl = document.getElementById('hcl-input') as HTMLTextAreaElement;
+const outputEl = document.getElementById('hcl-output') as HTMLPreElement;
+const formatBtn = document.getElementById('format-btn') as HTMLButtonElement;
+const validateBtn = document.getElementById('validate-btn') as HTMLButtonElement;
+const extractBtn = document.getElementById('extract-btn') as HTMLButtonElement;
+const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
+const copyBtn = document.getElementById('copy-btn') as HTMLButtonElement;
+const copyExtractBtn = document.getElementById('copy-extract-btn') as HTMLButtonElement;
+const exampleSelect = document.getElementById('example-select') as HTMLSelectElement;
+const sortAttrsEl = document.getElementById('sort-attrs') as HTMLInputElement;
+const outputStatus = document.getElementById('output-status') as HTMLSpanElement;
+const validationPanel = document.getElementById('validation-panel') as HTMLDivElement;
+const validationList = document.getElementById('validation-list') as HTMLDivElement;
+const validationSummary = document.getElementById('validation-summary') as HTMLSpanElement;
+const extractPanel = document.getElementById('extract-panel') as HTMLDivElement;
+const extractOutput = document.getElementById('extract-output') as HTMLPreElement;
+const inputLineCount = document.getElementById('input-line-count') as HTMLSpanElement;
+
+// Track last formatted code (plain) for copy
+let lastFormattedPlain = '';
+let lastExtractedPlain = '';
+
+exampleSelect.addEventListener('change', () => {
+  const val = exampleSelect.value;
+  if (val && EXAMPLES[val]) {
+    inputEl.value = EXAMPLES[val];
+    exampleSelect.value = '';
+    updateInputStats();
+    outputEl.innerHTML = '<span class="text-text-muted italic">Click "Format HCL" to format…</span>';
+    outputStatus.textContent = '';
+    validationPanel.classList.add('hidden');
+    extractPanel.classList.add('hidden');
+  }
+});
+
+clearBtn.addEventListener('click', () => {
+  inputEl.value = '';
+  outputEl.innerHTML = '<span class="text-text-muted italic">Formatted HCL will appear here…</span>';
+  outputStatus.textContent = '';
+  validationPanel.classList.add('hidden');
+  extractPanel.classList.add('hidden');
+  inputLineCount.textContent = '';
+  lastFormattedPlain = '';
+});
+
+inputEl.addEventListener('input', updateInputStats);
+
+function updateInputStats() {
+  const lines = inputEl.value.split('\n').length;
+  inputLineCount.textContent = inputEl.value ? `${lines} lines` : '';
+}
+
+formatBtn.addEventListener('click', () => {
+  const input = inputEl.value.trim();
+  if (!input) { inputEl.focus(); return; }
+
+  const formatted = formatHcl(input, { sortAttributes: sortAttrsEl.checked });
+  lastFormattedPlain = formatted;
+
+  outputEl.innerHTML = highlightHcl(formatted);
+  outputStatus.textContent = `${formatted.split('\n').length} lines`;
+  outputStatus.className = 'text-xs text-green-400';
+});
+
+validateBtn.addEventListener('click', () => {
+  const input = inputEl.value.trim();
+  if (!input) { inputEl.focus(); return; }
+
+  const issues = validateHcl(input);
+  const errors = issues.filter(i => i.level === 'error').length;
+  const warnings = issues.filter(i => i.level === 'warning').length;
+  const infos = issues.filter(i => i.level === 'info').length;
+
+  if (issues.length === 0) {
+    validationSummary.textContent = 'All checks passed';
+    validationSummary.className = 'text-xs text-green-400';
+    validationList.innerHTML = '<div class="text-sm text-green-400 flex items-center gap-2"><span>✓</span> No issues found — HCL looks valid!</div>';
+  } else {
+    validationSummary.textContent = `${errors} error${errors !== 1 ? 's' : ''}, ${warnings} warning${warnings !== 1 ? 's' : ''}, ${infos} info`;
+    validationSummary.className = errors > 0 ? 'text-xs text-red-400' : 'text-xs text-yellow-400';
+
+    const iconMap = { error: '✗', warning: '⚠', info: 'ℹ' };
+    const colorMap = { error: 'text-red-400', warning: 'text-yellow-400', info: 'text-blue-400' };
+
+    validationList.innerHTML = issues.map(issue => `
+      <div class="flex gap-2 text-sm items-start">
+        <span class="flex-shrink-0 font-mono font-bold ${colorMap[issue.level]}">${iconMap[issue.level]}</span>
+        <div>
+          ${issue.line ? `<span class="text-xs font-mono text-text-muted mr-2">line ${issue.line}</span>` : ''}
+          <span>${escapeHtml(issue.message)}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  validationPanel.classList.remove('hidden');
+});
+
+extractBtn.addEventListener('click', () => {
+  const input = inputEl.value.trim();
+  if (!input) { inputEl.focus(); return; }
+
+  const skeleton = extractVariables(input);
+  lastExtractedPlain = skeleton;
+  extractOutput.textContent = skeleton;
+  extractPanel.classList.remove('hidden');
+  extractPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+copyBtn.addEventListener('click', async () => {
+  const text = lastFormattedPlain || inputEl.value;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+  } catch {
+    copyBtn.textContent = 'Copy failed';
+    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+  }
+});
+
+copyExtractBtn.addEventListener('click', async () => {
+  if (!lastExtractedPlain) return;
+  try {
+    await navigator.clipboard.writeText(lastExtractedPlain);
+    copyExtractBtn.textContent = 'Copied!';
+    setTimeout(() => { copyExtractBtn.textContent = 'Copy'; }, 1500);
+  } catch {
+    copyExtractBtn.textContent = 'Copy failed';
+    setTimeout(() => { copyExtractBtn.textContent = 'Copy'; }, 1500);
+  }
+});
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+</script>

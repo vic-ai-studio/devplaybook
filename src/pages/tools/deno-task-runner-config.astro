@@ -1,0 +1,218 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is deno.json and what does it do?",
+    answer: "deno.json is the configuration file for Deno projects. It defines tasks (like npm scripts), import maps, lint/format settings, and compiler options. The 'tasks' field lets you define named commands that can be run with 'deno task <name>', making project workflows reproducible and shareable."
+  },
+  {
+    question: "How do I run a task defined in deno.json?",
+    answer: "Use 'deno task <task-name>' in your terminal. For example, if you define a task called 'start', run 'deno task start'. Deno automatically looks for deno.json or deno.jsonc in the current directory or any parent directory."
+  },
+  {
+    question: "Can Deno tasks have environment variables?",
+    answer: "Yes. You can set environment variables directly in the task command using standard shell syntax like 'PORT=3000 deno run server.ts', or you can configure them in the 'env' object within each task definition (Deno 1.38+). The tool generates both approaches depending on your input."
+  },
+  {
+    question: "What is the difference between deno.json and package.json scripts?",
+    answer: "Deno tasks in deno.json support cross-platform shell commands via the built-in deno_task_shell, so they work on Windows, macOS, and Linux without needing a POSIX shell. npm scripts rely on the OS shell and can behave differently across platforms. Deno tasks also support dependencies between tasks using the 'dependencies' field."
+  },
+  {
+    question: "Can Deno tasks depend on other tasks?",
+    answer: "Yes, in Deno 1.38+ you can use the 'dependencies' array inside a task to declare which tasks must run first. For example, a 'build' task might depend on 'compile' and 'bundle' tasks running concurrently. This enables powerful task pipelines without extra tooling."
+  },
+  {
+    question: "What shell syntax is supported in Deno tasks?",
+    answer: "Deno tasks use deno_task_shell, which supports: sequential commands (&&, ;), piping (|), environment variable expansion ($VAR), redirects (>, >>), and basic glob expansion. It does NOT support advanced bash features like process substitution or complex parameter expansion — keep commands simple and cross-platform."
+  }
+];
+---
+
+<BaseLayout
+  title="Deno Task Runner Config Generator — Generate deno.json Tasks"
+  description="Generate deno.json task configurations visually. Add tasks with names, commands, env vars, and descriptions. Get properly formatted JSON output ready to paste into your project."
+  tool="Deno task runner, deno.json generator, Deno config, deno task config, Deno project setup, deno.json tasks"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Deno Task Runner Config Generator",
+    "url": "https://devplaybook.cc/tools/deno-task-runner-config",
+    "description": "Generate deno.json task configurations visually. Add tasks with names, commands, and environment variables.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Deno Task Runner Config Generator</h1>
+  <p class="text-text-muted mb-4">Build <code class="bg-bg-card px-1 rounded text-sm">deno.json</code> task configurations visually. Add tasks with commands, environment variables, and descriptions — then copy the formatted JSON straight into your project.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Add/remove tasks dynamically</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Per-task env variables</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live JSON preview</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy to clipboard</span>
+  </div>
+
+  <!-- Task list -->
+  <div class="mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">Tasks</h2>
+      <button id="btn-add-task" class="px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">+ Add Task</button>
+    </div>
+    <div id="task-list" class="space-y-4"></div>
+  </div>
+
+  <!-- Output -->
+  <div class="mt-6">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-base font-semibold">Generated deno.json</h2>
+      <button id="btn-copy-output" class="px-3 py-1.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Copy</button>
+    </div>
+    <pre id="deno-output" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono text-green-300 whitespace-pre overflow-x-auto min-h-[160px]"></pre>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+(function() {
+  let taskCount = 0;
+
+  const taskList = document.getElementById('task-list');
+  const output = document.getElementById('deno-output');
+  const btnAdd = document.getElementById('btn-add-task');
+  const btnCopy = document.getElementById('btn-copy-output');
+
+  function createTaskRow(defaults = {}) {
+    taskCount++;
+    const id = taskCount;
+    const div = document.createElement('div');
+    div.className = 'bg-bg-card border border-border rounded-lg p-4 space-y-3';
+    div.dataset.taskId = String(id);
+    div.innerHTML = `
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-sm font-medium text-primary">Task #${id}</span>
+        <button class="btn-remove-task px-2 py-1 text-xs text-red-400 border border-red-400/30 rounded hover:bg-red-400/10 transition-colors" data-id="${id}">Remove</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-text-muted mb-1">Task Name *</label>
+          <input type="text" class="task-name w-full bg-surface border border-border rounded p-2 text-sm focus:outline-none focus:border-primary font-mono"
+            placeholder="dev" value="${defaults.name || ''}" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-text-muted mb-1">Command *</label>
+          <input type="text" class="task-cmd w-full bg-surface border border-border rounded p-2 text-sm focus:outline-none focus:border-primary font-mono"
+            placeholder="deno run --allow-net src/main.ts" value="${defaults.cmd || ''}" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-text-muted mb-1">Description (optional)</label>
+        <input type="text" class="task-desc w-full bg-surface border border-border rounded p-2 text-sm focus:outline-none focus:border-primary"
+          placeholder="Start development server" value="${defaults.desc || ''}" />
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="block text-xs font-medium text-text-muted">Environment Variables</label>
+          <button class="btn-add-env text-xs text-primary hover:underline" data-id="${id}">+ Add Env Var</button>
+        </div>
+        <div class="env-list space-y-2" data-id="${id}"></div>
+      </div>
+    `;
+
+    taskList.appendChild(div);
+
+    // Add default env vars if any
+    if (defaults.envs) {
+      defaults.envs.forEach(e => addEnvRow(id, e.key, e.val));
+    }
+
+    // Remove task
+    div.querySelector('.btn-remove-task').addEventListener('click', () => {
+      div.remove();
+      generateOutput();
+    });
+
+    // Add env var
+    div.querySelector('.btn-add-env').addEventListener('click', () => {
+      addEnvRow(id);
+    });
+
+    // Live update
+    div.querySelectorAll('input').forEach(inp => inp.addEventListener('input', generateOutput));
+
+    generateOutput();
+  }
+
+  function addEnvRow(taskId, key = '', val = '') {
+    const envList = taskList.querySelector(`.env-list[data-id="${taskId}"]`);
+    if (!envList) return;
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-center';
+    row.innerHTML = `
+      <input type="text" class="env-key flex-1 bg-surface border border-border rounded p-2 text-xs font-mono focus:outline-none focus:border-primary"
+        placeholder="KEY" value="${key}" />
+      <span class="text-text-muted text-xs">=</span>
+      <input type="text" class="env-val flex-1 bg-surface border border-border rounded p-2 text-xs font-mono focus:outline-none focus:border-primary"
+        placeholder="value" value="${val}" />
+      <button class="btn-remove-env text-red-400 hover:text-red-300 text-xs px-1">✕</button>
+    `;
+    envList.appendChild(row);
+    row.querySelector('.btn-remove-env').addEventListener('click', () => { row.remove(); generateOutput(); });
+    row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', generateOutput));
+    generateOutput();
+  }
+
+  function generateOutput() {
+    const tasks = {};
+    const taskDivs = taskList.querySelectorAll('[data-task-id]');
+
+    taskDivs.forEach(div => {
+      const name = div.querySelector('.task-name').value.trim();
+      const cmd = div.querySelector('.task-cmd').value.trim();
+      const desc = div.querySelector('.task-desc').value.trim();
+      const taskId = div.dataset.taskId;
+
+      if (!name || !cmd) return;
+
+      const envPairs = {};
+      const envList = div.querySelector(`.env-list[data-id="${taskId}"]`);
+      envList.querySelectorAll('.flex.gap-2').forEach(row => {
+        const k = row.querySelector('.env-key').value.trim();
+        const v = row.querySelector('.env-val').value.trim();
+        if (k) envPairs[k] = v;
+      });
+
+      const taskObj = { command: cmd };
+      if (desc) taskObj.description = desc;
+      if (Object.keys(envPairs).length > 0) taskObj.env = envPairs;
+
+      tasks[name] = taskObj;
+    });
+
+    const config = { tasks };
+    output.textContent = JSON.stringify(config, null, 2);
+  }
+
+  btnAdd.addEventListener('click', () => createTaskRow());
+
+  btnCopy.addEventListener('click', () => {
+    navigator.clipboard.writeText(output.textContent || '').then(() => {
+      btnCopy.textContent = 'Copied!';
+      setTimeout(() => { btnCopy.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  // Preload example
+  createTaskRow({ name: 'dev', cmd: 'deno run --allow-net --allow-read --watch src/main.ts', desc: 'Start development server with file watching', envs: [{ key: 'PORT', val: '8000' }] });
+  createTaskRow({ name: 'test', cmd: 'deno test --allow-net --coverage=coverage/', desc: 'Run all tests with coverage' });
+  createTaskRow({ name: 'lint', cmd: 'deno lint src/', desc: 'Lint source files' });
+  createTaskRow({ name: 'fmt', cmd: 'deno fmt src/', desc: 'Format source files' });
+  createTaskRow({ name: 'build', cmd: 'deno compile --allow-net --output=dist/app src/main.ts', desc: 'Compile to standalone binary', envs: [{ key: 'NODE_ENV', val: 'production' }] });
+})();
+</script>

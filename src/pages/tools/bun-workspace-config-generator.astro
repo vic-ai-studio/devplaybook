@@ -1,0 +1,252 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is a Bun workspace?",
+    answer: "Bun workspaces let you manage multiple packages in a single monorepo. You define workspace packages in the root package.json using the 'workspaces' field, and Bun links them together so they can reference each other as local dependencies. This is similar to npm/yarn workspaces but with Bun's speed advantage."
+  },
+  {
+    question: "What is bunfig.toml used for?",
+    answer: "bunfig.toml is Bun's configuration file. It controls install behavior (registry, frozen lockfile, production mode), test settings (timeout, preload files), and runtime options. Think of it as the Bun equivalent of .npmrc but with more features and TOML format."
+  },
+  {
+    question: "How does Bun handle scoped package registries?",
+    answer: "In bunfig.toml you can set per-scope registries under [install.scopes]. For example, '@mycompany' packages can be resolved from a private registry while everything else uses npm. Each scope can have its own url, token, and username settings."
+  },
+  {
+    question: "What is the difference between 'bun install --frozen-lockfile' and normal install?",
+    answer: "With --frozen-lockfile (or frozenLockfile = true in bunfig.toml), Bun will fail if the lockfile needs to be updated — it only installs exactly what's already locked. This is the recommended setting for CI environments to ensure reproducible builds and catch accidental dependency changes."
+  },
+  {
+    question: "Can I use Bun workspaces with TypeScript path aliases?",
+    answer: "Yes. In a Bun workspace, each package can have its own tsconfig.json with path aliases. The root tsconfig can extend or reference child configs using TypeScript project references. Bun respects tsconfig paths natively without extra plugins."
+  },
+  {
+    question: "What glob patterns are supported in the workspaces field?",
+    answer: "The workspaces field in package.json supports standard glob patterns: 'packages/*' matches all direct subdirectories of packages/, 'apps/**' matches any depth, and explicit paths like 'packages/utils' for specific packages. Bun follows the same workspace protocol as Yarn and npm."
+  }
+];
+---
+
+<BaseLayout
+  title="Bun Workspace Config Generator — bunfig.toml + package.json"
+  description="Generate Bun workspace configurations: bunfig.toml for registry and install settings plus package.json workspaces field. Visual builder for monorepo setup with Bun."
+  tool="Bun workspace, bunfig.toml generator, Bun monorepo, package.json workspaces, Bun install config, Bun registry config"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Bun Workspace Config Generator",
+    "url": "https://devplaybook.cc/tools/bun-workspace-config-generator",
+    "description": "Generate Bun workspace configs: bunfig.toml and package.json workspaces field for monorepo setup.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Bun Workspace Config Generator</h1>
+  <p class="text-text-muted mb-4">Generate <code class="bg-bg-card px-1 rounded text-sm">bunfig.toml</code> and <code class="bg-bg-card px-1 rounded text-sm">package.json</code> workspace configs for your Bun monorepo. Configure packages, registry settings, and install flags — then copy each file separately.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dynamic workspace packages</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Registry & install flags</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dual output: bunfig.toml + package.json</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy each file individually</span>
+  </div>
+
+  <!-- Settings form -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <!-- Left: workspace name & packages -->
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">Workspace (Root) Name</label>
+        <input id="ws-name" type="text" class="w-full bg-bg-card border border-border rounded-lg p-2.5 text-sm focus:outline-none focus:border-primary font-mono" placeholder="my-monorepo" value="my-monorepo" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Version</label>
+        <input id="ws-version" type="text" class="w-full bg-bg-card border border-border rounded-lg p-2.5 text-sm focus:outline-none focus:border-primary font-mono" placeholder="0.0.0" value="0.0.0" />
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="block text-sm font-medium">Workspace Packages</label>
+          <button id="btn-add-pkg" class="text-xs text-primary hover:underline">+ Add Package</button>
+        </div>
+        <div id="pkg-list" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <!-- Right: registry & install settings -->
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">Registry URL</label>
+        <input id="registry-url" type="text" class="w-full bg-bg-card border border-border rounded-lg p-2.5 text-sm focus:outline-none focus:border-primary font-mono" placeholder="https://registry.npmjs.org/" value="https://registry.npmjs.org/" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Scoped Registry (optional, e.g. @myco)</label>
+        <div class="flex gap-2">
+          <input id="scope-name" type="text" class="w-32 bg-bg-card border border-border rounded-lg p-2.5 text-sm focus:outline-none focus:border-primary font-mono" placeholder="@myco" />
+          <input id="scope-url" type="text" class="flex-1 bg-bg-card border border-border rounded-lg p-2.5 text-sm focus:outline-none focus:border-primary font-mono" placeholder="https://npm.pkg.github.com/" />
+        </div>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-medium mb-1">Install Flags</label>
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" id="flag-frozen" class="accent-primary" />
+          <span>frozenLockfile (recommended for CI)</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" id="flag-production" class="accent-primary" />
+          <span>production (skip devDependencies)</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" id="flag-auto-install" class="accent-primary" checked />
+          <span>auto-install (auto install missing packages)</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" id="flag-save-lockfile" class="accent-primary" checked />
+          <span>saveLockfile</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Output tabs -->
+  <div class="flex gap-1 mb-4 border-b border-border">
+    <button data-out-tab="bunfig" class="out-tab px-4 py-2 text-sm font-medium border-b-2 border-primary text-primary transition-colors">bunfig.toml</button>
+    <button data-out-tab="pkgjson" class="out-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">package.json</button>
+  </div>
+
+  <div id="out-bunfig" class="out-panel">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-medium">bunfig.toml</span>
+      <button id="copy-bunfig" class="px-3 py-1.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Copy</button>
+    </div>
+    <pre id="bunfig-output" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono text-green-300 whitespace-pre overflow-x-auto min-h-[180px]"></pre>
+  </div>
+
+  <div id="out-pkgjson" class="out-panel hidden">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-medium">package.json</span>
+      <button id="copy-pkgjson" class="px-3 py-1.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Copy</button>
+    </div>
+    <pre id="pkgjson-output" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono text-blue-300 whitespace-pre overflow-x-auto min-h-[180px]"></pre>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+(function() {
+  const pkgList = document.getElementById('pkg-list');
+  const bunfigOut = document.getElementById('bunfig-output');
+  const pkgjsonOut = document.getElementById('pkgjson-output');
+
+  function addPkg(val = '') {
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-center';
+    row.innerHTML = `
+      <input type="text" class="pkg-input flex-1 bg-surface border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="packages/utils" value="${val}" />
+      <button class="btn-rm-pkg text-red-400 hover:text-red-300 text-xs px-2">✕</button>
+    `;
+    pkgList.appendChild(row);
+    row.querySelector('.btn-rm-pkg').addEventListener('click', () => { row.remove(); generate(); });
+    row.querySelector('.pkg-input').addEventListener('input', generate);
+    generate();
+  }
+
+  function getPackages() {
+    return Array.from(pkgList.querySelectorAll('.pkg-input')).map(i => i.value.trim()).filter(Boolean);
+  }
+
+  function generate() {
+    const name = document.getElementById('ws-name').value.trim() || 'my-monorepo';
+    const version = document.getElementById('ws-version').value.trim() || '0.0.0';
+    const registry = document.getElementById('registry-url').value.trim() || 'https://registry.npmjs.org/';
+    const scopeName = document.getElementById('scope-name').value.trim();
+    const scopeUrl = document.getElementById('scope-url').value.trim();
+    const frozen = document.getElementById('flag-frozen').checked;
+    const production = document.getElementById('flag-production').checked;
+    const autoInstall = document.getElementById('flag-auto-install').checked;
+    const saveLockfile = document.getElementById('flag-save-lockfile').checked;
+    const pkgs = getPackages();
+
+    // bunfig.toml
+    let toml = `[install]\n`;
+    toml += `registry = "${registry}"\n`;
+    if (frozen) toml += `frozenLockfile = true\n`;
+    if (production) toml += `production = true\n`;
+    if (!autoInstall) toml += `auto = false\n`;
+    if (!saveLockfile) toml += `saveLockfile = false\n`;
+    if (scopeName && scopeUrl) {
+      toml += `\n[install.scopes]\n`;
+      toml += `"${scopeName}" = { url = "${scopeUrl}" }\n`;
+    }
+    bunfigOut.textContent = toml;
+
+    // package.json
+    const pkgJson = {
+      name,
+      version,
+      private: true,
+      workspaces: pkgs.length > 0 ? pkgs : ['packages/*'],
+      scripts: {
+        build: 'bun run --filter "*" build',
+        test: 'bun run --filter "*" test',
+        lint: 'bun run --filter "*" lint'
+      },
+      devDependencies: {
+        typescript: '^5.0.0'
+      }
+    };
+    pkgjsonOut.textContent = JSON.stringify(pkgJson, null, 2);
+  }
+
+  // Tab switching
+  document.querySelectorAll('.out-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.outTab;
+      document.querySelectorAll('.out-tab').forEach(b => {
+        b.classList.toggle('border-primary', b.dataset.outTab === tab);
+        b.classList.toggle('text-primary', b.dataset.outTab === tab);
+        b.classList.toggle('border-transparent', b.dataset.outTab !== tab);
+        b.classList.toggle('text-text-muted', b.dataset.outTab !== tab);
+      });
+      document.querySelectorAll('.out-panel').forEach(p => p.classList.add('hidden'));
+      document.getElementById(`out-${tab}`).classList.remove('hidden');
+    });
+  });
+
+  // Copy buttons
+  document.getElementById('copy-bunfig').addEventListener('click', function() {
+    navigator.clipboard.writeText(bunfigOut.textContent || '');
+    this.textContent = 'Copied!';
+    setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+  });
+  document.getElementById('copy-pkgjson').addEventListener('click', function() {
+    navigator.clipboard.writeText(pkgjsonOut.textContent || '');
+    this.textContent = 'Copied!';
+    setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+  });
+
+  document.getElementById('btn-add-pkg').addEventListener('click', () => addPkg());
+
+  // Input listeners
+  ['ws-name','ws-version','registry-url','scope-name','scope-url',
+   'flag-frozen','flag-production','flag-auto-install','flag-save-lockfile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', generate);
+    if (el) el.addEventListener('input', generate);
+  });
+
+  // Preload
+  addPkg('packages/utils');
+  addPkg('packages/ui');
+  addPkg('apps/web');
+  addPkg('apps/api');
+  generate();
+})();
+</script>
