@@ -1,0 +1,506 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+---
+
+<BaseLayout
+  title="GitLab CI/CD Pipeline Generator — Build .gitlab-ci.yml Configurations"
+  description="Generate GitLab CI/CD pipeline configurations (.gitlab-ci.yml). Add stages, jobs, Docker images, scripts, artifacts, caching, and environment deployments. Export ready-to-use YAML. Runs in your browser."
+  tool="GitLab CI/CD pipeline generator, gitlab-ci.yml, GitLab pipeline, CI/CD configuration, DevOps automation, Docker CI, YAML generator, continuous integration, continuous deployment"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "GitLab CI/CD Pipeline Generator",
+    "url": "https://devplaybook.cc/tools/gitlab-ci-generator",
+    "description": "Generate GitLab CI/CD pipeline configurations (.gitlab-ci.yml). Add stages, jobs, Docker images, scripts, artifacts, caching, and environment deployments. Export ready-to-use YAML.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">GitLab CI/CD Pipeline Generator</h1>
+  <p class="text-text-muted mb-4">Build complete <code class="font-mono text-sm bg-bg-card border border-border rounded px-1.5 py-0.5">.gitlab-ci.yml</code> configurations visually. Add stages and jobs with Docker images, scripts, artifacts, caching, and environment deployments — then copy the ready-to-use YAML.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Stages &amp; jobs builder</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Docker image support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Artifacts, cache &amp; environments</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs entirely in your browser</span>
+  </div>
+
+  <!-- Global settings -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-6">
+    <h2 class="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wide">Global Settings</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-2">Default Docker Image</label>
+        <input id="global-image" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary" placeholder="node:20-alpine" value="node:20-alpine" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-2">Pipeline Name <span class="text-text-muted font-normal">(optional)</span></label>
+        <input id="pipeline-name" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" placeholder="My App Pipeline" value="My App Pipeline" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Stages -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-text-muted uppercase tracking-wide">Stages</h2>
+      <button id="btn-add-stage" class="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        <span class="text-base leading-none">+</span> Add Stage
+      </button>
+    </div>
+    <div id="stages-list" class="flex flex-wrap gap-2"></div>
+  </div>
+
+  <!-- Jobs -->
+  <div class="mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-text-muted uppercase tracking-wide">Jobs</h2>
+      <button id="btn-add-job" class="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        <span class="text-base leading-none">+</span> Add Job
+      </button>
+    </div>
+    <div id="jobs-list" class="space-y-4"></div>
+  </div>
+
+  <div class="flex gap-3 mb-6 flex-wrap">
+    <button id="btn-generate" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">Generate .gitlab-ci.yml</button>
+    <button id="btn-example-node" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Example: Node.js App</button>
+    <button id="btn-example-python" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Example: Python</button>
+    <button id="btn-example-docker" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Example: Docker Build+Push</button>
+    <button id="btn-clear" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Clear All</button>
+  </div>
+
+  <!-- Output -->
+  <div id="output-section" class="hidden">
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">.gitlab-ci.yml</h2>
+        <button id="btn-copy" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+      </div>
+      <pre id="output-yaml" class="font-mono text-sm whitespace-pre text-green-300 overflow-x-auto max-h-[600px] overflow-y-auto"></pre>
+    </div>
+  </div>
+
+  <ToolPageCta />
+</BaseLayout>
+
+<script>
+let stages = ['build', 'test', 'deploy'];
+let jobs = [];
+let jobSeq = 0;
+
+const RULES_OPTIONS = [
+  { value: 'none', label: 'Always run' },
+  { value: 'main', label: 'Only on main branch' },
+  { value: 'mr', label: 'Only on Merge Requests' },
+  { value: 'manual', label: 'Manual trigger' },
+  { value: 'tags', label: 'Only on tags' },
+];
+
+function esc(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Stages ──────────────────────────────────────────────────────────────────
+
+function renderStages() {
+  const el = document.getElementById('stages-list');
+  if (!el) return;
+  el.innerHTML = '';
+  if (stages.length === 0) {
+    el.innerHTML = '<p class="text-sm text-text-muted">No stages. Add at least one stage.</p>';
+    return;
+  }
+  stages.forEach((s, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'flex items-center gap-1.5 bg-bg-card border border-border rounded-lg px-3 py-2';
+    wrap.innerHTML = `
+      <span class="text-xs font-mono text-text-muted">${idx + 1}.</span>
+      <input class="stage-name-input bg-transparent text-sm font-mono focus:outline-none w-28" value="${esc(s)}" data-idx="${idx}" />
+      <button class="btn-remove-stage text-text-muted hover:text-red-400 transition-colors text-lg leading-none ml-1" data-idx="${idx}" aria-label="Remove stage">&times;</button>
+    `;
+    el.appendChild(wrap);
+  });
+
+  el.querySelectorAll('.stage-name-input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      stages[+inp.dataset.idx] = inp.value.trim() || stages[+inp.dataset.idx];
+      updateJobStageSelects();
+    });
+  });
+  el.querySelectorAll('.btn-remove-stage').forEach(btn => {
+    btn.addEventListener('click', () => {
+      stages.splice(+btn.dataset.idx, 1);
+      renderStages();
+      renderJobs();
+    });
+  });
+}
+
+function updateJobStageSelects() {
+  document.querySelectorAll('.job-stage-select').forEach(sel => {
+    const idx = +sel.dataset.jobIdx;
+    const current = jobs[idx]?.stage || '';
+    sel.innerHTML = stages.map(s => `<option value="${s}"${s === current ? ' selected' : ''}>${s}</option>`).join('');
+  });
+}
+
+document.getElementById('btn-add-stage')?.addEventListener('click', () => {
+  stages.push(`stage${stages.length + 1}`);
+  renderStages();
+  updateJobStageSelects();
+});
+
+// ── Jobs ────────────────────────────────────────────────────────────────────
+
+function defaultJob() {
+  return {
+    _id: ++jobSeq,
+    name: `job_${jobSeq}`,
+    stage: stages[0] || 'build',
+    image: '',
+    before_script: '',
+    script: 'echo "Run your commands here"',
+    artifacts_paths: '',
+    cache_key: '',
+    cache_paths: '',
+    env_name: '',
+    env_url: '',
+    rules: 'none',
+    allow_failure: false,
+  };
+}
+
+function renderJobs() {
+  const list = document.getElementById('jobs-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (jobs.length === 0) {
+    list.innerHTML = '<p class="text-sm text-text-muted text-center py-8 border border-dashed border-border rounded-lg">No jobs yet. Click &quot;+ Add Job&quot; to begin.</p>';
+    return;
+  }
+  jobs.forEach((job, idx) => {
+    const div = document.createElement('div');
+    div.className = 'border border-border bg-bg-card rounded-lg p-4';
+    div.dataset.jobIdx = idx;
+    div.innerHTML = `
+      <div class="flex items-center justify-between gap-2 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-text-muted font-mono">#${idx + 1}</span>
+          <input class="job-name-input bg-transparent text-sm font-semibold font-mono focus:outline-none border-b border-transparent focus:border-primary transition-colors" value="${esc(job.name)}" data-job-idx="${idx}" placeholder="job_name" />
+        </div>
+        <button class="btn-remove-job text-text-muted hover:text-red-400 transition-colors text-xl leading-none" data-job-idx="${idx}" aria-label="Remove job">&times;</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Stage</label>
+          <select class="job-stage-select w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" data-job-idx="${idx}">
+            ${stages.map(s => `<option value="${s}"${s === job.stage ? ' selected' : ''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Docker Image <span class="text-text-muted font-normal">(override)</span></label>
+          <input class="job-image w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="python:3.12-slim" value="${esc(job.image)}" data-job-idx="${idx}" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Rules</label>
+          <select class="job-rules w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" data-job-idx="${idx}">
+            ${RULES_OPTIONS.map(r => `<option value="${r.value}"${r.value === job.rules ? ' selected' : ''}>${r.label}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">before_script <span class="text-text-muted font-normal">(one command per line, optional)</span></label>
+        <textarea class="job-before-script w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary resize-none" rows="2" placeholder="npm ci&#10;export NODE_ENV=production" data-job-idx="${idx}">${esc(job.before_script)}</textarea>
+      </div>
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">script <span class="text-red-400">*</span> <span class="text-text-muted font-normal">(one command per line)</span></label>
+        <textarea class="job-script w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary resize-none" rows="3" placeholder="npm run build&#10;npm test" data-job-idx="${idx}">${esc(job.script)}</textarea>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Artifacts Paths <span class="text-text-muted font-normal">(one per line, optional)</span></label>
+          <textarea class="job-artifacts w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary resize-none" rows="2" placeholder="dist/&#10;coverage/" data-job-idx="${idx}">${esc(job.artifacts_paths)}</textarea>
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Cache Paths <span class="text-text-muted font-normal">(one per line, optional)</span></label>
+          <textarea class="job-cache-paths w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary resize-none" rows="2" placeholder="node_modules/&#10;.npm/" data-job-idx="${idx}">${esc(job.cache_paths)}</textarea>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Cache Key <span class="text-text-muted font-normal">(optional)</span></label>
+          <input class="job-cache-key w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="$CI_COMMIT_REF_SLUG" value="${esc(job.cache_key)}" data-job-idx="${idx}" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Environment Name <span class="text-text-muted font-normal">(optional)</span></label>
+          <input class="job-env-name w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="production" value="${esc(job.env_name)}" data-job-idx="${idx}" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Environment URL <span class="text-text-muted font-normal">(optional)</span></label>
+          <input class="job-env-url w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="https://myapp.example.com" value="${esc(job.env_url)}" data-job-idx="${idx}" />
+        </div>
+      </div>
+
+      <div class="mt-3 flex items-center gap-2">
+        <input type="checkbox" class="job-allow-failure" id="allow-failure-${idx}" data-job-idx="${idx}"${job.allow_failure ? ' checked' : ''} />
+        <label for="allow-failure-${idx}" class="text-sm text-text-muted cursor-pointer">allow_failure (pipeline continues even if this job fails)</label>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+
+  // Bind events
+  list.querySelectorAll('.btn-remove-job').forEach(btn => {
+    btn.addEventListener('click', () => { jobs.splice(+btn.dataset.jobIdx, 1); renderJobs(); });
+  });
+  list.querySelectorAll('.job-name-input').forEach(inp => {
+    inp.addEventListener('input', () => { jobs[+inp.dataset.jobIdx].name = inp.value; });
+  });
+  list.querySelectorAll('.job-stage-select').forEach(sel => {
+    sel.addEventListener('change', () => { jobs[+sel.dataset.jobIdx].stage = sel.value; });
+  });
+  list.querySelectorAll('.job-image').forEach(inp => {
+    inp.addEventListener('input', () => { jobs[+inp.dataset.jobIdx].image = inp.value; });
+  });
+  list.querySelectorAll('.job-rules').forEach(sel => {
+    sel.addEventListener('change', () => { jobs[+sel.dataset.jobIdx].rules = sel.value; });
+  });
+  list.querySelectorAll('.job-before-script').forEach(ta => {
+    ta.addEventListener('input', () => { jobs[+ta.dataset.jobIdx].before_script = ta.value; });
+  });
+  list.querySelectorAll('.job-script').forEach(ta => {
+    ta.addEventListener('input', () => { jobs[+ta.dataset.jobIdx].script = ta.value; });
+  });
+  list.querySelectorAll('.job-artifacts').forEach(ta => {
+    ta.addEventListener('input', () => { jobs[+ta.dataset.jobIdx].artifacts_paths = ta.value; });
+  });
+  list.querySelectorAll('.job-cache-paths').forEach(ta => {
+    ta.addEventListener('input', () => { jobs[+ta.dataset.jobIdx].cache_paths = ta.value; });
+  });
+  list.querySelectorAll('.job-cache-key').forEach(inp => {
+    inp.addEventListener('input', () => { jobs[+inp.dataset.jobIdx].cache_key = inp.value; });
+  });
+  list.querySelectorAll('.job-env-name').forEach(inp => {
+    inp.addEventListener('input', () => { jobs[+inp.dataset.jobIdx].env_name = inp.value; });
+  });
+  list.querySelectorAll('.job-env-url').forEach(inp => {
+    inp.addEventListener('input', () => { jobs[+inp.dataset.jobIdx].env_url = inp.value; });
+  });
+  list.querySelectorAll('.job-allow-failure').forEach(cb => {
+    cb.addEventListener('change', () => { jobs[+cb.dataset.jobIdx].allow_failure = cb.checked; });
+  });
+}
+
+function addJob(overrides = {}) {
+  jobs.push({ ...defaultJob(), ...overrides });
+  renderJobs();
+}
+
+document.getElementById('btn-add-job')?.addEventListener('click', () => addJob());
+
+// ── Examples ────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-example-node')?.addEventListener('click', () => {
+  stages = ['build', 'test', 'deploy'];
+  jobs = [];
+  jobSeq = 0;
+  const imgEl = document.getElementById('global-image');
+  const nameEl = document.getElementById('pipeline-name');
+  if (imgEl) imgEl.value = 'node:20-alpine';
+  if (nameEl) nameEl.value = 'Node.js App Pipeline';
+  addJob({ name: 'install', stage: 'build', before_script: '', script: 'npm ci', cache_key: '$CI_COMMIT_REF_SLUG', cache_paths: 'node_modules/\n.npm/', artifacts_paths: 'node_modules/' });
+  addJob({ name: 'lint', stage: 'test', script: 'npm run lint', rules: 'mr' });
+  addJob({ name: 'unit_test', stage: 'test', script: 'npm test -- --coverage', artifacts_paths: 'coverage/' });
+  addJob({ name: 'build_app', stage: 'build', script: 'npm run build', artifacts_paths: 'dist/' });
+  addJob({ name: 'deploy_production', stage: 'deploy', script: 'npm run deploy', env_name: 'production', env_url: 'https://myapp.example.com', rules: 'main' });
+  renderStages();
+  document.getElementById('output-section').classList.add('hidden');
+});
+
+document.getElementById('btn-example-python')?.addEventListener('click', () => {
+  stages = ['lint', 'test', 'deploy'];
+  jobs = [];
+  jobSeq = 0;
+  const imgEl = document.getElementById('global-image');
+  const nameEl = document.getElementById('pipeline-name');
+  if (imgEl) imgEl.value = 'python:3.12-slim';
+  if (nameEl) nameEl.value = 'Python App Pipeline';
+  addJob({ name: 'flake8_lint', stage: 'lint', script: 'pip install flake8\nflake8 . --max-line-length=120', allow_failure: true });
+  addJob({ name: 'pytest', stage: 'test', before_script: 'pip install -r requirements.txt', script: 'pytest --cov=. --cov-report=xml', artifacts_paths: 'coverage.xml', cache_key: '$CI_COMMIT_REF_SLUG', cache_paths: '.cache/pip/' });
+  addJob({ name: 'deploy_staging', stage: 'deploy', script: 'echo "Deploy to staging"\nbash deploy.sh staging', env_name: 'staging', rules: 'mr' });
+  addJob({ name: 'deploy_production', stage: 'deploy', script: 'echo "Deploy to production"\nbash deploy.sh production', env_name: 'production', env_url: 'https://myapp.example.com', rules: 'main' });
+  renderStages();
+  document.getElementById('output-section').classList.add('hidden');
+});
+
+document.getElementById('btn-example-docker')?.addEventListener('click', () => {
+  stages = ['build', 'push', 'deploy'];
+  jobs = [];
+  jobSeq = 0;
+  const imgEl = document.getElementById('global-image');
+  const nameEl = document.getElementById('pipeline-name');
+  if (imgEl) imgEl.value = 'docker:24';
+  if (nameEl) nameEl.value = 'Docker Build & Push Pipeline';
+  addJob({ name: 'docker_build', stage: 'build', image: 'docker:24', before_script: 'docker info', script: 'docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .', cache_key: '$CI_COMMIT_REF_SLUG' });
+  addJob({ name: 'docker_push', stage: 'push', image: 'docker:24', before_script: 'docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY', script: 'docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA\ndocker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE:latest\ndocker push $CI_REGISTRY_IMAGE:latest', rules: 'main' });
+  addJob({ name: 'deploy_k8s', stage: 'deploy', image: 'bitnami/kubectl:latest', script: 'kubectl set image deployment/myapp myapp=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA', env_name: 'production', env_url: 'https://myapp.example.com', rules: 'main' });
+  renderStages();
+  document.getElementById('output-section').classList.add('hidden');
+});
+
+document.getElementById('btn-clear')?.addEventListener('click', () => {
+  if ((stages.length > 0 || jobs.length > 0) && !confirm('Clear everything?')) return;
+  stages = ['build', 'test', 'deploy'];
+  jobs = [];
+  jobSeq = 0;
+  const imgEl = document.getElementById('global-image');
+  const nameEl = document.getElementById('pipeline-name');
+  if (imgEl) imgEl.value = 'node:20-alpine';
+  if (nameEl) nameEl.value = 'My App Pipeline';
+  renderStages();
+  renderJobs();
+  document.getElementById('output-section').classList.add('hidden');
+});
+
+// ── YAML Generator ───────────────────────────────────────────────────────────
+
+function getLiveJobs() {
+  return jobs.map((job, idx) => {
+    const q = (sel) => document.querySelector(`${sel}[data-job-idx="${idx}"]`);
+    return {
+      ...job,
+      name: q('.job-name-input')?.value?.trim() || job.name,
+      stage: q('.job-stage-select')?.value || job.stage,
+      image: q('.job-image')?.value?.trim() || job.image,
+      rules: q('.job-rules')?.value || job.rules,
+      before_script: q('.job-before-script')?.value?.trim() || job.before_script,
+      script: q('.job-script')?.value?.trim() || job.script,
+      artifacts_paths: q('.job-artifacts')?.value?.trim() || job.artifacts_paths,
+      cache_key: q('.job-cache-key')?.value?.trim() || job.cache_key,
+      cache_paths: q('.job-cache-paths')?.value?.trim() || job.cache_paths,
+      env_name: q('.job-env-name')?.value?.trim() || job.env_name,
+      env_url: q('.job-env-url')?.value?.trim() || job.env_url,
+      allow_failure: q('.job-allow-failure')?.checked ?? job.allow_failure,
+    };
+  });
+}
+
+function lines(str) {
+  return str.split('\n').map(l => l.trim()).filter(Boolean);
+}
+
+function indent(str, n) {
+  const pad = '  '.repeat(n);
+  return str.split('\n').map(l => pad + l).join('\n');
+}
+
+function buildYaml() {
+  const globalImage = document.getElementById('global-image')?.value?.trim() || 'node:20-alpine';
+  const pipelineName = document.getElementById('pipeline-name')?.value?.trim() || '';
+
+  if (stages.length === 0) { alert('Add at least one stage.'); return null; }
+  if (jobs.length === 0) { alert('Add at least one job.'); return null; }
+
+  const liveJobs = getLiveJobs();
+  let yaml = '';
+
+  if (pipelineName) yaml += `# Pipeline: ${pipelineName}\n`;
+  yaml += `# Generated by devplaybook.cc/tools/gitlab-ci-generator\n\n`;
+
+  yaml += `image: ${globalImage}\n\n`;
+  yaml += `stages:\n`;
+  stages.forEach(s => { yaml += `  - ${s || 'stage'}\n`; });
+  yaml += '\n';
+
+  liveJobs.forEach(job => {
+    const safeName = (job.name || 'job').replace(/[^a-zA-Z0-9_\-:]/g, '_');
+    yaml += `${safeName}:\n`;
+    yaml += `  stage: ${job.stage || stages[0] || 'build'}\n`;
+
+    if (job.image) yaml += `  image: ${job.image}\n`;
+
+    const bsLines = lines(job.before_script);
+    if (bsLines.length > 0) {
+      yaml += `  before_script:\n`;
+      bsLines.forEach(l => { yaml += `    - ${l}\n`; });
+    }
+
+    const scriptLines = lines(job.script);
+    yaml += `  script:\n`;
+    if (scriptLines.length > 0) {
+      scriptLines.forEach(l => { yaml += `    - ${l}\n`; });
+    } else {
+      yaml += `    - echo "No script defined"\n`;
+    }
+
+    const artLines = lines(job.artifacts_paths);
+    if (artLines.length > 0) {
+      yaml += `  artifacts:\n    paths:\n`;
+      artLines.forEach(l => { yaml += `      - ${l}\n`; });
+    }
+
+    const cachePathLines = lines(job.cache_paths);
+    if (cachePathLines.length > 0) {
+      yaml += `  cache:\n`;
+      if (job.cache_key) yaml += `    key: ${job.cache_key}\n`;
+      yaml += `    paths:\n`;
+      cachePathLines.forEach(l => { yaml += `      - ${l}\n`; });
+    }
+
+    if (job.env_name) {
+      yaml += `  environment:\n    name: ${job.env_name}\n`;
+      if (job.env_url) yaml += `    url: ${job.env_url}\n`;
+    }
+
+    if (job.rules && job.rules !== 'none') {
+      yaml += `  rules:\n`;
+      if (job.rules === 'main') {
+        yaml += `    - if: '$CI_COMMIT_BRANCH == "main"'\n`;
+      } else if (job.rules === 'mr') {
+        yaml += `    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'\n`;
+      } else if (job.rules === 'manual') {
+        yaml += `    - when: manual\n`;
+      } else if (job.rules === 'tags') {
+        yaml += `    - if: '$CI_COMMIT_TAG'\n`;
+      }
+    }
+
+    if (job.allow_failure) yaml += `  allow_failure: true\n`;
+
+    yaml += '\n';
+  });
+
+  return yaml.trimEnd() + '\n';
+}
+
+document.getElementById('btn-generate')?.addEventListener('click', () => {
+  const yaml = buildYaml();
+  if (!yaml) return;
+  const pre = document.getElementById('output-yaml');
+  if (pre) pre.textContent = yaml;
+  const section = document.getElementById('output-section');
+  section.classList.remove('hidden');
+  setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+});
+
+document.getElementById('btn-copy')?.addEventListener('click', () => {
+  const el = document.getElementById('output-yaml');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const btn = document.getElementById('btn-copy');
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 2000); }
+  });
+});
+
+// Init
+renderStages();
+renderJobs();
+</script>
