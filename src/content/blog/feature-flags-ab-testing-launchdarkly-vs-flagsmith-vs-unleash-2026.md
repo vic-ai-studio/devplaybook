@@ -1,9 +1,10 @@
 ---
 title: "Feature Flags & A/B Testing: LaunchDarkly vs Flagsmith vs Unleash 2026"
 description: "A comprehensive comparison of feature flag tools in 2026. LaunchDarkly vs Flagsmith vs Unleash — pricing, SDK support, self-hosting, and when to use each."
-pubDate: 2026-03-27
+date: "2026-03-27"
 tags: ["feature-flags", "ab-testing", "launchdarkly", "flagsmith", "unleash", "devops", "developer-tools"]
 slug: "feature-flags-ab-testing-launchdarkly-vs-flagsmith-vs-unleash-2026"
+readingTime: "14 min read"
 ---
 
 # Feature Flags & A/B Testing: LaunchDarkly vs Flagsmith vs Unleash 2026
