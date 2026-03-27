@@ -1,8 +1,10 @@
 ---
 title: "Nuxt.js vs Next.js vs Remix: SSR Framework Comparison 2026"
 description: "Compare Nuxt 3, Next.js 15, and Remix 2 for SSR and full-stack web apps. Routing, data fetching, performance, DX, and deployment options."
-pubDate: 2026-03-27
-tags: [nuxt, nextjs, remix, ssr, fullstack, javascript]
+date: "2026-03-27"
+author: "DevPlaybook Team"
+tags: ["nuxt", "nextjs", "remix", "ssr", "fullstack", "javascript"]
+readingTime: "14 min read"
 ---
 
 # Nuxt.js vs Next.js vs Remix: SSR Framework Comparison 2026
