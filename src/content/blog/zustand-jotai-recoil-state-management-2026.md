@@ -1,7 +1,8 @@
 ---
 title: "Zustand vs Jotai vs Recoil: React State Management Compared 2026"
 description: "Compare Zustand, Jotai, and Recoil for React state management. Learn when to use each library, with performance tips and migration guidance."
-pubDate: 2026-03-28
+readingTime: "9 min read"
+date: "2026-03-28"
 tags: ["react", "state-management", "zustand", "jotai", "javascript"]
 author: "DevPlaybook Team"
 ---

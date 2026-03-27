@@ -1,7 +1,8 @@
 ---
 title: "WebAssembly (WASM) Complete Guide for Web Developers 2026"
 description: "Learn WebAssembly from scratch: compile Rust/Go to WASM, boost web performance, explore WASI and the component model for 2026."
-pubDate: 2026-03-28
+readingTime: "8 min read"
+date: "2026-03-28"
 tags: ["webassembly", "wasm", "rust", "performance", "web-development"]
 author: "DevPlaybook Team"
 ---

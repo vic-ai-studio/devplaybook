@@ -1,0 +1,423 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "How is React Native styling different from CSS?",
+    answer: "React Native uses JavaScript objects instead of CSS strings. Property names are camelCase (backgroundColor, not background-color). Values are unitless numbers for dimensions (React Native uses density-independent pixels). Not all CSS properties are supported — gradients, box-shadow, and pseudo-classes require workarounds. Flexbox defaults differ: flexDirection is 'column' by default instead of 'row'."
+  },
+  {
+    question: "Which CSS properties are not supported in React Native?",
+    answer: "Unsupported: box-shadow (use elevation on Android, shadow* props on iOS), linear-gradient (use LinearGradient component), text-shadow has limited support, float is not supported, display values other than flex/none are not supported, pseudo-classes (:hover, :focus) are not supported, media queries are not supported (use Dimensions API or useWindowDimensions instead)."
+  },
+  {
+    question: "How do I convert px values?",
+    answer: "In React Native, numeric values without units are treated as density-independent pixels (dp). A CSS value of '16px' becomes 16 (the number, no string). Percentage strings like '50%' are supported for width, height, margin, and padding. Never use 'px', 'em', 'rem' units — only plain numbers or percentage strings."
+  },
+  {
+    question: "How do I handle box-shadow in React Native?",
+    answer: "For iOS: use shadowColor, shadowOffset ({ width: 0, height: 2 }), shadowOpacity, shadowRadius. For Android: use elevation (a single number). The converter outputs both sets of properties. For a cross-platform solution, consider the react-native-shadow-2 library or use Platform.select() to conditionally apply iOS vs Android styles."
+  },
+  {
+    question: "What is StyleSheet.create() and should I use it?",
+    answer: "StyleSheet.create() wraps your style object and provides validation in development mode. It also enables performance optimizations by caching styles and reducing bridge communication. Always use StyleSheet.create() over plain JavaScript objects for component styles — it's best practice in React Native."
+  }
+];
+---
+
+<BaseLayout
+  title="React Native StyleSheet Converter — CSS to React Native Styles"
+  description="Convert CSS to React Native StyleSheet syntax. Paste your CSS and get JavaScript StyleSheet.create() code with camelCase properties, unitless values, and shadow conversions. Free browser tool."
+  tool="React Native stylesheet converter, CSS to React Native, CSS to RN StyleSheet, React Native styles converter, camelCase CSS converter"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "React Native StyleSheet Converter",
+    "url": "https://devplaybook.cc/tools/react-native-stylesheet-converter",
+    "description": "Convert CSS to React Native StyleSheet syntax. Paste CSS and get StyleSheet.create() code with camelCase properties and unitless values.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">React Native StyleSheet Converter</h1>
+  <p class="text-text-muted mb-4">Paste your CSS and convert it to React Native <code class="font-mono bg-surface px-1 rounded text-sm">StyleSheet.create()</code> syntax instantly. Handles camelCase conversion, unitless values, and shadow mappings.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CSS to camelCase</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> px to unitless</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> box-shadow conversion</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Unsupported warnings</span>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <!-- Input -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-border">
+        <span class="text-sm font-medium">CSS Input</span>
+        <div class="flex gap-2">
+          <button id="btn-clear" class="text-xs text-text-muted hover:text-text transition-colors">Clear</button>
+          <button id="btn-sample" class="text-xs text-primary hover:underline">Load sample</button>
+        </div>
+      </div>
+      <textarea id="css-input" rows="20" placeholder=".container {
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}" class="w-full bg-surface px-4 py-3 text-sm font-mono resize-none focus:outline-none text-text-muted" spellcheck="false"></textarea>
+    </div>
+
+    <!-- Output -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-border">
+        <span class="text-sm font-medium">React Native Output</span>
+        <button id="btn-copy" class="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors">Copy</button>
+      </div>
+      <pre id="rn-output" class="px-4 py-3 text-sm font-mono overflow-auto h-80 whitespace-pre text-text-muted bg-surface"></pre>
+    </div>
+  </div>
+
+  <!-- Warnings -->
+  <div id="warnings-box" class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 mb-4 hidden">
+    <h2 class="text-sm font-semibold text-yellow-400 mb-2">Conversion Notes</h2>
+    <ul id="warnings-list" class="space-y-1"></ul>
+  </div>
+  <p id="msg-copy" class="text-xs text-green-400 mb-4 hidden">Copied to clipboard!</p>
+
+  <!-- Property reference -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <h2 class="text-sm font-semibold mb-3">Quick Reference: CSS to React Native</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-left text-text-muted border-b border-border">
+            <th class="py-2 pr-6 font-medium">CSS</th>
+            <th class="py-2 pr-6 font-medium">React Native</th>
+            <th class="py-2 font-medium">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-border/50"><td class="py-1.5 pr-6 font-mono text-text-muted">background-color: #fff</td><td class="py-1.5 pr-6 font-mono text-accent">backgroundColor: '#fff'</td><td class="py-1.5 text-text-muted">camelCase</td></tr>
+          <tr class="border-b border-border/50"><td class="py-1.5 pr-6 font-mono text-text-muted">font-size: 16px</td><td class="py-1.5 pr-6 font-mono text-accent">fontSize: 16</td><td class="py-1.5 text-text-muted">unitless number</td></tr>
+          <tr class="border-b border-border/50"><td class="py-1.5 pr-6 font-mono text-text-muted">margin: 8px 16px</td><td class="py-1.5 pr-6 font-mono text-accent">marginVertical: 8, marginHorizontal: 16</td><td class="py-1.5 text-text-muted">shorthand split</td></tr>
+          <tr class="border-b border-border/50"><td class="py-1.5 pr-6 font-mono text-text-muted">box-shadow: 0 2px 4px rgba(0,0,0,0.1)</td><td class="py-1.5 pr-6 font-mono text-accent">elevation: 4, shadowColor: '#000'...</td><td class="py-1.5 text-text-muted">iOS + Android split</td></tr>
+          <tr class="border-b border-border/50"><td class="py-1.5 pr-6 font-mono text-text-muted">flex-direction: row</td><td class="py-1.5 pr-6 font-mono text-accent">flexDirection: 'row'</td><td class="py-1.5 text-text-muted">default is column</td></tr>
+          <tr class="border-b border-border/50"><td class="py-1.5 pr-6 font-mono text-text-muted">border-radius: 8px</td><td class="py-1.5 pr-6 font-mono text-accent">borderRadius: 8</td><td class="py-1.5 text-text-muted">unitless</td></tr>
+          <tr><td class="py-1.5 pr-6 font-mono text-text-muted">display: none</td><td class="py-1.5 pr-6 font-mono text-accent">display: 'none'</td><td class="py-1.5 text-text-muted">only flex/none</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="React Native StyleSheet Converter" relatedTags={['react-native', 'mobile', 'css', 'javascript']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  var UNSUPPORTED = ['float','clear','text-decoration-style','text-decoration-color','background-image','background-repeat','background-position','background-size','cursor','pointer-events','user-select','appearance','outline','list-style','content','white-space','word-wrap','overflow-x','overflow-y','grid','grid-template','column-gap-css','row-gap'];
+  var WARNINGS_MAP = {
+    'box-shadow': 'box-shadow converted to iOS shadow* and Android elevation properties',
+    'background': 'background shorthand partially supported — only solid colors work in RN',
+    'display': 'Only display: flex and display: none are supported in React Native',
+    'position': 'position: sticky and fixed are not supported — use absolute or relative',
+    'font': 'font shorthand not supported — use fontSize, fontWeight, fontFamily separately',
+    'transition': 'CSS transitions not supported — use Animated API or react-native-reanimated',
+    'animation': 'CSS animations not supported — use Animated API',
+    'transform': 'transform syntax differs — use array format: transform: [{ rotate: "45deg" }]',
+    'linear-gradient': 'Use expo-linear-gradient or react-native-linear-gradient instead',
+    'text-shadow': 'textShadow partially supported on iOS only'
+  };
+
+  function toCamel(str) {
+    return str.replace(/-([a-z])/g, function(_, c) { return c.toUpperCase(); });
+  }
+
+  function stripPx(val) {
+    // Convert px to number, keep % as string, keep named values as string
+    val = val.trim();
+    if (/^-?\d+(\.\d+)?px$/.test(val)) {
+      var n = parseFloat(val);
+      return n === 0 ? 0 : n;
+    }
+    if (/^-?\d+(\.\d+)?$/.test(val)) {
+      return parseFloat(val);
+    }
+    return val;
+  }
+
+  function isNumericLike(val) {
+    return typeof val === 'number' || /^-?\d+(\.\d+)?(%|px)?$/.test(val.trim());
+  }
+
+  function formatValue(val) {
+    var v = stripPx(val);
+    if (typeof v === 'number') return String(v);
+    // Keep as string
+    return "'" + v.replace(/'/g, "\\'") + "'";
+  }
+
+  function convertMarginPadding(prop, val, result) {
+    var parts = val.trim().split(/\s+/).map(stripPx);
+    var prefix = prop === 'margin' ? 'margin' : 'padding';
+    if (parts.length === 1) {
+      result[prefix] = parts[0];
+    } else if (parts.length === 2) {
+      result[prefix + 'Vertical'] = parts[0];
+      result[prefix + 'Horizontal'] = parts[1];
+    } else if (parts.length === 3) {
+      result[prefix + 'Top'] = parts[0];
+      result[prefix + 'Horizontal'] = parts[1];
+      result[prefix + 'Bottom'] = parts[2];
+    } else if (parts.length === 4) {
+      result[prefix + 'Top'] = parts[0];
+      result[prefix + 'Right'] = parts[1];
+      result[prefix + 'Bottom'] = parts[2];
+      result[prefix + 'Left'] = parts[3];
+    }
+  }
+
+  function convertBorderRadius(val, result) {
+    var parts = val.trim().split(/\s+/).map(stripPx);
+    if (parts.length === 1) {
+      result.borderRadius = parts[0];
+    } else if (parts.length === 4) {
+      result.borderTopLeftRadius = parts[0];
+      result.borderTopRightRadius = parts[1];
+      result.borderBottomRightRadius = parts[2];
+      result.borderBottomLeftRadius = parts[3];
+    } else {
+      result.borderRadius = parts[0];
+    }
+  }
+
+  function convertBoxShadow(val, result) {
+    // Parse: offset-x offset-y blur-radius spread-radius color
+    var m = val.match(/(rgba?\([^)]+\)|#[0-9a-fA-F]+|\w+)\s*$/);
+    var color = m ? m[1] : '#000';
+    var nums = val.replace(/(rgba?\([^)]+\)|#[0-9a-fA-F]+)/, '').trim().split(/\s+/).filter(function(x){ return /^-?\d/.test(x); }).map(parseFloat);
+    var ox = nums[0] || 0, oy = nums[1] || 0, blur = nums[2] || 0;
+    result.shadowColor = color;
+    result.shadowOffset = { width: ox, height: oy };
+    result.shadowOpacity = 0.1;
+    result.shadowRadius = blur / 2;
+    result.elevation = Math.max(1, Math.round(blur / 2));
+  }
+
+  function convertDeclaration(prop, val, result, warnings) {
+    prop = prop.trim().toLowerCase();
+    val = val.trim();
+
+    if (WARNINGS_MAP[prop]) {
+      warnings.push(WARNINGS_MAP[prop]);
+    }
+
+    if (UNSUPPORTED.indexOf(prop) !== -1) {
+      warnings.push('Unsupported property skipped: ' + prop);
+      return;
+    }
+
+    if (prop === 'margin' || prop === 'padding') {
+      convertMarginPadding(prop, val, result);
+    } else if (prop === 'border-radius') {
+      convertBorderRadius(val, result);
+    } else if (prop === 'box-shadow') {
+      convertBoxShadow(val, result);
+    } else if (prop === 'background' && !val.startsWith('#') && !val.startsWith('rgb')) {
+      warnings.push('background shorthand "' + val + '" not fully supported — only solid colors work in RN');
+      result.backgroundColor = val;
+    } else if (prop === 'border') {
+      var bparts = val.split(/\s+/);
+      if (bparts[0]) result.borderWidth = stripPx(bparts[0]);
+      if (bparts[1]) result.borderStyle = bparts[1];
+      if (bparts[2]) result.borderColor = bparts[2];
+    } else if (prop === 'flex') {
+      var fparts = val.split(/\s+/);
+      if (fparts.length === 1) result.flex = parseFloat(fparts[0]) || 0;
+      else {
+        if (fparts[0]) result.flexGrow = parseFloat(fparts[0]);
+        if (fparts[1]) result.flexShrink = parseFloat(fparts[1]);
+        if (fparts[2]) result.flexBasis = stripPx(fparts[2]);
+      }
+    } else if (prop === 'font') {
+      warnings.push('font shorthand not fully supported — split into fontSize, fontWeight, fontFamily');
+      result['/* font shorthand */'] = '"' + val + '"';
+    } else {
+      var camel = toCamel(prop);
+      result[camel] = formatValue(val).replace(/^'(.*)'$/, function(_, inner) {
+        // Check if it should be a number
+        var stripped = stripPx(inner);
+        if (typeof stripped === 'number') return String(stripped);
+        return "'" + inner + "'";
+      });
+    }
+  }
+
+  function parseCSS(css) {
+    var result = {};
+    var warnings = [];
+    var styleMap = {};
+
+    // Extract class blocks
+    var blockRe = /([.#]?[\w-]+)\s*\{([^}]*)\}/g;
+    var match;
+    var hasBlocks = false;
+
+    while ((match = blockRe.exec(css)) !== null) {
+      hasBlocks = true;
+      var selector = match[1].replace(/^[.#]/, '');
+      var declarations = match[2];
+      var styleObj = {};
+      declarations.split(';').forEach(function(decl) {
+        decl = decl.trim();
+        if (!decl) return;
+        var colonIdx = decl.indexOf(':');
+        if (colonIdx === -1) return;
+        var prop = decl.slice(0, colonIdx).trim();
+        var val = decl.slice(colonIdx + 1).trim();
+        if (prop && val) convertDeclaration(prop, val, styleObj, warnings);
+      });
+      if (Object.keys(styleObj).length > 0) styleMap[selector] = styleObj;
+    }
+
+    if (!hasBlocks) {
+      // Try as plain declarations
+      css.split(';').forEach(function(decl) {
+        decl = decl.trim();
+        if (!decl) return;
+        var colonIdx = decl.indexOf(':');
+        if (colonIdx === -1) return;
+        var prop = decl.slice(0, colonIdx).trim();
+        var val = decl.slice(colonIdx + 1).trim();
+        if (prop && val) convertDeclaration(prop, val, styleMap, warnings);
+      });
+      return { single: styleMap, warnings: warnings };
+    }
+
+    return { map: styleMap, warnings: warnings };
+  }
+
+  function objToRNString(obj, indent) {
+    indent = indent || '  ';
+    var lines = [];
+    Object.keys(obj).forEach(function(k) {
+      var v = obj[k];
+      if (typeof v === 'object' && v !== null) {
+        lines.push(indent + k + ': { ' + Object.keys(v).map(function(sk) {
+          return sk + ': ' + (typeof v[sk] === 'string' ? "'" + v[sk] + "'" : v[sk]);
+        }).join(', ') + ' },');
+      } else if (typeof v === 'number') {
+        lines.push(indent + k + ': ' + v + ',');
+      } else {
+        // Already formatted as 'string' or number
+        lines.push(indent + k + ': ' + v + ',');
+      }
+    });
+    return lines.join('\n');
+  }
+
+  function convert() {
+    var css = document.getElementById('css-input').value;
+    if (!css.trim()) {
+      document.getElementById('rn-output').textContent = '// Paste CSS above to convert';
+      document.getElementById('warnings-box').classList.add('hidden');
+      return;
+    }
+
+    var parsed = parseCSS(css);
+    var output = '';
+
+    if (parsed.map) {
+      var keys = Object.keys(parsed.map);
+      if (keys.length > 0) {
+        output = 'const styles = StyleSheet.create({\n';
+        keys.forEach(function(k) {
+          output += '  ' + k + ': {\n';
+          output += objToRNString(parsed.map[k], '    ');
+          output += '\n  },\n';
+        });
+        output += '});\n\nexport default styles;';
+      } else {
+        output = '// No valid CSS blocks found';
+      }
+    } else {
+      // single
+      var styleObj = parsed.single;
+      if (Object.keys(styleObj).length > 0) {
+        output = 'const styles = StyleSheet.create({\n  container: {\n';
+        output += objToRNString(styleObj, '    ');
+        output += '\n  },\n});\n\nexport default styles;';
+      } else {
+        output = '// No valid CSS declarations found';
+      }
+    }
+
+    document.getElementById('rn-output').textContent = output;
+
+    var warnings = parsed.warnings || [];
+    if (warnings.length > 0) {
+      document.getElementById('warnings-box').classList.remove('hidden');
+      document.getElementById('warnings-list').innerHTML = warnings.map(function(w) {
+        return '<li class="text-xs text-yellow-300 flex gap-2"><span class="text-yellow-500 flex-shrink-0">!</span>' + w + '</li>';
+      }).join('');
+    } else {
+      document.getElementById('warnings-box').classList.add('hidden');
+    }
+  }
+
+  var SAMPLE = `.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: #f5f5f5;
+  padding: 16px 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-bottom: 8px;
+}
+
+.button {
+  background-color: #6366f1;
+  border-radius: 8px;
+  padding: 12px 24px;
+  align-items: center;
+  justify-content: center;
+}`;
+
+  document.getElementById('btn-sample').addEventListener('click', function() {
+    document.getElementById('css-input').value = SAMPLE;
+    convert();
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', function() {
+    document.getElementById('css-input').value = '';
+    convert();
+  });
+
+  document.getElementById('css-input').addEventListener('input', convert);
+
+  document.getElementById('btn-copy').addEventListener('click', function() {
+    navigator.clipboard.writeText(document.getElementById('rn-output').textContent).then(function() {
+      var msg = document.getElementById('msg-copy');
+      msg.classList.remove('hidden');
+      setTimeout(function() { msg.classList.add('hidden'); }, 2000);
+    });
+  });
+
+  convert();
+})();
+</script>

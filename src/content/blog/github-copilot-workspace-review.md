@@ -1,7 +1,8 @@
 ---
 title: "GitHub Copilot Workspace: The Future of AI-Native Software Development"
 description: "GitHub Copilot Workspace takes AI coding from autocomplete to autonomous development—task planning, multi-file editing, and PR generation from a single prompt. Here's what it actually is and when to use it."
-pubDate: 2026-03-28
+readingTime: "8 min read"
+date: "2026-03-28"
 tags: ["github-copilot", "ai-coding", "developer-tools", "productivity", "workflow"]
 draft: false
 ---

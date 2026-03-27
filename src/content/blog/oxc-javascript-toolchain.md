@@ -1,7 +1,8 @@
 ---
 title: "Oxc: The Rust-Powered JavaScript Toolchain That Will Replace ESLint and Babel"
 description: "Oxc is a blazing-fast JavaScript toolchain built in Rust that promises to replace ESLint, Babel, and more. Learn what it is, its performance benchmarks, and how to migrate your project."
-pubDate: 2026-03-28
+readingTime: "7 min read"
+date: "2026-03-28"
 tags: ["javascript", "tooling", "rust", "eslint", "babel", "performance"]
 draft: false
 ---

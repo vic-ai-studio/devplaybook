@@ -1,7 +1,8 @@
 ---
 title: "SvelteKit 5 Complete Guide: Runes, Routing & Deployment 2026"
 description: "Master SvelteKit 5 with Svelte 5 runes, file-based routing, SSR, form actions, and deployment to Vercel and Cloudflare Pages."
-pubDate: 2026-03-28
+readingTime: "8 min read"
+date: "2026-03-28"
 tags: ["sveltekit", "svelte", "web-development", "javascript", "ssr"]
 author: "DevPlaybook Team"
 ---

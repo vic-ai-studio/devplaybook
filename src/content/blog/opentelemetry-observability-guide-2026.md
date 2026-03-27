@@ -1,7 +1,8 @@
 ---
 title: "OpenTelemetry Observability: Traces, Metrics & Logs Guide 2026"
 description: "Master OpenTelemetry for full-stack observability. Set up traces, metrics, and logs with Node.js and Python, export to Jaeger and OTLP."
-pubDate: 2026-03-28
+readingTime: "8 min read"
+date: "2026-03-28"
 tags: ["opentelemetry", "observability", "monitoring", "devops", "nodejs"]
 author: "DevPlaybook Team"
 ---
