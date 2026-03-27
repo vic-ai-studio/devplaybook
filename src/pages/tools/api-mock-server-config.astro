@@ -1,0 +1,502 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is a mock server and why do I need one?",
+    answer: "A mock server simulates a real API without any backend infrastructure. During frontend development, you often need API responses before the real server is ready — mock servers let you build and test UI components against predictable data. They also help QA teams write tests without hitting production databases, and let teams work in parallel without blocking on backend completion."
+  },
+  {
+    question: "What is JSON Server and when should I use it?",
+    answer: "JSON Server is a zero-code REST API built from a single db.json file. You run npx json-server db.json and instantly get full CRUD endpoints with filtering, sorting, and pagination. It's ideal for rapid prototyping and local development when you want real HTTP requests. The generated db.json from this tool seeds your initial data and resource structure so JSON Server knows what collections to serve."
+  },
+  {
+    question: "What is MSW (Mock Service Worker)?",
+    answer: "MSW intercepts network requests at the Service Worker layer in the browser (or at the Node.js http module in tests). Unlike JSON Server, MSW runs inside your app without a separate process. It's the preferred choice for component tests with Vitest or Jest, Storybook stories, and CI environments. MSW handlers are TypeScript functions that return structured responses using the http and HttpResponse API from msw v2."
+  },
+  {
+    question: "What is the difference between JSON Server and MSW output?",
+    answer: "JSON Server output is a db.json file — a plain object whose top-level keys become REST resource collections. GET /users returns db.json.users, POST /users appends to it, and so on. MSW output is TypeScript source code that exports a handlers array. Each handler is a function that matches method + path and returns an HttpResponse. JSON Server is a standalone dev server; MSW is a library integrated into your test or app code."
+  },
+  {
+    question: "How does REST path matching work in the generated MSW handlers?",
+    answer: "MSW v2 uses path patterns identical to Express-style routing. Static paths like /users match exactly. Parameterized paths like /users/:id capture the segment as request.params.id. Wildcard segments and nested paths are both supported. The generated handlers pass through request.params so you can return different response bodies based on the captured ID or other parameters."
+  },
+  {
+    question: "Can I use the generated config in production?",
+    answer: "No — both JSON Server and MSW are development and testing tools only. JSON Server has no auth, rate limiting, or persistence beyond the flat JSON file. MSW handlers replace real network calls, so they must be disabled before shipping. The standard pattern is to register MSW only when process.env.NODE_ENV === 'test' or when a VITE_MOCK_API flag is set, and never bundle mock handlers into your production build."
+  },
+];
+---
+
+<BaseLayout
+  title="API Mock Server Config Generator — JSON Server & MSW Setup"
+  description="Generate mock server configurations for JSON Server (db.json) and MSW TypeScript handlers from your endpoint specs. Define methods, paths, status codes, and response bodies — runs entirely in your browser."
+  tool="API mock server generator, JSON Server config, MSW handlers generator, mock API typescript, mock service worker setup, REST API mocking"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "API Mock Server Config Generator",
+    "url": "https://devplaybook.cc/tools/api-mock-server-config",
+    "description": "Generate JSON Server db.json and MSW TypeScript handler configurations from manually defined endpoint specs. Runs in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">API Mock Server Config Generator</h1>
+  <p class="text-text-muted mb-4">
+    Define your API endpoints — method, path, status, and response body — and generate ready-to-use
+    configurations for <strong class="text-text">JSON Server</strong> (db.json) or
+    <strong class="text-text">MSW TypeScript handlers</strong>.
+    Nothing is sent to any server — runs entirely in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JSON Server db.json</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> MSW TypeScript handlers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy to clipboard</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Left column: endpoint builder -->
+    <div class="flex flex-col gap-4">
+
+      <!-- Add endpoint form -->
+      <div class="rounded-xl border border-border bg-surface/30 p-4 flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium">Add Endpoint</span>
+          <button id="load-example-btn" class="text-xs text-accent hover:underline">Load example</button>
+        </div>
+
+        <div class="flex gap-2">
+          <select
+            id="ep-method"
+            class="px-3 py-2 rounded-lg bg-bg border border-border text-text text-sm focus:outline-none focus:border-accent transition-colors w-32 shrink-0"
+          >
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+          <input
+            id="ep-path"
+            type="text"
+            placeholder="/users/:id"
+            class="flex-1 px-3 py-2 rounded-lg bg-bg border border-border text-text placeholder:text-text-muted text-sm focus:outline-none focus:border-accent transition-colors font-mono"
+            spellcheck="false"
+          />
+        </div>
+
+        <div class="flex gap-2 items-center">
+          <label class="text-xs text-text-muted w-20 shrink-0">Status code</label>
+          <input
+            id="ep-status"
+            type="number"
+            value="200"
+            min="100"
+            max="599"
+            class="w-24 px-3 py-2 rounded-lg bg-bg border border-border text-text text-sm focus:outline-none focus:border-accent transition-colors"
+          />
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-text-muted">Response body (JSON)</label>
+          <textarea
+            id="ep-body"
+            rows="5"
+            placeholder='{ "id": 1, "name": "Alice" }'
+            class="w-full px-3 py-2 rounded-lg bg-bg border border-border text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors font-mono text-xs resize-y"
+            spellcheck="false"
+          ></textarea>
+        </div>
+
+        <button
+          id="add-ep-btn"
+          class="w-full py-2 px-4 rounded-lg bg-accent hover:bg-accent/80 text-white font-semibold text-sm transition-colors duration-200"
+        >
+          + Add Endpoint
+        </button>
+        <p id="add-ep-error" class="text-xs text-red-400 hidden"></p>
+      </div>
+
+      <!-- Endpoint list -->
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium">Endpoints <span id="ep-count" class="text-text-muted font-normal">(0)</span></span>
+          <button id="clear-all-btn" class="text-xs text-text-muted hover:text-red-400 transition-colors hidden">Clear all</button>
+        </div>
+        <div id="ep-list" class="flex flex-col gap-2 min-h-[48px]">
+          <div id="ep-empty" class="text-xs text-text-muted text-center py-4 rounded-lg border border-dashed border-border">
+            No endpoints added yet. Use the form above or load an example.
+          </div>
+        </div>
+      </div>
+
+      <!-- Output format + generate -->
+      <div class="flex flex-col gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-sm font-medium shrink-0">Output format</span>
+          <div class="flex rounded-lg border border-border overflow-hidden text-sm">
+            <button id="fmt-jsonserver" class="px-4 py-1.5 bg-accent text-white font-semibold transition-colors">JSON Server</button>
+            <button id="fmt-msw" class="px-4 py-1.5 bg-surface text-text-muted hover:text-text transition-colors">MSW (TypeScript)</button>
+          </div>
+        </div>
+        <button
+          id="generate-btn"
+          class="w-full py-3 px-6 rounded-xl bg-accent hover:bg-accent/80 text-white font-bold transition-colors duration-200"
+        >
+          Generate Config
+        </button>
+      </div>
+    </div>
+
+    <!-- Right column: output -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium">Output</label>
+        <button id="copy-btn" class="text-xs text-accent hover:underline hidden">Copy to clipboard</button>
+      </div>
+      <div
+        id="output-placeholder"
+        class="flex-1 min-h-[520px] rounded-xl bg-bg border border-border flex items-center justify-center text-text-muted text-sm"
+      >
+        Generated config will appear here
+      </div>
+      <pre
+        id="output-block"
+        class="hidden flex-1 min-h-[520px] rounded-xl bg-bg border border-border overflow-auto p-4 font-mono text-xs text-text leading-relaxed whitespace-pre"
+      ></pre>
+      <p id="copy-status" class="text-xs text-green-400 hidden text-right">Copied!</p>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="API Mock Server Config Generator" relatedTags={['api', 'rest', 'typescript', 'testing', 'backend', 'javascript']} />
+</BaseLayout>
+
+<script is:inline>
+  // ── State ────────────────────────────────────────────────────────────────────
+  var endpoints = [];
+  var outputFormat = 'jsonserver'; // 'jsonserver' | 'msw'
+
+  var METHOD_COLORS = {
+    GET:    'text-green-400',
+    POST:   'text-blue-400',
+    PUT:    'text-yellow-400',
+    PATCH:  'text-orange-400',
+    DELETE: 'text-red-400',
+  };
+
+  // ── Example endpoints ────────────────────────────────────────────────────────
+  var EXAMPLES = [
+    {
+      method: 'GET',
+      path: '/users',
+      status: 200,
+      body: '[\n  { "id": 1, "name": "Alice", "email": "alice@example.com" },\n  { "id": 2, "name": "Bob", "email": "bob@example.com" }\n]'
+    },
+    {
+      method: 'GET',
+      path: '/users/:id',
+      status: 200,
+      body: '{ "id": 1, "name": "Alice", "email": "alice@example.com" }'
+    },
+    {
+      method: 'POST',
+      path: '/users',
+      status: 201,
+      body: '{ "id": 3, "name": "Charlie", "email": "charlie@example.com" }'
+    }
+  ];
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function tryParseJson(str) {
+    try { return { ok: true, val: JSON.parse(str.trim()) }; }
+    catch(e) { return { ok: false, err: e.message }; }
+  }
+
+  // Derive a JSON Server resource name from a path segment.
+  // /users → 'users', /users/:id → 'users', /api/v1/posts → 'posts'
+  function resourceFromPath(path) {
+    var parts = path.replace(/^\//, '').split('/').filter(function(p) {
+      return p && !p.startsWith(':');
+    });
+    return parts[parts.length - 1] || 'resource';
+  }
+
+  // ── Render endpoint list ─────────────────────────────────────────────────────
+  function renderList() {
+    var list = document.getElementById('ep-list');
+    var empty = document.getElementById('ep-empty');
+    var count = document.getElementById('ep-count');
+    var clearBtn = document.getElementById('clear-all-btn');
+
+    count.textContent = '(' + endpoints.length + ')';
+
+    if (endpoints.length === 0) {
+      list.innerHTML = '';
+      list.appendChild(empty);
+      empty.classList.remove('hidden');
+      clearBtn.classList.add('hidden');
+      return;
+    }
+
+    empty.classList.add('hidden');
+    clearBtn.classList.remove('hidden');
+
+    var html = '';
+    endpoints.forEach(function(ep, idx) {
+      var color = METHOD_COLORS[ep.method] || 'text-text-muted';
+      html += '<div class="flex items-center gap-2 rounded-lg border border-border bg-surface/20 px-3 py-2 text-sm">' +
+        '<span class="font-mono font-bold text-xs w-14 shrink-0 ' + color + '">' + escHtml(ep.method) + '</span>' +
+        '<span class="font-mono text-xs flex-1 truncate text-text">' + escHtml(ep.path) + '</span>' +
+        '<span class="text-xs text-text-muted shrink-0">' + escHtml(String(ep.status)) + '</span>' +
+        '<button data-idx="' + idx + '" class="ep-delete text-text-muted hover:text-red-400 transition-colors ml-1 text-base leading-none shrink-0" title="Remove">×</button>' +
+        '</div>';
+    });
+
+    list.innerHTML = html;
+
+    list.querySelectorAll('.ep-delete').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var i = parseInt(btn.getAttribute('data-idx'), 10);
+        endpoints.splice(i, 1);
+        renderList();
+      });
+    });
+  }
+
+  // ── Format toggle ────────────────────────────────────────────────────────────
+  function setFormat(fmt) {
+    outputFormat = fmt;
+    var btnJs = document.getElementById('fmt-jsonserver');
+    var btnMsw = document.getElementById('fmt-msw');
+    if (fmt === 'jsonserver') {
+      btnJs.className = 'px-4 py-1.5 bg-accent text-white font-semibold transition-colors';
+      btnMsw.className = 'px-4 py-1.5 bg-surface text-text-muted hover:text-text transition-colors';
+    } else {
+      btnMsw.className = 'px-4 py-1.5 bg-accent text-white font-semibold transition-colors';
+      btnJs.className = 'px-4 py-1.5 bg-surface text-text-muted hover:text-text transition-colors';
+    }
+  }
+
+  // ── Generators ───────────────────────────────────────────────────────────────
+  function generateJsonServer() {
+    var db = {};
+    endpoints.forEach(function(ep) {
+      var resource = resourceFromPath(ep.path);
+      var parsed = tryParseJson(ep.body);
+      var val = parsed.ok ? parsed.val : ep.body;
+
+      if (!(resource in db)) {
+        // If the value is an array, use it directly; otherwise wrap in array
+        if (Array.isArray(val)) {
+          db[resource] = val;
+        } else if (val !== null && typeof val === 'object') {
+          db[resource] = [val];
+        } else {
+          db[resource] = [];
+        }
+      } else {
+        // Merge: if current is array and value is object, push into it
+        if (Array.isArray(db[resource]) && val !== null && typeof val === 'object' && !Array.isArray(val)) {
+          // Only push if it's not already a duplicate of something in there
+          db[resource].push(val);
+        } else if (Array.isArray(val)) {
+          db[resource] = val;
+        }
+      }
+    });
+
+    return JSON.stringify(db, null, 2);
+  }
+
+  function generateMsw() {
+    var lines = [];
+    lines.push("import { http, HttpResponse } from 'msw'");
+    lines.push('');
+    lines.push('export const handlers = [');
+
+    endpoints.forEach(function(ep, idx) {
+      var method = ep.method.toLowerCase();
+      var path = ep.path;
+      var status = ep.status;
+      var parsed = tryParseJson(ep.body);
+      var bodyStr;
+
+      if (parsed.ok) {
+        bodyStr = JSON.stringify(parsed.val, null, 4)
+          .split('\n')
+          .map(function(l, i) { return i === 0 ? l : '        ' + l; })
+          .join('\n');
+      } else {
+        bodyStr = JSON.stringify(ep.body);
+      }
+
+      var isJson = parsed.ok;
+      var comma = idx < endpoints.length - 1 ? ',' : '';
+
+      lines.push('  http.' + method + '(\'' + path + '\', () => {');
+      if (isJson) {
+        lines.push('    return HttpResponse.json(');
+        lines.push('      ' + bodyStr + ',');
+        lines.push('      { status: ' + status + ' }');
+        lines.push('    )');
+      } else {
+        lines.push('    return new HttpResponse(' + JSON.stringify(ep.body) + ', {');
+        lines.push('      status: ' + status + ',');
+        lines.push("      headers: { 'Content-Type': 'text/plain' },");
+        lines.push('    })');
+      }
+      lines.push('  })' + comma);
+    });
+
+    lines.push(']');
+    return lines.join('\n');
+  }
+
+  // ── Generate button handler ───────────────────────────────────────────────────
+  function generate() {
+    var placeholder = document.getElementById('output-placeholder');
+    var block = document.getElementById('output-block');
+    var copyBtn = document.getElementById('copy-btn');
+
+    if (endpoints.length === 0) {
+      placeholder.textContent = 'Add at least one endpoint first.';
+      placeholder.classList.remove('hidden');
+      block.classList.add('hidden');
+      copyBtn.classList.add('hidden');
+      return;
+    }
+
+    var output = outputFormat === 'jsonserver' ? generateJsonServer() : generateMsw();
+
+    block.textContent = output;
+    block.classList.remove('hidden');
+    placeholder.classList.add('hidden');
+    copyBtn.classList.remove('hidden');
+  }
+
+  // ── Add endpoint handler ─────────────────────────────────────────────────────
+  function addEndpoint() {
+    var method = document.getElementById('ep-method').value;
+    var path = document.getElementById('ep-path').value.trim();
+    var status = parseInt(document.getElementById('ep-status').value, 10);
+    var body = document.getElementById('ep-body').value.trim();
+    var errEl = document.getElementById('add-ep-error');
+
+    errEl.classList.add('hidden');
+    errEl.textContent = '';
+
+    if (!path) {
+      errEl.textContent = 'Path is required (e.g. /users or /users/:id).';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    if (!path.startsWith('/')) {
+      errEl.textContent = 'Path must start with / (e.g. /users).';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    if (!body) {
+      errEl.textContent = 'Response body is required.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    var parsed = tryParseJson(body);
+    if (!parsed.ok) {
+      errEl.textContent = 'Response body is not valid JSON: ' + parsed.err;
+      errEl.classList.remove('hidden');
+      return;
+    }
+    if (isNaN(status) || status < 100 || status > 599) {
+      errEl.textContent = 'Status code must be between 100 and 599.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    endpoints.push({ method: method, path: path, status: status, body: body });
+    renderList();
+
+    // Reset path and body; keep method and status for quick repeated entry
+    document.getElementById('ep-path').value = '';
+    document.getElementById('ep-body').value = '';
+    document.getElementById('ep-path').focus();
+  }
+
+  // ── Copy handler ─────────────────────────────────────────────────────────────
+  function copyOutput() {
+    var block = document.getElementById('output-block');
+    var status = document.getElementById('copy-status');
+    if (!block.textContent) return;
+    navigator.clipboard.writeText(block.textContent).then(function() {
+      status.classList.remove('hidden');
+      setTimeout(function() { status.classList.add('hidden'); }, 2000);
+    }).catch(function() {
+      // Fallback for older browsers
+      var ta = document.createElement('textarea');
+      ta.value = block.textContent;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      status.classList.remove('hidden');
+      setTimeout(function() { status.classList.add('hidden'); }, 2000);
+    });
+  }
+
+  // ── Event listeners ───────────────────────────────────────────────────────────
+  document.getElementById('load-example-btn').addEventListener('click', function() {
+    endpoints = EXAMPLES.slice();
+    renderList();
+    document.getElementById('ep-path').value = '';
+    document.getElementById('ep-body').value = '';
+    document.getElementById('add-ep-error').classList.add('hidden');
+  });
+
+  document.getElementById('add-ep-btn').addEventListener('click', addEndpoint);
+
+  document.getElementById('ep-body').addEventListener('keydown', function(e) {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      var ta = e.target;
+      var start = ta.selectionStart;
+      var end = ta.selectionEnd;
+      ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(end);
+      ta.selectionStart = ta.selectionEnd = start + 2;
+    }
+  });
+
+  document.getElementById('clear-all-btn').addEventListener('click', function() {
+    endpoints = [];
+    renderList();
+  });
+
+  document.getElementById('fmt-jsonserver').addEventListener('click', function() { setFormat('jsonserver'); });
+  document.getElementById('fmt-msw').addEventListener('click', function() { setFormat('msw'); });
+
+  document.getElementById('generate-btn').addEventListener('click', generate);
+  document.getElementById('copy-btn').addEventListener('click', copyOutput);
+
+  // Allow pressing Enter in path field to focus body
+  document.getElementById('ep-path').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('ep-body').focus();
+    }
+  });
+
+  // ── Init ─────────────────────────────────────────────────────────────────────
+  renderList();
+</script>

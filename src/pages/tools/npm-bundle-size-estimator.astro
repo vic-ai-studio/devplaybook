@@ -1,0 +1,268 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is bundle size and why does it matter?",
+    answer: "Bundle size is the amount of JavaScript that gets shipped to the browser when a user loads your app. Larger bundles mean longer download times, slower parse/execute times, and worse Core Web Vitals scores. A package that is 200 KB minified might seem small, but on a 3G connection it adds noticeable load time. Keeping total JS under 170 KB gzipped is a good baseline for most apps."
+  },
+  {
+    question: "What is the difference between minified and gzip size?",
+    answer: "Minified size is the size after whitespace, comments, and long variable names are stripped. Gzip size is the minified bundle after gzip compression, which is what actually travels over the network when servers have compression enabled (most do). Gzip exploits repeated patterns in text, so it compresses JavaScript very well — typically 60–70% smaller than minified. Brotli compresses even further (10–20% smaller than gzip) and is supported by all modern browsers."
+  },
+  {
+    question: "What does tree-shaking mean, and how does it reduce bundle size?",
+    answer: "Tree-shaking is a dead-code elimination technique used by bundlers like Webpack, Rollup, and esbuild. When a package exports many functions but you only import a few, a tree-shaking-capable bundler removes the unused exports. A package with 'sideEffects: false' in its package.json is fully tree-shakable. Packages with side effects (like polyfills or CSS-in-JS) cannot be safely eliminated, so you always get the full bundle."
+  },
+  {
+    question: "What counts as a 'green', 'yellow', or 'red' bundle size?",
+    answer: "Under 10 KB gzipped is green — lightweight, no concern. 10–100 KB gzipped is yellow — evaluate whether you truly need it or if a smaller alternative exists. Over 100 KB gzipped is red — this is a heavy dependency. Examples: lodash-es is ~72 KB minified but tree-shakable; moment.js is ~232 KB minified with no tree-shaking; date-fns is ~78 KB but fully tree-shakable so real cost is just the functions you use."
+  },
+  {
+    question: "Can I check a specific version of a package?",
+    answer: "Yes. Enter the package name with a version using the @ syntax, for example: react@17.0.2 or lodash@4.17.15. If you omit the version, the latest published version is used. This is useful when your project pins an older version and you want to compare bundle sizes between versions before upgrading."
+  },
+  {
+    question: "Is my package list sent anywhere other than bundlephobia.com?",
+    answer: "The package names are sent only to the bundlephobia.com public API (https://bundlephobia.com/api/size) to fetch size data. No other server receives your input. Bundlephobia is a well-known open-source project maintained by Paskal Paknikar that provides accurate npm package size data."
+  },
+];
+---
+
+<BaseLayout
+  title="NPM Bundle Size Estimator — Check Package Bundle Sizes"
+  description="Enter npm package names and instantly check their minified and gzip sizes using the bundlephobia API. Compare multiple packages, see tree-shaking support, and estimate your total bundle weight."
+  tool="npm bundle size, package size checker, bundlephobia, tree shaking, gzip size, minified size, javascript bundle analyzer"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "NPM Bundle Size Estimator",
+    "url": "https://devplaybook.cc/tools/npm-bundle-size-estimator",
+    "description": "Check the minified and gzip bundle sizes of npm packages using the bundlephobia API. Supports multiple packages, version pins, and side-effects detection.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">NPM Bundle Size Estimator</h1>
+  <p class="text-text-muted mb-4">
+    Enter npm package names (one per line) to fetch their minified and gzip sizes from
+    <a href="https://bundlephobia.com" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">bundlephobia.com</a>.
+    Compare packages side-by-side and see total combined weight before you install.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Gzip &amp; minified sizes</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Tree-shaking info</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Side-by-side comparison</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Input -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium" for="packages-input">Package Names (one per line)</label>
+        <button id="load-example-btn" class="text-xs text-accent hover:underline">Load example</button>
+      </div>
+      <textarea
+        id="packages-input"
+        rows="12"
+        placeholder="react&#10;lodash&#10;axios&#10;date-fns&#10;moment&#10;react@17.0.2"
+        class="w-full px-4 py-3 rounded-xl bg-bg border border-border text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors font-mono text-sm resize-y"
+        spellcheck="false"
+      ></textarea>
+      <button
+        id="check-btn"
+        class="w-full py-3 px-6 rounded-xl bg-accent hover:bg-accent/80 text-white font-bold transition-colors duration-200"
+      >
+        Check Sizes
+      </button>
+      <p class="text-xs text-text-muted">
+        Tip: pin a version with <code class="font-mono bg-surface px-1 rounded">package@version</code>, e.g. <code class="font-mono bg-surface px-1 rounded">react@17.0.2</code>
+      </p>
+    </div>
+
+    <!-- Output -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium">Results</label>
+        <span id="total-badge" class="hidden text-xs font-semibold px-3 py-1 rounded-full border border-border text-text-muted"></span>
+      </div>
+      <div id="output-placeholder" class="flex-1 min-h-[340px] rounded-xl bg-bg border border-border flex items-center justify-center text-text-muted text-sm">
+        Results will appear here
+      </div>
+      <div id="output-container" class="hidden flex-col gap-2"></div>
+      <div id="total-row" class="hidden rounded-xl bg-surface border border-border px-4 py-3 flex items-center justify-between">
+        <span class="text-sm font-semibold text-text">Total (gzip)</span>
+        <span id="total-gzip" class="text-sm font-bold text-text"></span>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="NPM Bundle Size Estimator" relatedTags={['javascript', 'nodejs', 'performance', 'bundler', 'webpack', 'npm']} />
+</BaseLayout>
+
+<script is:inline>
+  const EXAMPLE = `react
+react-dom
+lodash
+axios
+date-fns
+moment`;
+
+  function formatBytes(bytes) {
+    if (bytes === null || bytes === undefined) return '—';
+    if (bytes < 1024) return bytes + ' B';
+    const kb = bytes / 1024;
+    return kb.toFixed(1) + ' KB';
+  }
+
+  function sizeColor(gzipBytes) {
+    if (gzipBytes === null || gzipBytes === undefined) return '';
+    const kb = gzipBytes / 1024;
+    if (kb < 10) return 'text-green-400';
+    if (kb <= 100) return 'text-yellow-400';
+    return 'text-red-400';
+  }
+
+  function sizeBg(gzipBytes) {
+    if (gzipBytes === null || gzipBytes === undefined) return 'border-border bg-surface/30';
+    const kb = gzipBytes / 1024;
+    if (kb < 10) return 'border-green-500/30 bg-green-500/5';
+    if (kb <= 100) return 'border-yellow-500/30 bg-yellow-500/5';
+    return 'border-red-500/30 bg-red-500/5';
+  }
+
+  function sizeLabel(gzipBytes) {
+    if (gzipBytes === null || gzipBytes === undefined) return '';
+    const kb = gzipBytes / 1024;
+    if (kb < 10) return '<span class="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">Lightweight</span>';
+    if (kb <= 100) return '<span class="text-xs px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Moderate</span>';
+    return '<span class="text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">Heavy</span>';
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function buildLoadingCard(name) {
+    return `<div class="rounded-xl border border-border bg-surface/30 px-4 py-3 flex items-center gap-3" id="card-${CSS.escape(name)}">
+      <div class="animate-pulse w-4 h-4 rounded-full bg-accent/40 shrink-0"></div>
+      <span class="text-sm font-mono text-text-muted">${escHtml(name)}</span>
+      <span class="text-xs text-text-muted ml-auto">Fetching…</span>
+    </div>`;
+  }
+
+  function buildResultCard(name, data) {
+    const bg = sizeBg(data.gzip);
+    const col = sizeColor(data.gzip);
+    const label = sizeLabel(data.gzip);
+    const sideEffectsTag = data.hasJsSideEffects
+      ? '<span class="text-xs px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20">Has side effects</span>'
+      : '<span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">Tree-shakable</span>';
+
+    return `<div class="rounded-xl border ${bg} px-4 py-3">
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <span class="text-sm font-mono font-semibold text-text">${escHtml(data.name)}@${escHtml(data.version)}</span>
+        ${label}
+        ${sideEffectsTag}
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <div class="text-xs text-text-muted mb-0.5">Minified</div>
+          <div class="text-base font-bold text-text">${formatBytes(data.size)}</div>
+        </div>
+        <div>
+          <div class="text-xs text-text-muted mb-0.5">Gzip</div>
+          <div class="text-base font-bold ${col}">${formatBytes(data.gzip)}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function buildErrorCard(name, message) {
+    return `<div class="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-sm font-mono font-semibold text-text">${escHtml(name)}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">Not found</span>
+      </div>
+      <div class="text-xs text-red-400">${escHtml(message)}</div>
+    </div>`;
+  }
+
+  document.getElementById('load-example-btn').addEventListener('click', () => {
+    document.getElementById('packages-input').value = EXAMPLE;
+  });
+
+  document.getElementById('check-btn').addEventListener('click', async () => {
+    const raw = document.getElementById('packages-input').value;
+    const names = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    if (names.length === 0) {
+      alert('Enter at least one package name.');
+      return;
+    }
+
+    const placeholder = document.getElementById('output-placeholder');
+    const container = document.getElementById('output-container');
+    const totalRow = document.getElementById('total-row');
+    const totalBadge = document.getElementById('total-badge');
+    const totalGzip = document.getElementById('total-gzip');
+
+    placeholder.classList.add('hidden');
+    totalRow.classList.add('hidden');
+    totalBadge.classList.add('hidden');
+
+    // Render loading cards
+    container.innerHTML = names.map(n => buildLoadingCard(n)).join('');
+    container.classList.remove('hidden');
+
+    const results = [];
+
+    await Promise.all(names.map(async (name) => {
+      const cardId = 'card-' + CSS.escape(name);
+      try {
+        const res = await fetch(`https://bundlephobia.com/api/size?package=${encodeURIComponent(name)}&record=true`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = (errData && errData.error && errData.error.message) || `HTTP ${res.status} — package not found or invalid name`;
+          const card = document.getElementById(cardId);
+          if (card) card.outerHTML = buildErrorCard(name, errMsg);
+          results.push({ name, error: true, gzip: 0 });
+          return;
+        }
+        const data = await res.json();
+        const card = document.getElementById(cardId);
+        if (card) card.outerHTML = buildResultCard(name, data);
+        results.push({ name, error: false, gzip: data.gzip || 0 });
+      } catch (e) {
+        const card = document.getElementById(cardId);
+        if (card) card.outerHTML = buildErrorCard(name, e.message || 'Network error');
+        results.push({ name, error: true, gzip: 0 });
+      }
+    }));
+
+    // Total gzip across successful results
+    const totalBytes = results.filter(r => !r.error).reduce((sum, r) => sum + r.gzip, 0);
+    const successCount = results.filter(r => !r.error).length;
+
+    if (successCount > 0) {
+      totalGzip.textContent = formatBytes(totalBytes);
+      totalRow.classList.remove('hidden');
+
+      const totalKb = totalBytes / 1024;
+      const badgeColor = totalKb < 50
+        ? 'border-green-500/40 text-green-400'
+        : totalKb <= 200
+        ? 'border-yellow-500/40 text-yellow-400'
+        : 'border-red-500/40 text-red-400';
+      totalBadge.className = `text-xs font-semibold px-3 py-1 rounded-full border ${badgeColor}`;
+      totalBadge.textContent = `${successCount} package${successCount !== 1 ? 's' : ''} · ${formatBytes(totalBytes)} gzip`;
+      totalBadge.classList.remove('hidden');
+    }
+  });
+</script>

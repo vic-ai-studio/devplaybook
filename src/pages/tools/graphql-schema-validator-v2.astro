@@ -1,0 +1,578 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What does GraphQL Schema Validator v2 check that a basic linter doesn't?",
+    answer: "This validator performs semantic checks beyond syntax: it verifies that every referenced type actually exists in the schema, that types implementing interfaces declare all required fields, that union members are valid object types, and that no unknown directives are used. It also generates an introspection preview listing every type with its field count — the same data a GraphQL server exposes via the __schema query."
+  },
+  {
+    question: "What is an interface implementation check?",
+    answer: "In GraphQL, if a type declares it implements an interface (e.g., type Dog implements Animal), it must define every field that the interface requires, with matching or compatible types. This validator parses all interface definitions, collects their required fields, then checks each implementing type to confirm those fields are present. Missing fields produce errors."
+  },
+  {
+    question: "What are valid union member types?",
+    answer: "A GraphQL union can only contain concrete object types — not scalars, not interfaces, not input types, not enums. For example, union SearchResult = User | Post | Article is valid. union SearchResult = String | User is not. This validator reads each union's member list and confirms every member resolves to a defined object type in the schema."
+  },
+  {
+    question: "What directives are allowed in standard GraphQL SDL?",
+    answer: "The GraphQL spec defines four built-in directives: @deprecated (marks fields, enum values, arguments as deprecated), @skip and @include (conditional execution in queries), and @specifiedBy (for custom scalars with a URL spec). Any directive not in this list — such as @auth, @cacheControl, or custom directives — will be flagged as unknown unless your schema explicitly defines them with a directive definition."
+  },
+  {
+    question: "What is an introspection preview?",
+    answer: "GraphQL servers expose a built-in __schema query that returns all types, fields, and directives in the schema. This tool simulates that output by parsing your SDL and listing every type by kind (type, interface, enum, input, union, scalar) along with its field count. It is useful for auditing how large your schema is and for verifying that all expected types parsed correctly."
+  },
+  {
+    question: "Does this tool send my schema to a server?",
+    answer: "No. All parsing and validation runs entirely in your browser using JavaScript. Your GraphQL schema — which may describe your data model, access control structure, and API surface — never leaves your machine. No network requests are made when you click Validate."
+  },
+];
+---
+
+<BaseLayout
+  title="GraphQL Schema Validator v2 — Type Check GraphQL SDL Online"
+  description="Validate GraphQL SDL with deep type checking: referenced types, interface implementations, union members, directive usage, and introspection preview. Runs 100% in your browser."
+  tool="GraphQL schema validator, GraphQL type checker, GraphQL SDL validator, GraphQL interface check, GraphQL union validation, GraphQL introspection preview"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "GraphQL Schema Validator v2",
+    "url": "https://devplaybook.cc/tools/graphql-schema-validator-v2",
+    "description": "Validate GraphQL SDL schemas with type checking, interface implementation checks, union member validation, and introspection preview. Runs in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">GraphQL Schema Validator v2</h1>
+  <p class="text-text-muted mb-4">
+    Deep-validate your GraphQL SDL: type references, interface implementations, union members,
+    directive usage, and an introspection preview showing all types with field counts.
+    Nothing is sent to any server — runs entirely in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Type validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Interface checks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Introspection preview</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Input -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium" for="schema-input">GraphQL SDL Schema</label>
+        <button id="load-example-btn" class="text-xs text-accent hover:underline">Load example</button>
+      </div>
+      <textarea
+        id="schema-input"
+        rows="24"
+        placeholder="Paste your GraphQL SDL schema here...&#10;&#10;type Query {&#10;  user(id: ID!): User&#10;}&#10;&#10;type User {&#10;  id: ID!&#10;  name: String!&#10;}"
+        class="w-full px-4 py-3 rounded-xl bg-bg border border-border text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors font-mono text-xs resize-y"
+        spellcheck="false"
+      ></textarea>
+      <button
+        id="validate-btn"
+        class="w-full py-3 px-6 rounded-xl bg-accent hover:bg-accent/80 text-white font-bold transition-colors duration-200"
+      >
+        Validate Schema
+      </button>
+    </div>
+
+    <!-- Output -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium">Validation Results</label>
+        <span id="score-badge" class="hidden text-xs font-semibold px-3 py-1 rounded-full border"></span>
+      </div>
+      <div id="output-placeholder" class="flex-1 min-h-[520px] rounded-xl bg-bg border border-border flex items-center justify-center text-text-muted text-sm">
+        Validation results will appear here
+      </div>
+      <div id="output-container" class="hidden flex-1 min-h-[520px] rounded-xl bg-bg border border-border overflow-y-auto p-4 space-y-2"></div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="GraphQL Schema Validator v2" relatedTags={['graphql', 'api', 'backend', 'schema', 'typescript']} />
+</BaseLayout>
+
+<script is:inline>
+  // ── Example SDL with intentional errors ─────────────────────────────────────
+  const EXAMPLE = `interface Node {
+  id: ID!
+  createdAt: String!
+}
+
+interface Searchable {
+  searchKeywords: [String!]!
+}
+
+type Query {
+  user(id: ID!): User
+  post(id: ID!): Post
+  search(term: String!): SearchResult
+  products: [Product]
+}
+
+type Mutation {
+  createUser(input: CreateUserInput!): User!
+  deletePost(id: ID!): Boolean
+}
+
+"""
+Represents a registered user account.
+"""
+type User implements Node {
+  id: ID!
+  createdAt: String!
+  name: String!
+  email: String!
+  role: UserRole!
+  posts: [Post!]!
+  avatar: AvatarMedia
+}
+
+# ERROR: Post implements Node but missing createdAt field
+type Post implements Node & Searchable {
+  id: ID!
+  title: String!
+  body: String!
+  author: User!
+  status: PostStatus!
+  tags: [String!]!
+  searchKeywords: [String!]!
+}
+
+# ERROR: references NonExistentType
+type Product implements Node {
+  id: ID!
+  createdAt: String!
+  name: String!
+  category: NonExistentType
+  price: Float!
+}
+
+input CreateUserInput {
+  name: String!
+  email: String!
+  password: String!
+  role: UserRole
+}
+
+enum UserRole {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum PostStatus {
+  PUBLISHED
+  DRAFT
+  ARCHIVED
+}
+
+# ERROR: union member AvatarMedia does not exist
+union SearchResult = User | Post | Product
+union MediaAsset = User | AvatarMedia
+
+scalar DateTime
+scalar JSON
+
+# ERROR: unknown directive @auth used on a field
+type SecretType {
+  secret: String @auth(requires: ADMIN)
+  public: String
+}
+`;
+
+  // ── Tokenizer / Parser ───────────────────────────────────────────────────────
+  function parseSchema(sdl) {
+    const types = [];
+    const directives = [];
+    const lines = sdl.split('\n');
+    let i = 0;
+
+    while (i < lines.length) {
+      const raw = lines[i];
+      const line = raw.trim();
+
+      if (!line || line.startsWith('#')) { i++; continue; }
+
+      // Skip triple-quote description blocks
+      if (line.startsWith('"""')) {
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith('"""')) i++;
+        i++;
+        continue;
+      }
+      // Skip single-line descriptions
+      if (line.startsWith('"') && !line.startsWith('"""')) { i++; continue; }
+
+      // directive definition
+      const directiveMatch = line.match(/^directive\s+@(\w+)/);
+      if (directiveMatch) {
+        directives.push(directiveMatch[1]);
+        // consume until end of directive block (may span lines with |)
+        while (i < lines.length && !lines[i].includes(')') && !lines[i].match(/on\s+[A-Z_|]+\s*$/)) i++;
+        i++;
+        continue;
+      }
+
+      // union type (no brace, uses = syntax)
+      const unionMatch = line.match(/^union\s+(\w+)\s*=\s*(.+)$/);
+      if (unionMatch) {
+        const name = unionMatch[1];
+        const members = unionMatch[2].split('|').map(m => m.trim()).filter(Boolean);
+        types.push({ kind: 'union', name, members, fields: [], interfaces: [] });
+        i++;
+        continue;
+      }
+
+      // scalar
+      const scalarMatch = line.match(/^scalar\s+(\w+)/);
+      if (scalarMatch) {
+        types.push({ kind: 'scalar', name: scalarMatch[1], fields: [], interfaces: [], members: [] });
+        i++;
+        continue;
+      }
+
+      // type / input / enum / interface
+      const typeMatch = line.match(/^(type|input|enum|interface)\s+(\w+)(\s+implements\s+([^{@]+))?(\s*@\w+[^{]*)?\s*\{/);
+      if (typeMatch) {
+        const kind = typeMatch[1];
+        const name = typeMatch[2];
+        const implRaw = typeMatch[4] || '';
+        const interfaces = implRaw.split('&').map(s => s.trim()).filter(Boolean);
+        const fields = [];
+
+        i++;
+        while (i < lines.length) {
+          const fraw = lines[i];
+          const fline = fraw.trim();
+          if (fline === '}') { i++; break; }
+          if (!fline || fline.startsWith('#') || fline.startsWith('"""') || fline.startsWith('"')) { i++; continue; }
+
+          if (kind === 'enum') {
+            const evMatch = fline.match(/^(\w+)(\s+@\w+.*)?$/);
+            if (evMatch) {
+              fields.push({
+                name: evMatch[1],
+                type: null,
+                directives: evMatch[2] ? extractDirectives(evMatch[2]) : []
+              });
+            }
+          } else {
+            // field: name(args): Type @directives
+            const fieldMatch = fline.match(/^(\w+)(\([^)]*\))?\s*:\s*([\[!\]\w]+)(.*)$/);
+            if (fieldMatch) {
+              const fieldType = fieldMatch[3];
+              const rest = fieldMatch[4] || '';
+              const baseType = fieldType.replace(/[!\[\]]/g, '');
+              fields.push({
+                name: fieldMatch[1],
+                type: fieldType,
+                baseType,
+                directives: extractDirectives(rest)
+              });
+            }
+          }
+          i++;
+        }
+        types.push({ kind, name, fields, interfaces, members: [] });
+        continue;
+      }
+
+      i++;
+    }
+
+    return { types, definedDirectives: directives };
+  }
+
+  function extractDirectives(str) {
+    const directives = [];
+    const re = /@(\w+)/g;
+    let m;
+    while ((m = re.exec(str)) !== null) directives.push(m[1]);
+    return directives;
+  }
+
+  // ── Validator ────────────────────────────────────────────────────────────────
+  const BUILTIN_TYPES = new Set([
+    'String', 'Int', 'Float', 'Boolean', 'ID',
+    '__Schema', '__Type', '__Field', '__InputValue', '__EnumValue', '__Directive', '__DirectiveLocation'
+  ]);
+  const ALLOWED_DIRECTIVES = new Set(['deprecated', 'skip', 'include', 'specifiedBy']);
+
+  function validateSchema(parsed) {
+    const { types, definedDirectives } = parsed;
+    const issues = [];
+
+    function err(ctx, msg, fix) { issues.push({ level: 'error', ctx, msg, fix: fix || null }); }
+    function warn(ctx, msg, fix) { issues.push({ level: 'warn', ctx, msg, fix: fix || null }); }
+    function info(ctx, msg) { issues.push({ level: 'info', ctx, msg, fix: null }); }
+
+    const typeMap = new Map();
+    types.forEach(t => typeMap.set(t.name, t));
+    const allAllowedDirectives = new Set([...ALLOWED_DIRECTIVES, ...definedDirectives]);
+
+    // ── 1. Basic schema checks ─────────────────────────────────────────────────
+    const hasQuery = typeMap.has('Query');
+    if (!hasQuery) warn('Schema', 'No root Query type defined', 'Add "type Query { }" as the API entry point');
+
+    // ── 2. Type reference checks ───────────────────────────────────────────────
+    types.forEach(type => {
+      const ctx = `${type.kind} ${type.name}`;
+
+      if (type.kind === 'union') {
+        type.members.forEach(member => {
+          if (!BUILTIN_TYPES.has(member) && !typeMap.has(member)) {
+            err(ctx, `Union member "${member}" is not defined in the schema`, `Define "type ${member} { ... }" or remove it from the union`);
+          } else if (typeMap.has(member)) {
+            const memberDef = typeMap.get(member);
+            if (memberDef.kind !== 'type') {
+              err(ctx, `Union member "${member}" must be an object type (kind: ${memberDef.kind})`, 'Only concrete object types (type keyword) can be union members');
+            }
+          }
+        });
+        return;
+      }
+
+      if (type.kind === 'scalar') return;
+
+      type.fields.forEach(field => {
+        if (!field.type) return; // enum value
+        const fctx = `${ctx}.${field.name}`;
+
+        // Check base type exists
+        if (!BUILTIN_TYPES.has(field.baseType) && !typeMap.has(field.baseType)) {
+          err(fctx, `Field type "${field.baseType}" is not defined in the schema`, `Define "type ${field.baseType} { ... }" or check for typos`);
+        }
+
+        // Check directives
+        field.directives.forEach(d => {
+          if (!allAllowedDirectives.has(d)) {
+            err(fctx, `Unknown directive "@${d}" — not a built-in and not declared in schema`,
+              `Add "directive @${d}(...) on FIELD_DEFINITION" to declare it, or remove it`);
+          }
+        });
+      });
+
+      // Enum value directive checks
+      if (type.kind === 'enum') {
+        type.fields.forEach(ev => {
+          (ev.directives || []).forEach(d => {
+            if (!allAllowedDirectives.has(d)) {
+              err(`${ctx}.${ev.name}`, `Unknown directive "@${d}" on enum value`,
+                `Add a directive definition or use only @deprecated`);
+            }
+          });
+        });
+      }
+    });
+
+    // ── 3. Interface implementation checks ────────────────────────────────────
+    const interfaceTypes = types.filter(t => t.kind === 'interface');
+    const interfaceMap = new Map(interfaceTypes.map(i => [i.name, i]));
+
+    types.filter(t => t.kind === 'type' && t.interfaces.length > 0).forEach(type => {
+      const ctx = `type ${type.name}`;
+      const typeFieldNames = new Set(type.fields.map(f => f.name));
+
+      type.interfaces.forEach(ifaceName => {
+        if (!interfaceMap.has(ifaceName)) {
+          if (!BUILTIN_TYPES.has(ifaceName)) {
+            err(ctx, `Implements unknown interface "${ifaceName}"`, `Define "interface ${ifaceName} { ... }" or remove it from implements`);
+          }
+          return;
+        }
+        const iface = interfaceMap.get(ifaceName);
+        iface.fields.forEach(ifField => {
+          if (!typeFieldNames.has(ifField.name)) {
+            err(ctx, `Missing required field "${ifField.name}" from interface "${ifaceName}"`,
+              `Add "${ifField.name}: ${ifField.type || 'Type'}" to type ${type.name}`);
+          }
+        });
+      });
+    });
+
+    // ── 4. Input type circular reference check (simple direct cycle) ──────────
+    const inputTypes = types.filter(t => t.kind === 'input');
+    inputTypes.forEach(input => {
+      const ctx = `input ${input.name}`;
+      input.fields.forEach(field => {
+        if (field.baseType === input.name) {
+          err(ctx, `Field "${field.name}" creates a direct circular reference back to "${input.name}"`,
+            'Input types cannot reference themselves directly; use a non-null wrapper carefully or restructure');
+        }
+      });
+    });
+
+    // ── 5. Query/Mutation/Subscription field return type checks ───────────────
+    ['Query', 'Mutation', 'Subscription'].forEach(rootName => {
+      const root = typeMap.get(rootName);
+      if (!root) return;
+      root.fields.forEach(field => {
+        if (!field.baseType) return;
+        const fctx = `${rootName}.${field.name}`;
+        if (!BUILTIN_TYPES.has(field.baseType) && !typeMap.has(field.baseType)) {
+          err(fctx, `Return type "${field.baseType}" is not defined`, `Define the type or correct the spelling`);
+        }
+      });
+    });
+
+    if (issues.length === 0) info('Schema', 'All checks passed. Schema is valid!');
+    return issues;
+  }
+
+  // ── Introspection Preview ────────────────────────────────────────────────────
+  function buildIntrospection(types) {
+    const kindOrder = ['type', 'interface', 'input', 'enum', 'union', 'scalar'];
+    const grouped = {};
+    kindOrder.forEach(k => grouped[k] = []);
+
+    types.forEach(t => {
+      if (grouped[t.kind]) {
+        grouped[t.kind].push(t);
+      }
+    });
+
+    const rows = [];
+    kindOrder.forEach(kind => {
+      grouped[kind].forEach(t => {
+        const fieldCount = t.fields ? t.fields.length : (t.members ? t.members.length : 0);
+        const extra = kind === 'union' ? `members: ${t.members.length}` : `fields: ${fieldCount}`;
+        rows.push({ kind, name: t.name, extra });
+      });
+    });
+    return rows;
+  }
+
+  // ── UI ───────────────────────────────────────────────────────────────────────
+  document.getElementById('load-example-btn').addEventListener('click', () => {
+    document.getElementById('schema-input').value = EXAMPLE;
+  });
+
+  document.getElementById('validate-btn').addEventListener('click', () => {
+    const input = document.getElementById('schema-input').value.trim();
+    const placeholder = document.getElementById('output-placeholder');
+    const container = document.getElementById('output-container');
+    const scoreBadge = document.getElementById('score-badge');
+
+    if (!input) {
+      alert('Paste a GraphQL SDL schema first.');
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = parseSchema(input);
+    } catch (e) {
+      placeholder.innerHTML = `<span class="text-red-400 text-sm">Parse error: ${escHtml(e.message)}</span>`;
+      placeholder.classList.remove('hidden');
+      container.classList.add('hidden');
+      scoreBadge.classList.add('hidden');
+      return;
+    }
+
+    const { types } = parsed;
+
+    if (!types.length) {
+      placeholder.innerHTML = `<span class="text-red-400 text-sm">No type definitions found. Is this valid GraphQL SDL?</span>`;
+      placeholder.classList.remove('hidden');
+      container.classList.add('hidden');
+      scoreBadge.classList.add('hidden');
+      return;
+    }
+
+    const issues = validateSchema(parsed);
+    const errors = issues.filter(i => i.level === 'error').length;
+    const warns = issues.filter(i => i.level === 'warn').length;
+
+    const score = Math.max(0, 100 - errors * 15 - warns * 5);
+    const scoreColor = score >= 90
+      ? 'border-green-500/40 text-green-400'
+      : score >= 70
+        ? 'border-yellow-500/40 text-yellow-400'
+        : 'border-red-500/40 text-red-400';
+    scoreBadge.className = `text-xs font-semibold px-3 py-1 rounded-full border ${scoreColor}`;
+    scoreBadge.textContent = `Health: ${score}/100`;
+    scoreBadge.classList.remove('hidden');
+
+    // Summary card
+    let html = `<div class="rounded-xl border border-border bg-surface/30 p-3 mb-3 flex flex-wrap gap-4">
+      <div class="text-center"><div class="text-xl font-bold text-text">${types.length}</div><div class="text-xs text-text-muted">types found</div></div>
+      <div class="text-center"><div class="text-xl font-bold ${errors ? 'text-red-400' : 'text-green-400'}">${errors}</div><div class="text-xs text-text-muted">errors</div></div>
+      <div class="text-center"><div class="text-xl font-bold ${warns ? 'text-yellow-400' : 'text-green-400'}">${warns}</div><div class="text-xs text-text-muted">warnings</div></div>
+    </div>`;
+
+    const colors = {
+      error: 'border-red-500/40 bg-red-500/5',
+      warn: 'border-yellow-500/40 bg-yellow-500/5',
+      info: 'border-green-500/40 bg-green-500/5'
+    };
+    const icons = { error: '✗', warn: '⚠', info: '✓' };
+    const textColors = { error: 'text-red-400', warn: 'text-yellow-400', info: 'text-green-400' };
+
+    // Validation issues
+    html += `<div class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1 mt-1">Validation Issues</div>`;
+    issues.forEach(issue => {
+      html += `<div class="rounded-lg border ${colors[issue.level]} px-3 py-2">
+        <div class="flex items-start gap-2">
+          <span class="font-bold ${textColors[issue.level]} text-sm mt-0.5 shrink-0">${icons[issue.level]}</span>
+          <div class="min-w-0">
+            <div class="text-xs font-mono text-text-muted mb-0.5">${escHtml(issue.ctx)}</div>
+            <div class="text-sm text-text">${escHtml(issue.msg)}</div>
+            ${issue.fix ? `<div class="text-xs text-text-muted mt-1">Fix: ${escHtml(issue.fix)}</div>` : ''}
+          </div>
+        </div>
+      </div>`;
+    });
+
+    // Introspection preview
+    const introRows = buildIntrospection(types);
+    html += `<div class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1 mt-4">Introspection Preview</div>`;
+    html += `<div class="rounded-xl border border-border bg-bg overflow-hidden">`;
+    html += `<table class="w-full text-xs">
+      <thead><tr class="border-b border-border">
+        <th class="text-left px-3 py-2 text-text-muted font-medium">Kind</th>
+        <th class="text-left px-3 py-2 text-text-muted font-medium">Name</th>
+        <th class="text-right px-3 py-2 text-text-muted font-medium">Fields / Members</th>
+      </tr></thead>
+      <tbody>`;
+
+    const kindColors = {
+      type: 'text-blue-400',
+      interface: 'text-purple-400',
+      input: 'text-orange-400',
+      enum: 'text-yellow-400',
+      union: 'text-pink-400',
+      scalar: 'text-green-400'
+    };
+
+    introRows.forEach((row, idx) => {
+      const bg = idx % 2 === 0 ? '' : 'bg-surface/20';
+      const kc = kindColors[row.kind] || 'text-text-muted';
+      html += `<tr class="${bg}">
+        <td class="px-3 py-1.5 font-mono ${kc}">${escHtml(row.kind)}</td>
+        <td class="px-3 py-1.5 font-mono text-text">${escHtml(row.name)}</td>
+        <td class="px-3 py-1.5 text-right text-text-muted">${escHtml(row.extra)}</td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+
+    container.innerHTML = html;
+    placeholder.classList.add('hidden');
+    container.classList.remove('hidden');
+  });
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+</script>
