@@ -1,0 +1,167 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a Sentry DSN?", answer: "A DSN (Data Source Name) is the URL Sentry uses to route events to the correct project. It contains your protocol, public key, Sentry host, and project ID. Every SDK init call requires a valid DSN — if it's malformed, events are silently dropped." },
+  { question: "What is the Sentry DSN format?", answer: "DSN format: {protocol}://{publicKey}@{host}/{projectId}. Example: https://abc123@o1234.ingest.sentry.io/5678. The public key is a hex string, the host includes your org slug on ingest.sentry.io, and the project ID is numeric." },
+  { question: "Can I use a DSN in client-side JavaScript?", answer: "Yes — the DSN is intentionally public. It only accepts incoming events (write-only). It cannot be used to read your event data or access your Sentry account. Never confuse the DSN with your Sentry API auth token, which is secret." },
+  { question: "What is the difference between ingest.sentry.io and o1234.ingest.sentry.io?", answer: "The o{orgId}.ingest.sentry.io format is Sentry's current recommended ingest URL for cloud-hosted Sentry. Older DSNs may use sentry.io directly. Self-hosted Sentry uses your own domain. All formats are valid as long as the SDK can reach the host." },
+];
+---
+
+<BaseLayout
+  title="Sentry DSN Validator & Parser — Validate Sentry Configuration"
+  description="Parse and validate your Sentry DSN URL. Extract public key, host, organization slug, and project ID. Get configuration examples for JavaScript, Python, and Node.js. Free, runs in browser."
+  tool="Sentry DSN validator, Sentry DSN parser, Sentry configuration, Sentry setup, Sentry SDK"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Sentry DSN Validator & Parser</h1>
+  <p class="text-text-muted mb-6">Paste your Sentry DSN to validate the format, extract components, and get SDK configuration examples for JavaScript, Node.js, Python, and more.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Format validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Component breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SDK config examples</span>
+  </div>
+
+  <div class="mb-6">
+    <label class="block text-sm font-medium mb-2">Paste your Sentry DSN</label>
+    <input
+      id="dsn-input"
+      type="text"
+      placeholder="https://abc123def456@o1234567.ingest.sentry.io/9876543"
+      class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary"
+    />
+    <div class="flex gap-2 mt-2">
+      <button id="load-example" class="text-xs text-primary hover:underline">Load example DSN</button>
+      <button id="clear-btn" class="text-xs text-text-muted hover:text-primary transition-colors">Clear</button>
+    </div>
+  </div>
+
+  <div id="result-area" class="space-y-4 mb-8"></div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Sentry DSN Validator" relatedTags={['sentry', 'monitoring', 'error-tracking', 'observability', 'developer-tools']} />
+</BaseLayout>
+
+<script>
+  const EXAMPLE_DSN = 'https://a1b2c3d4e5f6789012345678abcdef12@o1234567.ingest.sentry.io/9876543';
+
+  const inputEl = document.getElementById('dsn-input') as HTMLInputElement;
+  const resultArea = document.getElementById('result-area')!;
+
+  function parseDSN(dsn: string) {
+    try {
+      const url = new URL(dsn.trim());
+      const protocol = url.protocol.replace(':', '');
+      const publicKey = url.username;
+      const host = url.hostname;
+      const projectId = url.pathname.replace(/^\//, '');
+
+      if (!publicKey) throw new Error('Missing public key in DSN username field');
+      if (!projectId || !/^\d+$/.test(projectId)) throw new Error('Project ID must be numeric');
+      if (!['http', 'https'].includes(protocol)) throw new Error('Protocol must be http or https');
+
+      const orgMatch = host.match(/^o(\d+)\./);
+      const orgId = orgMatch ? orgMatch[1] : null;
+
+      return { valid: true, protocol, publicKey, host, projectId, orgId, raw: dsn.trim() };
+    } catch (e: any) {
+      return { valid: false, error: e.message };
+    }
+  }
+
+  function renderSDKConfig(dsn: string) {
+    return `// JavaScript / TypeScript
+import * as Sentry from "@sentry/browser";
+Sentry.init({ dsn: "${dsn}", tracesSampleRate: 1.0 });
+
+// Node.js
+import * as Sentry from "@sentry/node";
+Sentry.init({ dsn: "${dsn}", tracesSampleRate: 1.0 });
+
+// Python
+import sentry_sdk
+sentry_sdk.init(dsn="${dsn}", traces_sample_rate=1.0)
+
+// React (with routing)
+import * as Sentry from "@sentry/react";
+Sentry.init({
+  dsn: "${dsn}",
+  integrations: [Sentry.browserTracingIntegration()],
+  tracesSampleRate: 1.0,
+});`;
+  }
+
+  function update() {
+    const val = inputEl.value.trim();
+    if (!val) {
+      resultArea.innerHTML = '';
+      return;
+    }
+
+    const parsed = parseDSN(val);
+
+    if (!parsed.valid) {
+      resultArea.innerHTML = `
+        <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-start gap-3">
+          <span class="text-red-400 text-lg">✗</span>
+          <div>
+            <p class="font-medium text-red-400">Invalid DSN</p>
+            <p class="text-sm text-text-muted mt-1">${parsed.error}</p>
+          </div>
+        </div>`;
+      return;
+    }
+
+    const fields = [
+      { label: 'Status', value: '<span class="text-green-400 font-medium">✓ Valid DSN</span>' },
+      { label: 'Protocol', value: parsed.protocol },
+      { label: 'Public Key', value: `<code class="font-mono text-primary">${parsed.publicKey}</code>` },
+      { label: 'Ingest Host', value: `<code class="font-mono">${parsed.host}</code>` },
+      { label: 'Project ID', value: `<code class="font-mono text-primary">${parsed.projectId}</code>` },
+      { label: 'Org ID', value: parsed.orgId ? `<code class="font-mono">${parsed.orgId}</code>` : '<span class="text-text-muted">—</span>' },
+    ];
+
+    const configCode = renderSDKConfig(parsed.raw!);
+
+    resultArea.innerHTML = `
+      <div class="bg-bg-card border border-green-500/30 rounded-xl p-4">
+        <p class="text-sm font-medium text-green-400 mb-3">✓ Valid Sentry DSN</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          ${fields.map(f => `
+            <div>
+              <p class="text-xs text-text-muted uppercase tracking-wide mb-0.5">${f.label}</p>
+              <p class="text-sm">${f.value}</p>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-medium">SDK Configuration Examples</p>
+          <button id="copy-config" class="text-xs px-2 py-1 border border-border rounded hover:border-primary hover:text-primary transition-colors">Copy</button>
+        </div>
+        <pre id="sdk-config" class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-auto whitespace-pre text-text">${configCode.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+      </div>`;
+
+    document.getElementById('copy-config')?.addEventListener('click', () => {
+      navigator.clipboard.writeText(configCode);
+      const btn = document.getElementById('copy-config')!;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    });
+  }
+
+  inputEl.addEventListener('input', update);
+  document.getElementById('load-example')!.addEventListener('click', () => {
+    inputEl.value = EXAMPLE_DSN;
+    update();
+  });
+  document.getElementById('clear-btn')!.addEventListener('click', () => {
+    inputEl.value = '';
+    update();
+  });
+</script>

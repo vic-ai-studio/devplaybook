@@ -1,0 +1,169 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are Datadog tags?", answer: "Datadog tags are key:value pairs that add metadata to metrics, logs, traces, and events. They enable filtering, grouping, and aggregating data across your infrastructure. Example: env:production, service:api, version:2.1.0." },
+  { question: "What are the naming rules for Datadog tags?", answer: "Tag keys: must start with a letter, can contain letters, numbers, underscores, hyphens, slashes, and periods. Max 200 characters. Tag values: similar rules but can start with any character. Both key and value are normalized to lowercase. Avoid spaces — use underscores instead." },
+  { question: "What is the difference between host tags and metric tags?", answer: "Host tags apply to a host across all metrics and are set in the Agent config or cloud integration. Metric tags are added per metric/log/trace in your code or pipelines. Both use the same key:value format." },
+  { question: "How many tags can I add to a metric?", answer: "Datadog recommends keeping tag cardinality low. High-cardinality tags (like user IDs or request IDs) with millions of unique values can cause index explosion and significantly increase your bill. Use lower-cardinality tags like env, service, version, region." },
+];
+---
+
+<BaseLayout
+  title="Datadog Tag Formatter — Validate and Format key:value Tags"
+  description="Format and validate Datadog tags. Convert key:value pairs to Datadog tag format, validate naming rules, detect high-cardinality issues, and copy formatted output for metrics, logs, and traces."
+  tool="Datadog tag formatter, Datadog tags, Datadog key:value, Datadog metrics tags, Datadog configuration"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Datadog Tag Formatter</h1>
+  <p class="text-text-muted mb-6">Enter <code class="text-primary">key:value</code> tag pairs, validate naming rules, and copy formatted output for Datadog metrics, logs, traces, and Agent config.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Naming validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cardinality warnings</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multiple output formats</span>
+  </div>
+
+  <div class="mb-6">
+    <div class="flex items-center justify-between mb-2">
+      <label class="text-sm font-medium">Tags (one per line, key:value)</label>
+      <button id="load-example" class="text-xs text-primary hover:underline">Load example</button>
+    </div>
+    <textarea
+      id="tags-input"
+      rows="8"
+      placeholder="env:production&#10;service:api&#10;version:2.1.0&#10;region:us-east-1&#10;team:backend"
+      class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+    ></textarea>
+  </div>
+
+  <div id="validation-area" class="space-y-3 mb-6"></div>
+
+  <div id="output-area" class="space-y-4 mb-8"></div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Datadog Tag Formatter" relatedTags={['datadog', 'monitoring', 'observability', 'metrics', 'developer-tools']} />
+</BaseLayout>
+
+<script>
+  const EXAMPLE = `env:production
+service:payment-api
+version:2.1.0
+region:us-east-1
+team:backend
+datacenter:aws-us-east-1
+host:web-01`;
+
+  const HIGH_CARDINALITY_KEYS = ['user_id', 'request_id', 'session_id', 'trace_id', 'transaction_id', 'uuid', 'id'];
+
+  function validateTag(tag: string): { key: string; value: string; errors: string[]; warnings: string[]; normalized: string } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    const colonIdx = tag.indexOf(':');
+
+    if (colonIdx === -1) {
+      return { key: tag, value: '', errors: ['Missing colon — format must be key:value'], warnings: [], normalized: '' };
+    }
+
+    const key = tag.slice(0, colonIdx).trim();
+    const value = tag.slice(colonIdx + 1).trim();
+
+    if (!key) errors.push('Key is empty');
+    else if (!/^[a-zA-Z]/.test(key)) errors.push('Key must start with a letter');
+    else if (!/^[a-zA-Z0-9._\-/]+$/.test(key)) errors.push('Key contains invalid characters (allowed: letters, digits, _ - . /)');
+    if (key.length > 200) errors.push('Key exceeds 200 character limit');
+    if (!value) errors.push('Value is empty');
+    if (value.includes(' ')) warnings.push('Value contains spaces — consider using underscores');
+    if (HIGH_CARDINALITY_KEYS.some(k => key.toLowerCase().includes(k))) {
+      warnings.push(`High-cardinality key detected — "${key}" may cause index explosion`);
+    }
+    if (value.length > 200) warnings.push('Value is long — keep under 200 chars for performance');
+
+    const normalized = `${key.toLowerCase()}:${value.toLowerCase().replace(/\s+/g, '_')}`;
+    return { key, value, errors, warnings, normalized };
+  }
+
+  function update() {
+    const raw = (document.getElementById('tags-input') as HTMLTextAreaElement).value;
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+
+    const validationArea = document.getElementById('validation-area')!;
+    const outputArea = document.getElementById('output-area')!;
+
+    if (!lines.length) {
+      validationArea.innerHTML = '';
+      outputArea.innerHTML = '';
+      return;
+    }
+
+    const results = lines.map(l => ({ raw: l, ...validateTag(l) }));
+    const validTags = results.filter(r => r.errors.length === 0);
+    const errorCount = results.filter(r => r.errors.length > 0).length;
+
+    validationArea.innerHTML = results.map(r => {
+      const statusIcon = r.errors.length ? '<span class="text-red-400">✗</span>' : '<span class="text-green-400">✓</span>';
+      const issues = [...r.errors.map(e => `<span class="text-red-400">⚠ ${e}</span>`), ...r.warnings.map(w => `<span class="text-yellow-400">⚡ ${w}</span>`)];
+      return `
+        <div class="flex items-start gap-2 text-sm py-2 border-b border-border last:border-0">
+          <span class="mt-0.5">${statusIcon}</span>
+          <div class="flex-1 min-w-0">
+            <code class="font-mono text-primary text-xs">${r.raw}</code>
+            ${issues.length ? `<div class="mt-1 space-y-0.5 text-xs">${issues.join('')}</div>` : ''}
+          </div>
+          ${r.normalized ? `<code class="text-xs font-mono text-text-muted shrink-0">${r.normalized}</code>` : ''}
+        </div>`;
+    }).join('');
+
+    if (!validTags.length) {
+      outputArea.innerHTML = '';
+      return;
+    }
+
+    const tagsList = validTags.map(t => t.normalized).join('\n');
+    const tagsArray = JSON.stringify(validTags.map(t => t.normalized));
+    const agentConfig = `tags:\n${validTags.map(t => `  - ${t.normalized}`).join('\n')}`;
+    const pythonCode = `from datadog import initialize, api
+options = {'api_key': 'YOUR_API_KEY'}
+initialize(**options)
+tags = ${JSON.stringify(validTags.map(t => t.normalized), null, 2)}
+api.Metric.send(metric='my.metric', points=1, tags=tags)`;
+
+    outputArea.innerHTML = `
+      <div class="flex items-center gap-4 text-sm mb-2">
+        <span class="text-green-400 font-medium">${validTags.length} valid tag${validTags.length > 1 ? 's' : ''}</span>
+        ${errorCount ? `<span class="text-red-400">${errorCount} error${errorCount > 1 ? 's' : ''}</span>` : ''}
+      </div>
+      ${[
+        { label: 'Formatted tags (one per line)', id: 'fmt-list', code: tagsList },
+        { label: 'JSON array', id: 'fmt-json', code: tagsArray },
+        { label: 'Agent config (datadog.yaml)', id: 'fmt-agent', code: agentConfig },
+        { label: 'Python SDK', id: 'fmt-python', code: pythonCode },
+      ].map(f => `
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <p class="text-sm font-medium">${f.label}</p>
+            <button class="copy-out text-xs px-2 py-1 border border-border rounded hover:border-primary hover:text-primary transition-colors" data-id="${f.id}">Copy</button>
+          </div>
+          <pre id="${f.id}" class="bg-bg-card border border-border rounded-lg p-3 text-xs font-mono overflow-auto whitespace-pre text-text">${f.code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        </div>
+      `).join('')}`;
+
+    document.querySelectorAll('.copy-out').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = (e.target as HTMLElement).getAttribute('data-id')!;
+        const text = document.getElementById(id)!.textContent || '';
+        navigator.clipboard.writeText(text);
+        (e.target as HTMLButtonElement).textContent = 'Copied!';
+        setTimeout(() => { (e.target as HTMLButtonElement).textContent = 'Copy'; }, 1500);
+      });
+    });
+  }
+
+  (document.getElementById('tags-input') as HTMLTextAreaElement).addEventListener('input', update);
+  document.getElementById('load-example')!.addEventListener('click', () => {
+    (document.getElementById('tags-input') as HTMLTextAreaElement).value = EXAMPLE;
+    update();
+  });
+</script>
