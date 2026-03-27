@@ -19,10 +19,10 @@ export const GET: APIRoute = async () => {
   posts.sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
 
   const entries = [
-    buildUrl(`${SITE}/blog/`, 'daily', '0.8', new Date().toISOString().split('T')[0]),
+    buildUrl(`${SITE}/blog`, 'daily', '0.8', new Date().toISOString().split('T')[0]),
     ...posts.map((post) => {
       const lastmod = post.data.updatedDate || post.data.date;
-      return buildUrl(`${SITE}/blog/${post.id}/`, 'monthly', '0.7', lastmod);
+      return buildUrl(`${SITE}/blog/${post.id}`, 'monthly', '0.7', lastmod);
     }),
   ].join('\n');
 

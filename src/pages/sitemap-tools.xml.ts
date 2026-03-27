@@ -21,8 +21,8 @@ export const GET: APIRoute = () => {
     .filter((slug) => slug !== 'index');
 
   const entries = [
-    buildUrl(`${SITE}/tools/`, 'weekly', '0.9', TODAY),
-    ...slugs.map((slug) => buildUrl(`${SITE}/tools/${slug}/`, 'monthly', '0.8', TODAY)),
+    buildUrl(`${SITE}/tools`, 'weekly', '0.9', TODAY),
+    ...slugs.map((slug) => buildUrl(`${SITE}/tools/${slug}`, 'monthly', '0.8', TODAY)),
   ].join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>

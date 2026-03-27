@@ -39,7 +39,7 @@ function buildUrl(url: string, changefreq: string, priority: string, lastmod: st
 export const GET: APIRoute = () => {
   const entries = staticPages
     .map(({ slug, changefreq, priority }) => {
-      const loc = slug ? `${SITE}/${slug}/` : `${SITE}/`;
+      const loc = slug ? `${SITE}/${slug}` : `${SITE}/`;
       return buildUrl(loc, changefreq, priority, TODAY);
     })
     .join('\n');
