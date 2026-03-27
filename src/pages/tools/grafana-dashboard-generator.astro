@@ -1,0 +1,348 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+---
+
+<BaseLayout
+  title="Grafana Dashboard JSON Generator — Build Dashboard Configs Interactively"
+  description="Generate Grafana dashboard JSON configurations. Add panels (graph, stat, gauge, table), set data sources, configure time ranges, and export ready-to-import Grafana JSON. Runs in your browser."
+  tool="Grafana dashboard generator, Grafana JSON, dashboard config, timeseries panel, stat panel, gauge panel, monitoring dashboard, metrics visualization"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Grafana Dashboard JSON Generator",
+    "url": "https://devplaybook.cc/tools/grafana-dashboard-generator",
+    "description": "Generate Grafana dashboard JSON configurations. Add panels, set data sources, configure time ranges, and export ready-to-import Grafana JSON.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Grafana Dashboard JSON Generator</h1>
+  <p class="text-text-muted mb-4">Build Grafana dashboards without clicking through the UI. Configure panels, queries, and data sources then export importable JSON compatible with Grafana 7.x, 8.x, and 10.x.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> timeseries, stat, gauge, table, text panels</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Grafana 7.x / 8.x / 10.x compatible</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy &amp; import directly</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs entirely in your browser</span>
+  </div>
+
+  <!-- Dashboard meta -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-2">Dashboard Title</label>
+      <input id="dash-title" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" placeholder="My Dashboard" value="Infrastructure Overview" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2">UID (optional)</label>
+      <input id="dash-uid" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary" placeholder="auto-generated" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2">Tags (comma-separated)</label>
+      <input id="dash-tags" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" placeholder="infra, prometheus" value="infra, prometheus" />
+    </div>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-2">Time Range From</label>
+      <input id="dash-from" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary" value="now-1h" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2">Time Range To</label>
+      <input id="dash-to" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary" value="now" />
+    </div>
+  </div>
+
+  <!-- Panels list -->
+  <div class="mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <label class="text-sm font-medium">Panels</label>
+      <button id="btn-add-panel" class="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        <span class="text-base leading-none">+</span> Add Panel
+      </button>
+    </div>
+    <div id="panels-list" class="space-y-4"></div>
+  </div>
+
+  <div class="flex gap-3 mb-6 flex-wrap">
+    <button id="btn-generate" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">Generate JSON</button>
+    <button id="btn-load-example" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Load CPU/Memory Example</button>
+    <button id="btn-clear-all" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Clear All</button>
+  </div>
+
+  <!-- Output -->
+  <div id="output-section" class="hidden">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Generated Grafana Dashboard JSON</h2>
+      <button id="btn-copy" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+    </div>
+    <p class="text-sm text-text-muted mb-3">Import via Grafana → Dashboards → Import → paste JSON or upload file.</p>
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <pre id="json-output" class="font-mono text-sm whitespace-pre-wrap break-words text-green-300 overflow-x-auto max-h-[600px] overflow-y-auto"></pre>
+    </div>
+  </div>
+
+  <ToolPageCta />
+</BaseLayout>
+
+<script>
+let panels = [];
+let idSeq = 0;
+
+const PANEL_TYPES = ['timeseries', 'stat', 'gauge', 'table', 'text', 'barchart', 'piechart'];
+
+function esc(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function addPanel(overrides = {}) {
+  panels.push({
+    _id: ++idSeq,
+    title: '',
+    type: 'timeseries',
+    datasource: 'Prometheus',
+    query: '',
+    legendFormat: '',
+    unit: 'percent',
+    description: '',
+    ...overrides
+  });
+  renderPanels();
+}
+
+const TYPE_ICONS = { timeseries: '📈', stat: '🔢', gauge: '⏱', table: '📋', text: '📝', barchart: '📊', piechart: '🥧' };
+
+function renderPanels() {
+  const list = document.getElementById('panels-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (panels.length === 0) {
+    list.innerHTML = '<p class="text-sm text-text-muted text-center py-8 border border-dashed border-border rounded-lg">No panels yet. Click &quot;+ Add Panel&quot; to begin.</p>';
+    return;
+  }
+  panels.forEach((p, idx) => {
+    const icon = TYPE_ICONS[p.type] || '📈';
+    const div = document.createElement('div');
+    div.className = 'border border-border bg-bg-card rounded-lg p-4';
+    div.innerHTML = `
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-base">${icon}</span>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-primary">${p.type}</span>
+          <span class="text-sm text-text-muted">${esc(p.title) || 'Untitled Panel'}</span>
+        </div>
+        <button class="btn-remove text-text-muted hover:text-red-400 transition-colors text-xl leading-none" data-idx="${idx}">&#215;</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Panel Title</label>
+          <input class="p-title w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" placeholder="CPU Usage" value="${esc(p.title)}" data-idx="${idx}" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Panel Type</label>
+          <select class="p-type w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" data-idx="${idx}">
+            ${PANEL_TYPES.map(t => `<option value="${t}"${p.type===t?' selected':''}>${TYPE_ICONS[t] || ''} ${t}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Data Source Name</label>
+          <input class="p-datasource w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="Prometheus" value="${esc(p.datasource)}" data-idx="${idx}" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Unit</label>
+          <input class="p-unit w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="percent, bytes, ms..." value="${esc(p.unit)}" data-idx="${idx}" />
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">Query / Expression</label>
+        <textarea class="p-query w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary resize-none" rows="2" placeholder='rate(node_cpu_seconds_total{mode="idle"}[5m])' data-idx="${idx}">${esc(p.query)}</textarea>
+      </div>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Legend Format</label>
+        <input class="p-legend w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder='{{instance}}' value="${esc(p.legendFormat)}" data-idx="${idx}" />
+      </div>
+    `;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll('.btn-remove').forEach(btn => {
+    btn.addEventListener('click', () => { panels.splice(+btn.dataset.idx, 1); renderPanels(); });
+  });
+  list.querySelectorAll('.p-title').forEach(el => el.addEventListener('input', () => { panels[+el.dataset.idx].title = el.value; renderPanels(); }));
+  list.querySelectorAll('.p-type').forEach(el => el.addEventListener('change', () => { panels[+el.dataset.idx].type = el.value; renderPanels(); }));
+  list.querySelectorAll('.p-datasource').forEach(el => el.addEventListener('input', () => { panels[+el.dataset.idx].datasource = el.value; }));
+  list.querySelectorAll('.p-unit').forEach(el => el.addEventListener('input', () => { panels[+el.dataset.idx].unit = el.value; }));
+  list.querySelectorAll('.p-query').forEach(el => el.addEventListener('input', () => { panels[+el.dataset.idx].query = el.value; }));
+  list.querySelectorAll('.p-legend').forEach(el => el.addEventListener('input', () => { panels[+el.dataset.idx].legendFormat = el.value; }));
+}
+
+function getLivePanels() {
+  return panels.map((p, idx) => {
+    const g = (cls) => document.querySelector(`${cls}[data-idx="${idx}"]`);
+    return {
+      ...p,
+      title: g('.p-title')?.value ?? p.title,
+      type: g('.p-type')?.value ?? p.type,
+      datasource: g('.p-datasource')?.value ?? p.datasource,
+      unit: g('.p-unit')?.value ?? p.unit,
+      query: g('.p-query')?.value ?? p.query,
+      legendFormat: g('.p-legend')?.value ?? p.legendFormat,
+    };
+  });
+}
+
+function generateJson() {
+  if (panels.length === 0) { alert('Add at least one panel first.'); return; }
+  const live = getLivePanels();
+  const title = (document.getElementById('dash-title')?.value || 'My Dashboard').trim();
+  const uid = (document.getElementById('dash-uid')?.value || '').trim() || generateUid();
+  const tagsRaw = (document.getElementById('dash-tags')?.value || '').trim();
+  const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+  const from = (document.getElementById('dash-from')?.value || 'now-1h').trim();
+  const to = (document.getElementById('dash-to')?.value || 'now').trim();
+
+  const GRID_W = 24;
+  const panelW = 12;
+  const panelH = 8;
+
+  const grafanaPanels = live.map((p, i) => {
+    const col = (i % 2) * panelW;
+    const row = Math.floor(i / 2) * panelH;
+    const panelObj = {
+      id: i + 1,
+      title: p.title || `Panel ${i + 1}`,
+      type: p.type,
+      datasource: { type: 'prometheus', uid: p.datasource },
+      gridPos: { h: panelH, w: panelW, x: col, y: row },
+      fieldConfig: {
+        defaults: {
+          unit: p.unit || 'short',
+          color: { mode: 'palette-classic' }
+        },
+        overrides: []
+      },
+      options: p.type === 'timeseries' ? {
+        tooltip: { mode: 'single', sort: 'none' },
+        legend: { displayMode: 'list', placement: 'bottom' }
+      } : p.type === 'stat' ? {
+        reduceOptions: { calcs: ['lastNotNull'] },
+        orientation: 'auto',
+        textMode: 'auto',
+        colorMode: 'background',
+        graphMode: 'area'
+      } : p.type === 'gauge' ? {
+        reduceOptions: { calcs: ['lastNotNull'] },
+        orientation: 'auto',
+        showThresholdLabels: false,
+        showThresholdMarkers: true
+      } : {},
+    };
+    if (p.query && p.type !== 'text') {
+      panelObj.targets = [{
+        refId: 'A',
+        expr: p.query,
+        legendFormat: p.legendFormat || '{{instance}}',
+        interval: '',
+        datasource: { type: 'prometheus', uid: p.datasource }
+      }];
+    }
+    return panelObj;
+  });
+
+  const dashboard = {
+    __inputs: [{ name: 'DS_PROMETHEUS', label: 'Prometheus', description: '', type: 'datasource', pluginId: 'prometheus', pluginName: 'Prometheus' }],
+    __requires: [
+      { type: 'grafana', id: 'grafana', name: 'Grafana', version: '10.0.0' },
+      { type: 'datasource', id: 'prometheus', name: 'Prometheus', version: '1.0.0' }
+    ],
+    annotations: { list: [] },
+    editable: true,
+    fiscalYearStartMonth: 0,
+    graphTooltip: 0,
+    id: null,
+    links: [],
+    panels: grafanaPanels,
+    refresh: '30s',
+    schemaVersion: 38,
+    tags,
+    templating: { list: [] },
+    time: { from, to },
+    timepicker: {},
+    timezone: 'browser',
+    title,
+    uid,
+    version: 1
+  };
+
+  document.getElementById('json-output').textContent = JSON.stringify(dashboard, null, 2);
+  document.getElementById('output-section').classList.remove('hidden');
+  setTimeout(() => document.getElementById('output-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
+function generateUid() {
+  return Math.random().toString(36).substr(2, 9);
+}
+
+document.getElementById('btn-add-panel')?.addEventListener('click', () => addPanel());
+document.getElementById('btn-generate')?.addEventListener('click', generateJson);
+
+document.getElementById('btn-clear-all')?.addEventListener('click', () => {
+  if (panels.length > 0 && !confirm('Clear all panels?')) return;
+  panels = [];
+  renderPanels();
+  document.getElementById('output-section').classList.add('hidden');
+});
+
+document.getElementById('btn-load-example')?.addEventListener('click', () => {
+  panels = [];
+  document.getElementById('dash-title').value = 'Node Exporter: CPU & Memory';
+  document.getElementById('dash-tags').value = 'node, prometheus, infra';
+  addPanel({
+    title: 'CPU Usage %',
+    type: 'timeseries',
+    datasource: 'Prometheus',
+    query: '100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)',
+    legendFormat: '{{instance}}',
+    unit: 'percent'
+  });
+  addPanel({
+    title: 'Current CPU %',
+    type: 'stat',
+    datasource: 'Prometheus',
+    query: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)',
+    legendFormat: 'CPU',
+    unit: 'percent'
+  });
+  addPanel({
+    title: 'Memory Usage %',
+    type: 'timeseries',
+    datasource: 'Prometheus',
+    query: '(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100',
+    legendFormat: '{{instance}}',
+    unit: 'percent'
+  });
+  addPanel({
+    title: 'Memory Gauge',
+    type: 'gauge',
+    datasource: 'Prometheus',
+    query: 'avg((1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100)',
+    legendFormat: 'Memory',
+    unit: 'percent'
+  });
+});
+
+document.getElementById('btn-copy')?.addEventListener('click', () => {
+  const el = document.getElementById('json-output');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+});
+
+renderPanels();
+</script>

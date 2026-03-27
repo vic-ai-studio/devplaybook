@@ -1,0 +1,299 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+---
+
+<BaseLayout
+  title="Prometheus Alert Rule Generator — Build alerting_rules.yml Interactively"
+  description="Generate Prometheus alerting rules YAML interactively. Configure alert name, PromQL expression, duration, labels, and annotations. Preview the complete alerting_rules.yml output. Free, runs in your browser."
+  tool="Prometheus Alert Rule Generator, prometheus alerting rules, PromQL, alerting_rules.yml, monitoring, SRE, devops, prometheus yaml"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Prometheus Alert Rule Generator",
+    "url": "https://devplaybook.cc/tools/prometheus-alertrule-generator",
+    "description": "Generate Prometheus alerting rules YAML interactively. Configure alert name, PromQL expression, duration, labels, and annotations. Preview the complete alerting_rules.yml output.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Prometheus Alert Rule Generator</h1>
+  <p class="text-text-muted mb-4">Build Prometheus alerting rules interactively. Add alerts with PromQL expressions, durations, severity labels, and annotations. Export a complete <code class="font-mono text-primary">alerting_rules.yml</code> ready to deploy.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PromQL expression editor</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Labels &amp; annotations</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> YAML output preview</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs entirely in your browser</span>
+  </div>
+
+  <!-- Group name -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-2">Rule Group Name</label>
+      <input id="group-name" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary font-mono" placeholder="example.rules" value="example.rules" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2">Interval (optional)</label>
+      <input id="group-interval" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary font-mono" placeholder="e.g. 1m" />
+    </div>
+  </div>
+
+  <!-- Alert rules list -->
+  <div class="mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <label class="text-sm font-medium">Alert Rules</label>
+      <button id="btn-add-rule" class="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        <span class="text-base leading-none">+</span> Add Alert Rule
+      </button>
+    </div>
+    <div id="rules-list" class="space-y-4"></div>
+  </div>
+
+  <div class="flex gap-3 mb-6 flex-wrap">
+    <button id="btn-generate" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">Generate YAML</button>
+    <button id="btn-load-example" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Load Examples</button>
+    <button id="btn-clear-all" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Clear All</button>
+  </div>
+
+  <!-- Output -->
+  <div id="output-section" class="hidden">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Generated alerting_rules.yml</h2>
+      <button id="btn-copy" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <pre id="yaml-output" class="font-mono text-sm whitespace-pre-wrap break-words text-green-300 overflow-x-auto max-h-[600px] overflow-y-auto"></pre>
+    </div>
+  </div>
+
+  <ToolPageCta />
+</BaseLayout>
+
+<script>
+let rules = [];
+let idSeq = 0;
+
+const SEVERITIES = ['warning', 'critical', 'info', 'none'];
+
+function esc(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function addRule(overrides = {}) {
+  rules.push({
+    _id: ++idSeq,
+    alert: '',
+    expr: '',
+    forDuration: '5m',
+    severity: 'warning',
+    team: '',
+    summary: '',
+    description: '',
+    ...overrides
+  });
+  renderRules();
+}
+
+function renderRules() {
+  const list = document.getElementById('rules-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (rules.length === 0) {
+    list.innerHTML = '<p class="text-sm text-text-muted text-center py-8 border border-dashed border-border rounded-lg">No alert rules yet. Click &quot;+ Add Alert Rule&quot; to begin.</p>';
+    return;
+  }
+  rules.forEach((r, idx) => {
+    const sev = r.severity;
+    const sevColor = sev === 'critical' ? 'text-red-400' : sev === 'warning' ? 'text-yellow-400' : 'text-blue-400';
+    const sevBg = sev === 'critical' ? 'bg-red-500/10 border-red-500/30' : sev === 'warning' ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-blue-500/10 border-blue-500/30';
+    const div = document.createElement('div');
+    div.className = 'border border-border bg-bg-card rounded-lg p-4';
+    div.innerHTML = `
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full border ${sevBg} ${sevColor}">${sev.toUpperCase()}</span>
+          <span class="text-sm font-mono text-text-muted">${esc(r.alert) || 'Unnamed Alert'}</span>
+        </div>
+        <button class="btn-remove text-text-muted hover:text-red-400 transition-colors text-xl leading-none" data-idx="${idx}">&#215;</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Alert Name</label>
+          <input class="r-alert w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="HighCpuUsage" value="${esc(r.alert)}" data-idx="${idx}" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">For Duration</label>
+          <input class="r-for w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="5m" value="${esc(r.forDuration)}" data-idx="${idx}" />
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">PromQL Expression</label>
+        <textarea class="r-expr w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary resize-none" rows="2" placeholder='100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90' data-idx="${idx}">${esc(r.expr)}</textarea>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Severity</label>
+          <select class="r-severity w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" data-idx="${idx}">
+            ${SEVERITIES.map(s => `<option value="${s}"${r.severity===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Team Label (optional)</label>
+          <input class="r-team w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="platform" value="${esc(r.team)}" data-idx="${idx}" />
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">Summary Annotation</label>
+        <input class="r-summary w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" placeholder='High CPU on {{ $labels.instance }}' value="${esc(r.summary)}" data-idx="${idx}" />
+      </div>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Description Annotation</label>
+        <input class="r-description w-full bg-bg-card border border-border rounded p-2 text-sm focus:outline-none focus:border-primary" placeholder='CPU usage is {{ printf "%.2f" $value }}% on {{ $labels.instance }}' value="${esc(r.description)}" data-idx="${idx}" />
+      </div>
+    `;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll('.btn-remove').forEach(btn => {
+    btn.addEventListener('click', () => { rules.splice(+btn.dataset.idx, 1); renderRules(); });
+  });
+  list.querySelectorAll('.r-alert').forEach(el => el.addEventListener('input', () => { rules[+el.dataset.idx].alert = el.value; renderRules(); }));
+  list.querySelectorAll('.r-for').forEach(el => el.addEventListener('input', () => { rules[+el.dataset.idx].forDuration = el.value; }));
+  list.querySelectorAll('.r-expr').forEach(el => el.addEventListener('input', () => { rules[+el.dataset.idx].expr = el.value; }));
+  list.querySelectorAll('.r-severity').forEach(el => el.addEventListener('change', () => { rules[+el.dataset.idx].severity = el.value; renderRules(); }));
+  list.querySelectorAll('.r-team').forEach(el => el.addEventListener('input', () => { rules[+el.dataset.idx].team = el.value; }));
+  list.querySelectorAll('.r-summary').forEach(el => el.addEventListener('input', () => { rules[+el.dataset.idx].summary = el.value; }));
+  list.querySelectorAll('.r-description').forEach(el => el.addEventListener('input', () => { rules[+el.dataset.idx].description = el.value; }));
+}
+
+function getLiveRules() {
+  return rules.map((r, idx) => {
+    const g = (cls) => document.querySelector(`${cls}[data-idx="${idx}"]`);
+    return {
+      ...r,
+      alert: g('.r-alert')?.value ?? r.alert,
+      forDuration: g('.r-for')?.value ?? r.forDuration,
+      expr: g('.r-expr')?.value ?? r.expr,
+      severity: g('.r-severity')?.value ?? r.severity,
+      team: g('.r-team')?.value ?? r.team,
+      summary: g('.r-summary')?.value ?? r.summary,
+      description: g('.r-description')?.value ?? r.description,
+    };
+  });
+}
+
+function indentYaml(str, spaces) {
+  const pad = ' '.repeat(spaces);
+  return str.split('\n').map(l => pad + l).join('\n');
+}
+
+function generateYaml() {
+  if (rules.length === 0) { alert('Add at least one alert rule first.'); return; }
+  const live = getLiveRules();
+  const groupName = (document.getElementById('group-name')?.value || 'example.rules').trim();
+  const interval = (document.getElementById('group-interval')?.value || '').trim();
+
+  let yaml = 'groups:\n';
+  yaml += `  - name: ${groupName}\n`;
+  if (interval) yaml += `    interval: ${interval}\n`;
+  yaml += '    rules:\n';
+
+  live.forEach(r => {
+    yaml += `    - alert: ${r.alert || 'UnnamedAlert'}\n`;
+    // Multi-line expr
+    if (r.expr.includes('\n')) {
+      yaml += `      expr: |\n`;
+      yaml += r.expr.split('\n').map(l => `        ${l}`).join('\n') + '\n';
+    } else {
+      yaml += `      expr: ${r.expr || 'up == 0'}\n`;
+    }
+    if (r.forDuration) yaml += `      for: ${r.forDuration}\n`;
+
+    // Labels
+    const hasLabels = r.severity !== 'none' || r.team;
+    if (hasLabels) {
+      yaml += '      labels:\n';
+      if (r.severity !== 'none') yaml += `        severity: ${r.severity}\n`;
+      if (r.team) yaml += `        team: ${r.team}\n`;
+    }
+
+    // Annotations
+    const hasAnnotations = r.summary || r.description;
+    if (hasAnnotations) {
+      yaml += '      annotations:\n';
+      if (r.summary) yaml += `        summary: "${r.summary.replace(/"/g, '\\"')}"\n`;
+      if (r.description) yaml += `        description: "${r.description.replace(/"/g, '\\"')}"\n`;
+    }
+    yaml += '\n';
+  });
+
+  document.getElementById('yaml-output').textContent = yaml.trimEnd();
+  document.getElementById('output-section').classList.remove('hidden');
+  setTimeout(() => document.getElementById('output-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
+document.getElementById('btn-add-rule')?.addEventListener('click', () => addRule());
+document.getElementById('btn-generate')?.addEventListener('click', generateYaml);
+
+document.getElementById('btn-clear-all')?.addEventListener('click', () => {
+  if (rules.length > 0 && !confirm('Clear all rules?')) return;
+  rules = [];
+  renderRules();
+  document.getElementById('output-section').classList.add('hidden');
+});
+
+document.getElementById('btn-load-example')?.addEventListener('click', () => {
+  rules = [];
+  document.getElementById('group-name').value = 'node.alerts';
+  addRule({
+    alert: 'HighCpuUsage',
+    expr: '100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90',
+    forDuration: '5m',
+    severity: 'critical',
+    team: 'platform',
+    summary: 'High CPU usage on {{ $labels.instance }}',
+    description: 'CPU usage is {{ printf "%.2f" $value }}% on {{ $labels.instance }} (job: {{ $labels.job }})'
+  });
+  addRule({
+    alert: 'HighMemoryUsage',
+    expr: '(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85',
+    forDuration: '10m',
+    severity: 'warning',
+    team: 'platform',
+    summary: 'High memory usage on {{ $labels.instance }}',
+    description: 'Memory usage is {{ printf "%.2f" $value }}% on {{ $labels.instance }}'
+  });
+  addRule({
+    alert: 'PodCrashLooping',
+    expr: 'increase(kube_pod_container_status_restarts_total[1h]) > 5',
+    forDuration: '0m',
+    severity: 'critical',
+    team: 'sre',
+    summary: 'Pod {{ $labels.pod }} is crash looping',
+    description: 'Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted {{ $value }} times in the last hour'
+  });
+  addRule({
+    alert: 'DiskSpaceLow',
+    expr: '(node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15',
+    forDuration: '15m',
+    severity: 'warning',
+    team: 'platform',
+    summary: 'Low disk space on {{ $labels.instance }}',
+    description: 'Disk space on {{ $labels.instance }} ({{ $labels.mountpoint }}) is {{ printf "%.2f" $value }}% free'
+  });
+});
+
+document.getElementById('btn-copy')?.addEventListener('click', () => {
+  const el = document.getElementById('yaml-output');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+});
+
+renderRules();
+</script>

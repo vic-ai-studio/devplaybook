@@ -1,0 +1,441 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+---
+
+<BaseLayout
+  title="Sentry DSN Tester & Validator — Parse & Validate Sentry DSN"
+  description="Validate Sentry DSN format and parse its components. Check project ID, key, host, and protocol. Generate test event payloads for different SDK types (JavaScript, Python, Go). Runs entirely in your browser."
+  tool="Sentry DSN validator, Sentry DSN tester, Sentry DSN parser, Sentry setup, error tracking, Sentry JavaScript SDK, Sentry Python, Sentry Go, observability"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Sentry DSN Tester & Validator",
+    "url": "https://devplaybook.cc/tools/sentry-dsn-tester",
+    "description": "Validate Sentry DSN format and parse its components. Check project ID, key, host, and protocol. Generate test event payloads for JavaScript, Python, and Go SDKs.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Sentry DSN Tester &amp; Validator</h1>
+  <p class="text-text-muted mb-4">Paste your Sentry DSN to validate its format and parse all components. Get sample SDK initialization code for JavaScript, React, Python, Go, and Next.js — plus a <code class="font-mono text-primary">curl</code> test command to send a test event.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> DSN format validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Component breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JS / Python / Go / Next.js code</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> curl test payload</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs entirely in your browser</span>
+  </div>
+
+  <!-- DSN input -->
+  <div class="mb-4">
+    <label class="block text-sm font-medium mb-2">Sentry DSN</label>
+    <div class="flex gap-2">
+      <input id="dsn-input" type="text" class="flex-1 bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary" placeholder="https://examplePublicKey@o0.ingest.sentry.io/0" />
+      <button id="btn-validate" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors whitespace-nowrap">Validate &amp; Parse</button>
+    </div>
+  </div>
+
+  <div class="flex gap-3 mb-6 flex-wrap">
+    <button id="btn-load-example" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Load Example DSN</button>
+    <button id="btn-load-self-hosted" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Load Self-Hosted Example</button>
+    <button id="btn-clear" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Clear</button>
+  </div>
+
+  <!-- Validation result -->
+  <div id="validation-result" class="hidden mb-6"></div>
+
+  <!-- Parsed components -->
+  <div id="parsed-section" class="hidden mb-6">
+    <h2 class="text-lg font-semibold mb-3">Parsed DSN Components</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="components-grid"></div>
+  </div>
+
+  <!-- SDK Code -->
+  <div id="sdk-section" class="hidden mb-6">
+    <h2 class="text-lg font-semibold mb-3">SDK Initialization Code</h2>
+    <div class="flex gap-1 mb-4 border-b border-border flex-wrap">
+      <button data-sdk="js" class="sdk-tab px-4 py-2 text-sm font-medium border-b-2 border-primary text-primary transition-colors">JavaScript</button>
+      <button data-sdk="react" class="sdk-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">React</button>
+      <button data-sdk="nextjs" class="sdk-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">Next.js</button>
+      <button data-sdk="python" class="sdk-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">Python</button>
+      <button data-sdk="go" class="sdk-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">Go</button>
+      <button data-sdk="curl" class="sdk-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">curl Test</button>
+    </div>
+    <div id="sdk-panels">
+      <!-- panels injected by JS -->
+    </div>
+  </div>
+
+  <ToolPageCta />
+</BaseLayout>
+
+<script>
+let currentSdk = 'js';
+let parsedDsn = null;
+
+function parseDsn(dsn) {
+  try {
+    // DSN format: {PROTOCOL}://{PUBLIC_KEY}@{HOST}/{PROJECT_ID}
+    // or: {PROTOCOL}://{PUBLIC_KEY}:{SECRET_KEY}@{HOST}/{PROJECT_ID}
+    const url = new URL(dsn.trim());
+    const protocol = url.protocol.replace(':', '');
+    const publicKey = url.username;
+    const secretKey = url.password || null;
+    const host = url.hostname;
+    const port = url.port || null;
+    const projectId = url.pathname.replace(/^\//, '');
+
+    if (!publicKey) return { valid: false, error: 'Missing public key in DSN.' };
+    if (!host) return { valid: false, error: 'Missing host in DSN.' };
+    if (!projectId || projectId === '') return { valid: false, error: 'Missing project ID in DSN path.' };
+    if (!['https', 'http'].includes(protocol)) return { valid: false, error: `Invalid protocol "${protocol}". Must be https or http.` };
+    if (!/^\d+$/.test(projectId)) return { valid: false, error: `Project ID "${projectId}" must be numeric.` };
+
+    const isSentryCloud = host.includes('sentry.io');
+    const isIngest = host.includes('ingest.sentry.io');
+    const ingestUrl = `${protocol}://${host}/api/${projectId}/store/`;
+    const storeEndpoint = port ? `${protocol}://${host}:${port}/api/${projectId}/store/` : ingestUrl;
+
+    return {
+      valid: true,
+      protocol,
+      publicKey,
+      secretKey,
+      host,
+      port,
+      projectId,
+      fullHost: port ? `${host}:${port}` : host,
+      isSentryCloud,
+      isIngest,
+      storeEndpoint,
+      original: dsn.trim()
+    };
+  } catch (e) {
+    return { valid: false, error: `Invalid URL format: ${e.message}` };
+  }
+}
+
+function renderComponents(p) {
+  const grid = document.getElementById('components-grid');
+  if (!grid) return;
+  const items = [
+    { label: 'Protocol', value: p.protocol, color: p.protocol === 'https' ? 'text-green-400' : 'text-yellow-400', hint: p.protocol === 'https' ? 'Secure' : 'Insecure — use HTTPS in production' },
+    { label: 'Public Key', value: p.publicKey, color: 'text-blue-400', hint: 'Identifies your Sentry project' },
+    { label: 'Secret Key', value: p.secretKey || '(none — modern DSN)', color: p.secretKey ? 'text-yellow-400' : 'text-text-muted', hint: p.secretKey ? 'Legacy DSN with secret key' : 'Modern DSN (recommended)' },
+    { label: 'Host', value: p.fullHost, color: 'text-purple-400', hint: p.isSentryCloud ? (p.isIngest ? 'Sentry Cloud ingest endpoint' : 'Sentry Cloud') : 'Self-hosted Sentry instance' },
+    { label: 'Project ID', value: p.projectId, color: 'text-orange-400', hint: 'Numeric Sentry project identifier' },
+    { label: 'Store Endpoint', value: p.storeEndpoint, color: 'text-text-muted', hint: 'Events are sent to this URL' },
+  ];
+  grid.innerHTML = items.map(item => `
+    <div class="bg-bg-card border border-border rounded-lg p-3">
+      <div class="text-xs text-text-muted mb-1">${item.label}</div>
+      <div class="font-mono text-sm ${item.color} break-all">${item.value}</div>
+      <div class="text-xs text-text-muted mt-1">${item.hint}</div>
+    </div>
+  `).join('');
+}
+
+function generateSdkCode(p) {
+  const dsn = p.original;
+  const codes = {
+    js: `// Install: npm install @sentry/browser
+import * as Sentry from "@sentry/browser";
+
+Sentry.init({
+  dsn: "${dsn}",
+  integrations: [
+    Sentry.browserTracingIntegration(),
+    Sentry.replayIntegration(),
+  ],
+  // Performance Monitoring
+  tracesSampleRate: 1.0, // Capture 100% of transactions (reduce in production)
+  // Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1.0,
+  environment: "production",
+  release: "my-app@1.0.0",
+});
+
+// Test: throw an error to verify Sentry is working
+// throw new Error("Sentry test error");`,
+
+    react: `// Install: npm install @sentry/react
+import * as Sentry from "@sentry/react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+
+Sentry.init({
+  dsn: "${dsn}",
+  integrations: [
+    Sentry.browserTracingIntegration(),
+    Sentry.replayIntegration(),
+  ],
+  tracesSampleRate: 1.0,
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1.0,
+  environment: "production",
+  release: "my-react-app@1.0.0",
+});
+
+const container = document.getElementById("root");
+const root = createRoot(container);
+root.render(
+  <Sentry.ErrorBoundary fallback={<p>An error has occurred.</p>}>
+    <App />
+  </Sentry.ErrorBoundary>
+);`,
+
+    nextjs: `// Install: npm install @sentry/nextjs
+// Run: npx @sentry/wizard@latest -i nextjs
+
+// sentry.client.config.ts
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: "${dsn}",
+  tracesSampleRate: 1.0,
+  replaysOnErrorSampleRate: 1.0,
+  replaysSessionSampleRate: 0.1,
+  integrations: [Sentry.replayIntegration()],
+  environment: process.env.NODE_ENV,
+  release: process.env.NEXT_PUBLIC_RELEASE,
+});
+
+// sentry.server.config.ts
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: "${dsn}",
+  tracesSampleRate: 1.0,
+  environment: process.env.NODE_ENV,
+});
+
+// next.config.js
+const { withSentryConfig } = require("@sentry/nextjs");
+module.exports = withSentryConfig(nextConfig, {
+  silent: true,
+  org: "your-org",
+  project: "your-project",
+});`,
+
+    python: `# Install: pip install --upgrade sentry-sdk
+import sentry_sdk
+from sentry_sdk.integrations.logging import LoggingIntegration
+import logging
+
+sentry_sdk.init(
+    dsn="${dsn}",
+    # Performance Monitoring
+    traces_sample_rate=1.0,
+    # Profiling
+    profiles_sample_rate=1.0,
+    environment="production",
+    release="my-python-app@1.0.0",
+    integrations=[
+        LoggingIntegration(
+            level=logging.INFO,      # Capture INFO and above as breadcrumbs
+            event_level=logging.ERROR  # Send ERRORs as events
+        ),
+    ],
+)
+
+# Test: capture a test exception
+# try:
+#     raise ValueError("Sentry Python test error")
+# except ValueError as e:
+#     sentry_sdk.capture_exception(e)`,
+
+    go: `// Install: go get github.com/getsentry/sentry-go
+package main
+
+import (
+    "fmt"
+    "log"
+    "time"
+
+    "github.com/getsentry/sentry-go"
+)
+
+func main() {
+    err := sentry.Init(sentry.ClientOptions{
+        Dsn:              "${dsn}",
+        Environment:      "production",
+        Release:          "my-go-app@1.0.0",
+        TracesSampleRate: 1.0,
+    })
+    if err != nil {
+        log.Fatalf("sentry.Init: %s", err)
+    }
+    // Flush buffered events before the program terminates.
+    defer sentry.Flush(2 * time.Second)
+
+    // Test: capture a test event
+    sentry.CaptureMessage("Sentry Go test event")
+    fmt.Println("Sentry initialized successfully.")
+}`,
+
+    curl: `# Send a test event to Sentry via the Store API
+# Replace the timestamp and event_id as needed
+
+curl -X POST "${p.storeEndpoint}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Sentry-Auth: Sentry sentry_version=7, sentry_key=${p.publicKey}, sentry_client=curl/1.0" \\
+  -d '{
+    "event_id": "fc6d8c0c43fc4630ad850ee518f1b9d0",
+    "timestamp": "${new Date().toISOString()}",
+    "level": "error",
+    "platform": "other",
+    "logger": "curl-test",
+    "message": "Test event from curl — Sentry DSN is working!",
+    "tags": {
+      "environment": "test",
+      "source": "curl"
+    },
+    "extra": {
+      "tested_with": "DevPlaybook Sentry DSN Tester",
+      "dsn_host": "${p.host}",
+      "project_id": "${p.projectId}"
+    },
+    "exception": {
+      "values": [{
+        "type": "TestError",
+        "value": "This is a test exception from curl",
+        "mechanism": { "type": "generic", "handled": true }
+      }]
+    }
+  }'
+
+# Expected response: {"id": "<event-id>"}
+# If you get 200/201, your DSN is working correctly!`,
+  };
+  return codes;
+}
+
+function renderSdkPanels(codes) {
+  const container = document.getElementById('sdk-panels');
+  if (!container) return;
+  container.innerHTML = '';
+  Object.entries(codes).forEach(([sdk, code]) => {
+    const div = document.createElement('div');
+    div.id = `sdk-panel-${sdk}`;
+    div.className = `sdk-panel${currentSdk === sdk ? '' : ' hidden'} bg-bg-card border border-border rounded-lg p-4`;
+    div.innerHTML = `
+      <div class="flex justify-end mb-2">
+        <button class="sdk-copy-btn px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors" data-sdk="${sdk}">Copy</button>
+      </div>
+      <pre class="sdk-code font-mono text-sm whitespace-pre-wrap break-words text-green-300 overflow-x-auto max-h-[500px] overflow-y-auto">${code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+    `;
+    container.appendChild(div);
+  });
+
+  container.querySelectorAll('.sdk-copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const panel = document.getElementById(`sdk-panel-${btn.dataset.sdk}`);
+      const pre = panel?.querySelector('.sdk-code');
+      if (!pre) return;
+      navigator.clipboard.writeText(pre.textContent).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    });
+  });
+}
+
+function switchSdk(sdk) {
+  currentSdk = sdk;
+  document.querySelectorAll('.sdk-tab').forEach(t => {
+    const active = t.dataset.sdk === sdk;
+    t.classList.toggle('border-primary', active);
+    t.classList.toggle('text-primary', active);
+    t.classList.toggle('border-transparent', !active);
+    t.classList.toggle('text-text-muted', !active);
+  });
+  document.querySelectorAll('.sdk-panel').forEach(p => {
+    p.classList.toggle('hidden', p.id !== `sdk-panel-${sdk}`);
+  });
+}
+
+function validateAndParse() {
+  const dsn = (document.getElementById('dsn-input')?.value || '').trim();
+  if (!dsn) { alert('Please enter a Sentry DSN.'); return; }
+
+  const result = parseDsn(dsn);
+  const resultEl = document.getElementById('validation-result');
+  const parsedSection = document.getElementById('parsed-section');
+  const sdkSection = document.getElementById('sdk-section');
+
+  if (!result.valid) {
+    resultEl.innerHTML = `
+      <div class="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+        <div class="flex items-center gap-2 text-red-400 font-semibold text-sm mb-1">
+          <span>✗</span> Invalid DSN
+        </div>
+        <p class="text-sm text-red-300">${result.error}</p>
+        <p class="text-xs text-text-muted mt-2">Expected format: <code class="font-mono">https://PUBLIC_KEY@HOST/PROJECT_ID</code></p>
+      </div>
+    `;
+    resultEl.classList.remove('hidden');
+    parsedSection.classList.add('hidden');
+    sdkSection.classList.add('hidden');
+    parsedDsn = null;
+    return;
+  }
+
+  parsedDsn = result;
+
+  const warnings = [];
+  if (result.protocol !== 'https') warnings.push('Using HTTP instead of HTTPS — insecure for production.');
+  if (result.secretKey) warnings.push('DSN contains a secret key — this is a legacy format. Consider regenerating a modern DSN without a secret key.');
+  if (!result.isSentryCloud) warnings.push('Self-hosted Sentry detected. Make sure your instance is reachable from your application.');
+
+  const warningHtml = warnings.length > 0 ? `
+    <div class="mt-2 space-y-1">
+      ${warnings.map(w => `<p class="text-xs text-yellow-400 flex items-center gap-1"><span>⚠</span> ${w}</p>`).join('')}
+    </div>
+  ` : '';
+
+  resultEl.innerHTML = `
+    <div class="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+      <div class="flex items-center gap-2 text-green-400 font-semibold text-sm mb-1">
+        <span>✓</span> Valid DSN
+      </div>
+      <p class="text-sm text-green-300">DSN format is valid. Project ID: <strong>${result.projectId}</strong> on <strong>${result.fullHost}</strong>.</p>
+      ${warningHtml}
+    </div>
+  `;
+  resultEl.classList.remove('hidden');
+
+  renderComponents(result);
+  parsedSection.classList.remove('hidden');
+
+  const codes = generateSdkCode(result);
+  renderSdkPanels(codes);
+  sdkSection.classList.remove('hidden');
+
+  setTimeout(() => resultEl?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
+document.getElementById('btn-validate')?.addEventListener('click', validateAndParse);
+document.getElementById('dsn-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') validateAndParse(); });
+
+document.getElementById('btn-load-example')?.addEventListener('click', () => {
+  document.getElementById('dsn-input').value = 'https://examplePublicKey1234567890abcdef@o123456.ingest.sentry.io/1234567';
+});
+
+document.getElementById('btn-load-self-hosted')?.addEventListener('click', () => {
+  document.getElementById('dsn-input').value = 'https://myPublicKey0987654321abcdef@sentry.mycompany.com/42';
+});
+
+document.getElementById('btn-clear')?.addEventListener('click', () => {
+  document.getElementById('dsn-input').value = '';
+  document.getElementById('validation-result').classList.add('hidden');
+  document.getElementById('parsed-section').classList.add('hidden');
+  document.getElementById('sdk-section').classList.add('hidden');
+  parsedDsn = null;
+});
+
+document.querySelectorAll('.sdk-tab').forEach(t => t.addEventListener('click', () => switchSdk(t.dataset.sdk)));
+</script>
