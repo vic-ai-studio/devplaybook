@@ -1,0 +1,325 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What SQL dialects are supported?", answer: "This tool generates migrations for PostgreSQL and MySQL. PostgreSQL uses SERIAL/BIGSERIAL for auto-increment, supports IF EXISTS/IF NOT EXISTS clauses, and uses TEXT for large strings. MySQL uses AUTO_INCREMENT, INT(11) notation, and TINYINT(1) for booleans." },
+  { question: "Does this tool handle data migration?", answer: "No — this tool generates DDL (Data Definition Language) changes like ALTER TABLE, ADD COLUMN, DROP COLUMN, and MODIFY COLUMN. Data migration (transforming existing rows) requires separate DML scripts and depends heavily on your business logic." },
+  { question: "Is it safe to run the generated script directly in production?", answer: "Always review and test generated SQL before running in production. The tool adds IF EXISTS / IF NOT EXISTS guards where applicable. For large tables, dropping or modifying columns can lock the table — consider using tools like pt-online-schema-change or pg_repack for zero-downtime migrations." },
+  { question: "What is the difference between DROP COLUMN and the alternative?", answer: "On large tables, DROP COLUMN can be slow and lock writes. An alternative is to stop writing to the column, let application code ignore it, then drop it in a future maintenance window. The generated SQL marks drops explicitly so you can review them." },
+  { question: "What does 'nullable' mean in a migration?", answer: "A nullable column allows NULL values (no constraint). A non-nullable (NOT NULL) column requires a value for every row. Adding a NOT NULL column to an existing table requires a DEFAULT value, otherwise existing rows would violate the constraint." },
+];
+---
+
+<BaseLayout
+  title="SQL Migration Generator — ALTER TABLE Script Builder — Free Tool"
+  description="Paste your current and target SQL table schemas, get an ALTER TABLE migration script instantly. Supports PostgreSQL and MySQL. Free, runs in browser."
+  tool="SQL migration generator, ALTER TABLE generator, database migration script, PostgreSQL migration, MySQL migration"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">SQL Migration Generator</h1>
+  <p class="text-text-muted mb-4">Paste your current and target SQL CREATE TABLE schemas and get the ALTER TABLE migration script. Supports PostgreSQL and MySQL.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 60K+ developers trust DevPlaybook</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PostgreSQL + MySQL</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in browser</span>
+  </div>
+
+  <!-- Controls -->
+  <div class="flex items-center gap-4 mb-4">
+    <div>
+      <label class="block text-xs text-text-muted mb-1">Dialect</label>
+      <select id="sql-dialect" class="bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        <option value="pg">PostgreSQL</option>
+        <option value="mysql">MySQL</option>
+      </select>
+    </div>
+    <div class="flex items-end gap-2 pb-0.5">
+      <button id="sql-load-example" class="text-sm bg-background border border-border hover:bg-accent/10 px-4 py-2 rounded-lg transition-colors mt-5">Load Example</button>
+      <button id="sql-generate" class="text-sm bg-accent hover:bg-accent/80 text-white px-6 py-2 rounded-lg font-medium transition-colors mt-5">Generate Migration →</button>
+      <button id="sql-clear" class="text-sm bg-background border border-border hover:bg-accent/10 px-4 py-2 rounded-lg transition-colors mt-5">Clear</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <div class="bg-surface border border-border rounded-xl p-4">
+      <label class="block text-sm font-semibold mb-2">Current Schema (before)</label>
+      <textarea id="sql-current" rows="14" placeholder="Paste current CREATE TABLE statement..."
+        class="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-accent resize-none"></textarea>
+    </div>
+    <div class="bg-surface border border-border rounded-xl p-4">
+      <label class="block text-sm font-semibold mb-2">Target Schema (after)</label>
+      <textarea id="sql-target" rows="14" placeholder="Paste target CREATE TABLE statement..."
+        class="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-accent resize-none"></textarea>
+    </div>
+  </div>
+
+  <!-- Output -->
+  <div id="sql-output-section" class="hidden bg-surface border border-border rounded-xl p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">Generated Migration</h2>
+      <button id="sql-copy" class="text-xs bg-background border border-border hover:bg-accent/20 px-3 py-1.5 rounded-lg transition-colors">Copy SQL</button>
+    </div>
+    <div id="sql-summary" class="text-sm text-text-muted mb-3 flex gap-4"></div>
+    <pre id="sql-output" class="bg-background border border-border rounded-lg p-4 text-xs font-mono overflow-auto whitespace-pre text-text-muted leading-relaxed min-h-[200px]"></pre>
+  </div>
+
+  <div id="sql-error" class="hidden bg-red-900/20 border border-red-500/40 rounded-xl p-4 text-sm text-red-300 mt-4"></div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="SQL Migration Generator" relatedTags={['database', 'sql', 'postgresql', 'mysql', 'developer-tools']} />
+</BaseLayout>
+
+<script>
+(function () {
+  function parseCreateTable(sql) {
+    // Normalize whitespace
+    const s = sql.replace(/\r\n/g, '\n').replace(/\t/g, '  ').trim();
+
+    // Extract table name
+    const tableMatch = s.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"']?(\w+)[`"']?\s*\(/i);
+    if (!tableMatch) throw new Error('Could not find CREATE TABLE statement. Make sure it includes the table name and opening parenthesis.');
+
+    const tableName = tableMatch[1];
+
+    // Extract body between first ( and last )
+    const bodyStart = s.indexOf('(');
+    const bodyEnd = s.lastIndexOf(')');
+    if (bodyStart === -1 || bodyEnd === -1) throw new Error('Could not parse table body — missing parentheses.');
+
+    const body = s.slice(bodyStart + 1, bodyEnd);
+
+    // Split on commas (respecting nested parens)
+    const parts = [];
+    let depth = 0, current = '';
+    for (const ch of body) {
+      if (ch === '(') { depth++; current += ch; }
+      else if (ch === ')') { depth--; current += ch; }
+      else if (ch === ',' && depth === 0) { parts.push(current.trim()); current = ''; }
+      else { current += ch; }
+    }
+    if (current.trim()) parts.push(current.trim());
+
+    const columns = {};
+    const constraints = [];
+
+    for (const part of parts) {
+      const p = part.trim();
+      if (!p) continue;
+
+      // Skip constraints
+      if (/^(PRIMARY\s+KEY|UNIQUE|INDEX|KEY|CONSTRAINT|FOREIGN\s+KEY|CHECK)/i.test(p)) {
+        constraints.push(p);
+        continue;
+      }
+
+      // Parse column: name type [modifiers...]
+      const colMatch = p.match(/^[`"']?(\w+)[`"']?\s+(.+)$/i);
+      if (!colMatch) continue;
+
+      const colName = colMatch[1];
+      const rest = colMatch[2];
+
+      // Extract type (first token)
+      const typeMatch = rest.match(/^([\w]+(?:\s*\([^)]*\))?)/i);
+      const colType = typeMatch ? typeMatch[1].trim() : rest.split(/\s/)[0];
+
+      const notNull = /NOT\s+NULL/i.test(rest);
+      const hasPrimary = /PRIMARY\s+KEY/i.test(rest);
+      const isAutoInc = /AUTO_INCREMENT|SERIAL|BIGSERIAL/i.test(rest);
+      const defaultMatch = rest.match(/DEFAULT\s+([^\s,]+)/i);
+      const defaultVal = defaultMatch ? defaultMatch[1] : null;
+
+      columns[colName] = {
+        type: colType.toUpperCase(),
+        notNull: notNull || hasPrimary,
+        primary: hasPrimary,
+        autoInc: isAutoInc,
+        default: defaultVal,
+        raw: rest,
+      };
+    }
+
+    return { tableName, columns, constraints };
+  }
+
+  function normalizeType(t) {
+    return t.toUpperCase().replace(/\s+/g, ' ').trim();
+  }
+
+  function generateMigration(currentSql, targetSql, dialect) {
+    const cur = parseCreateTable(currentSql);
+    const tgt = parseCreateTable(targetSql);
+
+    if (cur.tableName.toLowerCase() !== tgt.tableName.toLowerCase()) {
+      throw new Error(`Table names differ: "${cur.tableName}" vs "${tgt.tableName}". This tool handles single-table migrations. To rename a table, do it separately.`);
+    }
+
+    const tableName = tgt.tableName;
+    const q = dialect === 'mysql' ? '`' : '"';
+    const lines = [];
+    const summary = { added: 0, dropped: 0, modified: 0 };
+
+    lines.push(`-- Migration for table ${tableName}`);
+    lines.push(`-- Generated by DevPlaybook SQL Migration Generator`);
+    lines.push(`-- Dialect: ${dialect === 'pg' ? 'PostgreSQL' : 'MySQL'}`);
+    lines.push(`-- Review before running in production!`);
+    lines.push('');
+
+    const curCols = cur.columns;
+    const tgtCols = tgt.columns;
+
+    // Dropped columns
+    for (const col of Object.keys(curCols)) {
+      if (!tgtCols[col]) {
+        if (dialect === 'pg') {
+          lines.push(`ALTER TABLE ${q}${tableName}${q} DROP COLUMN IF EXISTS ${q}${col}${q};`);
+        } else {
+          lines.push(`ALTER TABLE \`${tableName}\` DROP COLUMN \`${col}\`;`);
+        }
+        summary.dropped++;
+      }
+    }
+
+    // Added columns
+    for (const col of Object.keys(tgtCols)) {
+      if (!curCols[col]) {
+        const colDef = buildColumnDef(col, tgtCols[col], dialect, q);
+        if (dialect === 'pg') {
+          lines.push(`ALTER TABLE ${q}${tableName}${q} ADD COLUMN IF NOT EXISTS ${colDef};`);
+        } else {
+          lines.push(`ALTER TABLE \`${tableName}\` ADD COLUMN ${colDef};`);
+        }
+        summary.added++;
+      }
+    }
+
+    // Modified columns
+    for (const col of Object.keys(tgtCols)) {
+      if (!curCols[col]) continue;
+      const c = curCols[col];
+      const t = tgtCols[col];
+
+      const typeChanged = normalizeType(c.type) !== normalizeType(t.type);
+      const nullChanged = c.notNull !== t.notNull;
+      const defaultChanged = c.default !== t.default;
+
+      if (typeChanged || nullChanged || defaultChanged) {
+        const colDef = buildColumnDef(col, t, dialect, q);
+        if (dialect === 'pg') {
+          // PostgreSQL needs separate ALTER for type, nullability, default
+          if (typeChanged) {
+            lines.push(`ALTER TABLE ${q}${tableName}${q} ALTER COLUMN ${q}${col}${q} TYPE ${t.type};`);
+          }
+          if (nullChanged) {
+            if (t.notNull) {
+              lines.push(`ALTER TABLE ${q}${tableName}${q} ALTER COLUMN ${q}${col}${q} SET NOT NULL;`);
+            } else {
+              lines.push(`ALTER TABLE ${q}${tableName}${q} ALTER COLUMN ${q}${col}${q} DROP NOT NULL;`);
+            }
+          }
+          if (defaultChanged) {
+            if (t.default !== null) {
+              lines.push(`ALTER TABLE ${q}${tableName}${q} ALTER COLUMN ${q}${col}${q} SET DEFAULT ${t.default};`);
+            } else {
+              lines.push(`ALTER TABLE ${q}${tableName}${q} ALTER COLUMN ${q}${col}${q} DROP DEFAULT;`);
+            }
+          }
+        } else {
+          lines.push(`ALTER TABLE \`${tableName}\` MODIFY COLUMN ${colDef};`);
+        }
+        summary.modified++;
+      }
+    }
+
+    if (lines.filter(l => l.startsWith('ALTER')).length === 0) {
+      lines.push('-- No structural changes detected.');
+    }
+
+    return { sql: lines.join('\n'), summary };
+  }
+
+  function buildColumnDef(name, col, dialect, q) {
+    let def = `${q}${name}${q} ${col.type}`;
+    if (col.notNull && !col.primary) def += ' NOT NULL';
+    if (col.primary && !col.autoInc) def += ' PRIMARY KEY';
+    if (col.default !== null) def += ` DEFAULT ${col.default}`;
+    return def;
+  }
+
+  document.getElementById('sql-generate').addEventListener('click', () => {
+    const curSql = document.getElementById('sql-current').value.trim();
+    const tgtSql = document.getElementById('sql-target').value.trim();
+    const dialect = document.getElementById('sql-dialect').value;
+    const errorEl = document.getElementById('sql-error');
+    const outputSection = document.getElementById('sql-output-section');
+
+    errorEl.classList.add('hidden');
+    outputSection.classList.add('hidden');
+
+    if (!curSql || !tgtSql) {
+      errorEl.textContent = 'Please paste both schemas before generating.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    let result;
+    try {
+      result = generateMigration(curSql, tgtSql, dialect);
+    } catch (e) {
+      errorEl.textContent = e.message;
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    outputSection.classList.remove('hidden');
+    document.getElementById('sql-output').textContent = result.sql;
+
+    const s = result.summary;
+    const parts = [];
+    if (s.added) parts.push(`<span class="text-green-400">${s.added} added</span>`);
+    if (s.dropped) parts.push(`<span class="text-red-400">${s.dropped} dropped</span>`);
+    if (s.modified) parts.push(`<span class="text-yellow-400">${s.modified} modified</span>`);
+    if (!parts.length) parts.push('<span>No changes</span>');
+    document.getElementById('sql-summary').innerHTML = parts.join(' · ');
+  });
+
+  document.getElementById('sql-copy').addEventListener('click', () => {
+    const text = document.getElementById('sql-output').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('sql-copy');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy SQL', 1500);
+    });
+  });
+
+  document.getElementById('sql-clear').addEventListener('click', () => {
+    document.getElementById('sql-current').value = '';
+    document.getElementById('sql-target').value = '';
+    document.getElementById('sql-output-section').classList.add('hidden');
+    document.getElementById('sql-error').classList.add('hidden');
+  });
+
+  document.getElementById('sql-load-example').addEventListener('click', () => {
+    document.getElementById('sql-current').value = `CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  name VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW()
+);`;
+
+    document.getElementById('sql-target').value = `CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  name VARCHAR(150),
+  display_name VARCHAR(100),
+  avatar_url TEXT,
+  role VARCHAR(50) NOT NULL DEFAULT 'user',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);`;
+  });
+})();
+</script>

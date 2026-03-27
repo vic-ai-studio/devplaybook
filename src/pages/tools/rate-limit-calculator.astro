@@ -1,0 +1,246 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a token bucket algorithm?", answer: "A token bucket is the most common rate limiting algorithm. The bucket holds a maximum number of tokens (burst size). Tokens are added at a fixed rate (RPM / 60 = tokens/sec). Each request consumes one token. When the bucket is empty, requests are rejected or queued. This allows short bursts while enforcing a long-term rate limit." },
+  { question: "What is the difference between RPM and RPS?", answer: "RPM (requests per minute) and RPS (requests per second) both measure API throughput. RPM = RPS × 60. Most rate limit docs use RPM (e.g., OpenAI: 10,000 RPM). When calculating delays between requests, convert to per-second: delay = 1000ms / RPS." },
+  { question: "How do I avoid hitting rate limits with multiple workers?", answer: "Divide your RPM by the number of concurrent workers. Each worker should wait at least (60,000ms / RPM) × workers between requests. Use a shared queue or Redis-based rate limiter (e.g., bottleneck, p-throttle) so workers coordinate instead of each maintaining their own timer." },
+  { question: "What is burst size and why does it matter?", answer: "Burst size is the maximum number of requests you can send instantly before the rate limit kicks in. For a 60 RPM limit with burst=10, you can send 10 requests immediately, then must wait ~1 second per additional request. Larger burst sizes are useful for handling traffic spikes without queuing." },
+  { question: "What is the refill time for an empty token bucket?", answer: "If you fully exhaust a token bucket (burst size = N), the refill time is N × (60,000ms / RPM). For example, a 60 RPM limit with 10-token burst: refill = 10 × 1000ms = 10 seconds. The bucket is fully replenished after 10 seconds of no requests." },
+];
+---
+
+<BaseLayout
+  title="Rate Limit Calculator — Token Bucket Config & Code Snippets"
+  description="Calculate token bucket rate limit config from RPM and burst size. Get the optimal delay between requests, refill time, and ready-to-use Express, Nginx, and Cloudflare Worker code snippets."
+  tool="Rate Limit Calculator, Token Bucket Calculator, RPM Calculator, API Throttle Config, Rate Limiter Delay"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Rate Limit Calculator",
+    "url": "https://devplaybook.cc/tools/rate-limit-calculator",
+    "description": "Calculate token bucket config from RPM and burst size. Get request delay, refill time, and code snippets for Express/Nginx/Cloudflare.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Rate Limit Calculator</h1>
+  <p class="text-text-muted mb-4">Enter your RPM limit and burst size to get the optimal token bucket configuration, per-worker delay, refill time, and ready-to-use code snippets for Express, Nginx, and Cloudflare Workers.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Token bucket config</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-worker delay</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Express / Nginx / Cloudflare snippets</span>
+  </div>
+
+  <!-- Tool -->
+  <div class="space-y-5">
+    <!-- Inputs -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Configuration</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="rpm-input">RPM Limit</label>
+          <div class="flex items-center gap-2">
+            <input id="rpm-input" type="number" min="1" step="1" value="60"
+              class="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            <span class="text-sm text-text-muted">req/min</span>
+          </div>
+          <div class="text-xs text-text-muted mt-1">e.g. OpenAI = 10000, GitHub = 5000</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="burst-input">Burst Size</label>
+          <div class="flex items-center gap-2">
+            <input id="burst-input" type="number" min="1" step="1" value="10"
+              class="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            <span class="text-sm text-text-muted">tokens</span>
+          </div>
+          <div class="text-xs text-text-muted mt-1">Max requests sent instantly</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="workers-input">Concurrent Workers</label>
+          <div class="flex items-center gap-2">
+            <input id="workers-input" type="number" min="1" step="1" value="1"
+              class="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            <span class="text-sm text-text-muted">workers</span>
+          </div>
+          <div class="text-xs text-text-muted mt-1">Shared rate limit across all</div>
+        </div>
+      </div>
+
+      <!-- Presets -->
+      <div class="mt-4">
+        <div class="text-xs text-text-muted mb-2 font-medium uppercase tracking-wide">Quick Presets</div>
+        <div class="flex flex-wrap gap-2" id="presets"></div>
+      </div>
+
+      <button id="calc-btn" class="mt-4 bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
+        Calculate
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden space-y-4">
+      <!-- Metrics grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="metrics-grid"></div>
+
+      <!-- Token bucket viz -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold mb-3">Token Bucket Visualization</h2>
+        <div class="flex items-end gap-1 h-12 mb-2" id="bucket-viz"></div>
+        <div class="text-xs text-text-muted" id="bucket-desc"></div>
+      </div>
+
+      <!-- Code snippets -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold mb-3">Code Snippets</h2>
+        <!-- Tabs -->
+        <div class="flex gap-1 mb-4 border-b border-border">
+          <button class="snippet-tab px-3 py-1.5 text-sm font-medium rounded-t-lg transition-colors" data-tab="express">Express.js</button>
+          <button class="snippet-tab px-3 py-1.5 text-sm font-medium rounded-t-lg transition-colors" data-tab="nginx">Nginx</button>
+          <button class="snippet-tab px-3 py-1.5 text-sm font-medium rounded-t-lg transition-colors" data-tab="cloudflare">Cloudflare</button>
+        </div>
+        <div class="relative">
+          <pre id="snippet-code" class="bg-bg border border-border rounded-lg p-4 text-xs font-mono overflow-x-auto whitespace-pre text-green-400"></pre>
+          <button id="copy-snippet" class="absolute top-2 right-2 text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary/80 transition-colors">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Rate Limit Calculator" relatedTags={['api', 'rate-limiting', 'devops', 'nodejs', 'nginx', 'cloudflare']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var PRESETS = [
+    { label: 'OpenAI Free', rpm: 3, burst: 3 },
+    { label: 'OpenAI Tier 1', rpm: 500, burst: 20 },
+    { label: 'GitHub REST', rpm: 5000, burst: 100 },
+    { label: 'Stripe', rpm: 100, burst: 25 },
+    { label: 'Twilio', rpm: 1000, burst: 50 },
+    { label: 'Custom API', rpm: 60, burst: 10 },
+  ];
+
+  var currentTab = 'express';
+  var calcState = null;
+
+  // Render presets
+  var presetsEl = document.getElementById('presets');
+  PRESETS.forEach(function (p) {
+    var btn = document.createElement('button');
+    btn.className = 'px-3 py-1 text-xs rounded-lg border border-border bg-bg hover:bg-primary/10 hover:border-primary/40 transition-colors font-mono';
+    btn.textContent = p.label + ' (' + p.rpm + ' RPM)';
+    btn.addEventListener('click', function () {
+      document.getElementById('rpm-input').value = p.rpm;
+      document.getElementById('burst-input').value = p.burst;
+      calculate();
+    });
+    presetsEl.appendChild(btn);
+  });
+
+  function calculate() {
+    var rpm = parseFloat(document.getElementById('rpm-input').value);
+    var burst = parseFloat(document.getElementById('burst-input').value);
+    var workers = parseFloat(document.getElementById('workers-input').value);
+
+    if (isNaN(rpm) || rpm <= 0 || isNaN(burst) || burst <= 0 || isNaN(workers) || workers <= 0) {
+      alert('Please enter valid positive values for all fields.');
+      return;
+    }
+
+    var rps = rpm / 60;
+    var delayMs = Math.ceil((60000 / rpm) * workers);
+    var refillMs = Math.ceil((burst / rps) * 1000);
+    var rpmPerWorker = Math.floor(rpm / workers);
+
+    calcState = { rpm: rpm, burst: burst, workers: workers, rps: rps, delayMs: delayMs, refillMs: refillMs, rpmPerWorker: rpmPerWorker };
+
+    // Metrics
+    var grid = document.getElementById('metrics-grid');
+    grid.innerHTML = '';
+    var metrics = [
+      { label: 'Requests/sec', value: rps.toFixed(2), unit: 'RPS', color: 'text-primary' },
+      { label: 'Delay / Worker', value: delayMs >= 1000 ? (delayMs/1000).toFixed(2) + 's' : delayMs + 'ms', unit: 'between req', color: 'text-yellow-400' },
+      { label: 'Refill Time', value: refillMs >= 1000 ? (refillMs/1000).toFixed(1) + 's' : refillMs + 'ms', unit: 'full bucket', color: 'text-blue-400' },
+      { label: 'RPM / Worker', value: rpmPerWorker, unit: 'req/min', color: 'text-green-400' },
+    ];
+    metrics.forEach(function (m) {
+      var card = document.createElement('div');
+      card.className = 'bg-bg-card border border-border rounded-xl p-4';
+      card.innerHTML = '<div class="text-xs text-text-muted mb-1">' + m.label + '</div>'
+        + '<div class="text-2xl font-bold ' + m.color + '">' + m.value + '</div>'
+        + '<div class="text-xs text-text-muted">' + m.unit + '</div>';
+      grid.appendChild(card);
+    });
+
+    // Bucket viz
+    var vizEl = document.getElementById('bucket-viz');
+    vizEl.innerHTML = '';
+    var totalBuckets = Math.min(burst, 20);
+    for (var i = 0; i < totalBuckets; i++) {
+      var bar = document.createElement('div');
+      bar.className = 'flex-1 rounded-sm bg-primary/60 transition-all';
+      bar.style.height = '100%';
+      vizEl.appendChild(bar);
+    }
+    document.getElementById('bucket-desc').textContent =
+      'Bucket holds ' + burst + ' tokens. Refills at ' + rps.toFixed(2) + ' token/sec. '
+      + 'After burst exhaustion, full refill takes ' + (refillMs >= 1000 ? (refillMs/1000).toFixed(1) + 's' : refillMs + 'ms') + '.';
+
+    renderSnippet(currentTab);
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function renderSnippet(tab) {
+    if (!calcState) return;
+    var s = calcState;
+    var code = '';
+    if (tab === 'express') {
+      code = '// npm install express-rate-limit\nconst rateLimit = require(\'express-rate-limit\');\n\nconst limiter = rateLimit({\n  windowMs: 60 * 1000, // 1 minute window\n  max: ' + Math.floor(s.rpm) + ', // ' + Math.floor(s.rpm) + ' requests per minute\n  standardHeaders: true,\n  legacyHeaders: false,\n  message: { error: \'Too many requests, please retry after 1 minute.\' },\n});\n\napp.use(\'/api\', limiter);\n\n// Per-worker delay helper (for ' + s.workers + ' worker' + (s.workers > 1 ? 's' : '') + ')\nconst DELAY_MS = ' + s.delayMs + '; // ' + s.delayMs + 'ms between requests\nconst sleep = (ms) => new Promise(r => setTimeout(r, ms));\n\nasync function rateLimitedFetch(url) {\n  await sleep(DELAY_MS);\n  return fetch(url);\n}';
+    } else if (tab === 'nginx') {
+      var rps = (s.rpm / 60).toFixed(0);
+      var burst = Math.floor(s.burst);
+      code = '# nginx.conf — add inside http {} block\nlimit_req_zone $binary_remote_addr zone=api_limit:10m rate=' + rps + 'r/s;\n\n# Add to your server {} or location {} block\nlocation /api/ {\n  limit_req zone=api_limit burst=' + burst + ' nodelay;\n  limit_req_status 429;\n  # proxy_pass http://backend;\n}\n\n# Optional: custom 429 response\nerror_page 429 /429.json;\nlocation = /429.json {\n  default_type application/json;\n  return 429 \'{"error":"rate_limit_exceeded","retry_after":60}\';\n}';
+    } else if (tab === 'cloudflare') {
+      code = '// Cloudflare Worker with token bucket rate limiter\n// KV namespace: RATE_LIMIT_KV\n\nexport default {\n  async fetch(request, env) {\n    const ip = request.headers.get(\'CF-Connecting-IP\');\n    const key = \'rl:\' + ip;\n    const now = Date.now();\n    const RPM = ' + Math.floor(s.rpm) + ';\n    const BURST = ' + Math.floor(s.burst) + ';\n    const REFILL_RATE = RPM / 60000; // tokens per ms\n\n    const stored = await env.RATE_LIMIT_KV.get(key, \'json\');\n    let tokens = stored ? stored.tokens : BURST;\n    let lastRefill = stored ? stored.lastRefill : now;\n\n    // Refill tokens\n    const elapsed = now - lastRefill;\n    tokens = Math.min(BURST, tokens + elapsed * REFILL_RATE);\n\n    if (tokens < 1) {\n      const retryAfter = Math.ceil((1 - tokens) / REFILL_RATE / 1000);\n      return new Response(JSON.stringify({ error: \'rate_limit_exceeded\' }), {\n        status: 429,\n        headers: { \'Content-Type\': \'application/json\', \'Retry-After\': retryAfter }\n      });\n    }\n\n    tokens -= 1;\n    await env.RATE_LIMIT_KV.put(key, JSON.stringify({ tokens, lastRefill: now }), { expirationTtl: 120 });\n\n    return fetch(request);\n  }\n};';
+    }
+    document.getElementById('snippet-code').textContent = code;
+  }
+
+  // Tabs
+  document.querySelectorAll('.snippet-tab').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      currentTab = btn.dataset.tab;
+      document.querySelectorAll('.snippet-tab').forEach(function (b) {
+        b.className = 'snippet-tab px-3 py-1.5 text-sm font-medium rounded-t-lg transition-colors text-text-muted';
+      });
+      btn.className = 'snippet-tab px-3 py-1.5 text-sm font-medium rounded-t-lg transition-colors text-primary border-b-2 border-primary';
+      renderSnippet(currentTab);
+    });
+  });
+
+  // Set active tab style on init
+  document.querySelector('[data-tab="express"]').className = 'snippet-tab px-3 py-1.5 text-sm font-medium rounded-t-lg transition-colors text-primary border-b-2 border-primary';
+
+  document.getElementById('calc-btn').addEventListener('click', calculate);
+
+  document.getElementById('copy-snippet').addEventListener('click', function () {
+    var code = document.getElementById('snippet-code').textContent;
+    navigator.clipboard.writeText(code).then(function () {
+      var btn = document.getElementById('copy-snippet');
+      btn.textContent = 'Copied!';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+    });
+  });
+
+  // Auto-calculate on load with defaults
+  calculate();
+})();
+</script>

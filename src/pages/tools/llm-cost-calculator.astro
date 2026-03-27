@@ -1,0 +1,256 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How are LLM API costs calculated?", answer: "LLM APIs charge per token — a token is roughly 4 characters or 0.75 words in English. Costs are split into input tokens (your prompt) and output tokens (the model's response). Input is usually cheaper than output. Monthly cost = (input tokens × input price + output tokens × output price) × daily requests × 30." },
+  { question: "What is the difference between input and output tokens?", answer: "Input tokens are the text you send to the model (your prompt, system message, conversation history). Output tokens are the tokens the model generates in its response. Output tokens typically cost 2-5× more than input tokens. For long conversations with history, input costs can dominate." },
+  { question: "How many tokens is a typical message?", answer: "A short prompt (50 words) ≈ 65 tokens. A medium article (500 words) ≈ 650 tokens. A long document (2,000 words) ≈ 2,600 tokens. Rule of thumb: 1 token ≈ 0.75 words. Use model-specific tokenizers (tiktoken for OpenAI, Claude's token counter) for exact counts." },
+  { question: "Which model is most cost-effective?", answer: "It depends on task complexity. For simple tasks (classification, extraction, summarization): Gemini Flash or GPT-4o Mini are cheapest. For complex reasoning, code, or analysis: Claude Sonnet or GPT-4o offer the best quality-to-cost ratio. For maximum quality: GPT-4o or Claude Opus. Always benchmark quality before optimizing purely for cost." },
+  { question: "How can I reduce LLM API costs?", answer: "1) Use smaller models for simple tasks. 2) Cache common responses (prompt caching saves up to 90% on repeated prompts). 3) Reduce conversation history sent with each request. 4) Use streaming and stop generation early when complete. 5) Compress system prompts. 6) Batch requests when possible. 7) Set max_tokens to avoid runaway responses." },
+];
+---
+
+<BaseLayout
+  title="LLM Cost Calculator — GPT-4o, Claude, Gemini Monthly Cost Estimator"
+  description="Compare LLM API costs across GPT-4o, Claude Sonnet, Gemini Pro, and more. Enter daily requests and token counts to get monthly cost estimates and a side-by-side comparison table."
+  tool="LLM Cost Calculator, GPT-4o Cost Estimator, Claude API Cost, Gemini Cost Calculator, AI API Pricing Comparison, OpenAI Monthly Cost"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "LLM Cost Calculator",
+    "url": "https://devplaybook.cc/tools/llm-cost-calculator",
+    "description": "Compare monthly API costs across GPT-4o, Claude, Gemini, and more. Enter daily requests and tokens to get instant cost estimates.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">LLM Cost Calculator</h1>
+  <p class="text-text-muted mb-4">Estimate monthly API costs across GPT-4o, Claude Sonnet, Gemini Pro, and more. Enter your usage and get a side-by-side cost comparison to find the most cost-effective model for your workload.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 12+ models compared</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Input + output token split</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Daily / monthly projections</span>
+  </div>
+
+  <!-- Tool -->
+  <div class="space-y-5">
+    <!-- Inputs -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Your Usage</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="requests-input">Daily Requests</label>
+          <input id="requests-input" type="number" min="1" step="1" value="1000"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Total API calls per day</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="input-tokens-input">Avg Input Tokens</label>
+          <input id="input-tokens-input" type="number" min="1" step="10" value="500"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Tokens sent per request</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="output-tokens-input">Avg Output Tokens</label>
+          <input id="output-tokens-input" type="number" min="1" step="10" value="200"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Tokens generated per request</div>
+        </div>
+      </div>
+
+      <!-- Quick presets -->
+      <div class="mt-4">
+        <div class="text-xs text-text-muted mb-2 font-medium uppercase tracking-wide">Usage Presets</div>
+        <div class="flex flex-wrap gap-2" id="presets"></div>
+      </div>
+
+      <button id="calc-btn" class="mt-4 bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
+        Compare Costs
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden space-y-4">
+      <!-- Summary -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="summary-grid"></div>
+
+      <!-- Comparison table -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold">Monthly Cost Comparison</h2>
+          <div class="text-xs text-text-muted">Sorted by monthly cost</div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-text-muted text-xs uppercase tracking-wide border-b border-border">
+                <th class="text-left py-2 pr-4">Model</th>
+                <th class="text-right py-2 pr-4">Input $/1M</th>
+                <th class="text-right py-2 pr-4">Output $/1M</th>
+                <th class="text-right py-2 pr-4">Daily Cost</th>
+                <th class="text-right py-2">Monthly Cost</th>
+              </tr>
+            </thead>
+            <tbody id="table-body" class="divide-y divide-border"></tbody>
+          </table>
+        </div>
+        <div class="mt-3 text-xs text-text-muted">* Prices are approximate list prices as of early 2025. Actual costs may vary. Check provider pricing pages for current rates.</div>
+      </div>
+
+      <!-- Bar chart -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold mb-4">Cost Bar Chart (Monthly)</h2>
+        <div id="bar-chart" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="LLM Cost Calculator" relatedTags={['ai', 'llm', 'api', 'cost', 'openai', 'claude', 'gemini']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  // Prices per 1M tokens (input, output) in USD — approximate early 2025 pricing
+  var MODELS = [
+    { id: 'gpt4o',         name: 'GPT-4o',                  provider: 'OpenAI',    input: 2.50,  output: 10.00 },
+    { id: 'gpt4o-mini',    name: 'GPT-4o Mini',             provider: 'OpenAI',    input: 0.15,  output: 0.60  },
+    { id: 'o1',            name: 'o1',                      provider: 'OpenAI',    input: 15.00, output: 60.00 },
+    { id: 'o3-mini',       name: 'o3-mini',                 provider: 'OpenAI',    input: 1.10,  output: 4.40  },
+    { id: 'claude-opus',   name: 'Claude Opus 4',           provider: 'Anthropic', input: 15.00, output: 75.00 },
+    { id: 'claude-sonnet', name: 'Claude Sonnet 4',         provider: 'Anthropic', input: 3.00,  output: 15.00 },
+    { id: 'claude-haiku',  name: 'Claude Haiku 3.5',        provider: 'Anthropic', input: 0.80,  output: 4.00  },
+    { id: 'gemini-pro',    name: 'Gemini 1.5 Pro',          provider: 'Google',    input: 1.25,  output: 5.00  },
+    { id: 'gemini-flash',  name: 'Gemini 1.5 Flash',        provider: 'Google',    input: 0.075, output: 0.30  },
+    { id: 'gemini-flash8b',name: 'Gemini Flash 8B',         provider: 'Google',    input: 0.0375,output: 0.15  },
+    { id: 'llama3-70b',    name: 'Llama 3.3 70B (Groq)',   provider: 'Groq',      input: 0.59,  output: 0.79  },
+    { id: 'mixtral-8x7b',  name: 'Mixtral 8x7B (Groq)',    provider: 'Groq',      input: 0.24,  output: 0.24  },
+  ];
+
+  var PRESETS = [
+    { label: 'Chatbot (light)', requests: 500, input: 300, output: 150 },
+    { label: 'Chatbot (heavy)', requests: 5000, input: 800, output: 400 },
+    { label: 'Code assistant', requests: 2000, input: 1500, output: 500 },
+    { label: 'RAG pipeline', requests: 10000, input: 2000, output: 200 },
+    { label: 'Batch summarizer', requests: 50000, input: 500, output: 100 },
+  ];
+
+  var PROVIDER_COLORS = {
+    OpenAI: 'text-green-400',
+    Anthropic: 'text-orange-400',
+    Google: 'text-blue-400',
+    Groq: 'text-purple-400',
+  };
+
+  // Render presets
+  var presetsEl = document.getElementById('presets');
+  PRESETS.forEach(function (p) {
+    var btn = document.createElement('button');
+    btn.className = 'px-3 py-1 text-xs rounded-lg border border-border bg-bg hover:bg-primary/10 hover:border-primary/40 transition-colors';
+    btn.textContent = p.label;
+    btn.addEventListener('click', function () {
+      document.getElementById('requests-input').value = p.requests;
+      document.getElementById('input-tokens-input').value = p.input;
+      document.getElementById('output-tokens-input').value = p.output;
+      calculate();
+    });
+    presetsEl.appendChild(btn);
+  });
+
+  function fmt(n) {
+    if (n >= 1000) return '$' + n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    if (n >= 10) return '$' + n.toFixed(2);
+    if (n >= 1) return '$' + n.toFixed(3);
+    return '$' + n.toFixed(4);
+  }
+
+  function calculate() {
+    var requests = parseFloat(document.getElementById('requests-input').value);
+    var inputTok = parseFloat(document.getElementById('input-tokens-input').value);
+    var outputTok = parseFloat(document.getElementById('output-tokens-input').value);
+
+    if (isNaN(requests) || requests <= 0 || isNaN(inputTok) || inputTok <= 0 || isNaN(outputTok) || outputTok <= 0) {
+      alert('Please enter valid positive values.');
+      return;
+    }
+
+    var dailyInputM = (requests * inputTok) / 1e6;
+    var dailyOutputM = (requests * outputTok) / 1e6;
+    var totalDailyTokens = requests * (inputTok + outputTok);
+
+    var results = MODELS.map(function (m) {
+      var dailyCost = dailyInputM * m.input + dailyOutputM * m.output;
+      var monthlyCost = dailyCost * 30;
+      return Object.assign({}, m, { dailyCost: dailyCost, monthlyCost: monthlyCost });
+    }).sort(function (a, b) { return a.monthlyCost - b.monthlyCost; });
+
+    // Summary
+    var summaryGrid = document.getElementById('summary-grid');
+    summaryGrid.innerHTML = '';
+    var cheapest = results[0];
+    var mostExpensive = results[results.length - 1];
+    var summaryItems = [
+      { label: 'Daily Requests', value: requests.toLocaleString(), sub: 'calls/day', color: 'text-primary' },
+      { label: 'Tokens / Request', value: (inputTok + outputTok).toLocaleString(), sub: inputTok + ' in + ' + outputTok + ' out', color: 'text-blue-400' },
+      { label: 'Cheapest (Monthly)', value: fmt(cheapest.monthlyCost), sub: cheapest.name, color: 'text-green-400' },
+      { label: 'Most Expensive', value: fmt(mostExpensive.monthlyCost), sub: mostExpensive.name, color: 'text-red-400' },
+    ];
+    summaryItems.forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'bg-bg-card border border-border rounded-xl p-4';
+      card.innerHTML = '<div class="text-xs text-text-muted mb-1">' + item.label + '</div>'
+        + '<div class="text-xl font-bold ' + item.color + '">' + item.value + '</div>'
+        + '<div class="text-xs text-text-muted">' + item.sub + '</div>';
+      summaryGrid.appendChild(card);
+    });
+
+    // Table
+    var tbody = document.getElementById('table-body');
+    tbody.innerHTML = '';
+    results.forEach(function (r, i) {
+      var tr = document.createElement('tr');
+      var isFirst = i === 0;
+      tr.className = isFirst ? 'bg-green-500/5' : '';
+      var provColor = PROVIDER_COLORS[r.provider] || 'text-text-muted';
+      tr.innerHTML = '<td class="py-2.5 pr-4">'
+        + '<div class="font-medium">' + (isFirst ? '🏆 ' : '') + r.name + '</div>'
+        + '<div class="text-xs ' + provColor + '">' + r.provider + '</div>'
+        + '</td>'
+        + '<td class="py-2.5 pr-4 text-right font-mono text-xs text-text-muted">$' + r.input.toFixed(3) + '</td>'
+        + '<td class="py-2.5 pr-4 text-right font-mono text-xs text-text-muted">$' + r.output.toFixed(3) + '</td>'
+        + '<td class="py-2.5 pr-4 text-right font-mono text-sm">' + fmt(r.dailyCost) + '</td>'
+        + '<td class="py-2.5 text-right font-mono text-sm font-semibold ' + (isFirst ? 'text-green-400' : '') + '">' + fmt(r.monthlyCost) + '</td>';
+      tbody.appendChild(tr);
+    });
+
+    // Bar chart
+    var chartEl = document.getElementById('bar-chart');
+    chartEl.innerHTML = '';
+    var maxCost = results[results.length - 1].monthlyCost;
+    results.forEach(function (r) {
+      var pct = maxCost > 0 ? (r.monthlyCost / maxCost * 100) : 0;
+      var row = document.createElement('div');
+      row.className = 'flex items-center gap-3';
+      row.innerHTML = '<div class="w-36 text-xs text-right text-text-muted shrink-0 truncate">' + r.name + '</div>'
+        + '<div class="flex-1 bg-bg rounded-full h-5 overflow-hidden">'
+        + '<div class="h-full bg-primary/60 rounded-full transition-all flex items-center justify-end pr-2" style="width:' + Math.max(pct, 2) + '%">'
+        + '<span class="text-xs font-mono text-white/80 whitespace-nowrap">' + fmt(r.monthlyCost) + '</span>'
+        + '</div></div>';
+      chartEl.appendChild(row);
+    });
+
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('calc-btn').addEventListener('click', calculate);
+
+  // Auto-calculate on load
+  calculate();
+})();
+</script>
