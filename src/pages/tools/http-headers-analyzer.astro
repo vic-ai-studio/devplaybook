@@ -1,0 +1,461 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What HTTP headers should every website send?", answer: "At minimum: Strict-Transport-Security (HSTS), X-Content-Type-Options: nosniff, X-Frame-Options: DENY or SAMEORIGIN, and Referrer-Policy. Content-Security-Policy is the most powerful security header but requires careful tuning. Cache-Control is critical for performance. Together these prevent the most common web vulnerabilities." },
+  { question: "What is Content-Security-Policy (CSP)?", answer: "CSP is a browser-enforced allowlist that specifies which sources of scripts, styles, images, and other resources are permitted. A strong CSP like 'default-src \"self\"' blocks all inline scripts and external resource loading by default, eliminating most XSS attack vectors. Start with report-only mode to audit before enforcing." },
+  { question: "What is HSTS and why is it important?", answer: "HTTP Strict Transport Security (HSTS) tells browsers to only connect via HTTPS for a specified period. Once cached, the browser will refuse HTTP connections entirely — even if the user types http://. This prevents SSL stripping attacks. Use max-age=31536000 (1 year) for production sites. Submit to the HSTS preload list for maximum protection." },
+  { question: "What does X-Frame-Options do?", answer: "X-Frame-Options prevents your site from being embedded in iframes on other domains. This blocks clickjacking attacks where attackers overlay your site to trick users into clicking hidden elements. Use DENY (block all framing) or SAMEORIGIN (only allow your own domain). Note: CSP frame-ancestors is the modern replacement and offers more granular control." },
+  { question: "How does Cache-Control work?", answer: "Cache-Control tells browsers and CDNs how long to cache a response. Key directives: max-age=N (cache for N seconds), no-cache (must revalidate before using cached copy), no-store (never cache — for sensitive data), immutable (resource will never change — use with content-hashed filenames), public (allow CDN caching), private (only browser cache). For static assets with hashed filenames, use max-age=31536000, immutable." },
+  { question: "What is the Permissions-Policy header?", answer: "Permissions-Policy (formerly Feature-Policy) controls which browser APIs and features a page can access. For example, camera=(), microphone=() disables access to those hardware features, reducing the attack surface even if XSS occurs. List only the features your page needs and deny everything else." },
+];
+---
+
+<BaseLayout
+  title="HTTP Headers Analyzer — Parse & Explain Security, Cache & CORS Headers"
+  description="Paste HTTP response headers to parse and explain each one. Covers security headers (CSP, HSTS, X-Frame-Options), Cache-Control, CORS, and more. Free browser tool."
+  tool="HTTP headers analyzer, HTTP response headers parser, CSP analyzer, HSTS checker, security headers explainer, Cache-Control parser"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "HTTP Headers Analyzer",
+    "url": "https://devplaybook.cc/tools/http-headers-analyzer",
+    "description": "Paste HTTP response headers to get plain-English explanations for each one. Covers security headers, Cache-Control, CORS, and more.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">HTTP Headers Analyzer</h1>
+  <p class="text-text-muted mb-4">
+    Paste a list of HTTP response headers to get plain-English explanations.
+    Identifies security headers, cache directives, CORS policies, and flags missing critical headers.
+    Everything runs in your browser — no data is sent anywhere.
+  </p>
+  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Security header analysis</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Missing header detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cache-Control parsing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-xl p-6 mb-6">
+    <div class="flex items-center justify-between mb-2">
+      <label class="font-semibold text-sm" for="headers-input">Paste HTTP Response Headers</label>
+      <button id="load-example" class="text-xs text-primary hover:underline">Load example</button>
+    </div>
+    <p class="text-xs text-text-muted mb-3">Paste the raw headers section from curl, browser DevTools, or Postman. One header per line (format: <code class="font-mono bg-bg px-1 rounded">Header-Name: value</code>).</p>
+    <textarea id="headers-input" rows="10" placeholder="Content-Type: application/json&#10;Strict-Transport-Security: max-age=31536000; includeSubDomains&#10;X-Frame-Options: DENY&#10;Cache-Control: no-cache, no-store&#10;..."
+      class="w-full bg-bg border border-border rounded-lg px-3 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"></textarea>
+    <div class="flex gap-3 mt-4">
+      <button id="analyze-btn" class="bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
+        Analyze Headers
+      </button>
+      <button id="clear-btn" class="text-sm text-text-muted hover:text-red-400 transition-colors">
+        Clear
+      </button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="hidden space-y-5">
+    <!-- Summary -->
+    <div id="summary-card" class="rounded-xl p-5 border"></div>
+
+    <!-- Missing security headers alert -->
+    <div id="missing-card" class="hidden bg-red-500/5 border border-red-500/20 rounded-xl p-5">
+      <h2 class="font-bold text-red-400 mb-3">⚠ Missing Security Headers</h2>
+      <div id="missing-list" class="space-y-2"></div>
+    </div>
+
+    <!-- Parsed headers -->
+    <div>
+      <h2 class="font-bold mb-3">Parsed Headers</h2>
+      <div id="headers-list" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- Quick reference -->
+  <div class="mt-8 bg-bg-card border border-border rounded-xl p-6">
+    <h2 class="font-bold text-sm uppercase tracking-wide text-text-muted mb-4">Security Headers Quick Reference</h2>
+    <div class="space-y-3">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="p-4 rounded-lg bg-bg border border-border">
+          <div class="font-mono text-sm font-semibold text-primary mb-1">Strict-Transport-Security</div>
+          <div class="text-xs text-text-muted">Forces HTTPS. Prevents SSL stripping attacks.</div>
+          <code class="block mt-2 text-xs font-mono bg-bg-card px-2 py-1 rounded border border-border text-text-muted">max-age=31536000; includeSubDomains; preload</code>
+        </div>
+        <div class="p-4 rounded-lg bg-bg border border-border">
+          <div class="font-mono text-sm font-semibold text-primary mb-1">Content-Security-Policy</div>
+          <div class="text-xs text-text-muted">Restricts resource loading sources. Blocks XSS.</div>
+          <code class="block mt-2 text-xs font-mono bg-bg-card px-2 py-1 rounded border border-border text-text-muted">default-src 'self'; script-src 'self'</code>
+        </div>
+        <div class="p-4 rounded-lg bg-bg border border-border">
+          <div class="font-mono text-sm font-semibold text-primary mb-1">X-Frame-Options</div>
+          <div class="text-xs text-text-muted">Prevents clickjacking via iframe embedding.</div>
+          <code class="block mt-2 text-xs font-mono bg-bg-card px-2 py-1 rounded border border-border text-text-muted">DENY</code>
+        </div>
+        <div class="p-4 rounded-lg bg-bg border border-border">
+          <div class="font-mono text-sm font-semibold text-primary mb-1">X-Content-Type-Options</div>
+          <div class="text-xs text-text-muted">Prevents MIME type sniffing attacks.</div>
+          <code class="block mt-2 text-xs font-mono bg-bg-card px-2 py-1 rounded border border-border text-text-muted">nosniff</code>
+        </div>
+        <div class="p-4 rounded-lg bg-bg border border-border">
+          <div class="font-mono text-sm font-semibold text-primary mb-1">Referrer-Policy</div>
+          <div class="text-xs text-text-muted">Controls what referrer info is sent with requests.</div>
+          <code class="block mt-2 text-xs font-mono bg-bg-card px-2 py-1 rounded border border-border text-text-muted">strict-origin-when-cross-origin</code>
+        </div>
+        <div class="p-4 rounded-lg bg-bg border border-border">
+          <div class="font-mono text-sm font-semibold text-primary mb-1">Permissions-Policy</div>
+          <div class="text-xs text-text-muted">Disables browser APIs you don't need.</div>
+          <code class="block mt-2 text-xs font-mono bg-bg-card px-2 py-1 rounded border border-border text-text-muted">camera=(), microphone=(), geolocation=()</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="HTTP Headers Analyzer" relatedTags={['security', 'http', 'web', 'developer-tools']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var KNOWN_HEADERS = {
+    'content-type': {
+      category: 'content',
+      label: 'Content-Type',
+      explain: function (v) {
+        var parts = v.split(';').map(function (p) { return p.trim(); });
+        var mime = parts[0];
+        var charset = parts.find(function (p) { return p.startsWith('charset='); });
+        return 'MIME type: <strong>' + mime + '</strong>.' + (charset ? ' Character encoding: <strong>' + charset.split('=')[1] + '</strong>.' : '') + ' Tells the browser how to interpret the response body.';
+      }
+    },
+    'cache-control': {
+      category: 'caching',
+      label: 'Cache-Control',
+      explain: function (v) {
+        var parts = v.split(',').map(function (p) { return p.trim().toLowerCase(); });
+        var notes = [];
+        parts.forEach(function (p) {
+          if (p === 'no-store') notes.push('<strong>no-store</strong>: Never cache this response — for sensitive data');
+          else if (p === 'no-cache') notes.push('<strong>no-cache</strong>: Must revalidate with server before using cached copy');
+          else if (p === 'private') notes.push('<strong>private</strong>: Only browser can cache (not CDN/shared caches)');
+          else if (p === 'public') notes.push('<strong>public</strong>: CDNs and shared caches may store this response');
+          else if (p === 'immutable') notes.push('<strong>immutable</strong>: Resource will never change — browser won\'t revalidate');
+          else if (p.startsWith('max-age=')) {
+            var secs = parseInt(p.split('=')[1]);
+            var human = secs >= 86400 ? Math.round(secs / 86400) + ' day(s)' : secs >= 3600 ? Math.round(secs / 3600) + ' hour(s)' : secs + 's';
+            notes.push('<strong>' + p + '</strong>: Cache for ' + human);
+          } else if (p.startsWith('s-maxage=')) {
+            var secs2 = parseInt(p.split('=')[1]);
+            notes.push('<strong>' + p + '</strong>: CDN cache TTL override: ' + secs2 + 's');
+          } else if (p === 'must-revalidate') {
+            notes.push('<strong>must-revalidate</strong>: Must not serve stale content without revalidation');
+          }
+        });
+        return notes.length ? notes.join('<br>') : 'Value: ' + v;
+      }
+    },
+    'strict-transport-security': {
+      category: 'security',
+      label: 'Strict-Transport-Security',
+      explain: function (v) {
+        var parts = v.split(';').map(function (p) { return p.trim().toLowerCase(); });
+        var maxAge = parts.find(function (p) { return p.startsWith('max-age='); });
+        var secs = maxAge ? parseInt(maxAge.split('=')[1]) : 0;
+        var days = Math.round(secs / 86400);
+        var notes = ['Forces HTTPS connections for <strong>' + days + ' days</strong>. Browsers will refuse HTTP connections after seeing this header.'];
+        if (parts.includes('includesubdomains')) notes.push('Applies to all <strong>subdomains</strong> as well.');
+        if (parts.includes('preload')) notes.push('<strong>preload</strong>: Eligible for inclusion in browser HSTS preload lists.');
+        if (secs < 31536000) notes.push('⚠ Consider increasing max-age to at least 31536000 (1 year) for production.');
+        return notes.join('<br>');
+      }
+    },
+    'content-security-policy': {
+      category: 'security',
+      label: 'Content-Security-Policy',
+      explain: function (v) {
+        var directives = v.split(';').map(function (d) { return d.trim(); }).filter(Boolean);
+        var notes = ['Controls which external resources browsers may load. Blocks XSS attacks.<br>'];
+        directives.forEach(function (d) {
+          var parts = d.split(/\s+/);
+          var dir = parts[0];
+          var sources = parts.slice(1).join(' ');
+          notes.push('<strong>' + dir + '</strong>: ' + sources);
+        });
+        if (v.includes("'unsafe-inline'")) notes.push("⚠ <strong>'unsafe-inline'</strong> weakens XSS protection — avoid if possible.");
+        if (v.includes("'unsafe-eval'")) notes.push("⚠ <strong>'unsafe-eval'</strong> allows eval() — creates XSS risk.");
+        return notes.join('<br>');
+      }
+    },
+    'x-frame-options': {
+      category: 'security',
+      label: 'X-Frame-Options',
+      explain: function (v) {
+        var u = v.trim().toUpperCase();
+        if (u === 'DENY') return 'Blocks this page from being embedded in any iframe. Prevents clickjacking attacks.';
+        if (u === 'SAMEORIGIN') return 'Only allows embedding in iframes from the same origin. Prevents cross-origin clickjacking.';
+        if (u.startsWith('ALLOW-FROM')) return 'Allows embedding only from: ' + v.split(' ').slice(1).join(' ') + '. Note: This directive is deprecated in modern browsers — use CSP frame-ancestors instead.';
+        return v;
+      }
+    },
+    'x-content-type-options': {
+      category: 'security',
+      label: 'X-Content-Type-Options',
+      explain: function (v) {
+        return v.toLowerCase() === 'nosniff'
+          ? 'Prevents MIME type sniffing. Browsers will not override the Content-Type header. Blocks MIME confusion attacks.'
+          : 'Value should be <strong>nosniff</strong>. Current value: ' + v;
+      }
+    },
+    'referrer-policy': {
+      category: 'security',
+      label: 'Referrer-Policy',
+      explain: function (v) {
+        var policies = {
+          'no-referrer': 'Never sends a Referer header — maximum privacy.',
+          'no-referrer-when-downgrade': 'Sends full URL for same-protocol requests, nothing for HTTPS→HTTP.',
+          'origin': 'Sends only the origin (scheme+host) — not the full URL path.',
+          'origin-when-cross-origin': 'Full URL for same-origin, only origin for cross-origin.',
+          'same-origin': 'Full URL only for same-origin requests, nothing for cross-origin.',
+          'strict-origin': 'Origin only, and never for HTTPS→HTTP downgrades.',
+          'strict-origin-when-cross-origin': 'Full URL same-origin, origin cross-origin, nothing on downgrade. ✓ Recommended.',
+          'unsafe-url': 'Always sends full URL including path and query — leaks sensitive URLs!'
+        };
+        return policies[v.toLowerCase()] || 'Value: ' + v;
+      }
+    },
+    'permissions-policy': {
+      category: 'security',
+      label: 'Permissions-Policy',
+      explain: function (v) {
+        return 'Controls browser API access for this page.<br>Each directive restricts a browser feature. <code>' + v.split(',').slice(0, 3).join(', ') + (v.split(',').length > 3 ? '...' : '') + '</code>';
+      }
+    },
+    'access-control-allow-origin': {
+      category: 'cors',
+      label: 'Access-Control-Allow-Origin',
+      explain: function (v) {
+        if (v === '*') return '⚠ Allows any origin to make cross-origin requests to this resource. Only use on fully public, unauthenticated APIs.';
+        if (v === 'null') return '⚠ Allows null origin — avoid this in production as it can be exploited with sandboxed iframes.';
+        return 'Only allows cross-origin requests from: <strong>' + v + '</strong>.';
+      }
+    },
+    'access-control-allow-methods': {
+      category: 'cors',
+      label: 'Access-Control-Allow-Methods',
+      explain: function (v) { return 'Cross-origin requests may use these HTTP methods: <strong>' + v + '</strong>.'; }
+    },
+    'access-control-allow-headers': {
+      category: 'cors',
+      label: 'Access-Control-Allow-Headers',
+      explain: function (v) { return 'These request headers are allowed in cross-origin requests: <strong>' + v + '</strong>.'; }
+    },
+    'access-control-max-age': {
+      category: 'cors',
+      label: 'Access-Control-Max-Age',
+      explain: function (v) {
+        var secs = parseInt(v);
+        return 'Browsers cache this preflight response for <strong>' + secs + ' seconds</strong> (' + Math.round(secs / 3600) + ' hours). Reduces OPTIONS preflight requests.';
+      }
+    },
+    'set-cookie': {
+      category: 'cookies',
+      label: 'Set-Cookie',
+      explain: function (v) {
+        var notes = [];
+        var parts = v.split(';').map(function (p) { return p.trim(); });
+        var nameVal = parts[0];
+        notes.push('Sets cookie: <strong>' + nameVal.split('=')[0] + '</strong>');
+        var lc = v.toLowerCase();
+        if (!lc.includes('httponly')) notes.push('⚠ Missing <strong>HttpOnly</strong> — JavaScript can read this cookie (XSS risk)');
+        else notes.push('✓ <strong>HttpOnly</strong>: Inaccessible to JavaScript');
+        if (!lc.includes('secure')) notes.push('⚠ Missing <strong>Secure</strong> — cookie sent over HTTP (use HTTPS only)');
+        else notes.push('✓ <strong>Secure</strong>: Only sent over HTTPS');
+        var sameSite = parts.find(function (p) { return p.toLowerCase().startsWith('samesite='); });
+        if (sameSite) notes.push('<strong>SameSite=' + sameSite.split('=')[1] + '</strong>: ' + (sameSite.toLowerCase().includes('strict') ? 'Not sent in cross-site requests — best CSRF protection' : sameSite.toLowerCase().includes('lax') ? 'Sent on safe top-level navigations — good default' : 'Sent in all contexts — weakest CSRF protection'));
+        else notes.push('⚠ Missing <strong>SameSite</strong> — defaults to Lax in modern browsers');
+        return notes.join('<br>');
+      }
+    },
+    'server': {
+      category: 'info',
+      label: 'Server',
+      explain: function (v) { return '⚠ Reveals server software: <strong>' + v + '</strong>. Consider removing or obscuring this header to reduce information disclosure.'; }
+    },
+    'x-powered-by': {
+      category: 'info',
+      label: 'X-Powered-By',
+      explain: function (v) { return '⚠ Reveals backend technology: <strong>' + v + '</strong>. Remove this header in production to reduce information disclosure (e.g., <code>app.disable("x-powered-by")</code> in Express).'; }
+    },
+    'vary': {
+      category: 'caching',
+      label: 'Vary',
+      explain: function (v) { return 'CDNs and caches store separate copies of this response for each value of: <strong>' + v + '</strong>. Common use: <code>Vary: Accept-Encoding</code> for compressed responses.'; }
+    },
+    'etag': {
+      category: 'caching',
+      label: 'ETag',
+      explain: function (v) { return 'Cache validation token: <strong>' + v + '</strong>. Browsers send this in <code>If-None-Match</code> on subsequent requests. Server responds 304 Not Modified if the content hasn\'t changed — saves bandwidth.'; }
+    },
+    'last-modified': {
+      category: 'caching',
+      label: 'Last-Modified',
+      explain: function (v) { return 'Content was last modified: <strong>' + v + '</strong>. Used for conditional requests (If-Modified-Since). Less precise than ETag for cache validation.'; }
+    },
+    'location': {
+      category: 'redirect',
+      label: 'Location',
+      explain: function (v) { return 'Redirects to: <strong>' + v + '</strong>. Used with 3xx status codes (301 Moved Permanently, 302 Found, 307 Temporary Redirect).'; }
+    },
+    'content-encoding': {
+      category: 'content',
+      label: 'Content-Encoding',
+      explain: function (v) { return 'Response body is compressed with: <strong>' + v + '</strong>. ' + (v.toLowerCase() === 'br' ? 'Brotli compression — best compression ratio, supported by all modern browsers.' : v.toLowerCase() === 'gzip' ? 'Gzip compression — widely supported. Consider Brotli for better ratios.' : ''); }
+    },
+    'transfer-encoding': {
+      category: 'content',
+      label: 'Transfer-Encoding',
+      explain: function (v) { return 'Transfer encoding: <strong>' + v + '</strong>.' + (v.toLowerCase() === 'chunked' ? ' Response is sent in chunks — useful for streaming large responses without knowing total size upfront.' : ''); }
+    },
+    'x-xss-protection': {
+      category: 'security',
+      label: 'X-XSS-Protection',
+      explain: function (v) { return '⚠ This header is <strong>deprecated</strong>. Modern browsers ignore it. Use Content-Security-Policy instead for XSS protection. Value: ' + v; }
+    }
+  };
+
+  var REQUIRED_SECURITY = [
+    { key: 'strict-transport-security', label: 'Strict-Transport-Security', rec: 'max-age=31536000; includeSubDomains' },
+    { key: 'x-content-type-options', label: 'X-Content-Type-Options', rec: 'nosniff' },
+    { key: 'x-frame-options', label: 'X-Frame-Options', rec: 'DENY' },
+    { key: 'referrer-policy', label: 'Referrer-Policy', rec: 'strict-origin-when-cross-origin' },
+    { key: 'content-security-policy', label: 'Content-Security-Policy', rec: "default-src 'self'" },
+  ];
+
+  var EXAMPLE_HEADERS = [
+    'HTTP/2 200 OK',
+    'content-type: text/html; charset=UTF-8',
+    'cache-control: max-age=3600, public',
+    'strict-transport-security: max-age=31536000; includeSubDomains',
+    'x-frame-options: SAMEORIGIN',
+    'x-content-type-options: nosniff',
+    'referrer-policy: strict-origin-when-cross-origin',
+    'content-encoding: gzip',
+    'vary: Accept-Encoding',
+    'etag: "abc123def456"',
+    'server: nginx',
+    'x-powered-by: Express',
+  ].join('\n');
+
+  var CATEGORY_LABELS = {
+    security: { label: 'Security', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20', icon: '🔒' },
+    caching:  { label: 'Caching',  color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20', icon: '📦' },
+    cors:     { label: 'CORS',    color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20', icon: '🌐' },
+    content:  { label: 'Content', color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20', icon: '📄' },
+    cookies:  { label: 'Cookies', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20', icon: '🍪' },
+    info:     { label: 'Server Info', color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/20', icon: 'ℹ️' },
+    redirect: { label: 'Redirect', color: 'text-teal-400', bg: 'bg-teal-500/10 border-teal-500/20', icon: '↗️' },
+    other:    { label: 'Other',   color: 'text-text-muted', bg: 'bg-bg-card border-border', icon: '📋' },
+  };
+
+  function parseHeaders(raw) {
+    var lines = raw.split('\n');
+    var parsed = [];
+    lines.forEach(function (line) {
+      line = line.trim();
+      if (!line || line.startsWith('HTTP/')) return;
+      var idx = line.indexOf(':');
+      if (idx === -1) return;
+      var name = line.substring(0, idx).trim();
+      var value = line.substring(idx + 1).trim();
+      if (name && value) parsed.push({ name: name, value: value });
+    });
+    return parsed;
+  }
+
+  document.getElementById('load-example').addEventListener('click', function () {
+    document.getElementById('headers-input').value = EXAMPLE_HEADERS;
+  });
+
+  document.getElementById('analyze-btn').addEventListener('click', function () {
+    var raw = document.getElementById('headers-input').value.trim();
+    if (!raw) { alert('Please paste some HTTP headers first.'); return; }
+
+    var headers = parseHeaders(raw);
+    if (!headers.length) { alert('No valid headers found. Make sure each line is in "Name: Value" format.'); return; }
+
+    var headerMap = {};
+    headers.forEach(function (h) { headerMap[h.name.toLowerCase()] = h.value; });
+
+    // Missing security headers
+    var missing = REQUIRED_SECURITY.filter(function (s) { return !headerMap[s.key]; });
+    var missingEl = document.getElementById('missing-card');
+    var missingListEl = document.getElementById('missing-list');
+    if (missing.length) {
+      missingListEl.innerHTML = '';
+      missing.forEach(function (m) {
+        var div = document.createElement('div');
+        div.className = 'flex items-start gap-3 p-3 rounded-lg bg-bg border border-border';
+        div.innerHTML = '<span class="shrink-0 text-red-400 font-mono text-sm font-semibold">' + m.label + '</span>'
+          + '<div class="text-xs text-text-muted">Not present. Recommended: <code class="font-mono bg-bg-card px-1 rounded">' + m.rec + '</code></div>';
+        missingListEl.appendChild(div);
+      });
+      missingEl.classList.remove('hidden');
+    } else {
+      missingEl.classList.add('hidden');
+    }
+
+    // Summary
+    var secCount = REQUIRED_SECURITY.filter(function (s) { return headerMap[s.key]; }).length;
+    var summaryEl = document.getElementById('summary-card');
+    var secPct = Math.round((secCount / REQUIRED_SECURITY.length) * 100);
+    var sumColor = secPct === 100 ? 'green' : secPct >= 60 ? 'yellow' : 'red';
+    summaryEl.className = 'rounded-xl p-5 border bg-' + sumColor + '-500/10 border-' + sumColor + '-500/30';
+    summaryEl.innerHTML = '<div class="flex items-center gap-4">'
+      + '<div class="text-3xl font-bold ' + (secPct === 100 ? 'text-green-400' : secPct >= 60 ? 'text-yellow-400' : 'text-red-400') + '">' + secPct + '%</div>'
+      + '<div><div class="font-bold text-lg">' + headers.length + ' headers parsed · ' + secCount + '/' + REQUIRED_SECURITY.length + ' security headers present</div>'
+      + '<div class="text-sm text-text-muted">' + (missing.length ? missing.length + ' critical security header(s) missing — see alerts below.' : 'All recommended security headers are present.') + '</div>'
+      + '</div></div>';
+
+    // Headers list
+    var listEl = document.getElementById('headers-list');
+    listEl.innerHTML = '';
+    headers.forEach(function (h) {
+      var key = h.name.toLowerCase();
+      var known = KNOWN_HEADERS[key];
+      var cat = known ? known.category : 'other';
+      var catCfg = CATEGORY_LABELS[cat] || CATEGORY_LABELS.other;
+      var explanation = known ? known.explain(h.value) : 'No additional analysis available for this header.';
+
+      var div = document.createElement('div');
+      div.className = 'bg-bg-card border border-border rounded-xl p-4';
+      div.innerHTML = '<div class="flex items-start gap-3">'
+        + '<span class="shrink-0 text-xl mt-0.5">' + catCfg.icon + '</span>'
+        + '<div class="flex-1 min-w-0">'
+        + '<div class="flex items-center gap-2 flex-wrap mb-1">'
+        + '<span class="font-mono font-semibold text-sm text-text">' + h.name + '</span>'
+        + '<span class="text-xs px-2 py-0.5 rounded-full border ' + catCfg.bg + ' ' + catCfg.color + '">' + catCfg.label + '</span>'
+        + '</div>'
+        + '<div class="font-mono text-xs text-text-muted bg-bg px-2 py-1 rounded border border-border mb-2 break-all">' + h.value + '</div>'
+        + '<div class="text-sm text-text-muted leading-relaxed">' + explanation + '</div>'
+        + '</div></div>';
+      listEl.appendChild(div);
+    });
+
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  document.getElementById('clear-btn').addEventListener('click', function () {
+    document.getElementById('headers-input').value = '';
+    document.getElementById('results').classList.add('hidden');
+  });
+})();
+</script>
