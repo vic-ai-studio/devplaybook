@@ -1,7 +1,8 @@
 ---
 title: "Vite vs Webpack vs esbuild 2026: Which Build Tool Should You Choose?"
 description: "A comprehensive comparison of Vite, Webpack, and esbuild in 2026. Build speeds, HMR, plugin ecosystems, and when to choose each tool for your frontend project."
-pubDate: 2026-03-27
+date: "2026-03-27"
+readingTime: "8 min read"
 tags: [vite, webpack, esbuild, bundler, frontend]
 ---
 
