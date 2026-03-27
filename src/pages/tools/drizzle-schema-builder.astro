@@ -1,0 +1,322 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is Drizzle ORM?",
+    answer: "Drizzle ORM is a TypeScript-first SQL ORM that gives you full type safety without code generation. You define your schema in TypeScript using the Drizzle schema API, and it infers types automatically. It supports PostgreSQL, MySQL, and SQLite, with a query builder that closely mirrors SQL syntax."
+  },
+  {
+    question: "What is the difference between pgTable and mysqlTable?",
+    answer: "pgTable is for PostgreSQL and uses Postgres-specific types like serial, uuid, jsonb, and timestamptz. mysqlTable is for MySQL/MariaDB and uses MySQL types like int auto_increment, varchar, and datetime. The column APIs are similar but types differ based on what each database natively supports."
+  },
+  {
+    question: "How does Drizzle handle primary keys?",
+    answer: "You can mark any column as a primary key using .primaryKey() in Drizzle. For auto-incrementing integers, use serial('id').primaryKey() in PostgreSQL. For UUIDs, use uuid('id').defaultRandom().primaryKey(). Composite primary keys are defined using the primaryKey() function outside column definitions in the table's third argument."
+  },
+  {
+    question: "What does .notNull() do in Drizzle?",
+    answer: "By default, Drizzle columns are nullable (they accept NULL values). Adding .notNull() makes the column NOT NULL in the database, and changes the TypeScript type from 'string | null' to 'string'. This mirrors the SQL NOT NULL constraint and ensures data integrity at both the database and TypeScript levels."
+  },
+  {
+    question: "How do I run Drizzle migrations?",
+    answer: "Generate SQL migration files with 'drizzle-kit generate'. Then apply them with 'drizzle-kit migrate' (for postgres-js, mysql2, etc.) or 'db.push()' in development for quick schema sync. In production, always use migration files. Use drizzle-kit studio for a visual database browser."
+  },
+  {
+    question: "What is the $inferSelect and $inferInsert pattern?",
+    answer: "Drizzle tables export $inferSelect and $inferInsert TypeScript types. $inferSelect infers the shape of rows returned by SELECT queries (all columns). $inferInsert infers the shape for INSERT operations, respecting optional fields with defaults. Use these as: type User = typeof users.$inferSelect."
+  }
+];
+---
+
+<BaseLayout
+  title="Drizzle Schema Builder — Visual Table Designer to TypeScript Schema"
+  description="Design database tables visually and generate Drizzle ORM TypeScript schema code. Add columns with types, constraints, and defaults. Also outputs equivalent CREATE TABLE SQL."
+  tool="Drizzle ORM schema builder, Drizzle schema generator, pgTable generator, TypeScript ORM schema, Drizzle table builder, SQL schema generator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Drizzle Schema Builder",
+    "url": "https://devplaybook.cc/tools/drizzle-schema-builder",
+    "description": "Design database tables visually and generate Drizzle ORM TypeScript schema code plus SQL CREATE TABLE statements.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Drizzle Schema Builder</h1>
+  <p class="text-text-muted mb-4">Design your database tables visually and get instant <strong>Drizzle ORM TypeScript schema</strong> code plus equivalent <strong>CREATE TABLE SQL</strong>. Select PostgreSQL or MySQL, add columns, set constraints — then copy.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multiple tables</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PostgreSQL + MySQL</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Drizzle TS + SQL output</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy each individually</span>
+  </div>
+
+  <!-- Global settings -->
+  <div class="flex flex-wrap gap-4 mb-6 p-4 bg-bg-card border border-border rounded-lg">
+    <div>
+      <label class="block text-xs font-medium text-text-muted mb-1">Database</label>
+      <select id="db-type" class="bg-surface border border-border rounded p-2 text-sm focus:outline-none focus:border-primary">
+        <option value="pg">PostgreSQL (pgTable)</option>
+        <option value="mysql">MySQL (mysqlTable)</option>
+      </select>
+    </div>
+    <div class="flex items-end">
+      <button id="btn-add-table" class="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">+ Add Table</button>
+    </div>
+  </div>
+
+  <!-- Tables -->
+  <div id="tables-container" class="space-y-6 mb-6"></div>
+
+  <!-- Output tabs -->
+  <div class="flex gap-1 mb-4 border-b border-border">
+    <button data-dout="ts" class="dout-tab px-4 py-2 text-sm font-medium border-b-2 border-primary text-primary transition-colors">Drizzle TypeScript</button>
+    <button data-dout="sql" class="dout-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">SQL (CREATE TABLE)</button>
+  </div>
+
+  <div id="dout-ts" class="dout-panel">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-medium">schema.ts</span>
+      <button id="copy-ts" class="px-3 py-1.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Copy</button>
+    </div>
+    <pre id="ts-output" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono text-green-300 whitespace-pre overflow-x-auto min-h-[200px]"></pre>
+  </div>
+
+  <div id="dout-sql" class="dout-panel hidden">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-medium">schema.sql</span>
+      <button id="copy-sql" class="px-3 py-1.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Copy</button>
+    </div>
+    <pre id="sql-output" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono text-yellow-300 whitespace-pre overflow-x-auto min-h-[200px]"></pre>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+(function() {
+  let tableCount = 0;
+
+  const tablesContainer = document.getElementById('tables-container');
+  const tsOut = document.getElementById('ts-output');
+  const sqlOut = document.getElementById('sql-output');
+
+  const TYPE_MAP_PG = {
+    text: 'text', integer: 'integer', boolean: 'boolean',
+    timestamp: 'timestamp', uuid: 'uuid', json: 'jsonb', serial: 'serial', varchar: 'varchar'
+  };
+  const TYPE_MAP_MYSQL = {
+    text: 'text', integer: 'int', boolean: 'boolean',
+    timestamp: 'timestamp', uuid: 'varchar', json: 'json', serial: 'int', varchar: 'varchar'
+  };
+
+  function addTable(defaults = {}) {
+    tableCount++;
+    const tid = tableCount;
+    const div = document.createElement('div');
+    div.className = 'bg-bg-card border border-border rounded-lg p-5';
+    div.dataset.tid = String(tid);
+    div.innerHTML = `
+      <div class="flex items-center gap-3 mb-4">
+        <input type="text" class="tbl-name flex-1 bg-surface border border-border rounded-lg p-2.5 text-sm font-medium font-mono focus:outline-none focus:border-primary" placeholder="users" value="${defaults.name || ''}" />
+        <button class="btn-rm-table text-xs text-red-400 border border-red-400/30 px-2 py-1.5 rounded hover:bg-red-400/10 transition-colors" data-tid="${tid}">Remove Table</button>
+      </div>
+      <div class="mb-3">
+        <div class="grid grid-cols-12 gap-2 mb-2 text-xs font-medium text-text-muted px-1">
+          <div class="col-span-3">Column Name</div>
+          <div class="col-span-2">Type</div>
+          <div class="col-span-2">Default</div>
+          <div class="col-span-1 text-center">PK</div>
+          <div class="col-span-1 text-center">NotNull</div>
+          <div class="col-span-1 text-center">Unique</div>
+          <div class="col-span-2"></div>
+        </div>
+        <div class="col-list space-y-2" data-tid="${tid}"></div>
+      </div>
+      <button class="btn-add-col text-xs text-primary hover:underline" data-tid="${tid}">+ Add Column</button>
+    `;
+    tablesContainer.appendChild(div);
+
+    div.querySelector('.btn-rm-table').addEventListener('click', () => { div.remove(); generate(); });
+    div.querySelector('.btn-add-col').addEventListener('click', () => addColumn(tid));
+    div.querySelector('.tbl-name').addEventListener('input', generate);
+
+    if (defaults.cols) {
+      defaults.cols.forEach(c => addColumn(tid, c));
+    }
+    generate();
+  }
+
+  function addColumn(tid, defaults = {}) {
+    const colList = tablesContainer.querySelector(`.col-list[data-tid="${tid}"]`);
+    if (!colList) return;
+    const row = document.createElement('div');
+    row.className = 'grid grid-cols-12 gap-2 items-center';
+    const types = ['text','integer','boolean','timestamp','uuid','json','serial','varchar'];
+    const typeOpts = types.map(t => `<option value="${t}" ${defaults.type === t ? 'selected' : ''}>${t}</option>`).join('');
+    row.innerHTML = `
+      <input type="text" class="col-name col-span-3 bg-surface border border-border rounded p-1.5 text-xs font-mono focus:outline-none focus:border-primary" placeholder="name" value="${defaults.name || ''}" />
+      <select class="col-type col-span-2 bg-surface border border-border rounded p-1.5 text-xs focus:outline-none focus:border-primary">${typeOpts}</select>
+      <input type="text" class="col-default col-span-2 bg-surface border border-border rounded p-1.5 text-xs font-mono focus:outline-none focus:border-primary" placeholder="default" value="${defaults.default || ''}" />
+      <div class="col-span-1 flex justify-center"><input type="checkbox" class="col-pk accent-primary" ${defaults.pk ? 'checked' : ''} /></div>
+      <div class="col-span-1 flex justify-center"><input type="checkbox" class="col-notnull accent-primary" ${defaults.notNull ? 'checked' : ''} /></div>
+      <div class="col-span-1 flex justify-center"><input type="checkbox" class="col-unique accent-primary" ${defaults.unique ? 'checked' : ''} /></div>
+      <button class="btn-rm-col col-span-2 text-red-400 hover:text-red-300 text-xs text-left px-1">✕ Remove</button>
+    `;
+    colList.appendChild(row);
+    row.querySelector('.btn-rm-col').addEventListener('click', () => { row.remove(); generate(); });
+    row.querySelectorAll('input, select').forEach(el => el.addEventListener('change', generate));
+    row.querySelectorAll('input[type=text]').forEach(el => el.addEventListener('input', generate));
+    generate();
+  }
+
+  function getTableData() {
+    const db = document.getElementById('db-type').value;
+    const tables = [];
+    tablesContainer.querySelectorAll('[data-tid]').forEach(div => {
+      const name = div.querySelector('.tbl-name').value.trim() || 'table';
+      const cols = [];
+      div.querySelectorAll('.col-list > div').forEach(row => {
+        const colName = row.querySelector('.col-name').value.trim();
+        const colType = row.querySelector('.col-type').value;
+        const colDefault = row.querySelector('.col-default').value.trim();
+        const pk = row.querySelector('.col-pk').checked;
+        const notNull = row.querySelector('.col-notnull').checked;
+        const unique = row.querySelector('.col-unique').checked;
+        if (colName) cols.push({ name: colName, type: colType, default: colDefault, pk, notNull, unique });
+      });
+      tables.push({ name, cols });
+    });
+    return { db, tables };
+  }
+
+  function toCamel(s) {
+    return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  }
+
+  function generate() {
+    const { db, tables } = getTableData();
+    const fn = db === 'pg' ? 'pgTable' : 'mysqlTable';
+    const importFrom = db === 'pg' ? 'drizzle-orm/pg-core' : 'drizzle-orm/mysql-core';
+    const typeMap = db === 'pg' ? TYPE_MAP_PG : TYPE_MAP_MYSQL;
+
+    if (tables.length === 0) {
+      tsOut.textContent = '// Add a table above to generate schema';
+      sqlOut.textContent = '-- Add a table above to generate SQL';
+      return;
+    }
+
+    // Collect used types
+    const usedTypes = new Set([fn]);
+    tables.forEach(tbl => {
+      tbl.cols.forEach(col => {
+        const mapped = typeMap[col.type] || col.type;
+        if (mapped) usedTypes.add(mapped);
+      });
+    });
+
+    let ts = `import { ${[...usedTypes].join(', ')} } from '${importFrom}'\n\n`;
+
+    tables.forEach(tbl => {
+      const varName = toCamel(tbl.name);
+      ts += `export const ${varName} = ${fn}('${tbl.name}', {\n`;
+      tbl.cols.forEach(col => {
+        const mapped = typeMap[col.type] || col.type;
+        let line = `  ${toCamel(col.name)}: ${mapped}('${col.name}')`;
+        if (col.type === 'uuid' && db === 'pg' && col.pk) line += `.defaultRandom()`;
+        else if (col.type === 'serial' && db === 'pg') line += ''; // serial is auto
+        else if (col.default) line += `.default(${isNaN(Number(col.default)) ? `'${col.default}'` : col.default})`;
+        if (col.notNull) line += `.notNull()`;
+        if (col.unique) line += `.unique()`;
+        if (col.pk) line += `.primaryKey()`;
+        line += ',';
+        ts += line + '\n';
+      });
+      ts += `})\n\nexport type ${varName.charAt(0).toUpperCase() + varName.slice(1)} = typeof ${varName}.$inferSelect\nexport type New${varName.charAt(0).toUpperCase() + varName.slice(1)} = typeof ${varName}.$inferInsert\n\n`;
+    });
+    tsOut.textContent = ts.trim();
+
+    // SQL
+    let sql = '';
+    tables.forEach(tbl => {
+      sql += `CREATE TABLE IF NOT EXISTS "${tbl.name}" (\n`;
+      const lines = tbl.cols.map(col => {
+        const sqlType = col.type === 'serial' && db === 'pg' ? 'SERIAL'
+          : col.type === 'serial' && db === 'mysql' ? 'INT AUTO_INCREMENT'
+          : col.type === 'uuid' ? (db === 'pg' ? 'UUID' : 'VARCHAR(36)')
+          : col.type === 'json' ? (db === 'pg' ? 'JSONB' : 'JSON')
+          : col.type === 'timestamp' ? 'TIMESTAMP'
+          : col.type === 'boolean' ? 'BOOLEAN'
+          : col.type === 'integer' ? 'INTEGER'
+          : col.type === 'varchar' ? 'VARCHAR(255)'
+          : 'TEXT';
+        let def = `  "${col.name}" ${sqlType}`;
+        if (col.notNull) def += ' NOT NULL';
+        if (col.unique) def += ' UNIQUE';
+        if (col.default) def += ` DEFAULT ${isNaN(Number(col.default)) ? `'${col.default}'` : col.default}`;
+        if (col.pk) def += ' PRIMARY KEY';
+        return def;
+      });
+      sql += lines.join(',\n') + '\n);\n\n';
+    });
+    sqlOut.textContent = sql.trim();
+  }
+
+  // Tab switching
+  document.querySelectorAll('.dout-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.dout;
+      document.querySelectorAll('.dout-tab').forEach(b => {
+        b.classList.toggle('border-primary', b.dataset.dout === tab);
+        b.classList.toggle('text-primary', b.dataset.dout === tab);
+        b.classList.toggle('border-transparent', b.dataset.dout !== tab);
+        b.classList.toggle('text-text-muted', b.dataset.dout !== tab);
+      });
+      document.querySelectorAll('.dout-panel').forEach(p => p.classList.add('hidden'));
+      document.getElementById(`dout-${tab}`).classList.remove('hidden');
+    });
+  });
+
+  document.getElementById('copy-ts').addEventListener('click', function() {
+    navigator.clipboard.writeText(tsOut.textContent || '');
+    this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+  });
+  document.getElementById('copy-sql').addEventListener('click', function() {
+    navigator.clipboard.writeText(sqlOut.textContent || '');
+    this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+  });
+
+  document.getElementById('btn-add-table').addEventListener('click', () => addTable());
+  document.getElementById('db-type').addEventListener('change', generate);
+
+  // Preload example
+  addTable({
+    name: 'users',
+    cols: [
+      { name: 'id', type: 'uuid', pk: true, notNull: true },
+      { name: 'email', type: 'text', notNull: true, unique: true },
+      { name: 'name', type: 'text', notNull: true },
+      { name: 'is_active', type: 'boolean', notNull: true, default: 'true' },
+      { name: 'created_at', type: 'timestamp', notNull: true },
+    ]
+  });
+  addTable({
+    name: 'posts',
+    cols: [
+      { name: 'id', type: 'uuid', pk: true, notNull: true },
+      { name: 'title', type: 'text', notNull: true },
+      { name: 'content', type: 'text' },
+      { name: 'author_id', type: 'uuid', notNull: true },
+      { name: 'published', type: 'boolean', default: 'false' },
+      { name: 'created_at', type: 'timestamp', notNull: true },
+    ]
+  });
+})();
+</script>

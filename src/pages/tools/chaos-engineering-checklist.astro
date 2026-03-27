@@ -1,0 +1,526 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is chaos engineering?",
+    answer: "Chaos engineering is the discipline of experimenting on a system in order to build confidence in its ability to withstand turbulent and unexpected conditions in production. Pioneered at Netflix, it involves deliberately injecting failures (latency, service outages, resource exhaustion) to discover weaknesses before they cause real outages. The goal is to move from reactive incident response to proactive resilience building."
+  },
+  {
+    question: "What is a steady state hypothesis?",
+    answer: "A steady state hypothesis defines what 'normal' looks like for your system — a measurable output that shows the system is behaving correctly. Examples: '99th percentile API latency is under 200ms', 'checkout success rate is above 99.5%', 'error rate is below 0.1%'. Chaos experiments validate that this steady state is maintained even when failures are injected. If steady state breaks, you have found a real weakness."
+  },
+  {
+    question: "What is blast radius?",
+    answer: "Blast radius is the scope of impact if an experiment goes wrong. A full blast radius means the entire system is affected. Partial means a subset of traffic or nodes. Single-instance means only one pod or server. Best practice is to start with the smallest possible blast radius (single instance, canary traffic) and expand as you gain confidence. Always have a rollback plan that can return to steady state quickly."
+  },
+  {
+    question: "When should I run chaos experiments in production?",
+    answer: "Only run in production when you have: validated the experiment in staging, defined and measured your steady state baseline, set clear abort conditions, ensured monitoring and alerting are in place, notified on-call teams, and have a tested rollback plan ready. Start with a very small blast radius (single instance or 1% of traffic). Many organisations run chaos experiments during business hours when the full team is available to respond."
+  },
+  {
+    question: "What tools are used for chaos engineering?",
+    answer: "Popular chaos engineering tools include: LitmusChaos (Kubernetes-native, CNCF project), Chaos Monkey (Netflix, terminates random EC2 instances), Gremlin (SaaS platform, broad failure types), AWS Fault Injection Simulator (FIS), Chaos Mesh (Kubernetes), Pumba (Docker), and Toxiproxy (network-level latency/failure injection for integration tests). For game days and manual experiments, this checklist provides a structured approach without requiring any tooling."
+  }
+];
+---
+
+<BaseLayout
+  title="Chaos Engineering Checklist — Design & Run Chaos Experiments"
+  description="Interactive chaos engineering checklist for distributed systems. Design experiments with hypothesis, blast radius, and abort conditions. Track pre/during/post steps and generate a runbook. Runs in your browser."
+  tool="Chaos Engineering Checklist, chaos experiment, LitmusChaos, Chaos Monkey, steady state hypothesis, blast radius, fault injection, resilience testing, distributed systems, runbook generator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Chaos Engineering Checklist",
+    "url": "https://devplaybook.cc/tools/chaos-engineering-checklist",
+    "description": "Design chaos experiments with hypothesis, blast radius, abort conditions, and interactive checklists. Generate a runbook document you can download.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Chaos Engineering Checklist</h1>
+  <p class="text-text-muted mb-4">Design a chaos experiment step by step. Fill in the hypothesis, select failure types, check off each phase, and generate a runbook to share with your team.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Experiment builder form</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Interactive phase checklists</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Progress tracking</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Download runbook as .md</span>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="mb-6">
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-sm font-medium">Overall Progress</span>
+      <span id="progress-pct" class="text-sm font-semibold text-primary">0%</span>
+    </div>
+    <div class="w-full bg-bg-card border border-border rounded-full h-3 overflow-hidden">
+      <div id="progress-bar" class="h-3 bg-primary rounded-full transition-all duration-300" style="width:0%"></div>
+    </div>
+    <p id="progress-label" class="text-xs text-text-muted mt-1">0 of 0 items checked</p>
+  </div>
+
+  <!-- Experiment Builder -->
+  <div class="bg-bg-card border border-border rounded-lg p-5 mb-6">
+    <h2 class="text-base font-semibold mb-4">Experiment Builder</h2>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">Hypothesis <span class="text-text-muted font-normal">(steady state + expected outcome)</span></label>
+        <textarea id="exp-hypothesis" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary resize-none" rows="2" placeholder="If we inject 500ms latency on the payment service, the checkout page will still complete within the 3s SLA and success rate will remain above 99%."></textarea>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Target System</label>
+          <input id="exp-target" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" placeholder="e.g. checkout-service, payment-api" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Blast Radius</label>
+          <select id="exp-blast" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+            <option value="single-instance">Single Instance</option>
+            <option value="partial" selected>Partial (canary / subset)</option>
+            <option value="full">Full System</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Environment</label>
+          <select id="exp-env" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+            <option value="local">Local / Dev</option>
+            <option value="staging" selected>Staging</option>
+            <option value="production">Production</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Expected Outcome</label>
+          <input id="exp-outcome" type="text" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" placeholder="System degrades gracefully, retries succeed" />
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Abort Conditions</label>
+          <textarea id="exp-abort" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary resize-none" rows="2" placeholder="Error rate exceeds 5%, P99 latency exceeds 5s, any data loss detected"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Success Metrics</label>
+          <textarea id="exp-metrics" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary resize-none" rows="2" placeholder="Error rate stays below 1%, checkout success rate above 99%, P99 latency under 3s"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checklist sections -->
+  <div id="checklist-container" class="space-y-5 mb-6">
+
+    <!-- 1. Pre-experiment -->
+    <div class="bg-bg-card border border-border rounded-lg p-5" data-section="pre">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="w-7 h-7 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
+        <div>
+          <h3 class="text-sm font-semibold">Pre-Experiment</h3>
+          <p class="text-xs text-text-muted">Complete all steps before starting the experiment</p>
+        </div>
+        <span class="ml-auto section-count text-xs text-text-muted">0/7</span>
+      </div>
+      <div class="space-y-2">
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="pre-1" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Steady state hypothesis defined and written down</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="pre-2" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Steady state baseline measured and recorded (latency, error rate, throughput)</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="pre-3" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Monitoring, dashboards, and alerting confirmed in place</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="pre-4" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Rollback / abort plan documented and tested</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="pre-5" />
+          <span class="text-sm group-hover:text-foreground transition-colors">On-call team and stakeholders notified of experiment window</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="pre-6" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Runbook ready with step-by-step execution and abort steps</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="pre-7" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Blast radius minimised to the smallest scope possible</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 2. Experiment types -->
+    <div class="bg-bg-card border border-border rounded-lg p-5" data-section="types">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="w-7 h-7 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
+        <div>
+          <h3 class="text-sm font-semibold">Experiment Types</h3>
+          <p class="text-xs text-text-muted">Select which failure modes will be tested</p>
+        </div>
+        <span class="ml-auto section-count text-xs text-text-muted">0/10</span>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-1" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">Network Latency Injection</span>
+            <p class="text-xs text-text-muted">Add artificial delay to network calls</p>
+          </div>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-2" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">Packet Loss</span>
+            <p class="text-xs text-text-muted">Drop a percentage of network packets</p>
+          </div>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-3" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">Service Outage</span>
+            <p class="text-xs text-text-muted">Kill or stop a downstream service</p>
+          </div>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-4" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">CPU Stress</span>
+            <p class="text-xs text-text-muted">Exhaust CPU resources on a node</p>
+          </div>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-5" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">Memory Pressure</span>
+            <p class="text-xs text-text-muted">Consume available memory to trigger OOM behaviour</p>
+          </div>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-6" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">Disk I/O Saturation</span>
+            <p class="text-xs text-text-muted">Fill disk or saturate I/O throughput</p>
+          </div>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-7" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">DNS Failure</span>
+            <p class="text-xs text-text-muted">Corrupt or block DNS resolution</p>
+          </div>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-8" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">Database Failover</span>
+            <p class="text-xs text-text-muted">Trigger primary DB failure and observe replica promotion</p>
+          </div>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-9" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">Pod / Instance Kill</span>
+            <p class="text-xs text-text-muted">Randomly terminate pods or VM instances</p>
+          </div>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="type-10" />
+          <div>
+            <span class="text-sm group-hover:text-foreground transition-colors font-medium">Dependency Unavailability</span>
+            <p class="text-xs text-text-muted">Block access to an external API or cache</p>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- 3. Execution -->
+    <div class="bg-bg-card border border-border rounded-lg p-5" data-section="execution">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="w-7 h-7 rounded-full bg-yellow-500/20 text-yellow-400 flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
+        <div>
+          <h3 class="text-sm font-semibold">During Execution</h3>
+          <p class="text-xs text-text-muted">Steps to follow while the experiment is running</p>
+        </div>
+        <span class="ml-auto section-count text-xs text-text-muted">0/4</span>
+      </div>
+      <div class="space-y-2">
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="exec-1" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Start small — verify single-instance scope before widening blast radius</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="exec-2" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Monitor dashboards continuously — confirm no abort conditions are hit</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="exec-3" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Document observations in real time (timestamps, metrics, unexpected behaviours)</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="exec-4" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Team is ready to execute abort procedure at any moment</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 4. Post-experiment -->
+    <div class="bg-bg-card border border-border rounded-lg p-5" data-section="post">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="w-7 h-7 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center text-xs font-bold flex-shrink-0">4</span>
+        <div>
+          <h3 class="text-sm font-semibold">Post-Experiment</h3>
+          <p class="text-xs text-text-muted">Complete after the experiment ends</p>
+        </div>
+        <span class="ml-auto section-count text-xs text-text-muted">0/5</span>
+      </div>
+      <div class="space-y-2">
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="post-1" />
+          <span class="text-sm group-hover:text-foreground transition-colors">System restored to steady state — metrics back to baseline</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="post-2" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Findings and observations written up (what failed, what held up)</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="post-3" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Action items created for every weakness discovered (with owners and deadlines)</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="post-4" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Runbook updated with lessons learned and improved abort procedures</span>
+        </label>
+        <label class="checklist-item flex items-start gap-3 cursor-pointer group">
+          <input type="checkbox" class="checklist-cb mt-0.5 w-4 h-4 rounded accent-green-500 cursor-pointer flex-shrink-0" data-key="post-5" />
+          <span class="text-sm group-hover:text-foreground transition-colors">Results shared with team — schedule next experiment or follow-up game day</span>
+        </label>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Runbook generation -->
+  <div class="flex gap-3 mb-6 flex-wrap">
+    <button id="btn-generate-runbook" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">Generate Runbook</button>
+    <button id="btn-reset-checklist" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Reset Checklist</button>
+  </div>
+
+  <!-- Runbook output -->
+  <div id="runbook-section" class="hidden">
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Experiment Runbook</h2>
+        <div class="flex gap-2">
+          <button id="btn-copy-runbook" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+          <button id="btn-download-runbook" class="px-3 py-1.5 bg-primary/10 border border-primary/30 rounded text-xs text-primary hover:bg-primary/20 transition-colors">Download .md</button>
+        </div>
+      </div>
+      <pre id="runbook-output" class="font-mono text-sm whitespace-pre-wrap break-words text-foreground overflow-x-auto max-h-[500px] overflow-y-auto"></pre>
+    </div>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+const STORAGE_KEY = 'chaos-checklist-v1';
+const TOTAL_ITEMS = 26; // 7 + 10 + 4 + 5
+
+// Load from sessionStorage
+function loadState() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveState(state) {
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+}
+
+let state = loadState();
+
+function updateProgress() {
+  const allCbs = document.querySelectorAll('.checklist-cb');
+  const total = allCbs.length;
+  const checked = [...allCbs].filter(c => c.checked).length;
+  const pct = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+  const bar = document.getElementById('progress-bar');
+  const pctEl = document.getElementById('progress-pct');
+  const labelEl = document.getElementById('progress-label');
+  if (bar) bar.style.width = pct + '%';
+  if (pctEl) pctEl.textContent = pct + '%';
+  if (labelEl) labelEl.textContent = `${checked} of ${total} items checked`;
+
+  // Update per-section counts
+  document.querySelectorAll('[data-section]').forEach(section => {
+    const cbs = section.querySelectorAll('.checklist-cb');
+    const done = [...cbs].filter(c => c.checked).length;
+    const countEl = section.querySelector('.section-count');
+    if (countEl) countEl.textContent = `${done}/${cbs.length}`;
+  });
+}
+
+// Init checkboxes
+function initCheckboxes() {
+  document.querySelectorAll('.checklist-cb').forEach(cb => {
+    const key = cb.dataset.key;
+    if (state[key]) {
+      cb.checked = true;
+      styleItem(cb, true);
+    }
+    cb.addEventListener('change', () => {
+      state[key] = cb.checked;
+      saveState(state);
+      styleItem(cb, cb.checked);
+      updateProgress();
+    });
+  });
+  updateProgress();
+}
+
+function styleItem(cb, checked) {
+  const label = cb.closest('.checklist-item');
+  if (!label) return;
+  const text = label.querySelector('span, div');
+  if (text) {
+    text.classList.toggle('line-through', checked);
+    text.classList.toggle('text-text-muted', checked);
+  }
+}
+
+// Reset
+document.getElementById('btn-reset-checklist')?.addEventListener('click', () => {
+  if (!confirm('Reset all checklist items?')) return;
+  state = {};
+  saveState(state);
+  document.querySelectorAll('.checklist-cb').forEach(cb => {
+    cb.checked = false;
+    styleItem(cb, false);
+  });
+  updateProgress();
+  document.getElementById('runbook-section')?.classList.add('hidden');
+});
+
+// Generate runbook
+document.getElementById('btn-generate-runbook')?.addEventListener('click', () => {
+  const hypothesis = (document.getElementById('exp-hypothesis')?.value || '').trim();
+  const target = (document.getElementById('exp-target')?.value || '').trim();
+  const blast = (document.getElementById('exp-blast')?.value || 'partial');
+  const env = (document.getElementById('exp-env')?.value || 'staging');
+  const outcome = (document.getElementById('exp-outcome')?.value || '').trim();
+  const abort = (document.getElementById('exp-abort')?.value || '').trim();
+  const metrics = (document.getElementById('exp-metrics')?.value || '').trim();
+
+  const blastLabels = { 'single-instance': 'Single Instance', 'partial': 'Partial (canary / subset)', 'full': 'Full System' };
+  const envLabels = { 'local': 'Local / Dev', 'staging': 'Staging', 'production': 'Production' };
+
+  const now = new Date().toISOString().slice(0,10);
+
+  // Collect selected experiment types
+  const selectedTypes = [];
+  const typeLabels = {
+    'type-1': 'Network Latency Injection',
+    'type-2': 'Packet Loss',
+    'type-3': 'Service Outage',
+    'type-4': 'CPU Stress',
+    'type-5': 'Memory Pressure',
+    'type-6': 'Disk I/O Saturation',
+    'type-7': 'DNS Failure',
+    'type-8': 'Database Failover',
+    'type-9': 'Pod / Instance Kill',
+    'type-10': 'Dependency Unavailability',
+  };
+  Object.entries(typeLabels).forEach(([k, v]) => {
+    if (state[k]) selectedTypes.push(v);
+  });
+
+  // Checklist status
+  const preKeys = ['pre-1','pre-2','pre-3','pre-4','pre-5','pre-6','pre-7'];
+  const preLabels = [
+    'Steady state hypothesis defined',
+    'Steady state baseline measured',
+    'Monitoring and alerting confirmed',
+    'Rollback / abort plan tested',
+    'Team and stakeholders notified',
+    'Runbook ready',
+    'Blast radius minimised',
+  ];
+  const execKeys = ['exec-1','exec-2','exec-3','exec-4'];
+  const execLabels = ['Start small', 'Monitor continuously', 'Document observations', 'Ready to abort'];
+  const postKeys = ['post-1','post-2','post-3','post-4','post-5'];
+  const postLabels = ['System restored to steady state','Findings written up','Action items created','Runbook updated','Results shared with team'];
+
+  function checkList(keys, labels) {
+    return keys.map((k, i) => `- [${state[k] ? 'x' : ' '}] ${labels[i]}`).join('\n');
+  }
+
+  let rb = `# Chaos Engineering Runbook\n\n`;
+  rb += `**Date:** ${now}  \n`;
+  rb += `**Environment:** ${envLabels[env] || env}  \n`;
+  rb += `**Target System:** ${target || '(not specified)'}  \n`;
+  rb += `**Blast Radius:** ${blastLabels[blast] || blast}  \n\n`;
+
+  rb += `## Hypothesis\n\n${hypothesis || '(not defined)'}\n\n`;
+  rb += `## Expected Outcome\n\n${outcome || '(not defined)'}\n\n`;
+
+  rb += `## Abort Conditions\n\n${abort ? abort.split('\n').map(l => `- ${l.trim()}`).filter(l => l !== '- ').join('\n') : '(not defined)'}\n\n`;
+  rb += `## Success Metrics\n\n${metrics ? metrics.split('\n').map(l => `- ${l.trim()}`).filter(l => l !== '- ').join('\n') : '(not defined)'}\n\n`;
+
+  rb += `## Experiment Types Selected\n\n`;
+  if (selectedTypes.length > 0) {
+    rb += selectedTypes.map(t => `- ${t}`).join('\n') + '\n\n';
+  } else {
+    rb += '- (none selected)\n\n';
+  }
+
+  rb += `## Pre-Experiment Checklist\n\n${checkList(preKeys, preLabels)}\n\n`;
+  rb += `## During Execution Checklist\n\n${checkList(execKeys, execLabels)}\n\n`;
+  rb += `## Post-Experiment Checklist\n\n${checkList(postKeys, postLabels)}\n\n`;
+
+  rb += `## Observations\n\n_Fill in during and after the experiment._\n\n`;
+  rb += `## Action Items\n\n| # | Finding | Owner | Due Date | Status |\n|---|---------|-------|----------|--------|\n| 1 | | | | |\n\n`;
+  rb += `---\n*Generated by [DevPlaybook Chaos Engineering Checklist](https://devplaybook.cc/tools/chaos-engineering-checklist)*\n`;
+
+  const outputEl = document.getElementById('runbook-output');
+  if (outputEl) outputEl.textContent = rb;
+  document.getElementById('runbook-section')?.classList.remove('hidden');
+  setTimeout(() => document.getElementById('runbook-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+});
+
+// Copy runbook
+document.getElementById('btn-copy-runbook')?.addEventListener('click', () => {
+  const el = document.getElementById('runbook-output');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const btn = document.getElementById('btn-copy-runbook');
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 2000); }
+  });
+});
+
+// Download runbook
+document.getElementById('btn-download-runbook')?.addEventListener('click', () => {
+  const el = document.getElementById('runbook-output');
+  if (!el) return;
+  const blob = new Blob([el.textContent], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `chaos-runbook-${new Date().toISOString().slice(0,10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// Init
+initCheckboxes();
+</script>
