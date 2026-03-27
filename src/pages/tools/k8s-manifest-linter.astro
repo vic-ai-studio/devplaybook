@@ -1,0 +1,417 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What does this Kubernetes manifest linter check?",
+    answer: "It checks for: missing required fields (apiVersion, kind, metadata.name), image tag pinning (warns on :latest), resource requests and limits, liveness and readiness probes on Deployments, hardcoded secrets in environment variables, missing namespace, privileged containers, hostNetwork/hostPID usage, and common best practice violations."
+  },
+  {
+    question: "Why should I always set resource requests and limits?",
+    answer: "Requests tell the Kubernetes scheduler how much CPU and memory a container needs — the scheduler uses this to place the Pod on a suitable Node. Limits cap the maximum resources a container can consume. Without them, a single runaway container can starve other workloads on the same node (noisy neighbour problem), and the scheduler cannot make good placement decisions."
+  },
+  {
+    question: "What is the difference between liveness and readiness probes?",
+    answer: "A liveness probe checks if the container is still running. If it fails repeatedly, Kubernetes restarts the container. A readiness probe checks if the container is ready to receive traffic. If it fails, the Pod is removed from Service endpoints until it recovers. Both probes prevent traffic from reaching unhealthy or not-yet-ready containers."
+  },
+  {
+    question: "Why is :latest dangerous in production?",
+    answer: "The :latest tag is mutable — it points to different images over time. This means two nodes in your cluster may run different versions of your container, leading to non-deterministic behaviour and impossible rollbacks. Always pin to a specific tag (e.g. nginx:1.25.3) or a SHA digest (nginx@sha256:...) for reproducible, auditable deployments."
+  },
+  {
+    question: "How should I handle secrets in Kubernetes manifests?",
+    answer: "Never put passwords, API keys, or tokens directly in env: value fields — they appear in plaintext in kubectl describe output and cluster etcd. Use valueFrom.secretKeyRef to reference a Kubernetes Secret object, or use an external secret manager like HashiCorp Vault, AWS Secrets Manager, or the External Secrets Operator."
+  },
+  {
+    question: "Does this linter support multiple manifests in one YAML file?",
+    answer: "Yes. Paste multiple Kubernetes manifests separated by --- (the YAML document separator) and the linter will validate each one independently. This is useful for checking entire Helm chart output or a multi-resource deployment file at once."
+  },
+];
+---
+
+<BaseLayout
+  title="Kubernetes Manifest Linter — Lint K8s YAML for Best Practices"
+  description="Paste your Kubernetes YAML manifest and lint it for missing fields, image tag issues, resource limits, probe configuration, secrets, and security best practices. Runs 100% in your browser."
+  tool="Kubernetes manifest linter, K8s YAML linter, kubectl manifest validator, Kubernetes best practices checker, K8s deployment linter, Kubernetes security lint"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Kubernetes Manifest Linter",
+    "url": "https://devplaybook.cc/tools/k8s-manifest-linter",
+    "description": "Lint Kubernetes YAML manifests for missing fields, image tag pinning, resource limits, probes, secrets, and security best practices. Runs in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Kubernetes Manifest Linter</h1>
+  <p class="text-text-muted mb-4">
+    Paste your Kubernetes YAML manifest and instantly detect missing required fields, insecure configurations,
+    and production best-practice violations. Supports Deployment, Service, ConfigMap, StatefulSet, DaemonSet, and more.
+    Runs entirely in your browser — no kubectl, no cluster needed.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 12+ lint rules</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-document YAML</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Input -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium" for="manifest-input">Kubernetes YAML</label>
+        <button id="load-example-btn" class="text-xs text-accent hover:underline">Load example</button>
+      </div>
+      <textarea
+        id="manifest-input"
+        rows="24"
+        placeholder="Paste your Kubernetes manifest YAML here...&#10;&#10;Supports multiple documents separated by ---"
+        class="w-full px-4 py-3 rounded-xl bg-bg border border-border text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors font-mono text-xs resize-y"
+        spellcheck="false"
+      ></textarea>
+      <button
+        id="lint-btn"
+        class="w-full py-3 px-6 rounded-xl bg-accent hover:bg-accent/80 text-white font-bold transition-colors duration-200"
+      >
+        Lint Manifest
+      </button>
+      <p id="parse-error" class="text-xs text-red-400 hidden"></p>
+    </div>
+
+    <!-- Output -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium">Lint Results</label>
+        <span id="score-badge" class="hidden text-xs font-semibold px-3 py-1 rounded-full border"></span>
+      </div>
+      <div id="output-placeholder" class="flex-1 min-h-[520px] rounded-xl bg-bg border border-border flex items-center justify-center text-text-muted text-sm">
+        Lint results will appear here
+      </div>
+      <div id="output-container" class="hidden flex-1 min-h-[520px] rounded-xl bg-bg border border-border overflow-y-auto p-4 space-y-2"></div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Kubernetes Manifest Linter" relatedTags={['devops', 'kubernetes', 'cloud', 'infrastructure', 'docker', 'security', 'yaml']} />
+</BaseLayout>
+
+<script is:inline>
+  const EXAMPLE = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: app
+          image: my-org/my-app:latest
+          env:
+            - name: DB_HOST
+              value: "db.internal"
+            - name: DB_PASSWORD
+              value: "supersecret123"
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-svc
+spec:
+  selector:
+    app: my-app
+  ports:
+    - port: 80
+      targetPort: 8080
+`;
+
+  // ── Minimal YAML parser (line-based for K8s manifests) ──
+  function parseSimpleYaml(text) {
+    // Convert to a plain JS object using a simple line-by-line approach
+    const lines = text.split('\n');
+    return parseBlock(lines, { idx: 0 }, 0);
+  }
+
+  function parseBlock(lines, state, baseIndent) {
+    const result = {};
+    while (state.idx < lines.length) {
+      const raw = lines[state.idx];
+      const stripped = raw.trimEnd();
+      if (stripped === '' || stripped.trim().startsWith('#')) { state.idx++; continue; }
+      const indent = getIndent(stripped);
+      if (indent < baseIndent) break;
+
+      const trimmed = stripped.trim();
+
+      // List
+      if (trimmed.startsWith('- ') || trimmed === '-') {
+        return parseList(lines, state, baseIndent);
+      }
+
+      const colonPos = findColon(trimmed);
+      if (colonPos === -1) { state.idx++; continue; }
+
+      const key = trimmed.slice(0, colonPos).trim();
+      const rest = trimmed.slice(colonPos + 1).trim();
+      state.idx++;
+
+      if (rest === '' || rest === '|' || rest === '>') {
+        // nested
+        if (state.idx < lines.length) {
+          const nextIndent = getIndent(lines[state.idx]);
+          if (nextIndent > indent) {
+            const child = parseBlock(lines, state, nextIndent);
+            result[key] = child;
+          } else {
+            result[key] = null;
+          }
+        } else {
+          result[key] = null;
+        }
+      } else {
+        result[key] = parseScalar(rest);
+      }
+    }
+    return result;
+  }
+
+  function parseList(lines, state, baseIndent) {
+    const arr = [];
+    while (state.idx < lines.length) {
+      const raw = lines[state.idx];
+      const stripped = raw.trimEnd();
+      if (stripped.trim() === '' || stripped.trim().startsWith('#')) { state.idx++; continue; }
+      const indent = getIndent(stripped);
+      if (indent < baseIndent) break;
+      const trimmed = stripped.trim();
+      if (!trimmed.startsWith('- ') && trimmed !== '-') break;
+      const content = trimmed.startsWith('- ') ? trimmed.slice(2) : '';
+      state.idx++;
+      if (content === '') {
+        if (state.idx < lines.length && getIndent(lines[state.idx]) > indent) {
+          arr.push(parseBlock(lines, state, getIndent(lines[state.idx])));
+        } else {
+          arr.push(null);
+        }
+      } else if (findColon(content) !== -1) {
+        const fakeLines = [' '.repeat(indent + 2) + content, ...lines.slice(state.idx)];
+        const fakeState = { idx: 0 };
+        const child = parseBlock(fakeLines, fakeState, indent + 2);
+        state.idx += fakeState.idx - 1;
+        arr.push(child);
+      } else {
+        arr.push(parseScalar(content));
+      }
+    }
+    return arr;
+  }
+
+  function findColon(s) {
+    // Find ': ' colon that's not inside quotes
+    for (let i = 0; i < s.length - 1; i++) {
+      if (s[i] === ':' && (s[i+1] === ' ' || i === s.length - 1)) return i;
+    }
+    if (s.endsWith(':')) return s.length - 1;
+    return -1;
+  }
+
+  function getIndent(line) {
+    let i = 0;
+    while (i < line.length && line[i] === ' ') i++;
+    return i;
+  }
+
+  function parseScalar(s) {
+    s = s.trim();
+    if (s === 'true' || s === 'yes') return true;
+    if (s === 'false' || s === 'no') return false;
+    if (s === 'null' || s === '~' || s === '') return null;
+    if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+    if (/^-?\d+\.\d+$/.test(s)) return parseFloat(s);
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) return s.slice(1, -1);
+    return s;
+  }
+
+  // ── Lint rules ────────────────────────────────────────────────────────────────
+  function lint(manifest) {
+    const issues = [];
+    const kind = manifest.kind || '(unknown)';
+
+    function err(msg, fix) { issues.push({ level: 'error', msg, fix }); }
+    function warn(msg, fix) { issues.push({ level: 'warn', msg, fix }); }
+    function info(msg) { issues.push({ level: 'info', msg }); }
+
+    // Required fields
+    if (!manifest.apiVersion) err('Missing required field: apiVersion', 'Add "apiVersion: apps/v1" (or appropriate API group)');
+    if (!manifest.kind) err('Missing required field: kind', 'Add "kind: Deployment" (or the resource type)');
+    if (!manifest.metadata) {
+      err('Missing required field: metadata', 'Add a metadata block with at least "name:"');
+    } else {
+      if (!manifest.metadata.name) err('Missing metadata.name', 'Add a name under metadata:');
+      if (!manifest.metadata.namespace) warn('No namespace specified', 'Add "namespace: <your-namespace>" to avoid deploying to default');
+    }
+
+    // Deployment-specific checks
+    if (kind === 'Deployment' || kind === 'StatefulSet' || kind === 'DaemonSet') {
+      const spec = manifest.spec || {};
+      const template = spec.template || {};
+      const podSpec = template.spec || {};
+      const containers = podSpec.containers;
+
+      if (!containers || !Array.isArray(containers) || containers.length === 0) {
+        err('No containers defined in spec.template.spec.containers');
+      } else {
+        containers.forEach((c, i) => {
+          const cname = c.name || `containers[${i}]`;
+
+          // Image tag
+          if (c.image) {
+            if (c.image.endsWith(':latest') || !c.image.includes(':')) {
+              warn(`${cname}: image "${c.image}" uses :latest or no tag`, 'Pin to a specific version tag or SHA digest');
+            }
+          } else {
+            err(`${cname}: missing image field`);
+          }
+
+          // Resources
+          const res = c.resources || {};
+          if (!res.requests) warn(`${cname}: no resource requests set`, 'Add resources.requests.cpu and resources.requests.memory');
+          if (!res.limits) warn(`${cname}: no resource limits set`, 'Add resources.limits.cpu and resources.limits.memory');
+
+          // Probes (Deployment only)
+          if (kind === 'Deployment') {
+            if (!c.livenessProbe) warn(`${cname}: no livenessProbe configured`, 'Add a livenessProbe to enable automatic container restart on hang');
+            if (!c.readinessProbe) warn(`${cname}: no readinessProbe configured`, 'Add a readinessProbe to prevent routing traffic to unready containers');
+          }
+
+          // Secrets in env
+          const envVars = c.env || [];
+          const secretKeywords = /password|secret|token|key|api_key|apikey|passwd|pwd|credential/i;
+          envVars.forEach(ev => {
+            if (ev.name && secretKeywords.test(ev.name) && ev.value) {
+              err(`${cname}: env var "${ev.name}" appears to have a hardcoded secret value`, 'Use valueFrom.secretKeyRef to reference a Kubernetes Secret');
+            }
+          });
+
+          // Security context
+          const sc = c.securityContext || {};
+          if (sc.privileged === true) err(`${cname}: container is running as privileged`, 'Remove privileged: true unless absolutely required. Use specific capabilities instead.');
+          if (sc.runAsRoot === true || sc.runAsUser === 0) warn(`${cname}: container running as root (UID 0)`, 'Set securityContext.runAsNonRoot: true and runAsUser to a non-zero UID');
+        });
+      }
+
+      // Pod-level security
+      if (podSpec.hostNetwork === true) warn('spec.hostNetwork: true — container can access host network', 'Avoid hostNetwork unless required for DaemonSet network plugins');
+      if (podSpec.hostPID === true) warn('spec.hostPID: true — container shares host PID namespace', 'Avoid hostPID unless required for debugging or monitoring agents');
+    }
+
+    if (issues.length === 0) info('No issues found. Manifest looks good!');
+    return issues;
+  }
+
+  function scoreIssues(issues) {
+    let score = 100;
+    issues.forEach(i => {
+      if (i.level === 'error') score -= 15;
+      else if (i.level === 'warn') score -= 5;
+    });
+    return Math.max(0, score);
+  }
+
+  // ── UI ───────────────────────────────────────────────────────────────────────
+  document.getElementById('load-example-btn').addEventListener('click', () => {
+    document.getElementById('manifest-input').value = EXAMPLE;
+  });
+
+  document.getElementById('lint-btn').addEventListener('click', () => {
+    const input = document.getElementById('manifest-input').value.trim();
+    const errEl = document.getElementById('parse-error');
+    const placeholder = document.getElementById('output-placeholder');
+    const container = document.getElementById('output-container');
+    const scoreBadge = document.getElementById('score-badge');
+
+    errEl.classList.add('hidden');
+    if (!input) {
+      errEl.textContent = 'Paste a Kubernetes YAML manifest first.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    // Split multi-doc
+    const docs = input.split(/^---$/m).map(s => s.trim()).filter(Boolean);
+    let allHtml = '';
+    let totalIssues = 0;
+    let totalErrors = 0;
+
+    docs.forEach((doc, docIdx) => {
+      let manifest;
+      try {
+        manifest = parseSimpleYaml(doc);
+      } catch (e) {
+        allHtml += `<div class="rounded-lg border border-red-500/40 bg-red-500/5 p-3 mb-2">
+          <div class="font-semibold text-red-400 text-sm mb-1">Document ${docIdx + 1}: YAML Parse Error</div>
+          <div class="text-xs text-red-400">${escHtml(e.message)}</div>
+        </div>`;
+        totalErrors++;
+        return;
+      }
+
+      const kind = manifest.kind || '(unknown)';
+      const name = (manifest.metadata && manifest.metadata.name) || '(unnamed)';
+      const issues = lint(manifest);
+      totalIssues += issues.filter(i => i.level !== 'info').length;
+      totalErrors += issues.filter(i => i.level === 'error').length;
+
+      const docTitle = docs.length > 1 ? `Document ${docIdx + 1}: ${kind}/${name}` : `${kind}/${name}`;
+      allHtml += `<div class="rounded-xl border border-border bg-surface/30 p-4 mb-3">
+        <div class="font-semibold text-text mb-3">${escHtml(docTitle)}</div>
+        <div class="space-y-2">`;
+
+      issues.forEach(issue => {
+        const colors = { error: 'border-red-500/40 bg-red-500/5', warn: 'border-yellow-500/40 bg-yellow-500/5', info: 'border-green-500/40 bg-green-500/5' };
+        const icons = { error: '✗', warn: '⚠', info: '✓' };
+        const textColors = { error: 'text-red-400', warn: 'text-yellow-400', info: 'text-green-400' };
+        allHtml += `<div class="rounded-lg border ${colors[issue.level]} px-3 py-2">
+          <div class="flex items-start gap-2">
+            <span class="font-bold ${textColors[issue.level]} text-sm mt-0.5">${icons[issue.level]}</span>
+            <div>
+              <div class="text-sm text-text">${escHtml(issue.msg)}</div>
+              ${issue.fix ? `<div class="text-xs text-text-muted mt-1">Fix: ${escHtml(issue.fix)}</div>` : ''}
+            </div>
+          </div>
+        </div>`;
+      });
+
+      allHtml += `</div></div>`;
+    });
+
+    // Score
+    const score = Math.max(0, 100 - totalErrors * 15 - (totalIssues - totalErrors) * 5);
+    const scoreColor = score >= 90 ? 'border-green-500/40 text-green-400' : score >= 70 ? 'border-yellow-500/40 text-yellow-400' : 'border-red-500/40 text-red-400';
+    scoreBadge.className = `text-xs font-semibold px-3 py-1 rounded-full border ${scoreColor}`;
+    scoreBadge.textContent = `Health: ${score}/100`;
+    scoreBadge.classList.remove('hidden');
+
+    container.innerHTML = allHtml;
+    placeholder.classList.add('hidden');
+    container.classList.remove('hidden');
+  });
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>

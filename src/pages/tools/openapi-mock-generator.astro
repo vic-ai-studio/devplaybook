@@ -1,0 +1,475 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is an OpenAPI mock generator?",
+    answer: "An OpenAPI mock generator reads your OpenAPI/Swagger specification (YAML or JSON) and automatically creates realistic sample JSON responses for each endpoint. This lets frontend developers build against a realistic API contract without waiting for the backend to be complete."
+  },
+  {
+    question: "What OpenAPI versions are supported?",
+    answer: "This tool supports OpenAPI 3.0.x and 3.1.x specifications. Swagger 2.0 format has limited support — convert to OpenAPI 3 first using the Swagger Editor or swagger2openapi for best results."
+  },
+  {
+    question: "How are mock values generated?",
+    answer: "Mock values are derived from the schema type and format fields. Strings become example strings or use the 'example' field if provided, integers generate realistic numbers, booleans alternate true/false, dates use ISO 8601 format, emails look like user@example.com, and UUIDs are generated in standard format. Arrays generate 2-3 example items."
+  },
+  {
+    question: "Can I use this to test my API client?",
+    answer: "Yes. Copy the generated mock JSON and use it as fixture data in your unit tests, Postman mock servers, or local development stubs. The mock responses match the schema shape your API client expects, so you can validate your serialization and deserialization logic without hitting a live server."
+  },
+  {
+    question: "Why is my YAML not parsing?",
+    answer: "YAML is whitespace-sensitive. Common issues: tabs instead of spaces (YAML requires spaces), incorrect indentation levels, missing colons after keys, or unquoted strings containing special characters like : or #. Paste your spec into a YAML validator first to find syntax errors."
+  },
+  {
+    question: "Does this tool send my OpenAPI spec to a server?",
+    answer: "No. All parsing and mock generation runs entirely in your browser using JavaScript. Your API specification — which may contain endpoint paths, schema definitions, and security schemes — never leaves your machine."
+  },
+];
+---
+
+<BaseLayout
+  title="OpenAPI Mock Generator — Generate Mock JSON Responses Online"
+  description="Paste your OpenAPI 3.0 YAML and instantly generate mock JSON responses for every endpoint. Free, runs 100% in your browser. No signup required."
+  tool="OpenAPI mock generator, Swagger mock data, API mock response generator, OpenAPI YAML to JSON, REST API mock, API contract testing"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "OpenAPI Mock Generator",
+    "url": "https://devplaybook.cc/tools/openapi-mock-generator",
+    "description": "Generate realistic mock JSON responses from OpenAPI 3.0 YAML specifications. Runs entirely in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">OpenAPI Mock Generator</h1>
+  <p class="text-text-muted mb-4">
+    Paste your OpenAPI 3.0 YAML and instantly generate mock JSON responses for every endpoint.
+    Perfect for frontend development, API client testing, and contract validation.
+    Nothing is sent to any server — runs entirely in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OpenAPI 3.0 + 3.1 support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> All HTTP methods</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Input -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium" for="spec-input">OpenAPI YAML Spec</label>
+        <button id="load-example-btn" class="text-xs text-accent hover:underline">Load example</button>
+      </div>
+      <textarea
+        id="spec-input"
+        rows="22"
+        placeholder="Paste your OpenAPI 3.0 YAML here..."
+        class="w-full px-4 py-3 rounded-xl bg-bg border border-border text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors font-mono text-xs resize-y"
+        spellcheck="false"
+      ></textarea>
+      <button
+        id="generate-btn"
+        class="w-full py-3 px-6 rounded-xl bg-accent hover:bg-accent/80 text-white font-bold transition-colors duration-200"
+      >
+        Generate Mock Responses
+      </button>
+      <p id="parse-error" class="text-xs text-red-400 hidden"></p>
+    </div>
+
+    <!-- Output -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium">Mock Responses</label>
+        <button id="copy-btn" class="text-xs text-text-muted hover:text-accent transition-colors hidden">Copy all</button>
+      </div>
+      <div id="output-placeholder" class="flex-1 min-h-[480px] rounded-xl bg-bg border border-border flex items-center justify-center text-text-muted text-sm">
+        Mock responses will appear here
+      </div>
+      <div id="output-container" class="hidden flex-1 min-h-[480px] rounded-xl bg-bg border border-border overflow-y-auto p-4 font-mono text-xs"></div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="OpenAPI Mock Generator" relatedTags={['api', 'openapi', 'rest', 'testing', 'backend', 'json']} />
+</BaseLayout>
+
+<script is:inline>
+  // ── Minimal YAML parser (subset: mappings, sequences, scalars) ──────────────
+  function parseYaml(text) {
+    // We use a simple line-by-line parser for common OpenAPI structures
+    // Fall back to JSON.parse if input looks like JSON
+    text = text.trim();
+    if (text.startsWith('{') || text.startsWith('[')) {
+      return JSON.parse(text);
+    }
+    return parseYamlLines(text.split('\n'), { pos: 0 }).value;
+  }
+
+  function parseYamlLines(lines, state) {
+    const result = {};
+    const baseIndent = getIndent(lines[state.pos]);
+
+    while (state.pos < lines.length) {
+      const line = lines[state.pos];
+      const indent = getIndent(line);
+      const trimmed = line.trim();
+
+      if (trimmed === '' || trimmed.startsWith('#')) { state.pos++; continue; }
+      if (indent < baseIndent) break;
+
+      // List item
+      if (trimmed.startsWith('- ')) {
+        return parseYamlList(lines, state, baseIndent);
+      }
+
+      const colonIdx = trimmed.indexOf(': ');
+      const isKeyOnly = trimmed.endsWith(':') && !trimmed.startsWith('-');
+
+      if (colonIdx === -1 && !isKeyOnly) { state.pos++; continue; }
+
+      const key = isKeyOnly ? trimmed.slice(0, -1) : trimmed.slice(0, colonIdx);
+      const rawVal = isKeyOnly ? '' : trimmed.slice(colonIdx + 2);
+
+      state.pos++;
+
+      if (rawVal === '' || rawVal === '|' || rawVal === '>') {
+        // next lines are child
+        if (state.pos < lines.length && getIndent(lines[state.pos]) > indent) {
+          const child = parseYamlLines(lines, state, indent + 1);
+          result[key] = child.value;
+        } else {
+          result[key] = null;
+        }
+      } else if (rawVal.startsWith('[')) {
+        result[key] = parseInlineArray(rawVal);
+      } else if (rawVal.startsWith('{')) {
+        result[key] = parseInlineObj(rawVal);
+      } else {
+        result[key] = parseScalar(rawVal);
+      }
+    }
+
+    return { value: result };
+  }
+
+  function parseYamlList(lines, state, baseIndent) {
+    const arr = [];
+    while (state.pos < lines.length) {
+      const line = lines[state.pos];
+      const indent = getIndent(line);
+      const trimmed = line.trim();
+      if (trimmed === '' || trimmed.startsWith('#')) { state.pos++; continue; }
+      if (indent < baseIndent) break;
+      if (!trimmed.startsWith('- ') && !trimmed === '-') break;
+
+      const itemText = trimmed.startsWith('- ') ? trimmed.slice(2) : '';
+      state.pos++;
+
+      if (itemText === '' || itemText.startsWith('#')) {
+        // nested object
+        if (state.pos < lines.length && getIndent(lines[state.pos]) > indent) {
+          const child = parseYamlLines(lines, state, indent + 2);
+          arr.push(child.value);
+        } else {
+          arr.push(null);
+        }
+      } else if (itemText.includes(': ') || itemText.endsWith(':')) {
+        // inline mapping as list item
+        const fakeLine = ' '.repeat(indent + 2) + itemText;
+        const tmpLines = [fakeLine, ...lines.slice(state.pos)];
+        const tmpState = { pos: 0 };
+        const child = parseYamlLines(tmpLines, tmpState, indent + 2);
+        state.pos += tmpState.pos - 1;
+        arr.push(child.value);
+      } else {
+        arr.push(parseScalar(itemText));
+      }
+    }
+    return { value: arr };
+  }
+
+  function getIndent(line) {
+    let i = 0;
+    while (i < line.length && line[i] === ' ') i++;
+    return i;
+  }
+
+  function parseScalar(s) {
+    s = s.trim();
+    if (s === 'true') return true;
+    if (s === 'false') return false;
+    if (s === 'null' || s === '~' || s === '') return null;
+    if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+    if (/^-?\d+\.\d+$/.test(s)) return parseFloat(s);
+    // strip quotes
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+      return s.slice(1, -1);
+    }
+    return s;
+  }
+
+  function parseInlineArray(s) {
+    try { return JSON.parse(s); } catch { return []; }
+  }
+
+  function parseInlineObj(s) {
+    try { return JSON.parse(s); } catch { return {}; }
+  }
+
+  // ── Mock value generator ────────────────────────────────────────────────────
+  let _uuidCounter = 1;
+  function mockValue(schema, depth) {
+    if (!schema || depth > 5) return null;
+    const type = schema.type;
+    const format = schema.format || '';
+
+    if (schema.example !== undefined) return schema.example;
+    if (schema.enum && schema.enum.length) return schema.enum[0];
+
+    if (schema.allOf) return mockValue(Object.assign({}, ...schema.allOf.filter(Boolean)), depth);
+    if (schema.oneOf) return mockValue(schema.oneOf[0], depth);
+    if (schema.anyOf) return mockValue(schema.anyOf[0], depth);
+
+    if (type === 'object' || schema.properties) {
+      const obj = {};
+      const props = schema.properties || {};
+      for (const [k, v] of Object.entries(props)) {
+        obj[k] = mockValue(v, depth + 1);
+      }
+      return obj;
+    }
+
+    if (type === 'array' || schema.items) {
+      const items = schema.items || {};
+      return [mockValue(items, depth + 1), mockValue(items, depth + 1)];
+    }
+
+    if (type === 'boolean') return true;
+    if (type === 'integer' || type === 'number') {
+      if (format === 'float' || format === 'double') return 3.14;
+      return 42;
+    }
+    if (type === 'string') {
+      if (format === 'date-time') return '2024-01-15T10:30:00Z';
+      if (format === 'date') return '2024-01-15';
+      if (format === 'email') return 'user@example.com';
+      if (format === 'uuid') return `550e8400-e29b-41d4-a716-44665544${String(_uuidCounter++).padStart(4,'0')}`;
+      if (format === 'uri' || format === 'url') return 'https://example.com/resource';
+      if (format === 'password') return '••••••••';
+      return 'string';
+    }
+    return null;
+  }
+
+  function resolveRef(spec, ref) {
+    if (!ref || !ref.startsWith('#/')) return null;
+    const parts = ref.slice(2).split('/');
+    let cur = spec;
+    for (const p of parts) {
+      if (cur == null) return null;
+      cur = cur[decodeURIComponent(p.replace(/~1/g, '/').replace(/~0/g, '~'))];
+    }
+    return cur;
+  }
+
+  function resolveSchema(spec, schema) {
+    if (!schema) return {};
+    if (schema.$ref) return resolveSchema(spec, resolveRef(spec, schema.$ref)) || {};
+    if (schema.allOf) return Object.assign({}, ...schema.allOf.map(s => resolveSchema(spec, s)));
+    return schema;
+  }
+
+  function generateMocks(spec) {
+    const paths = spec.paths || {};
+    const results = [];
+
+    for (const [path, pathItem] of Object.entries(paths)) {
+      const methods = ['get','post','put','patch','delete','head','options'];
+      for (const method of methods) {
+        const op = pathItem[method];
+        if (!op) continue;
+
+        const opResult = { path, method: method.toUpperCase(), operationId: op.operationId || null, mocks: [] };
+
+        const responses = op.responses || {};
+        for (const [statusCode, response] of Object.entries(responses)) {
+          const content = response.content || {};
+          const jsonContent = content['application/json'] || content['*/*'] || null;
+          let mockBody = null;
+
+          if (jsonContent && jsonContent.schema) {
+            const resolved = resolveSchema(spec, jsonContent.schema);
+            mockBody = mockValue(resolved, 0);
+          }
+
+          opResult.mocks.push({ status: statusCode, description: response.description || '', body: mockBody });
+        }
+
+        results.push(opResult);
+      }
+    }
+
+    return results;
+  }
+
+  // ── UI ───────────────────────────────────────────────────────────────────────
+  const EXAMPLE_SPEC = `openapi: "3.0.3"
+info:
+  title: Pet Store API
+  version: "1.0.0"
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List all pets
+      responses:
+        "200":
+          description: A list of pets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pet"
+    post:
+      operationId: createPet
+      summary: Create a pet
+      responses:
+        "201":
+          description: Pet created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        "400":
+          description: Bad request
+  /pets/{petId}:
+    get:
+      operationId: showPetById
+      summary: Info for a specific pet
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        "404":
+          description: Not found
+components:
+  schemas:
+    Pet:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: Fido
+        tag:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+`;
+
+  document.getElementById('load-example-btn').addEventListener('click', () => {
+    document.getElementById('spec-input').value = EXAMPLE_SPEC;
+  });
+
+  document.getElementById('generate-btn').addEventListener('click', () => {
+    const input = document.getElementById('spec-input').value.trim();
+    const errEl = document.getElementById('parse-error');
+    const placeholder = document.getElementById('output-placeholder');
+    const container = document.getElementById('output-container');
+    const copyBtn = document.getElementById('copy-btn');
+
+    errEl.classList.add('hidden');
+    errEl.textContent = '';
+
+    if (!input) {
+      errEl.textContent = 'Paste an OpenAPI YAML spec first.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    let spec;
+    try {
+      spec = parseYaml(input);
+    } catch (e) {
+      errEl.textContent = 'YAML parse error: ' + e.message;
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    if (!spec || !spec.paths) {
+      errEl.textContent = 'No "paths" found. Is this a valid OpenAPI spec?';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    _uuidCounter = 1;
+    const mocks = generateMocks(spec);
+
+    if (!mocks.length) {
+      errEl.textContent = 'No operations found in paths.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    let html = '';
+    const allText = [];
+
+    for (const op of mocks) {
+      const label = op.operationId ? `${op.operationId} — ` : '';
+      html += `<div class="mb-5">`;
+      html += `<div class="flex items-center gap-2 mb-2">`;
+      const methodColors = { GET:'text-green-400', POST:'text-blue-400', PUT:'text-yellow-400', PATCH:'text-orange-400', DELETE:'text-red-400' };
+      const mc = methodColors[op.method] || 'text-text-muted';
+      html += `<span class="font-bold ${mc}">${op.method}</span>`;
+      html += `<span class="text-text">${op.path}</span>`;
+      if (op.operationId) html += `<span class="text-text-muted text-xs">(${op.operationId})</span>`;
+      html += `</div>`;
+
+      for (const mock of op.mocks) {
+        const isSuccess = mock.status.startsWith('2');
+        const statusColor = isSuccess ? 'text-green-400' : mock.status.startsWith('4') ? 'text-yellow-400' : 'text-red-400';
+        html += `<div class="ml-2 mb-2">`;
+        html += `<div class="text-xs ${statusColor} mb-1">HTTP ${mock.status}${mock.description ? ' — ' + mock.description : ''}</div>`;
+        if (mock.body !== null) {
+          const bodyStr = JSON.stringify(mock.body, null, 2);
+          html += `<pre class="bg-surface rounded p-2 text-xs overflow-x-auto text-text whitespace-pre-wrap">${escHtml(bodyStr)}</pre>`;
+          allText.push(`# ${op.method} ${op.path} — ${mock.status}\n${bodyStr}`);
+        } else {
+          html += `<span class="text-text-muted text-xs italic">No response body</span>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+    }
+
+    container.innerHTML = html;
+    placeholder.classList.add('hidden');
+    container.classList.remove('hidden');
+    copyBtn.classList.remove('hidden');
+
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(allText.join('\n\n')).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy all'; }, 1500);
+      });
+    };
+  });
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>

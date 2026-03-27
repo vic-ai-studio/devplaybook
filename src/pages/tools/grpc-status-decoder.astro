@@ -1,0 +1,364 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What are gRPC status codes?",
+    answer: "gRPC defines 17 canonical status codes (0–16) that every RPC call returns. Unlike HTTP which has ~70 status codes, gRPC's small set maps clearly to error categories: success, cancellation, invalid input, resource not found, authentication failures, and more. Every gRPC response includes a status code and an optional status message."
+  },
+  {
+    question: "What is the difference between NOT_FOUND (5) and UNIMPLEMENTED (12)?",
+    answer: "NOT_FOUND (5) means the requested resource or entity does not exist — for example, a user ID that was deleted or never created. UNIMPLEMENTED (12) means the method or operation itself is not supported on this server — for example, calling a beta endpoint on a stable server, or calling an RPC that was removed."
+  },
+  {
+    question: "Should I retry on UNAVAILABLE (14)?",
+    answer: "Yes, UNAVAILABLE is the primary retryable error code. It signals a transient server-side condition like an overloaded backend or a temporary network interruption. Use exponential backoff with jitter. The other commonly retryable code is RESOURCE_EXHAUSTED (8) when caused by rate limiting rather than quota exhaustion."
+  },
+  {
+    question: "What is the difference between DEADLINE_EXCEEDED (4) and CANCELLED (1)?",
+    answer: "CANCELLED (1) means the client explicitly cancelled the RPC before it completed — for example, the user navigated away. DEADLINE_EXCEEDED (4) means the deadline set by the client (or server) elapsed before the RPC finished. Both result in termination, but DEADLINE_EXCEEDED indicates the operation was simply too slow while CANCELLED indicates intentional termination."
+  },
+  {
+    question: "When should I use INTERNAL (13) vs FAILED_PRECONDITION (9)?",
+    answer: "INTERNAL (13) is for unexpected, unrecoverable server errors — bugs, invariant violations, or cases where the server is in a state it should never be in. FAILED_PRECONDITION (9) is for expected business-logic errors where the system is in the wrong state for this operation — for example, calling Delete on a non-empty directory, or trying to resume a completed workflow."
+  },
+  {
+    question: "How do gRPC status codes map to HTTP status codes?",
+    answer: "Common mappings: OK→200, CANCELLED→499, INVALID_ARGUMENT→400, NOT_FOUND→404, ALREADY_EXISTS→409, PERMISSION_DENIED→403, UNAUTHENTICATED→401, RESOURCE_EXHAUSTED→429, INTERNAL→500, UNIMPLEMENTED→501, UNAVAILABLE→503, DEADLINE_EXCEEDED→504. These mappings are used by gRPC-HTTP/1.1 transcoding proxies like Envoy and Cloud Endpoints."
+  },
+];
+---
+
+<BaseLayout
+  title="gRPC Status Code Decoder — All 17 Codes Explained"
+  description="Look up any gRPC status code (0–16) to see its name, description, common causes, retry advice, and HTTP equivalent. All 17 gRPC status codes in one tool."
+  tool="gRPC status codes, gRPC error codes, gRPC UNAVAILABLE, gRPC NOT_FOUND, gRPC status decoder, Protocol Buffer status"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "gRPC Status Code Decoder",
+    "url": "https://devplaybook.cc/tools/grpc-status-decoder",
+    "description": "Look up any gRPC status code to see its name, meaning, causes, and retry advice. All 17 codes covered.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">gRPC Status Code Decoder</h1>
+  <p class="text-text-muted mb-4">
+    Enter a gRPC status code (0–16) or name to see the full description, common causes, retry advice, and HTTP equivalent.
+    All 17 canonical gRPC status codes are shown below.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> All 17 status codes</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Retry guidance</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HTTP mapping</span>
+  </div>
+
+  <!-- Search -->
+  <div class="flex gap-3 mb-6">
+    <input
+      id="code-search"
+      type="text"
+      placeholder="Enter code number (e.g. 14) or name (e.g. UNAVAILABLE)..."
+      class="flex-1 px-4 py-3 rounded-xl bg-bg border border-border text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors text-sm"
+    />
+    <button id="search-btn" class="px-6 py-3 rounded-xl bg-accent hover:bg-accent/80 text-white font-bold transition-colors text-sm">
+      Decode
+    </button>
+  </div>
+
+  <!-- Quick result card -->
+  <div id="result-card" class="hidden mb-6 rounded-xl border-2 border-accent/40 bg-accent/5 p-5"></div>
+
+  <!-- All codes table -->
+  <div class="overflow-x-auto rounded-xl border border-border">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-border bg-surface">
+          <th class="text-left px-4 py-3 font-semibold text-text-muted w-12">Code</th>
+          <th class="text-left px-4 py-3 font-semibold text-text-muted">Name</th>
+          <th class="text-left px-4 py-3 font-semibold text-text-muted hidden md:table-cell">HTTP</th>
+          <th class="text-left px-4 py-3 font-semibold text-text-muted hidden lg:table-cell">Retryable</th>
+          <th class="text-left px-4 py-3 font-semibold text-text-muted">Description</th>
+        </tr>
+      </thead>
+      <tbody id="codes-table"></tbody>
+    </table>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="gRPC Status Code Decoder" relatedTags={['grpc', 'api', 'microservices', 'protobuf', 'backend', 'networking']} />
+</BaseLayout>
+
+<script is:inline>
+  const GRPC_CODES = [
+    {
+      code: 0,
+      name: 'OK',
+      http: 200,
+      retryable: false,
+      color: 'text-green-400',
+      short: 'Success',
+      description: 'The operation completed successfully.',
+      causes: ['RPC completed as expected'],
+      advice: 'No action needed.'
+    },
+    {
+      code: 1,
+      name: 'CANCELLED',
+      http: 499,
+      retryable: false,
+      color: 'text-yellow-400',
+      short: 'Cancelled by client',
+      description: 'The operation was cancelled, typically by the caller.',
+      causes: ['Client cancelled the request', 'User navigated away', 'Context cancellation propagated'],
+      advice: 'Do not retry unless the cancellation was unintentional. Investigate why the caller cancelled.'
+    },
+    {
+      code: 2,
+      name: 'UNKNOWN',
+      http: 500,
+      retryable: false,
+      color: 'text-red-400',
+      short: 'Unknown error',
+      description: 'Unknown error. May be used when an error returned from a different address space is unknown. Also used when the server returns a status code that the client does not know about.',
+      causes: ['Server returned an unrecognized status', 'Error from a different address space', 'Missing error handling in server code'],
+      advice: 'Check server logs. This often wraps an unhandled exception. Add more specific error handling on the server.'
+    },
+    {
+      code: 3,
+      name: 'INVALID_ARGUMENT',
+      http: 400,
+      retryable: false,
+      color: 'text-orange-400',
+      short: 'Bad request argument',
+      description: 'The client specified an invalid argument. Note that this differs from FAILED_PRECONDITION: INVALID_ARGUMENT indicates arguments that are problematic regardless of the state of the system.',
+      causes: ['Malformed request field', 'Out-of-range value (negative age, invalid email)', 'Missing required field', 'Type mismatch'],
+      advice: 'Do not retry without fixing the request. Validate input on the client side before sending.'
+    },
+    {
+      code: 4,
+      name: 'DEADLINE_EXCEEDED',
+      http: 504,
+      retryable: true,
+      color: 'text-orange-400',
+      short: 'Timeout',
+      description: 'The deadline expired before the operation could complete. For operations that change system state, this may be retried even if it completed — the client cannot tell.',
+      causes: ['Server too slow', 'Client deadline too short', 'Network latency spike', 'Resource contention'],
+      advice: 'May retry with backoff. Increase deadline if consistently hit. Profile server performance. Non-idempotent operations require idempotency keys before retrying.'
+    },
+    {
+      code: 5,
+      name: 'NOT_FOUND',
+      http: 404,
+      retryable: false,
+      color: 'text-yellow-400',
+      short: 'Resource not found',
+      description: 'Some requested entity was not found. Note that this does not indicate whether the method call was denied or whether the entity actually exists.',
+      causes: ['Resource was deleted', 'Wrong ID in request', 'Resource never created', 'Typo in resource name'],
+      advice: 'Do not retry. Fix the resource identifier or create the resource first.'
+    },
+    {
+      code: 6,
+      name: 'ALREADY_EXISTS',
+      http: 409,
+      retryable: false,
+      color: 'text-yellow-400',
+      short: 'Conflict / duplicate',
+      description: 'The entity that a client attempted to create already exists.',
+      causes: ['Duplicate create request', 'Race condition between concurrent creates', 'Idempotency key collision'],
+      advice: 'Do not retry the create. Either return the existing entity or use upsert semantics. Check if the prior request succeeded before retrying.'
+    },
+    {
+      code: 7,
+      name: 'PERMISSION_DENIED',
+      http: 403,
+      retryable: false,
+      color: 'text-red-400',
+      short: 'Forbidden',
+      description: 'The caller does not have permission to execute the specified operation. PERMISSION_DENIED must not be used for rejections caused by exhausting a resource — use RESOURCE_EXHAUSTED instead. PERMISSION_DENIED must not be used if the caller cannot be identified — use UNAUTHENTICATED instead.',
+      causes: ['Missing required IAM role or permission', 'Resource owned by another user', 'Action not allowed for caller\'s tier'],
+      advice: 'Do not retry. Check caller\'s permissions and roles. Authenticate first if not already done.'
+    },
+    {
+      code: 8,
+      name: 'RESOURCE_EXHAUSTED',
+      http: 429,
+      retryable: true,
+      color: 'text-orange-400',
+      short: 'Rate limited / quota exceeded',
+      description: 'Some resource has been exhausted, perhaps a per-user quota, or the entire file system is out of space.',
+      causes: ['API rate limit exceeded', 'Disk full', 'Memory exhausted', 'Per-user quota hit'],
+      advice: 'Retry with exponential backoff if caused by rate limiting. For quota exhaustion, request a quota increase or reduce usage.'
+    },
+    {
+      code: 9,
+      name: 'FAILED_PRECONDITION',
+      http: 400,
+      retryable: false,
+      color: 'text-orange-400',
+      short: 'Wrong system state',
+      description: 'The operation was rejected because the system is not in a state required for the operation\'s execution. For example, the directory to be deleted is non-empty.',
+      causes: ['Operation requires system to be in different state', 'Delete on non-empty directory', 'Resume on completed operation', 'Transaction conflicts'],
+      advice: 'Do not retry until system state changes. Fix the precondition first. Distinguish from INVALID_ARGUMENT: precondition errors are state-dependent, argument errors are not.'
+    },
+    {
+      code: 10,
+      name: 'ABORTED',
+      http: 409,
+      retryable: true,
+      color: 'text-yellow-400',
+      short: 'Transaction aborted',
+      description: 'The operation was aborted, typically due to a concurrency issue such as a sequencer check failure or transaction abort.',
+      causes: ['Optimistic concurrency conflict', 'Transaction rolled back', 'Sequencer check failure', 'Read-modify-write conflict'],
+      advice: 'Retry at a higher level (restart the transaction). Use exponential backoff.'
+    },
+    {
+      code: 11,
+      name: 'OUT_OF_RANGE',
+      http: 400,
+      retryable: false,
+      color: 'text-orange-400',
+      short: 'Value out of range',
+      description: 'The operation was attempted past the valid range. Unlike INVALID_ARGUMENT, this error indicates a problem that may be fixed if the system state changes.',
+      causes: ['Reading past end of file', 'Offset beyond data length', 'Seeking past end of sequence'],
+      advice: 'Do not retry without adjusting the range. Distinguish from INVALID_ARGUMENT: OUT_OF_RANGE can be valid once the resource grows.'
+    },
+    {
+      code: 12,
+      name: 'UNIMPLEMENTED',
+      http: 501,
+      retryable: false,
+      color: 'text-text-muted',
+      short: 'Method not implemented',
+      description: 'The operation is not implemented or is not supported/enabled in this service.',
+      causes: ['Calling a beta method on a stable server', 'Feature flag not enabled', 'Calling a removed RPC', 'Wrong server version'],
+      advice: 'Do not retry. Check server version and available methods. Use server reflection or proto descriptor to list available RPCs.'
+    },
+    {
+      code: 13,
+      name: 'INTERNAL',
+      http: 500,
+      retryable: false,
+      color: 'text-red-400',
+      short: 'Internal server error',
+      description: 'Internal errors. This means that some invariants expected by the underlying system have been broken. This error code is reserved for serious errors.',
+      causes: ['Unhandled exception in server code', 'Invariant violation', 'Corrupt data', 'Infrastructure failure'],
+      advice: 'Check server logs immediately. This is a bug. Do not retry unless you know the root cause is transient.'
+    },
+    {
+      code: 14,
+      name: 'UNAVAILABLE',
+      http: 503,
+      retryable: true,
+      color: 'text-blue-400',
+      short: 'Service unavailable (transient)',
+      description: 'The service is currently unavailable. This is a transient condition which will hopefully be alleviated after some time. It is best to back off and retry.',
+      causes: ['Server overloaded', 'Server restarting or deploying', 'Temporary network partition', 'Connection refused'],
+      advice: 'Retry with exponential backoff and jitter. This is the primary retryable error. Use circuit breakers for persistent unavailability.'
+    },
+    {
+      code: 15,
+      name: 'DATA_LOSS',
+      http: 500,
+      retryable: false,
+      color: 'text-red-500',
+      short: 'Unrecoverable data loss',
+      description: 'Unrecoverable data loss or corruption.',
+      causes: ['Disk corruption', 'Data loss during hardware failure', 'Corrupted database record', 'Incomplete write to storage'],
+      advice: 'Escalate immediately. This is a critical error. Investigate data integrity. Restore from backup if possible.'
+    },
+    {
+      code: 16,
+      name: 'UNAUTHENTICATED',
+      http: 401,
+      retryable: false,
+      color: 'text-red-400',
+      short: 'Authentication required',
+      description: 'The request does not have valid authentication credentials for the operation.',
+      causes: ['Missing auth token', 'Expired JWT or session', 'Invalid API key', 'Token not sent in correct header'],
+      advice: 'Do not retry without refreshing credentials. Re-authenticate and include valid credentials in the request metadata.'
+    }
+  ];
+
+  function renderTable(codes) {
+    const tbody = document.getElementById('codes-table');
+    tbody.innerHTML = codes.map(c => {
+      const retryBadge = c.retryable
+        ? '<span class="inline-block px-2 py-0.5 rounded text-xs bg-green-500/20 text-green-400 border border-green-500/30">Yes</span>'
+        : '<span class="inline-block px-2 py-0.5 rounded text-xs bg-surface text-text-muted border border-border">No</span>';
+      return `<tr class="border-b border-border/50 hover:bg-surface/50 cursor-pointer transition-colors" data-code="${c.code}">
+        <td class="px-4 py-3 font-mono font-bold ${c.color}">${c.code}</td>
+        <td class="px-4 py-3 font-mono text-xs font-semibold text-text">${c.name}</td>
+        <td class="px-4 py-3 text-text-muted hidden md:table-cell">${c.http}</td>
+        <td class="px-4 py-3 hidden lg:table-cell">${retryBadge}</td>
+        <td class="px-4 py-3 text-text-muted text-xs">${c.short}</td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('tr').forEach(tr => {
+      tr.addEventListener('click', () => {
+        const code = parseInt(tr.dataset.code, 10);
+        showDetail(GRPC_CODES.find(c => c.code === code));
+      });
+    });
+  }
+
+  function showDetail(c) {
+    if (!c) return;
+    const card = document.getElementById('result-card');
+    const retryBadge = c.retryable
+      ? '<span class="inline-block px-2 py-0.5 rounded text-xs bg-green-500/20 text-green-400 border border-green-500/30 font-semibold">✓ Retryable</span>'
+      : '<span class="inline-block px-2 py-0.5 rounded text-xs bg-surface text-text-muted border border-border">Not retryable</span>';
+    card.innerHTML = `
+      <div class="flex items-center gap-3 mb-3 flex-wrap">
+        <span class="text-3xl font-bold font-mono ${c.color}">${c.code}</span>
+        <span class="text-xl font-bold font-mono text-text">${c.name}</span>
+        ${retryBadge}
+        <span class="text-text-muted text-sm">HTTP ${c.http}</span>
+      </div>
+      <p class="text-text mb-3">${c.description}</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Common Causes</div>
+          <ul class="space-y-1">${c.causes.map(cause => `<li class="flex items-start gap-2 text-sm"><span class="text-accent mt-0.5">•</span><span class="text-text-muted">${cause}</span></li>`).join('')}</ul>
+        </div>
+        <div>
+          <div class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Retry Advice</div>
+          <p class="text-sm text-text-muted">${c.advice}</p>
+        </div>
+      </div>
+    `;
+    card.classList.remove('hidden');
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function search() {
+    const q = document.getElementById('code-search').value.trim().toUpperCase();
+    if (!q) return;
+    const num = parseInt(q, 10);
+    let found;
+    if (!isNaN(num)) {
+      found = GRPC_CODES.find(c => c.code === num);
+    } else {
+      found = GRPC_CODES.find(c => c.name === q || c.name.includes(q));
+    }
+    if (found) {
+      showDetail(found);
+    } else {
+      const card = document.getElementById('result-card');
+      card.innerHTML = `<p class="text-red-400 text-sm">No gRPC status code found for "${q}". Valid codes: 0–16.</p>`;
+      card.classList.remove('hidden');
+    }
+  }
+
+  document.getElementById('search-btn').addEventListener('click', search);
+  document.getElementById('code-search').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+
+  renderTable(GRPC_CODES);
+</script>
