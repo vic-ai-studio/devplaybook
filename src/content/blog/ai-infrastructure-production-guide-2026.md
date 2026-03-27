@@ -149,7 +149,7 @@ python -m vllm.entrypoints.openai.api_server \
   --port 8000
 ```
 
-**vLLM Docker for production:**
+**vLLM Docker for production (use the [Dockerfile Generator](/tools/dockerfile-generator) to scaffold production-ready Dockerfiles):**
 
 ```Dockerfile
 FROM vllm/vllm-openai:latest

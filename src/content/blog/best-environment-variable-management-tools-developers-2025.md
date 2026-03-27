@@ -71,7 +71,7 @@ REDIS_URL=redis://localhost:6379
 ```
 
 **Rules:**
-- `.env` in `.gitignore` — always
+- `.env` in `.gitignore` — always (use the [Gitignore Generator](/tools/gitignore-generator) to auto-generate one)
 - `.env.example` committed with placeholder values — always
 - New team members copy `.env.example` to `.env` and fill in real values
 

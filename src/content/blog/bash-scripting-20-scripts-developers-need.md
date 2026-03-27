@@ -535,7 +535,7 @@ exit $EXIT
 
 ## 20. Daily Summary Script
 
-Shows a snapshot of your day: git commits, system info, running processes.
+Shows a snapshot of your day: git commits, system info, running processes. Combine with the [Git Commit Generator](/tools/git-commit-generator) for consistent conventional commits.
 
 ```bash
 #!/usr/bin/env bash
