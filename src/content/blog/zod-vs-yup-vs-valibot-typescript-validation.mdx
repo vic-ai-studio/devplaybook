@@ -1,0 +1,424 @@
+---
+title: "Zod vs Yup vs Valibot: Best TypeScript Schema Validation in 2024"
+description: "Detailed comparison of Zod, Yup, and Valibot for TypeScript schema validation. Bundle sizes, performance benchmarks, API differences, and which library to pick for your project."
+pubDate: 2024-11-18
+tags: [typescript, zod, validation, schema]
+---
+
+Schema validation is one of those problems every TypeScript project eventually faces. You're accepting data from an API, a form, or a config file — and you need to ensure it matches the shape your code expects. Three libraries dominate this space: **Zod** (the current standard), **Yup** (the veteran), and **Valibot** (the performance-focused newcomer). This guide compares them on the things that actually matter: bundle size, type inference, error handling, and ecosystem fit.
+
+---
+
+## Why Schema Validation Matters
+
+TypeScript's type system is a compile-time tool. It won't protect you from malformed data at runtime. When a REST endpoint returns unexpected null values, or a form field contains a string where you expected a number, TypeScript types won't catch it.
+
+Schema validation libraries solve this by letting you define the shape of your data once, and then:
+
+1. **Parse** incoming data (reject invalid shapes early)
+2. **Infer** TypeScript types from the schema (write your types once)
+3. **Transform** data as part of validation (coerce strings to numbers, strip unknown fields)
+
+```typescript
+// Without validation — TypeScript thinks this is safe, but it isn't
+async function getUser(id: string) {
+  const res = await fetch(`/api/users/${id}`);
+  const data = await res.json(); // data is `any`
+  return data as User; // type cast without verification — dangerous
+}
+
+// With validation — catch the mismatch before it causes bugs
+import { z } from "zod";
+
+const UserSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  email: z.string().email(),
+  role: z.enum(["admin", "user", "guest"]),
+});
+
+type User = z.infer<typeof UserSchema>; // TypeScript type from schema
+
+async function getUser(id: string): Promise<User> {
+  const res = await fetch(`/api/users/${id}`);
+  const data = await res.json();
+  return UserSchema.parse(data); // throws if shape is wrong
+}
+```
+
+---
+
+## Zod Deep Dive
+
+Zod has become the de facto TypeScript validation standard. Released in 2020 by Colin McDonnell, it's now used across major frameworks — Next.js, tRPC, React Hook Form, and thousands of open source projects depend on it.
+
+### Core API
+
+```typescript
+import { z } from "zod";
+
+// Primitive types
+const stringSchema = z.string().min(1).max(100);
+const numberSchema = z.number().int().positive();
+const boolSchema = z.boolean();
+
+// Objects
+const UserSchema = z.object({
+  id: z.number(),
+  name: z.string().min(2),
+  email: z.string().email(),
+  age: z.number().min(0).max(120).optional(),
+  role: z.enum(["admin", "user", "guest"]).default("user"),
+});
+
+// Arrays
+const TagsSchema = z.array(z.string()).min(1).max(10);
+
+// Unions and intersections
+const IdSchema = z.union([z.string().uuid(), z.number().int()]);
+const AdminSchema = UserSchema.extend({ permissions: z.array(z.string()) });
+
+// Type inference
+type User = z.infer<typeof UserSchema>; // fully typed
+```
+
+### Error Handling
+
+Zod distinguishes between `parse` (throws on error) and `safeParse` (returns a result object):
+
+```typescript
+const result = UserSchema.safeParse({ id: "not-a-number", name: "Alice" });
+
+if (!result.success) {
+  // result.error is a ZodError with structured details
+  result.error.issues.forEach((issue) => {
+    console.log(`${issue.path.join(".")}: ${issue.message}`);
+  });
+  // "id: Expected number, received string"
+  // "email: Required"
+} else {
+  console.log(result.data); // fully typed User
+}
+```
+
+### Async Validation
+
+```typescript
+const UsernameSchema = z.string().refine(
+  async (val) => {
+    const exists = await checkUsernameExists(val);
+    return !exists;
+  },
+  { message: "Username already taken" }
+);
+
+// Use parseAsync for async schemas
+const result = await UsernameSchema.safeParseAsync("alice");
+```
+
+### Pros
+- Best-in-class TypeScript inference
+- Massive ecosystem (tRPC, React Hook Form, Prisma generate compatible schemas)
+- Excellent error messages
+- Active maintenance and fast iteration
+
+### Cons
+- Bundle size: ~14KB minified+gzipped (client-side concern)
+- Can be verbose for complex discriminated unions
+- API surface is large — learning curve for advanced patterns
+
+---
+
+## Yup Overview
+
+Yup predates TypeScript's popularity. Released in 2014, it was built for form validation in React apps — particularly alongside Formik. Yup's fluent API feels natural and is well-understood by developers who've been in the ecosystem for years.
+
+```typescript
+import * as yup from "yup";
+
+const userSchema = yup.object({
+  id: yup.number().required(),
+  name: yup.string().min(2).required(),
+  email: yup.string().email().required(),
+  age: yup.number().min(0).max(120),
+  role: yup.string().oneOf(["admin", "user", "guest"]).default("user"),
+});
+
+// Type inference (requires InferType)
+type User = yup.InferType<typeof userSchema>;
+
+// Validate
+try {
+  const user = await userSchema.validate(data, { abortEarly: false });
+} catch (err) {
+  if (err instanceof yup.ValidationError) {
+    console.log(err.errors); // string[]
+    console.log(err.inner); // array of individual field errors
+  }
+}
+```
+
+### Key Differences from Zod
+
+**Async by default:** Yup's `validate()` is always async (returns a Promise). Zod has separate sync and async paths.
+
+**Less precise TypeScript inference:** Yup's types are less strict. Optional fields can be `undefined | null` in ways that require extra handling:
+
+```typescript
+// Yup type inference quirk
+const schema = yup.object({ name: yup.string() });
+type T = yup.InferType<typeof schema>;
+// T = { name?: string | undefined }
+// Zod would give: { name?: string | undefined } with more precise null handling
+```
+
+**Better Formik integration:** Yup was designed for Formik and the two have deep integration. The `validationSchema` prop in Formik expects a Yup schema.
+
+### Pros
+- Mature and battle-tested (10+ years)
+- Excellent Formik integration
+- Familiar API for developers coming from older React codebases
+- Good async validation support
+
+### Cons
+- TypeScript inference is less precise than Zod
+- Bundle size: ~12KB gzipped
+- Less active development compared to Zod and Valibot
+- Error format is less structured than Zod's issues array
+
+---
+
+## Valibot: The New Contender
+
+Valibot, released in 2023 by Fabian Hiller, takes a radically different approach to bundle size. Where Zod ships as a unified library, Valibot is designed for tree-shaking from the ground up. Every validator and action is a standalone function — import only what you use.
+
+```typescript
+import {
+  object,
+  string,
+  number,
+  email,
+  minLength,
+  pipe,
+  optional,
+  literal,
+  union,
+  parse,
+  safeParse,
+  type InferOutput,
+} from "valibot";
+
+const UserSchema = object({
+  id: number(),
+  name: pipe(string(), minLength(2)),
+  email: pipe(string(), email()),
+  age: optional(number()),
+  role: union([literal("admin"), literal("user"), literal("guest")]),
+});
+
+type User = InferOutput<typeof UserSchema>;
+
+// Parse
+const result = safeParse(UserSchema, data);
+if (result.success) {
+  console.log(result.output); // typed User
+} else {
+  console.log(result.issues); // structured error array
+}
+```
+
+### Bundle Size Advantage
+
+This is Valibot's defining feature. Because each function is independently importable, bundlers can tree-shake aggressively:
+
+| Library | Full bundle (minified + gzip) | Typical app usage |
+| ------- | ----------------------------- | ----------------- |
+| Zod     | ~14 KB                        | 10–14 KB          |
+| Yup     | ~12 KB                        | 10–12 KB          |
+| Valibot | ~0.5 KB base + per-use        | 1–5 KB            |
+
+For server-side Node.js apps, this difference is irrelevant. For client-side apps (especially those targeting slow connections or edge deployments), Valibot's smaller footprint is a genuine advantage.
+
+### Valibot v1 API Changes
+
+Valibot underwent a significant API redesign in v1 (mid-2024). The `pipe()` composition model replaced the old chained method API. If you find tutorials using the old chained syntax, they're for v0.x.
+
+```typescript
+// Old v0.x syntax (deprecated)
+const schema = string([minLength(2), email()]);
+
+// New v1 syntax
+const schema = pipe(string(), minLength(2), email());
+```
+
+### Pros
+- Tiny bundle size with tree-shaking
+- TypeScript-first design
+- Fast — slightly better benchmark performance than Zod
+- Active development
+
+### Cons
+- Smaller ecosystem (fewer integrations vs Zod)
+- API had breaking changes in v1 — tutorials vary in accuracy
+- Less community support and Stack Overflow presence
+- Not yet the default for major framework integrations
+
+---
+
+## Feature Comparison Table
+
+| Feature                       | Zod              | Yup              | Valibot          |
+| ----------------------------- | ---------------- | ---------------- | ---------------- |
+| TypeScript inference quality  | Excellent        | Good             | Excellent        |
+| Bundle size (typical)         | ~14 KB           | ~12 KB           | 1–5 KB           |
+| Sync validation               | Yes              | No (async only)  | Yes              |
+| Error format                  | Structured issues| String array     | Structured issues|
+| Formik integration            | Via adapter      | Native           | Via adapter      |
+| tRPC integration              | Native           | No               | Via adapter      |
+| React Hook Form integration   | Native           | Native           | Supported        |
+| Async refinements             | Yes              | Yes              | Yes              |
+| Discriminated unions          | Yes              | Limited          | Yes              |
+| Coercion/transforms           | Yes              | Yes              | Yes              |
+| Ecosystem maturity            | High             | High             | Growing          |
+
+---
+
+## Performance Benchmarks
+
+Raw parse performance is rarely a bottleneck in real applications — the network call to fetch data takes orders of magnitude longer than parsing it. That said, here's what benchmarks show for validating a simple user object (~10 fields) with 100,000 iterations:
+
+| Library | Operations/sec | Relative speed |
+| ------- | -------------- | -------------- |
+| Valibot | ~2,800,000     | 1.0x (fastest) |
+| Zod     | ~2,100,000     | 0.75x          |
+| Yup     | ~650,000       | 0.23x          |
+
+Yup's async-by-default design adds overhead even for synchronous data. Zod and Valibot are both fast enough that the difference won't appear in profiling traces for typical API server loads.
+
+**When performance matters:** If you're validating every row in a 100K-row CSV import, or parsing high-frequency WebSocket messages, Valibot's edge is real. For standard REST API handlers, it's irrelevant.
+
+---
+
+## Real-World Integration Patterns
+
+### Zod with React Hook Form
+
+```typescript
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+const FormSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+type FormData = z.infer<typeof FormSchema>;
+
+export function LoginForm() {
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(FormSchema),
+  });
+
+  return (
+    <form onSubmit={handleSubmit(console.log)}>
+      <input {...register("email")} />
+      {errors.email && <span>{errors.email.message}</span>}
+      <input type="password" {...register("password")} />
+      {errors.password && <span>{errors.password.message}</span>}
+      <button type="submit">Login</button>
+    </form>
+  );
+}
+```
+
+### Zod with tRPC
+
+```typescript
+import { z } from "zod";
+import { router, publicProcedure } from "./trpc";
+
+export const userRouter = router({
+  getUser: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      // input.id is typed as number
+      return getUserById(input.id);
+    }),
+
+  createUser: publicProcedure
+    .input(z.object({
+      name: z.string().min(2),
+      email: z.string().email(),
+    }))
+    .mutation(async ({ input }) => {
+      return createUser(input);
+    }),
+});
+```
+
+### Valibot with API Route Validation
+
+```typescript
+import { object, string, number, pipe, email, minLength, parse, ValiError } from "valibot";
+
+const CreatePostSchema = object({
+  title: pipe(string(), minLength(1, "Title required")),
+  content: pipe(string(), minLength(10, "Content too short")),
+  authorId: number(),
+  tags: array(string()),
+});
+
+export async function POST(req: Request) {
+  const body = await req.json();
+
+  try {
+    const post = parse(CreatePostSchema, body);
+    const created = await db.posts.create({ data: post });
+    return Response.json(created, { status: 201 });
+  } catch (err) {
+    if (err instanceof ValiError) {
+      return Response.json(
+        { errors: err.issues.map(i => ({ field: i.path?.map(p => p.key).join("."), message: i.message })) },
+        { status: 400 }
+      );
+    }
+    throw err;
+  }
+}
+```
+
+---
+
+## Which Library Should You Choose?
+
+**Choose Zod if:**
+- You're using tRPC (Zod is tRPC's default)
+- You want the best TypeScript type inference available
+- You need a large ecosystem of integrations
+- Bundle size is not a constraint (server-side, SSR, or large client apps)
+- You want the most community resources and documentation
+
+**Choose Yup if:**
+- You're using Formik (Yup is Formik's native partner)
+- You're maintaining an existing codebase already on Yup
+- You need async validation patterns from legacy APIs
+- Your team is already familiar with Yup's API
+
+**Choose Valibot if:**
+- You're building for the browser and bundle size matters (PWAs, edge functions)
+- You're building a UI component library where you don't want to force a large validation dependency
+- You want the best tree-shaking possible
+- You're starting fresh and willing to work with a smaller ecosystem
+
+---
+
+## Conclusion
+
+For most TypeScript projects in 2024, **Zod is the right default**. Its type inference is the best available, its ecosystem is unmatched, and 14KB gzipped is a reasonable cost for server-side or large client apps.
+
+**Valibot** is the smart choice when bundle size genuinely matters — UI libraries, PWAs, and Cloudflare Workers where you're optimizing aggressively. Its API is clean and fully TypeScript-native; the main cost is a smaller community.
+
+**Yup** remains relevant primarily for Formik-based form validation in existing codebases. For new projects, both Zod and Valibot offer better TypeScript integration.
+
+The good news: all three are mature, well-maintained, and solve the core problem well. Your team's existing knowledge and framework choices should drive the final call more than any benchmark.
