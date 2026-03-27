@@ -1,0 +1,467 @@
+---
+title: "Zod vs Yup vs Joi: TypeScript Schema Validation Libraries Compared (2026)"
+description: "A deep comparison of Zod, Yup, and Joi for TypeScript schema validation. API design, type inference, bundle size, real-world patterns, and a step-by-step migration guide from Joi and Yup to Zod."
+pubDate: 2026-03-27
+tags: [typescript, zod, yup, joi, validation, schema]
+---
+
+TypeScript gives you a powerful type system at compile time — but types disappear at runtime. The moment you receive data from a form, an API endpoint, or a config file, you're working with raw JavaScript values that could be anything. That's where schema validation libraries come in.
+
+In 2026, three libraries dominate the TypeScript validation ecosystem: **Zod**, **Yup**, and **Joi**. Each approaches the problem differently, and choosing the wrong one for your stack has real costs in developer experience and bundle size.
+
+This guide compares all three on API design, TypeScript inference, bundle size, performance, real-world patterns, and provides a concrete migration guide if you're moving to Zod.
+
+---
+
+## At a Glance: Zod vs Yup vs Joi
+
+| Feature | Zod | Yup | Joi |
+|---------|-----|-----|-----|
+| TypeScript inference | ★★★★★ | ★★★☆☆ | ★★☆☆☆ |
+| Bundle size (gzip) | ~3 KB | ~17 KB | ~25 KB |
+| Async support | `parseAsync` | Native | Plugin |
+| tRPC integration | Native | Adapter | Adapter |
+| React Hook Form | Resolver | Resolver | Resolver |
+| First release | 2020 | 2016 | 2012 |
+| GitHub stars | 34K+ | 22K+ | 20K+ |
+
+The tldr: **Zod** wins on TypeScript-first projects. **Yup** holds its ground in Formik/async workflows. **Joi** remains the battle-hardened choice for Node.js backends.
+
+---
+
+## Zod: TypeScript-First Schema Validation
+
+Zod's core thesis is simple: define your schema once, and get your TypeScript type for free. No duplicate type definitions.
+
+```typescript
+import { z } from 'zod';
+
+const UserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  age: z.number().int().min(18).max(120),
+  role: z.enum(['admin', 'user', 'viewer']),
+  createdAt: z.coerce.date(),
+  address: z.object({
+    street: z.string(),
+    city: z.string(),
+    country: z.string().length(2),
+  }).optional(),
+});
+
+type User = z.infer<typeof UserSchema>;
+// Full TypeScript type — no extra work needed
+```
+
+### Real-World Pattern: API Response Validation
+
+The most common use case — validating data from an external API before you trust it:
+
+```typescript
+async function fetchUser(id: string): Promise<User> {
+  const response = await fetch(`/api/users/${id}`);
+  const raw = await response.json();
+
+  // safeParse instead of parse — never throw on external data
+  const result = UserSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error(`Invalid user data: ${result.error.message}`);
+  }
+  return result.data; // fully typed User
+}
+```
+
+### Real-World Pattern: Form Validation with Error Mapping
+
+```typescript
+const ContactSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Invalid email address'),
+  message: z.string().min(10).max(1000),
+});
+
+function validateForm(formData: unknown) {
+  const result = ContactSchema.safeParse(formData);
+  if (!result.success) {
+    // format() converts ZodError to { fieldName: { _errors: string[] } }
+    return result.error.format();
+  }
+  return null;
+}
+```
+
+### Zod Strengths
+
+- **Best-in-class TypeScript inference**: Inferred types are precise — optional fields, unions, discriminated unions all work correctly
+- **Lean bundle**: ~3 KB gzipped, tree-shakeable
+- **tRPC native**: tRPC is built around Zod — zero-config input/output validation
+- **`safeParse` API**: Predictable error handling without try/catch
+- **Schema composition**: `.extend()`, `.merge()`, `.pick()`, `.omit()` for schema reuse
+
+### Zod Weaknesses
+
+- **Complex async validation**: Requires `parseAsync()` — easy to accidentally call `parse()` and lose async checks
+- **Cross-field validation**: Needs `.superRefine()` which is verbose compared to Yup's `.when()`
+- **Strict object stripping**: Unknown fields are stripped by default; use `.passthrough()` to preserve them
+
+---
+
+## Yup: Async-First and React-Ecosystem Friendly
+
+Yup predates Zod by four years and was the go-to library in the React ecosystem, primarily through its Formik integration. It's still an excellent choice for async-heavy workflows.
+
+```typescript
+import * as yup from 'yup';
+
+const userSchema = yup.object({
+  id: yup.string().uuid().required(),
+  email: yup.string().email().required(),
+  age: yup.number().integer().min(18).max(120).required(),
+  role: yup.string().oneOf(['admin', 'user', 'viewer']).required(),
+  address: yup.object({
+    street: yup.string().required(),
+    city: yup.string().required(),
+    country: yup.string().length(2).required(),
+  }),
+});
+
+type User = yup.InferType<typeof userSchema>;
+```
+
+### Real-World Pattern: Async Uniqueness Check
+
+Yup's async validation is where it genuinely shines — it's baked into the core design:
+
+```typescript
+const RegisterSchema = yup.object({
+  username: yup
+    .string()
+    .required()
+    .min(3)
+    .test('unique-username', 'This username is already taken', async (value) => {
+      if (!value) return true;
+      const exists = await checkUsernameExists(value);
+      return !exists;
+    }),
+  email: yup
+    .string()
+    .email()
+    .required()
+    .test('unique-email', 'Email already registered', async (value) => {
+      if (!value) return true;
+      return !(await checkEmailExists(value));
+    }),
+  password: yup.string().min(8).required(),
+});
+
+// All validations run in parallel automatically
+const validated = await RegisterSchema.validate(formData, { abortEarly: false });
+```
+
+### Real-World Pattern: Conditional Validation
+
+Yup's `.when()` makes cross-field conditional rules readable:
+
+```typescript
+const shippingSchema = yup.object({
+  shippingType: yup.string().oneOf(['standard', 'express', 'pickup']).required(),
+  pickupTime: yup
+    .string()
+    .when('shippingType', {
+      is: 'pickup',
+      then: (schema) => schema.required('Pickup time is required'),
+      otherwise: (schema) => schema.optional(),
+    }),
+  expressReason: yup
+    .string()
+    .when('shippingType', {
+      is: 'express',
+      then: (schema) => schema.required(),
+    }),
+});
+```
+
+### Yup Strengths
+
+- **Async-native**: Every validation implicitly returns a Promise — no special handling
+- **React Hook Form**: Mature resolver with excellent Formik compatibility
+- **`.when()` API**: Readable conditional validation without verbose callbacks
+- **Coercion**: `schema.cast()` transforms strings to numbers, dates, etc.
+
+### Yup Weaknesses
+
+- **TypeScript inference quality**: Required/optional handling generates overly wide types; `undefined` leaks where you don't expect it
+- **Bundle size**: ~17 KB gzipped — 5x larger than Zod
+- **Always-async overhead**: Even sync validations pay the Promise cost
+- **Verbose required()**: Fields are optional by default — you must `.required()` everything or wrap in `.defined()`
+
+---
+
+## Joi: Battle-Tested Node.js Validation
+
+Joi is the oldest of the three, born from the hapi.js framework in 2012. It's been running in production for over a decade and has an API surface covering every edge case imaginable.
+
+```javascript
+const Joi = require('joi');
+// or with TypeScript: import Joi from 'joi'
+
+const userSchema = Joi.object({
+  id: Joi.string().uuid().required(),
+  email: Joi.string().email().required(),
+  age: Joi.number().integer().min(18).max(120).required(),
+  role: Joi.string().valid('admin', 'user', 'viewer').required(),
+  address: Joi.object({
+    street: Joi.string().required(),
+    city: Joi.string().required(),
+    country: Joi.string().length(2).required(),
+  }),
+});
+
+const { error, value } = userSchema.validate(data, { abortEarly: false });
+```
+
+### Real-World Pattern: Express Middleware
+
+Joi's roots are in server-side validation, and it shows in the middleware ecosystem:
+
+```javascript
+function validateBody(schema) {
+  return (req, res, next) => {
+    const { error, value } = schema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true, // remove fields not in schema
+    });
+    if (error) {
+      return res.status(400).json({
+        errors: error.details.map(d => ({
+          field: d.path.join('.'),
+          message: d.message,
+        })),
+      });
+    }
+    req.body = value; // replace with validated/coerced value
+    next();
+  };
+}
+
+// Usage
+app.post('/users', validateBody(userSchema), createUser);
+```
+
+### Real-World Pattern: Environment Variable Validation
+
+Joi's `.required()` behavior and `Joi.alternatives()` make env var validation readable:
+
+```javascript
+const envSchema = Joi.object({
+  NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+  PORT: Joi.number().default(3000),
+  DATABASE_URL: Joi.string().uri().required(),
+  JWT_SECRET: Joi.string().min(32).required(),
+  REDIS_URL: Joi.string().uri().optional(),
+}).unknown(true); // allow other env vars
+
+const { error, value: env } = envSchema.validate(process.env);
+if (error) throw new Error(`Config validation error: ${error.message}`);
+```
+
+### Joi Strengths
+
+- **Maturity**: 12+ years of production hardening, every edge case covered
+- **Customization**: Deep extension API for custom types, validators, and error messages
+- **Fine-grained options**: `allowUnknown`, `stripUnknown`, `presence: 'required'` — control everything
+- **Fastify/hapi native**: Deep framework integration out of the box
+
+### Joi Weaknesses
+
+- **TypeScript support**: Not native — added later. You write schema AND TypeScript types separately
+- **Largest bundle**: ~25 KB gzipped
+- **No type inference**: Can't derive TypeScript types from Joi schemas without third-party tools
+- **API verbosity**: Deeply nested schemas become visually noisy
+
+---
+
+## TypeScript Inference: Where Zod Wins Decisively
+
+The fundamental difference in TypeScript DX:
+
+```typescript
+// Zod: one source of truth
+const Schema = z.object({ name: z.string(), age: z.number().optional() });
+type T = z.infer<typeof Schema>;
+// T = { name: string; age?: number }
+
+// Yup: inference works but leaks undefined
+const schema = yup.object({ name: yup.string().required(), age: yup.number() });
+type T = yup.InferType<typeof schema>;
+// T = { name: string; age?: number | undefined }
+// The `undefined` leak causes issues with strict TypeScript
+
+// Joi: no inference — you write types separately
+interface User { name: string; age?: number; }
+const schema = Joi.object<User>({ name: Joi.string().required(), age: Joi.number() });
+// Schema and type must be kept in sync manually
+```
+
+For TypeScript-first projects, Zod's inference is a significant productivity advantage: rename a field in the schema, and the TypeScript type updates automatically.
+
+---
+
+## Migration Guide: Joi → Zod
+
+Migrating from Joi to Zod is straightforward. The API maps almost one-to-one, and you gain TypeScript inference for free.
+
+### Step 1: Install and swap imports
+
+```bash
+npm install zod
+npm uninstall joi
+```
+
+```typescript
+// Before
+import Joi from 'joi';
+
+// After
+import { z } from 'zod';
+```
+
+### Step 2: Translate schema builders
+
+| Joi | Zod |
+|-----|-----|
+| `Joi.string()` | `z.string()` |
+| `Joi.number()` | `z.number()` |
+| `Joi.boolean()` | `z.boolean()` |
+| `Joi.array().items(Joi.string())` | `z.array(z.string())` |
+| `Joi.object({ ... })` | `z.object({ ... })` |
+| `Joi.string().valid('a', 'b')` | `z.enum(['a', 'b'])` |
+| `Joi.string().uuid()` | `z.string().uuid()` |
+| `Joi.string().email()` | `z.string().email()` |
+| `Joi.alternatives().try(...)` | `z.union([...])` |
+| `.required()` | (default — fields are required by default) |
+| `.optional()` | `.optional()` |
+| `.default(val)` | `.default(val)` |
+
+### Step 3: Update validation calls
+
+```typescript
+// Before (Joi)
+const { error, value } = schema.validate(data, { abortEarly: false });
+if (error) throw error;
+doSomething(value);
+
+// After (Zod)
+const result = schema.safeParse(data);
+if (!result.success) throw result.error;
+doSomething(result.data);
+```
+
+### Step 4: Delete duplicate TypeScript types
+
+```typescript
+// Before: interface defined separately from Joi schema
+interface User { id: string; email: string; }
+const schema = Joi.object<User>({ ... });
+
+// After: derive type from Zod schema
+const UserSchema = z.object({ id: z.string(), email: z.string() });
+type User = z.infer<typeof UserSchema>; // interface no longer needed
+```
+
+---
+
+## Migration Guide: Yup → Zod
+
+Yup and Zod have similar APIs, making migration low-friction.
+
+### Key differences to watch
+
+```typescript
+// Yup: fields are optional by default — .required() is explicit
+const yupSchema = yup.object({
+  name: yup.string().required(), // must be explicit
+  bio: yup.string(),             // optional by default
+});
+
+// Zod: fields are required by default — .optional() is explicit
+const zodSchema = z.object({
+  name: z.string(),            // required by default
+  bio: z.string().optional(),  // must be explicit
+});
+```
+
+### Async validation translation
+
+```typescript
+// Yup: .test() with async function
+const yupSchema = yup.object({
+  username: yup.string().test('unique', 'Taken', async (val) => {
+    return !(await checkExists(val));
+  }),
+});
+
+// Zod: .refine() with async function (requires parseAsync)
+const zodSchema = z.object({
+  username: z.string().refine(
+    async (val) => !(await checkExists(val)),
+    { message: 'Taken' }
+  ),
+});
+
+// IMPORTANT: must use parseAsync, not parse
+const result = await zodSchema.parseAsync(data);
+```
+
+### Replace .when() with .superRefine()
+
+```typescript
+// Yup conditional
+const yupSchema = yup.object({
+  type: yup.string().oneOf(['a', 'b']).required(),
+  extra: yup.string().when('type', { is: 'a', then: (s) => s.required() }),
+});
+
+// Zod equivalent
+const zodSchema = z.object({
+  type: z.enum(['a', 'b']),
+  extra: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.type === 'a' && !data.extra) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['extra'],
+      message: 'Required when type is "a"',
+    });
+  }
+});
+```
+
+---
+
+## Which Library Should You Use?
+
+| Scenario | Pick | Reason |
+|----------|------|--------|
+| New TypeScript project | **Zod** | Best inference, smallest bundle, tRPC native |
+| tRPC project | **Zod** | Built-in — no adapter needed |
+| Existing Formik/React app | **Yup** | Already integrated; migration has no clear gain |
+| Heavy async validation (DB checks) | **Yup or Zod** | Yup's async is simpler; Zod's `parseAsync` works well |
+| Node.js backend (Express/Fastify) | **Zod or Joi** | Zod for TypeScript; Joi if pure JS or legacy stack |
+| Enterprise with existing Joi | **Joi** | Migration cost rarely worth it unless you need TS inference |
+
+**Bottom line**: Zod is the right default for greenfield TypeScript projects in 2026. Yup remains strong in async-heavy and React/Formik contexts. Joi is the most battle-tested for pure Node.js backends.
+
+---
+
+## Conclusion
+
+Runtime schema validation isn't optional in production TypeScript applications — it's where type safety actually matters. All three libraries are correct and production-ready.
+
+The differences come down to TypeScript ergonomics and ecosystem fit:
+
+- **Zod** removes the friction of maintaining types separately from schemas. Its 3 KB bundle and tRPC native support make it the obvious choice for new TypeScript projects.
+- **Yup** solves async validation elegantly and has the deepest React ecosystem roots. If you're in a Formik project, stay with Yup.
+- **Joi** has outlasted every trend for over a decade. If you're running a Node.js backend that doesn't need TypeScript inference, Joi is a safe, mature choice.
+
+*Validate your schema definitions in the browser with our free [JSON Schema Validator](/tools/json-schema-validator). Or test live API requests with the [API Request Builder](/tools/api-request-builder).*
