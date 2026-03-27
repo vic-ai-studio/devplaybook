@@ -1,0 +1,445 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+---
+
+<BaseLayout
+  title="Content Security Policy Builder — Generate CSP Headers Interactively"
+  description="Build and validate Content Security Policy (CSP) headers interactively. Add directives like default-src, script-src, style-src, img-src. Get the full CSP header string to copy into your server config. Runs in your browser."
+  tool="CSP builder, Content Security Policy generator, CSP header tool, script-src, XSS prevention, web security headers, nonce generator, CSP validator"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Content Security Policy Builder",
+    "url": "https://devplaybook.cc/tools/content-security-policy-builder",
+    "description": "Build and validate Content Security Policy (CSP) headers interactively. Add directives, source values, and generate the final CSP header string. Runs in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Content Security Policy Builder</h1>
+  <p class="text-text-muted mb-4">Build a CSP header interactively — toggle directives, add source values, generate nonces. Copy the final header string straight into your server config or <code class="font-mono text-sm bg-bg-card border border-border px-1.5 rounded">&lt;meta&gt;</code> tag.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> All major CSP directives</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Source value quick-add buttons</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Nonce generator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live preview — runs in your browser</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left: Directive config -->
+    <div class="lg:col-span-2 space-y-3" id="directives-container"></div>
+
+    <!-- Right: Live output + actions -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-lg p-4 sticky top-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold">CSP Header</h2>
+          <div class="flex gap-2">
+            <button id="btn-copy-csp" class="px-3 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary/90 transition-colors">Copy</button>
+            <button id="btn-reset-csp" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Reset</button>
+          </div>
+        </div>
+        <pre id="csp-output" class="font-mono text-xs text-primary whitespace-pre-wrap break-all min-h-[80px] leading-relaxed"></pre>
+        <div id="csp-warnings" class="mt-3 space-y-1.5"></div>
+      </div>
+
+      <!-- Nonce generator -->
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <h3 class="text-sm font-semibold mb-3">Nonce Generator</h3>
+        <p class="text-xs text-text-muted mb-3">Generate a new cryptographic nonce per request. Use <code class="font-mono bg-bg-card border border-border px-1 rounded">'nonce-VALUE'</code> as a source.</p>
+        <div class="flex gap-2 mb-2">
+          <input id="nonce-output" type="text" class="flex-1 bg-bg-card border border-border rounded p-2 text-xs font-mono focus:outline-none" readonly placeholder="Click Generate" />
+          <button id="btn-gen-nonce" class="px-3 py-2 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors whitespace-nowrap">Generate</button>
+        </div>
+        <button id="btn-copy-nonce" class="w-full px-3 py-2 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy nonce value</button>
+      </div>
+
+      <!-- Presets -->
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <h3 class="text-sm font-semibold mb-3">Quick Presets</h3>
+        <div class="space-y-2">
+          <button class="preset-btn w-full text-left px-3 py-2 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors" data-preset="strict">Strict — 'self' only</button>
+          <button class="preset-btn w-full text-left px-3 py-2 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors" data-preset="standard">Standard web app</button>
+          <button class="preset-btn w-full text-left px-3 py-2 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors" data-preset="report-only">Report-Only mode</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom directive adder -->
+  <div class="mt-6 bg-bg-card border border-border rounded-lg p-4">
+    <h3 class="text-sm font-semibold mb-3">Add Custom Directive</h3>
+    <div class="flex gap-3 flex-wrap">
+      <input id="custom-directive-name" type="text" class="flex-1 min-w-[160px] bg-bg-card border border-border rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-primary" placeholder="e.g. worker-src, manifest-src" />
+      <input id="custom-directive-value" type="text" class="flex-1 min-w-[200px] bg-bg-card border border-border rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-primary" placeholder="'self' https://cdn.example.com" />
+      <button id="btn-add-custom" class="px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">Add</button>
+    </div>
+  </div>
+
+  <ToolPageCta />
+</BaseLayout>
+
+<script>
+// ── Directive definitions ──────────────────────────────────────────────────
+const DIRECTIVES = [
+  {
+    name: 'default-src',
+    label: "default-src",
+    desc: "Fallback for all fetch directives not explicitly set. Acts as a catch-all.",
+    enabled: true,
+    values: ["'self'"],
+  },
+  {
+    name: 'script-src',
+    label: "script-src",
+    desc: "Controls valid JavaScript sources. Overrides default-src for scripts.",
+    enabled: true,
+    values: ["'self'"],
+  },
+  {
+    name: 'style-src',
+    label: "style-src",
+    desc: "Controls valid CSS sources including <style> tags and style attributes.",
+    enabled: true,
+    values: ["'self'"],
+  },
+  {
+    name: 'img-src',
+    label: "img-src",
+    desc: "Controls valid image sources for <img>, CSS background-image, etc.",
+    enabled: true,
+    values: ["'self'", "data:"],
+  },
+  {
+    name: 'connect-src',
+    label: "connect-src",
+    desc: "Restricts URLs for fetch(), XHR, WebSocket, EventSource connections.",
+    enabled: false,
+    values: ["'self'"],
+  },
+  {
+    name: 'font-src',
+    label: "font-src",
+    desc: "Controls valid sources for web fonts loaded via @font-face.",
+    enabled: false,
+    values: ["'self'"],
+  },
+  {
+    name: 'frame-src',
+    label: "frame-src",
+    desc: "Specifies valid sources for <frame> and <iframe> elements.",
+    enabled: false,
+    values: ["'none'"],
+  },
+  {
+    name: 'media-src',
+    label: "media-src",
+    desc: "Controls valid sources for <audio> and <video> elements.",
+    enabled: false,
+    values: ["'self'"],
+  },
+  {
+    name: 'object-src',
+    label: "object-src",
+    desc: "Controls valid sources for <object>, <embed>, and <applet> elements. Recommended: 'none'.",
+    enabled: true,
+    values: ["'none'"],
+  },
+  {
+    name: 'base-uri',
+    label: "base-uri",
+    desc: "Restricts URLs used in the <base> element. Prevents base-tag injection.",
+    enabled: true,
+    values: ["'self'"],
+  },
+  {
+    name: 'form-action',
+    label: "form-action",
+    desc: "Restricts URLs that can be used as the action attribute of <form> elements.",
+    enabled: false,
+    values: ["'self'"],
+  },
+  {
+    name: 'frame-ancestors',
+    label: "frame-ancestors",
+    desc: "Controls which origins can embed this page. Replaces X-Frame-Options.",
+    enabled: false,
+    values: ["'none'"],
+  },
+  {
+    name: 'upgrade-insecure-requests',
+    label: "upgrade-insecure-requests",
+    desc: "Instructs browsers to upgrade HTTP resource requests to HTTPS. No value needed.",
+    enabled: false,
+    values: [],
+    noValue: true,
+  },
+  {
+    name: 'block-all-mixed-content',
+    label: "block-all-mixed-content",
+    desc: "Blocks all mixed content (HTTP resources on HTTPS pages). Deprecated in favour of upgrade-insecure-requests.",
+    enabled: false,
+    values: [],
+    noValue: true,
+  },
+];
+
+const QUICK_SOURCES = [
+  { label: "'self'", value: "'self'" },
+  { label: "'none'", value: "'none'" },
+  { label: "'unsafe-inline'", value: "'unsafe-inline'", warn: true },
+  { label: "'unsafe-eval'", value: "'unsafe-eval'", warn: true },
+  { label: "data:", value: "data:" },
+  { label: "https:", value: "https:" },
+  { label: "*", value: "*", warn: true },
+];
+
+// State: extra directives added by user
+let customDirectives = [];
+let reportOnly = false;
+
+function randomBase64(len = 16) {
+  const buf = new Uint8Array(len);
+  crypto.getRandomValues(buf);
+  return btoa(String.fromCharCode(...buf)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function buildCSP() {
+  const parts = [];
+  DIRECTIVES.forEach(d => {
+    const el = document.getElementById(`dir-enable-${d.name}`);
+    if (!el?.checked) return;
+    if (d.noValue) { parts.push(d.name); return; }
+    const valEl = document.getElementById(`dir-values-${d.name}`);
+    const val = (valEl?.value || '').trim();
+    if (val) parts.push(`${d.name} ${val}`);
+    else parts.push(d.name);
+  });
+  customDirectives.forEach(cd => {
+    if (cd.value) parts.push(`${cd.name} ${cd.value}`);
+    else parts.push(cd.name);
+  });
+  return parts.join('; ');
+}
+
+function updateOutput() {
+  const csp = buildCSP();
+  const headerName = reportOnly ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy';
+  const output = document.getElementById('csp-output');
+  if (!output) return;
+  if (!csp) { output.textContent = '(Enable at least one directive)'; return; }
+  output.textContent = `${headerName}: ${csp}`;
+  renderWarnings(csp);
+}
+
+function renderWarnings(csp) {
+  const container = document.getElementById('csp-warnings');
+  if (!container) return;
+  const warnings = [];
+  if (csp.includes("'unsafe-inline'")) warnings.push({ level: 'warn', text: "'unsafe-inline' allows inline scripts/styles — increases XSS risk. Use nonces instead." });
+  if (csp.includes("'unsafe-eval'")) warnings.push({ level: 'warn', text: "'unsafe-eval' allows eval() — major XSS vector. Avoid if possible." });
+  if (csp.includes(' * ') || csp.endsWith(' *') || csp.includes('* ')) warnings.push({ level: 'warn', text: "Wildcard (*) source allows any origin. Be specific instead." });
+  if (!csp.includes('default-src') && !csp.includes('script-src')) warnings.push({ level: 'info', text: 'Consider adding default-src as a fallback for unlisted directives.' });
+  if (!csp.includes('object-src')) warnings.push({ level: 'info', text: "object-src not set — consider adding object-src 'none' to block Flash/Java plugins." });
+  container.innerHTML = warnings.map(w => `<div class="flex items-start gap-2 text-xs p-2 rounded ${w.level === 'warn' ? 'bg-yellow-500/10 text-yellow-300' : 'bg-blue-500/10 text-blue-300'}"><span class="flex-shrink-0">${w.level === 'warn' ? '⚠' : 'ℹ'}</span><span>${w.text}</span></div>`).join('');
+}
+
+function renderDirectives() {
+  const container = document.getElementById('directives-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  DIRECTIVES.forEach(d => {
+    const card = document.createElement('div');
+    const isEnabled = d.enabled;
+    card.className = `bg-bg-card border rounded-lg overflow-hidden transition-all ${isEnabled ? 'border-border' : 'border-border/40 opacity-60'}`;
+    card.id = `dir-card-${d.name}`;
+
+    let valueSection = '';
+    if (!d.noValue) {
+      const quickBtns = QUICK_SOURCES.map(s =>
+        `<button class="qs-btn px-2 py-1 bg-bg-card border rounded text-xs font-mono hover:border-primary transition-colors ${s.warn ? 'border-yellow-500/30 text-yellow-400' : 'border-border text-text-muted'}" data-directive="${d.name}" data-value="${s.value}">${s.label}</button>`
+      ).join('');
+      valueSection = `
+        <div class="px-4 pb-4">
+          <div class="flex flex-wrap gap-1.5 mb-2">${quickBtns}</div>
+          <input id="dir-values-${d.name}" type="text" class="w-full bg-bg-card border border-border rounded p-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="Source values..." value="${d.values.join(' ')}" />
+          <div class="mt-1 text-xs text-text-muted">Add custom domain: <span class="font-mono">https://cdn.example.com</span></div>
+        </div>`;
+    } else {
+      valueSection = `<div class="px-4 pb-3 text-xs text-text-muted">This directive takes no value — just the directive name is emitted.</div>`;
+    }
+
+    card.innerHTML = `
+      <div class="flex items-start gap-3 px-4 py-3">
+        <label class="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+          <input type="checkbox" id="dir-enable-${d.name}" class="w-4 h-4 accent-primary flex-shrink-0 mt-0.5" ${isEnabled ? 'checked' : ''} />
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-mono text-sm font-semibold text-foreground">${d.name}</span>
+            </div>
+            <div class="text-xs text-text-muted mt-0.5">${d.desc}</div>
+          </div>
+        </label>
+      </div>
+      ${valueSection}`;
+
+    container.appendChild(card);
+
+    // Bind toggle
+    const checkbox = document.getElementById(`dir-enable-${d.name}`);
+    checkbox?.addEventListener('change', () => {
+      card.classList.toggle('opacity-60', !checkbox.checked);
+      card.classList.toggle('border-border/40', !checkbox.checked);
+      card.classList.toggle('border-border', checkbox.checked);
+      updateOutput();
+    });
+
+    // Bind value input
+    const valInput = document.getElementById(`dir-values-${d.name}`);
+    valInput?.addEventListener('input', updateOutput);
+  });
+
+  // Quick source buttons
+  container.querySelectorAll('.qs-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(`dir-values-${btn.dataset.directive}`);
+      if (!input) return;
+      const cur = input.value.trim();
+      const val = btn.dataset.value;
+      if (!cur.includes(val)) {
+        input.value = cur ? `${cur} ${val}` : val;
+        updateOutput();
+      }
+    });
+  });
+}
+
+// Custom directives
+function renderCustomDirectives() {
+  let existing = document.getElementById('custom-directives-list');
+  if (!existing) {
+    existing = document.createElement('div');
+    existing.id = 'custom-directives-list';
+    existing.className = 'mt-4 space-y-2';
+    document.getElementById('directives-container')?.appendChild(existing);
+  }
+  existing.innerHTML = customDirectives.map((cd, i) => `
+    <div class="bg-bg-card border border-primary/30 rounded-lg px-4 py-3 flex items-center gap-3">
+      <span class="font-mono text-sm text-primary flex-1">${cd.name}${cd.value ? ' ' + cd.value : ''}</span>
+      <button class="btn-remove-custom text-text-muted hover:text-red-400 transition-colors text-xl leading-none" data-idx="${i}">&#215;</button>
+    </div>`).join('');
+  existing.querySelectorAll('.btn-remove-custom').forEach(btn => {
+    btn.addEventListener('click', () => { customDirectives.splice(+btn.dataset.idx, 1); renderCustomDirectives(); updateOutput(); });
+  });
+}
+
+document.getElementById('btn-add-custom')?.addEventListener('click', () => {
+  const nameEl = document.getElementById('custom-directive-name');
+  const valEl = document.getElementById('custom-directive-value');
+  const name = nameEl?.value.trim();
+  if (!name) { alert('Enter a directive name.'); return; }
+  customDirectives.push({ name, value: valEl?.value.trim() || '' });
+  if (nameEl) nameEl.value = '';
+  if (valEl) valEl.value = '';
+  renderCustomDirectives();
+  updateOutput();
+});
+
+// Presets
+const PRESETS = {
+  strict: {
+    enable: ['default-src', 'script-src', 'style-src', 'img-src', 'object-src', 'base-uri'],
+    values: { 'default-src': "'self'", 'script-src': "'self'", 'style-src': "'self'", 'img-src': "'self' data:", 'object-src': "'none'", 'base-uri': "'self'" },
+  },
+  standard: {
+    enable: ['default-src', 'script-src', 'style-src', 'img-src', 'connect-src', 'font-src', 'object-src', 'base-uri'],
+    values: { 'default-src': "'self'", 'script-src': "'self' https://cdn.jsdelivr.net", 'style-src': "'self' https://fonts.googleapis.com", 'img-src': "'self' data: https:", 'connect-src': "'self' https://api.example.com", 'font-src': "'self' https://fonts.gstatic.com", 'object-src': "'none'", 'base-uri': "'self'" },
+  },
+  'report-only': {
+    enable: ['default-src', 'script-src', 'style-src', 'img-src', 'object-src'],
+    values: { 'default-src': "'self'", 'script-src': "'self' 'unsafe-inline'", 'style-src': "'self' 'unsafe-inline'", 'img-src': "'self' data:", 'object-src': "'none'" },
+    reportOnly: true,
+  },
+};
+
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const preset = PRESETS[btn.dataset.preset];
+    if (!preset) return;
+    DIRECTIVES.forEach(d => {
+      const cb = document.getElementById(`dir-enable-${d.name}`);
+      const val = document.getElementById(`dir-values-${d.name}`);
+      if (!cb) return;
+      const enabled = preset.enable.includes(d.name);
+      cb.checked = enabled;
+      const card = document.getElementById(`dir-card-${d.name}`);
+      card?.classList.toggle('opacity-60', !enabled);
+      card?.classList.toggle('border-border/40', !enabled);
+      card?.classList.toggle('border-border', enabled);
+      if (val && preset.values?.[d.name] !== undefined) val.value = preset.values[d.name];
+    });
+    reportOnly = !!preset.reportOnly;
+    customDirectives = [];
+    renderCustomDirectives();
+    updateOutput();
+  });
+});
+
+// Nonce
+document.getElementById('btn-gen-nonce')?.addEventListener('click', () => {
+  const nonce = randomBase64(16);
+  const el = document.getElementById('nonce-output');
+  if (el) el.value = nonce;
+});
+document.getElementById('btn-copy-nonce')?.addEventListener('click', () => {
+  const el = document.getElementById('nonce-output');
+  if (!el?.value) return;
+  navigator.clipboard.writeText(el.value).then(() => {
+    const btn = document.getElementById('btn-copy-nonce');
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy nonce value', 2000); }
+  });
+});
+
+// Copy / Reset
+document.getElementById('btn-copy-csp')?.addEventListener('click', () => {
+  const el = document.getElementById('csp-output');
+  navigator.clipboard.writeText(el?.textContent || '').then(() => {
+    const btn = document.getElementById('btn-copy-csp');
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 2000); }
+  });
+});
+document.getElementById('btn-reset-csp')?.addEventListener('click', () => {
+  if (!confirm('Reset all directives to defaults?')) return;
+  customDirectives = [];
+  reportOnly = false;
+  DIRECTIVES.forEach((d, i) => {
+    const defaults = [
+      { name: 'default-src', enabled: true, values: ["'self'"] },
+      { name: 'script-src', enabled: true, values: ["'self'"] },
+      { name: 'style-src', enabled: true, values: ["'self'"] },
+      { name: 'img-src', enabled: true, values: ["'self'", "data:"] },
+      { name: 'object-src', enabled: true, values: ["'none'"] },
+      { name: 'base-uri', enabled: true, values: ["'self'"] },
+    ];
+    const def = defaults.find(x => x.name === d.name);
+    const cb = document.getElementById(`dir-enable-${d.name}`);
+    const val = document.getElementById(`dir-values-${d.name}`);
+    if (cb) cb.checked = !!def;
+    if (val) val.value = def ? def.values.join(' ') : d.values.join(' ');
+    const card = document.getElementById(`dir-card-${d.name}`);
+    card?.classList.toggle('opacity-60', !def);
+    card?.classList.toggle('border-border/40', !def);
+    card?.classList.toggle('border-border', !!def);
+  });
+  renderCustomDirectives();
+  updateOutput();
+});
+
+// Init
+renderDirectives();
+updateOutput();
+</script>

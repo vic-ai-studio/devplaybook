@@ -1,0 +1,504 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+---
+
+<BaseLayout
+  title="TLS Certificate Decoder — Parse PEM Certificates Online"
+  description="Decode and inspect TLS/SSL certificates online. Parse PEM-encoded certificates to view subject, issuer, validity dates, SANs (Subject Alternative Names), key usage, and fingerprints. Free, runs in your browser."
+  tool="TLS certificate decoder, SSL certificate parser, PEM decoder, X.509 certificate, SAN viewer, certificate expiry checker, certificate fingerprint, PKI tools"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "TLS Certificate Decoder",
+    "url": "https://devplaybook.cc/tools/tls-certificate-decoder",
+    "description": "Decode and inspect TLS/SSL certificates online. Parse PEM-encoded certificates to view subject, issuer, validity dates, SANs, key usage, and fingerprints. Free, runs in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">TLS Certificate Decoder</h1>
+  <p class="text-text-muted mb-4">Paste a PEM-encoded TLS/SSL certificate to decode all fields: subject, issuer, validity dates, SANs, serial number, key usage, and more. No data leaves your browser.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Parses PEM certificates (X.509)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Subject, issuer, SANs, key usage</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Expiry warning detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs entirely in your browser</span>
+  </div>
+
+  <div class="mb-4">
+    <label class="block text-sm font-medium mb-2">Paste PEM Certificate</label>
+    <textarea id="pem-input" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-none" rows="10" placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDazCCAlOgAwIBAgIUE...&#10;-----END CERTIFICATE-----"></textarea>
+  </div>
+  <div class="flex gap-3 mb-6 flex-wrap">
+    <button id="btn-decode-cert" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">Decode Certificate</button>
+    <button id="btn-cert-example" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Load Example</button>
+    <button id="btn-cert-clear" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Clear</button>
+  </div>
+
+  <div id="cert-error" class="hidden mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400"></div>
+
+  <div id="cert-result" class="hidden space-y-4">
+    <!-- Status banner -->
+    <div id="cert-status-banner" class="p-4 rounded-lg text-sm font-semibold flex items-center gap-2"></div>
+
+    <!-- Subject -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2.5 border-b border-border bg-blue-500/5">
+        <span class="text-sm font-semibold text-blue-400">Subject</span>
+        <button class="cert-copy-section px-3 py-1 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors" data-target="cert-subject-content">Copy</button>
+      </div>
+      <div id="cert-subject-content" class="p-4 space-y-2"></div>
+    </div>
+
+    <!-- Issuer -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2.5 border-b border-border bg-purple-500/5">
+        <span class="text-sm font-semibold text-purple-400">Issuer</span>
+        <button class="cert-copy-section px-3 py-1 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors" data-target="cert-issuer-content">Copy</button>
+      </div>
+      <div id="cert-issuer-content" class="p-4 space-y-2"></div>
+    </div>
+
+    <!-- Validity -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden">
+      <div class="px-4 py-2.5 border-b border-border bg-green-500/5">
+        <span class="text-sm font-semibold text-green-400">Validity Period</span>
+      </div>
+      <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4" id="cert-validity-content"></div>
+    </div>
+
+    <!-- SANs -->
+    <div id="cert-sans-wrapper" class="bg-bg-card border border-border rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <span class="text-sm font-semibold">Subject Alternative Names (SANs)</span>
+        <span id="cert-sans-count" class="text-xs text-text-muted"></span>
+      </div>
+      <div id="cert-sans-content" class="p-4 flex flex-wrap gap-2"></div>
+    </div>
+
+    <!-- Technical details -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden">
+      <div class="px-4 py-2.5 border-b border-border">
+        <span class="text-sm font-semibold">Technical Details</span>
+      </div>
+      <div id="cert-technical-content" class="p-4 space-y-2"></div>
+    </div>
+
+    <!-- Raw DER info -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <span class="text-sm font-semibold">Raw Base64 (DER encoded)</span>
+        <button id="btn-copy-raw" class="px-3 py-1 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+      </div>
+      <pre id="cert-raw-content" class="p-4 font-mono text-xs text-text-muted whitespace-pre-wrap break-all overflow-x-auto max-h-48 overflow-y-auto"></pre>
+    </div>
+  </div>
+
+  <ToolPageCta />
+</BaseLayout>
+
+<script>
+// ── PEM / ASN.1 Parser ─────────────────────────────────────────────────────
+// Lightweight client-side X.509 PEM decoder using ASN.1 DER parsing
+
+const EXAMPLE_PEM = `-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----`;
+
+function pemToBytes(pem) {
+  const b64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+  const binary = atob(b64);
+  return Uint8Array.from(binary, c => c.charCodeAt(0));
+}
+
+// Basic ASN.1 DER reader
+class DerReader {
+  constructor(buf) { this.buf = buf; this.pos = 0; }
+  readByte() { return this.buf[this.pos++]; }
+  readLen() {
+    let l = this.readByte();
+    if (l < 0x80) return l;
+    const nb = l & 0x7f;
+    l = 0;
+    for (let i = 0; i < nb; i++) l = (l << 8) | this.readByte();
+    return l;
+  }
+  readTLV() {
+    const tag = this.readByte();
+    const len = this.readLen();
+    const val = this.buf.slice(this.pos, this.pos + len);
+    this.pos += len;
+    return { tag, len, val };
+  }
+  readSequence() {
+    const { tag, val } = this.readTLV();
+    if (tag !== 0x30) throw new Error(`Expected SEQUENCE (0x30), got 0x${tag.toString(16)}`);
+    return new DerReader(val);
+  }
+  readOID() {
+    const { tag, val } = this.readTLV();
+    if (tag !== 0x06) throw new Error('Expected OID');
+    return decodeOID(val);
+  }
+  readString() {
+    const { tag, val } = this.readTLV();
+    const decoder = new TextDecoder();
+    return decoder.decode(val);
+  }
+  readGeneralizedTime() {
+    const { val } = this.readTLV();
+    const s = new TextDecoder().decode(val);
+    // UTCTime: YYMMDDHHMMSSZ or GeneralizedTime: YYYYMMDDHHMMSSZ
+    if (s.length === 13) { // UTCTime
+      const yy = parseInt(s.slice(0, 2));
+      const year = yy >= 50 ? 1900 + yy : 2000 + yy;
+      return new Date(`${year}-${s.slice(2,4)}-${s.slice(4,6)}T${s.slice(6,8)}:${s.slice(8,10)}:${s.slice(10,12)}Z`);
+    }
+    return new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}Z`);
+  }
+  skip() { this.readTLV(); }
+  remaining() { return this.pos < this.buf.length; }
+  slice() { return this.buf.slice(this.pos); }
+}
+
+function decodeOID(bytes) {
+  const oids = {
+    '2.5.4.3': 'CN', '2.5.4.6': 'C', '2.5.4.7': 'L',
+    '2.5.4.8': 'ST', '2.5.4.10': 'O', '2.5.4.11': 'OU',
+    '2.5.4.12': 'T', '2.5.4.17': 'postalCode',
+    '1.2.840.113549.1.9.1': 'emailAddress',
+    '1.2.840.113549.1.1.1': 'rsaEncryption',
+    '1.2.840.113549.1.1.11': 'sha256WithRSAEncryption',
+    '1.2.840.113549.1.1.12': 'sha384WithRSAEncryption',
+    '1.2.840.113549.1.1.13': 'sha512WithRSAEncryption',
+    '1.2.840.10045.4.3.2': 'ecdsa-with-SHA256',
+    '1.2.840.10045.4.3.3': 'ecdsa-with-SHA384',
+    '1.2.840.10045.4.3.4': 'ecdsa-with-SHA512',
+    '2.5.29.17': 'subjectAltName',
+    '2.5.29.15': 'keyUsage',
+    '2.5.29.37': 'extKeyUsage',
+    '2.5.29.19': 'basicConstraints',
+    '2.5.29.14': 'subjectKeyIdentifier',
+    '2.5.29.35': 'authorityKeyIdentifier',
+    '2.5.29.31': 'cRLDistributionPoints',
+    '1.3.6.1.5.5.7.1.1': 'authorityInfoAccess',
+  };
+  let result = 0;
+  const parts = [];
+  for (let i = 0; i < bytes.length; i++) {
+    result = result * 128 + (bytes[i] & 0x7f);
+    if (!(bytes[i] & 0x80)) {
+      if (parts.length === 0) { parts.push(Math.floor(result / 40)); parts.push(result % 40); }
+      else parts.push(result);
+      result = 0;
+    }
+  }
+  const oidStr = parts.join('.');
+  return oids[oidStr] ? `${oids[oidStr]} (${oidStr})` : oidStr;
+}
+
+function parseName(bytes) {
+  const reader = new DerReader(bytes);
+  const fields = {};
+  while (reader.remaining()) {
+    try {
+      const setTLV = reader.readTLV(); // SET
+      const seqReader = new DerReader(setTLV.val);
+      const attrSeq = seqReader.readTLV(); // SEQUENCE
+      const attrReader = new DerReader(attrSeq.val);
+      const oid = attrReader.readOID();
+      const { val } = attrReader.readTLV();
+      const value = new TextDecoder().decode(val);
+      const key = oid.split(' ')[0].replace(/\(.*\)/, '').trim();
+      fields[key] = value;
+    } catch { break; }
+  }
+  return fields;
+}
+
+function parseSANs(bytes) {
+  const sans = [];
+  const reader = new DerReader(bytes);
+  while (reader.remaining()) {
+    try {
+      const { tag, val } = reader.readTLV();
+      const name = new TextDecoder().decode(val);
+      if (tag === 0x82) sans.push({ type: 'DNS', value: name }); // dNSName
+      else if (tag === 0x87) { // iPAddress
+        if (val.length === 4) sans.push({ type: 'IP', value: Array.from(val).join('.') });
+        else if (val.length === 16) sans.push({ type: 'IPv6', value: Array.from(val).map(b => b.toString(16).padStart(2,'0')).join(':') });
+      } else if (tag === 0x81) sans.push({ type: 'Email', value: name });
+      else sans.push({ type: `tag:${tag.toString(16)}`, value: name });
+    } catch { break; }
+  }
+  return sans;
+}
+
+function bytesToHex(bytes, sep = ':') {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(sep);
+}
+
+async function sha256Hex(bytes) {
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return bytesToHex(new Uint8Array(hash));
+}
+async function sha1Hex(bytes) {
+  const hash = await crypto.subtle.digest('SHA-1', bytes);
+  return bytesToHex(new Uint8Array(hash));
+}
+
+function renderField(label, value, mono = false) {
+  const div = document.createElement('div');
+  div.className = 'flex flex-col sm:flex-row sm:gap-4 text-sm';
+  div.innerHTML = `<span class="text-text-muted flex-shrink-0 sm:w-40">${label}</span><span class="${mono ? 'font-mono' : ''} text-foreground break-all">${value}</span>`;
+  return div;
+}
+
+function fmtDate(d) {
+  if (!d || isNaN(d)) return 'N/A';
+  return d.toUTCString();
+}
+
+function daysBetween(a, b) {
+  return Math.round((b - a) / 86400000);
+}
+
+document.getElementById('btn-cert-example')?.addEventListener('click', () => {
+  document.getElementById('pem-input').value = EXAMPLE_PEM;
+});
+
+document.getElementById('btn-cert-clear')?.addEventListener('click', () => {
+  document.getElementById('pem-input').value = '';
+  document.getElementById('cert-result').classList.add('hidden');
+  document.getElementById('cert-error').classList.add('hidden');
+});
+
+document.getElementById('btn-decode-cert')?.addEventListener('click', async () => {
+  const pem = document.getElementById('pem-input').value.trim();
+  const errEl = document.getElementById('cert-error');
+  const resultEl = document.getElementById('cert-result');
+  errEl.classList.add('hidden');
+  resultEl.classList.add('hidden');
+
+  if (!pem) { errEl.textContent = 'Please paste a PEM certificate.'; errEl.classList.remove('hidden'); return; }
+  if (!pem.includes('-----BEGIN CERTIFICATE-----')) { errEl.textContent = 'Invalid PEM: must contain -----BEGIN CERTIFICATE----- header.'; errEl.classList.remove('hidden'); return; }
+
+  let bytes;
+  try { bytes = pemToBytes(pem); } catch (e) { errEl.textContent = `Failed to decode PEM: ${e.message}`; errEl.classList.remove('hidden'); return; }
+
+  try {
+    const root = new DerReader(bytes);
+    const certSeq = root.readSequence(); // Certificate
+
+    // tbsCertificate
+    const tbsSeq = certSeq.readSequence();
+
+    // version (optional, context [0])
+    let version = 'v1';
+    if (tbsSeq.buf[tbsSeq.pos] === 0xa0) {
+      const { val } = tbsSeq.readTLV();
+      const vr = new DerReader(val);
+      const { val: vb } = vr.readTLV();
+      version = `v${vb[0] + 1}`;
+    }
+
+    // serialNumber
+    const serialTLV = tbsSeq.readTLV();
+    const serialHex = bytesToHex(serialTLV.val, '');
+    const serialDec = BigInt('0x' + serialHex).toString();
+
+    // signature algorithm
+    const sigAlgSeq = tbsSeq.readTLV();
+    const sigAlgReader = new DerReader(sigAlgSeq.val);
+    const sigAlgOID = sigAlgReader.readOID();
+
+    // issuer
+    const issuerTLV = tbsSeq.readTLV();
+    const issuer = parseName(issuerTLV.val);
+
+    // validity
+    const validityTLV = tbsSeq.readTLV();
+    const validityReader = new DerReader(validityTLV.val);
+    const notBefore = validityReader.readGeneralizedTime();
+    const notAfter = validityReader.readGeneralizedTime();
+
+    // subject
+    const subjectTLV = tbsSeq.readTLV();
+    const subject = parseName(subjectTLV.val);
+
+    // subjectPublicKeyInfo
+    const spkiTLV = tbsSeq.readTLV();
+    const spkiReader = new DerReader(spkiTLV.val);
+    const pkAlgSeq = spkiReader.readTLV();
+    const pkAlgReader = new DerReader(pkAlgSeq.val);
+    const pkAlg = pkAlgReader.readOID();
+    const pkBitstring = spkiReader.readTLV();
+    const keySize = pkBitstring.val.length > 0 ? `~${Math.round((pkBitstring.len - 1) * 8 / 64) * 64} bits` : 'unknown';
+
+    // Extensions (best-effort)
+    let sans = [];
+    try {
+      // Read remaining as context [3] extensions
+      while (tbsSeq.remaining()) {
+        const extWrapper = tbsSeq.readTLV();
+        if (extWrapper.tag === 0xa3) {
+          const extSeqReader = new DerReader(extWrapper.val);
+          const extListSeq = extSeqReader.readTLV(); // SEQUENCE OF
+          const extListReader = new DerReader(extListSeq.val);
+          while (extListReader.remaining()) {
+            const extSeq = extListReader.readTLV(); // SEQUENCE
+            const extReader = new DerReader(extSeq.val);
+            const extOID = extReader.readOID();
+            if (extOID.includes('subjectAltName')) {
+              // skip optional critical bool, read octet string
+              const next = extReader.readTLV();
+              let sanBytes = next.val;
+              if (next.tag === 0x01) { // BOOLEAN (critical)
+                const octet = extReader.readTLV();
+                sanBytes = octet.val;
+              }
+              // unwrap outer SEQUENCE
+              const sanSeqReader = new DerReader(sanBytes);
+              const sanSeq = sanSeqReader.readTLV();
+              sans = parseSANs(sanSeq.val);
+            }
+          }
+        }
+      }
+    } catch { /* best effort */ }
+
+    // Fingerprints
+    const sha256fp = await sha256Hex(bytes);
+    const sha1fp = await sha1Hex(bytes);
+
+    // ── Render ──────────────────────────────────────────────────────────
+    const now = new Date();
+    const isExpired = notAfter < now;
+    const daysRemaining = daysBetween(now, notAfter);
+    const bannerEl = document.getElementById('cert-status-banner');
+    if (isExpired) {
+      bannerEl.className = 'p-4 rounded-lg text-sm font-semibold flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400';
+      bannerEl.textContent = `⚠ Certificate EXPIRED ${Math.abs(daysRemaining)} days ago (${fmtDate(notAfter)})`;
+    } else if (daysRemaining < 30) {
+      bannerEl.className = 'p-4 rounded-lg text-sm font-semibold flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400';
+      bannerEl.textContent = `⚠ Certificate expires in ${daysRemaining} days — renew soon!`;
+    } else {
+      bannerEl.className = 'p-4 rounded-lg text-sm font-semibold flex items-center gap-2 bg-green-500/10 border border-green-500/30 text-green-400';
+      bannerEl.textContent = `✓ Certificate valid — ${daysRemaining} days remaining`;
+    }
+
+    // Subject
+    const subjectEl = document.getElementById('cert-subject-content');
+    subjectEl.innerHTML = '';
+    const subjectLabels = { CN: 'Common Name (CN)', O: 'Organisation (O)', OU: 'Org Unit (OU)', C: 'Country (C)', ST: 'State (ST)', L: 'Locality (L)' };
+    Object.entries(subject).forEach(([k, v]) => subjectEl.appendChild(renderField(subjectLabels[k] || k, v)));
+    if (!Object.keys(subject).length) subjectEl.innerHTML = '<span class="text-sm text-text-muted">No subject fields parsed</span>';
+
+    // Issuer
+    const issuerEl = document.getElementById('cert-issuer-content');
+    issuerEl.innerHTML = '';
+    Object.entries(issuer).forEach(([k, v]) => issuerEl.appendChild(renderField(subjectLabels[k] || k, v)));
+    if (!Object.keys(issuer).length) issuerEl.innerHTML = '<span class="text-sm text-text-muted">No issuer fields parsed</span>';
+
+    // Validity
+    const validityEl = document.getElementById('cert-validity-content');
+    validityEl.innerHTML = `
+      <div>
+        <div class="text-xs text-text-muted mb-1">Not Before</div>
+        <div class="text-sm font-mono">${fmtDate(notBefore)}</div>
+      </div>
+      <div>
+        <div class="text-xs text-text-muted mb-1">Not After</div>
+        <div class="text-sm font-mono ${isExpired ? 'text-red-400' : ''}">${fmtDate(notAfter)}</div>
+      </div>
+      <div>
+        <div class="text-xs text-text-muted mb-1">Duration</div>
+        <div class="text-sm">${daysBetween(notBefore, notAfter)} days</div>
+      </div>
+      <div>
+        <div class="text-xs text-text-muted mb-1">Days Remaining</div>
+        <div class="text-sm ${isExpired ? 'text-red-400' : daysRemaining < 30 ? 'text-yellow-400' : 'text-green-400'}">${isExpired ? 'Expired' : daysRemaining}</div>
+      </div>`;
+
+    // SANs
+    const sansEl = document.getElementById('cert-sans-content');
+    document.getElementById('cert-sans-count').textContent = `${sans.length} name${sans.length !== 1 ? 's' : ''}`;
+    if (sans.length > 0) {
+      sansEl.innerHTML = sans.map(s => `<span class="text-xs px-2.5 py-1 rounded-full border ${s.type === 'DNS' ? 'bg-blue-500/10 border-blue-500/20 text-blue-300' : 'bg-purple-500/10 border-purple-500/20 text-purple-300'} font-mono">${s.type}: ${s.value}</span>`).join('');
+    } else {
+      sansEl.innerHTML = '<span class="text-sm text-text-muted">No SANs found (or unable to parse extensions)</span>';
+    }
+
+    // Technical
+    const techEl = document.getElementById('cert-technical-content');
+    techEl.innerHTML = '';
+    techEl.appendChild(renderField('Version', version));
+    techEl.appendChild(renderField('Serial Number', serialHex.toUpperCase().match(/.{1,2}/g).join(':'), true));
+    techEl.appendChild(renderField('Signature Algorithm', sigAlgOID.split('(')[0].trim()));
+    techEl.appendChild(renderField('Public Key Algorithm', pkAlg.split('(')[0].trim()));
+    techEl.appendChild(renderField('Key Size (est.)', keySize));
+    techEl.appendChild(renderField('SHA-256 Fingerprint', sha256fp.toUpperCase().match(/.{1,2}/g).join(':'), true));
+    techEl.appendChild(renderField('SHA-1 Fingerprint', sha1fp.toUpperCase().match(/.{1,2}/g).join(':'), true));
+
+    // Raw
+    const b64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+    document.getElementById('cert-raw-content').textContent = b64.match(/.{1,64}/g).join('\n');
+
+    resultEl.classList.remove('hidden');
+    setTimeout(() => resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  } catch (e) {
+    errEl.textContent = `Failed to parse certificate: ${e.message}. Make sure it is a valid PEM-encoded X.509 certificate.`;
+    errEl.classList.remove('hidden');
+  }
+});
+
+document.querySelectorAll('.cert-copy-section').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const el = document.getElementById(btn.dataset.target);
+    if (!el) return;
+    const text = Array.from(el.querySelectorAll('[class*="text-foreground"]')).map(e => e.textContent.trim()).join('\n');
+    navigator.clipboard.writeText(text || el.innerText).then(() => {
+      btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  });
+});
+
+document.getElementById('btn-copy-raw')?.addEventListener('click', () => {
+  const el = document.getElementById('cert-raw-content');
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const btn = document.getElementById('btn-copy-raw');
+    btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+});
+</script>
