@@ -9,7 +9,7 @@ readingTime: "18 min read"
 
 APIs are the connective tissue of modern software. They power mobile apps, third-party integrations, microservices, and everything in between. They're also the most-attacked surface in production systems today. The 2024 Akamai State of the Internet report found that API attacks now account for over 40% of web application attacks — up from 25% two years prior.
 
-The good news: most API vulnerabilities are preventable. This guide covers the OWASP API Security Top 10 2023, JWT best practices, rate limiting strategies, and a practical framework for securing Node.js/Express APIs from day one.
+The good news: most API vulnerabilities are preventable. This guide covers the OWASP API Security Top 10 2023, JWT best practices, [API Rate Limit Calculator](/tools/api-rate-limit-calculator) strategies, and a practical framework for securing Node.js/Express APIs from day one.
 
 ---
 
@@ -141,7 +141,7 @@ Your API trusts data from third-party APIs it consumes without validation. Attac
 
 ## JWT Security Best Practices
 
-JSON Web Tokens are the dominant stateless authentication mechanism for APIs. They're also frequently misconfigured.
+[JWT Debugger](/tools/jwt-debugger)s are the dominant stateless authentication mechanism for APIs. They're also frequently misconfigured.
 
 ### Token Structure and Validation
 

@@ -227,7 +227,7 @@ Regardless of which AI assistant you use, these tools speed up your development 
 - **[JSON Formatter](https://devplaybook.cc/tools/json-formatter)** — Format and validate JSON payloads from API responses
 - **[API Tester](https://devplaybook.cc/tools/api-tester)** — Test your endpoints without leaving the browser
 - **[JWT Decoder](https://devplaybook.cc/tools/jwt-decoder)** — Inspect tokens your AI-generated auth code produces
-- **[Regex Tester](https://devplaybook.cc/tools/regex-tester)** — Validate patterns from AI-generated regex before shipping
+- **[Regex Tester](https://devplaybook.cc/tools/regex-tester)** — Validate patterns from AI-generated [regex playground](/tools/regex-playground) before shipping
 
 ---
 

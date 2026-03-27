@@ -259,7 +259,7 @@ Bruno's GitHub star growth is steep. Issues are actively addressed and the roadm
 
 ## Comparison: Core Workflows
 
-### Importing OpenAPI Specs
+### Importing [OpenAPI Validator](/tools/openapi-validator)s
 
 All three tools can import OpenAPI (Swagger) specs and generate request collections:
 

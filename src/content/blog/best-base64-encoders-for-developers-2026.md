@@ -40,7 +40,7 @@ Before the comparison: what actually matters for developer workflows?
 
 ## Full Comparison Table
 
-| Tool | URL-Safe | File Support | Image Support | Client-Side | JWT Decode | Free |
+| Tool | URL-Safe | File Support | Image Support | Client-Side | [JWT Debugger](/tools/jwt-debugger) | Free |
 |------|----------|--------------|---------------|-------------|------------|------|
 | [DevPlaybook Base64](https://devplaybook.cc/tools/base64) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | [DevPlaybook Image→Base64](https://devplaybook.cc/tools/image-to-base64) | ✅ | ✅ (Images) | ✅ Specialized | ✅ | ❌ | ✅ |
@@ -226,7 +226,7 @@ Browserling provides separate encoder and decoder tools with a clean interface. 
 ### When NOT to Use Base64
 
 Base64 is **encoding**, not **encryption**. It is trivially reversible with any decoder. Do not use it to:
-- Obscure passwords (use bcrypt/Argon2)
+- Obscure passwords (use [Bcrypt Hash Generator](/tools/bcrypt-hash-generator)/Argon2)
 - Protect API keys (use proper secret management)
 - "Encrypt" sensitive data in transit (use TLS)
 

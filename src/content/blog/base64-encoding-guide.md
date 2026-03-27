@@ -35,7 +35,7 @@ Today, the same principle applies to:
 ## Real-World Example: Data URI Images
 
 ```html
-<!-- ❌ External image (extra HTTP request) -->
+<!-- ❌ External image (extra request) -->
 <img src="https://example.com/icon.png">
 
 <!-- ✅ Inline data URI (no extra request, increases HTML size) -->
@@ -46,7 +46,7 @@ Today, the same principle applies to:
 
 Base64 increases size by ~33%:
 
-| Original | Base64 Encoded |
+| Original | Base64d |
 |----------|---------------|
 | 100 bytes | ~133 bytes |
 | 10 KB | ~13.3 KB |
@@ -64,7 +64,7 @@ Base64 increases size by ~33%:
 
 ❌ **Bad use cases:**
 - Embedding large images in HTML (bloats page size)
-- Storing passwords (use bcrypt instead)
+- Storing passwords (use [Bcrypt Hash Generator](/tools/bcrypt-hash-generator) instead)
 - "Encrypting" data (it's not encryption)
 - URL encoding (use `encodeURIComponent` instead)
 

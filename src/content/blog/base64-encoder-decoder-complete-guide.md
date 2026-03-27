@@ -7,7 +7,7 @@ tags: ["base64", "encoding", "decoding", "developer-tools", "web-development", "
 readingTime: "5 min read"
 ---
 
-# Base64 Encoder Decoder: Complete Guide for Developers
+# [Base64 Encoder/Decoder](/tools/base64)r Decoder: Complete Guide for Developers
 
 Base64 encoding comes up constantly in web development: API authentication headers, JWT tokens, image data URIs, email attachments. Understanding it properly saves hours of debugging.
 
@@ -147,7 +147,7 @@ curl -H 'Authorization: Basic YWxpY2U6czNjcjN0' https://api.example.com
 
 ### 2. JWT Tokens
 
-JSON Web Tokens have three Base64URL-encoded sections separated by `.`:
+[JWT Debugger](/tools/jwt-debugger)s have three Base64URL-encoded sections separated by `.`:
 
 ```
 header.payload.signature

@@ -55,7 +55,7 @@ Full-stack developer focused on TypeScript, React, and distributed systems.
 
 - **Pinned repos with real READMEs** — every pinned repo should have: what it does, why you built it, how to run it, and a screenshot/demo GIF
 - **Consistent contribution graph** — shows ongoing activity, not bursts for job applications
-- **Good commit messages** — hiring managers do read them
+- **Good [Git Commit Generator](/tools/git-commit-generator)s** — hiring managers do read them
 
 **Tools used:**
 - [GitHub Readme Stats](https://github.com/anuraghazra/github-readme-stats) — adds live stats to your profile
@@ -98,7 +98,7 @@ Developers who write attract inbound opportunities. A portfolio that includes ge
 
 **Tools:**
 - [MDX](https://mdxjs.com) — Markdown with embedded React components for interactive code
-- [DevPlaybook tools](https://devplaybook.cc) — use the JSON formatter, regex tester, and API tools while writing and link to them as resources
+- [DevPlaybook tools](https://devplaybook.cc) — use the [JSON Formatter](/tools/json-formatter), regex tester, and API tools while writing and link to them as resources
 - [Dev.to](https://dev.to) — cross-post for distribution, set canonical URL to your own site
 
 ### The Full-Stack Project Showcase

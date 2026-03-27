@@ -35,7 +35,7 @@ Credentials in HTTP Basic Auth are Base64-encoded: `Authorization: Basic dXNlcjp
 JWTs are three Base64url-encoded segments separated by dots: `header.payload.signature`. Decoding the payload reveals the claims without needing the secret.
 
 ### Data URIs
-Inline images and fonts in HTML/CSS use Base64-encoded data URIs: `data:image/png;base64,iVBOR...`. Useful for eliminating HTTP requests on small assets.
+Inline images and fonts in HTML/CSS use Base64-encoded data URIs: `data:image/png;base64,iVBOR...`. Useful for eliminating [API Tester](/tools/api-tester)s on small assets.
 
 ### API Responses
 Some APIs return binary data (images, PDFs, certificates) as Base64 strings in JSON responses. You need to decode them before use.
@@ -102,7 +102,7 @@ No. Base64 is **encoding**, not encryption. It's trivially reversible without an
 If you need to secure data:
 - Use **AES** or **ChaCha20** for symmetric encryption
 - Use **RSA** or **ECDSA** for asymmetric encryption
-- Use **bcrypt** or **Argon2** for password hashing
+- Use **[Bcrypt Hash Generator](/tools/bcrypt-hash-generator)** or **Argon2** for password hashing
 
 ---
 

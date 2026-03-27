@@ -91,7 +91,7 @@ This is the fastest way to catch the most common accessibility issues before the
 
 **Best for:** Grabbing colors from any webpage
 
-ColorZilla is a color picker that can sample any pixel on a webpage and give you its hex, RGB, or HSL value. It also includes:
+ColorZilla is a [Color Picker](/tools/color-picker) that can sample any pixel on a webpage and give you its hex, RGB, or HSL value. It also includes:
 
 - Color history
 - Gradient generator
@@ -109,7 +109,7 @@ ColorZilla is a color picker that can sample any pixel on a webpage and give you
 
 **Best for:** Mocking APIs and modifying network requests
 
-Requestly intercepts and modifies HTTP requests in real time without touching your code. Use cases:
+Requestly intercepts and modifies [API Tester](/tools/api-tester)s in real time without touching your code. Use cases:
 
 - **Redirect requests**: Point API calls from production to your local dev server
 - **Mock API responses**: Return custom JSON for any endpoint
@@ -238,4 +238,4 @@ It's less powerful than the Cookies tab in DevTools but faster to use for quick 
 
 ---
 
-*Find more developer tools at [DevPlaybook.cc](https://devplaybook.cc) — free online tools for JSON formatting, regex testing, base64 encoding, and more.*
+*Find more developer tools at [DevPlaybook.cc](https://devplaybook.cc) — free online tools for JSON formatting, [regex playground](/tools/regex-playground) testing, base64 encoding, and more.*

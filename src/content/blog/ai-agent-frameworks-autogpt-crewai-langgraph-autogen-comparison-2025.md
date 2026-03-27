@@ -176,7 +176,7 @@ def search_github(query: str) -> str:
 
 CrewAI supports four memory types:
 - **Short-term memory**: conversation context within a task
-- **Long-term memory**: SQLite-persisted knowledge across runs
+- **Long-term memory**: [SQL Formatter](/tools/sql-formatter)-persisted knowledge across runs
 - **Entity memory**: structured facts about people, places, things
 - **Contextual memory**: combines the above intelligently
 

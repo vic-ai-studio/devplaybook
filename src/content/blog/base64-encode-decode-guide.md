@@ -109,7 +109,7 @@ func main() {
     fmt.Println(string(decoded)) // Hello, DevPlaybook!
 
     // URL-safe variant
-    urlEncoded := base64.URLEncoding.EncodeToString([]byte(original))
+    URLEncoding := base64.URLEncoding.EncodeToString([]byte(original))
     fmt.Println(urlEncoded)
 }
 ```
@@ -119,7 +119,7 @@ func main() {
 Standard Base64 uses `+` and `/` in its alphabet. These characters have special meaning in URLs — `+` means a space, and `/` is a path separator. This causes problems when embedding Base64 in URLs or using it in HTTP query parameters.
 
 **URL-safe Base64** replaces `+` with `-` and `/` with `_`. It's used in:
-- JWT tokens (JSON Web Tokens)
+- JWT tokens ([JWT Debugger](/tools/jwt-debugger)s)
 - OAuth flows
 - URL query parameters
 - Kubernetes secrets

@@ -38,7 +38,7 @@ The best programs offer **recurring commissions** — you earn every month the c
 **Commission:** 30% of revenue, recurring for 12 months
 
 **Why it stands out:**
-Cloudflare's affiliate program is the best-kept secret in developer monetization. They're not just a CDN — they offer Workers (serverless), R2 (S3-compatible storage), D1 (SQLite database), AI inference, and more.
+Cloudflare's affiliate program is the best-kept secret in developer monetization. They're not just a CDN — they offer Workers (serverless), R2 (S3-compatible storage), D1 ([SQL Formatter](/tools/sql-formatter) database), AI inference, and more.
 
 If your audience is developers deploying to the edge, Cloudflare is the platform they'll eventually adopt.
 

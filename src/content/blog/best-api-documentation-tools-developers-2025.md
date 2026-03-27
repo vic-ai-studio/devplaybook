@@ -15,7 +15,7 @@ This guide covers what actually works.
 
 ## The OpenAPI Ecosystem
 
-Most API documentation tools are built around **OpenAPI** (formerly Swagger), a JSON/YAML specification format for describing REST APIs. An OpenAPI spec describes:
+Most API documentation tools are built around **[OpenAPI Validator](/tools/openapi-validator) describes:
 
 - All available endpoints
 - Request/response schemas with types and examples

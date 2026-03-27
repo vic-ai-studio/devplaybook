@@ -122,7 +122,7 @@ gh copilot explain "git rebase -i HEAD~3"
 
 ---
 
-## Category 4: AI Code Review Tools
+## Category 4: [AI Code Review tool](/tools/ai-code-review) Tools
 
 ### CodeRabbit — Automated PR Reviews
 
@@ -193,7 +193,7 @@ Swimm links documentation directly to code. When code changes, it detects which 
 **Price**: Contact for enterprise pricing
 **Language**: Java
 
-Diffblue Cover uses AI to generate unit tests for Java code. It analyzes your codebase and produces tests that actually reflect how the code behaves — not just boilerplate stubs.
+Diffblue Cover uses [AI Test Generator](/tools/ai-test-generator)s for Java code. It analyzes your codebase and produces tests that actually reflect how the code behaves — not just boilerplate stubs.
 
 ### CodiumAI (now Qodo) — Test Generation for Any Language
 

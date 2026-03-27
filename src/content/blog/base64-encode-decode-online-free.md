@@ -42,7 +42,7 @@ The trailing `=` is padding to make the output length a multiple of 4.
 
 ### 1. JWT Tokens
 
-JSON Web Tokens are three Base64url-encoded segments separated by dots:
+[JWT Debugger](/tools/jwt-debugger)s are three Base64url-encoded segments separated by dots:
 
 ```
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjQyLCJyb2xlIjoiYWRtaW4ifQ.abc123
@@ -90,7 +90,7 @@ Instead of linking to an image file, you can embed it directly:
 }
 ```
 
-Useful for small icons, eliminates an HTTP request.
+Useful for small icons, eliminates an [API Tester](/tools/api-tester).
 
 ### 4. Storing Binary Data in JSON
 

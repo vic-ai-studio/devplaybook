@@ -151,7 +151,7 @@ python -m vllm.entrypoints.openai.api_server \
 
 **vLLM Docker for production:**
 
-```dockerfile
+```Dockerfile
 FROM vllm/vllm-openai:latest
 
 ENV MODEL_NAME="meta-llama/Llama-3-8b-instruct"

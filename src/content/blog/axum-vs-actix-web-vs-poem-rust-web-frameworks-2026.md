@@ -47,7 +47,7 @@ TechEmpower Plaintext benchmarks (approximate, 2025 rounds):
 
 ## Axum: Ergonomics First, Tower Ecosystem Second
 
-Axum is built by the Tokio team and released under the Tokio organization. It's tightly integrated with `tower` and `tower-http`, which means any Tower middleware — rate limiting, timeouts, compression, CORS, tracing — drops in trivially.
+Axum is built by the Tokio team and released under the Tokio organization. It's tightly integrated with `tower` and `tower-http`, which means any Tower middleware — [API Rate Limit Calculator](/tools/api-rate-limit-calculator), timeouts, compression, CORS, tracing — drops in trivially.
 
 ### Getting Started
 
@@ -441,7 +441,7 @@ async fn main() -> Result<(), std::io::Error> {
 }
 ```
 
-Notice: you get interactive Swagger UI at `/docs` and RapiDoc at `/rapidoc` — **zero extra configuration**. The OpenAPI spec is generated directly from your handler annotations and types.
+Notice: you get interactive [OpenAPI Validator](/tools/openapi-validator) is generated directly from your handler annotations and types.
 
 ### Poem Middleware
 
@@ -589,7 +589,7 @@ async fn ws_handler(ws: WebSocket) -> impl IntoResponse {
 
 ### Deployment
 
-All three compile to a single static binary (when built with musl), making Docker images trivially small:
+All three compile to a single static binary (when built with musl), making [Dockerfile Generator](/tools/dockerfile-generator)s trivially small:
 
 ```dockerfile
 FROM rust:1.77 as builder

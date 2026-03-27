@@ -43,7 +43,7 @@ The `=` at the end is padding. Two `=` characters mean the original had two left
 
 ### 1. JWT Tokens
 
-JSON Web Tokens are three Base64url-encoded segments separated by dots:
+[JWT Debugger](/tools/jwt-debugger)s are three Base64url-encoded segments separated by dots:
 
 ```
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEyMywicm9sZSI6ImFkbWluIn0.xyz
@@ -53,7 +53,7 @@ Each segment decodes to readable JSON. You do not need a secret key to read the 
 
 ### 2. Data URIs for Images
 
-Embed small images directly in CSS or HTML without an extra HTTP request:
+Embed small images directly in CSS or HTML without an extra [API Tester](/tools/api-tester):
 
 ```css
 .icon {

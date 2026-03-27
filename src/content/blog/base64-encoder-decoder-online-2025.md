@@ -9,7 +9,7 @@ readingTime: "8 min read"
 
 Base64 is one of those encoding schemes that shows up everywhere in modern development — JWT tokens, image embedding in CSS and HTML, HTTP Basic Auth headers, API credentials in environment variables, and binary data in JSON payloads. Understanding it and having reliable tools to encode and decode it is a small but genuine productivity multiplier.
 
-This guide covers the best online Base64 encoder/decoder tools, how to do it in code (Node.js, Python, browser), and the common use cases where Base64 appears in real development work.
+This guide covers the best online [Base64 Encoder/Decoder](/tools/base64)r/decoder tools, how to do it in code (Node.js, Python, browser), and the common use cases where Base64 appears in real development work.
 
 ## Quick Comparison
 
@@ -246,7 +246,7 @@ echo 'SGVsbG8sIFdvcmxkIQ==' | openssl base64 -d
 
 ### JWT Tokens
 
-JSON Web Tokens use Base64URL encoding (without padding) for their header and payload sections. The three `.`-separated parts of a JWT are each Base64URL-encoded. You can decode the header and payload without a signature key — the signature is what's validated, not the payload decoding.
+[JWT Debugger](/tools/jwt-debugger)s use Base64URL encoding (without padding) for their header and payload sections. The three `.`-separated parts of a JWT are each Base64URL-encoded. You can decode the header and payload without a signature key — the signature is what's validated, not the payload decoding.
 
 ```bash
 # Decode JWT payload (the second section) in the terminal
@@ -275,7 +275,7 @@ Decoding `dXNlcm5hbWU6cGFzc3dvcmQ=` gives `username:password`. This is NOT encry
 }
 ```
 
-This technique eliminates an HTTP request for small images. It's most useful for icons and small graphics under ~1-2 KB — above that, the size overhead and lack of caching make separate files preferable.
+This technique eliminates an [API Tester](/tools/api-tester) for small images. It's most useful for icons and small graphics under ~1-2 KB — above that, the size overhead and lack of caching make separate files preferable.
 
 ### API Credentials in Environment Variables
 

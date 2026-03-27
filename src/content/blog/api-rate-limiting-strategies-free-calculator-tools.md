@@ -7,7 +7,7 @@ tags: [api, rate-limiting, backend, nodejs, python, security, performance]
 readingTime: "13 min read"
 ---
 
-# API Rate Limiting: Strategies, Algorithms, and Free Tools
+# [API Rate Limit Calculator](/tools/api-rate-limit-calculator)ing: Strategies, Algorithms, and Free Tools
 
 Rate limiting is one of those backend concerns that seems simple until you need to implement it correctly. The basic idea is straightforward: limit how many requests a client can make in a given time window. The implementation is where things get interesting — four major algorithms each make different tradeoffs between accuracy, memory usage, and burst tolerance.
 

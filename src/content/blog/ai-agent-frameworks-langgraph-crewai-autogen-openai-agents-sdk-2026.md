@@ -503,7 +503,7 @@ class MyTracer(TracingProcessor):
 - You're on Azure and want native Microsoft integration
 
 **Use OpenAI Agents SDK when:**
-- You're fully committed to the OpenAI model ecosystem
+- You're fully [AI Commit Generator](/tools/ai-commit-generator) model ecosystem
 - You want built-in tracing in the OpenAI dashboard with zero setup
 - You're building customer-facing applications with handoffs
 - Simplicity and getting to production fast matter most
