@@ -1,0 +1,285 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is an .env file merger?",
+    answer: "An .env file merger combines multiple .env files into a single merged output. This is useful when merging a base .env with environment-specific overrides (.env.local, .env.production), or when consolidating environment variables from multiple microservices into a single deployment config."
+  },
+  {
+    question: "How are conflicts handled?",
+    answer: "When the same key appears in multiple .env files, it is flagged as a conflict. The merger shows which files define the key and what each value is. The last file wins by default (later files override earlier ones), matching the behaviour of most .env loaders like dotenv."
+  },
+  {
+    question: "Are duplicate keys in the same file detected?",
+    answer: "Yes. If a single .env file defines the same key more than once, the merger warns about the duplicate. Most .env parsers use the first occurrence, but this is a common source of confusion."
+  },
+  {
+    question: "Are my .env values secure?",
+    answer: "Yes. All processing runs entirely in your browser using JavaScript. Your environment variables — which may contain passwords, API keys, and tokens — never leave your machine and are never sent to any server."
+  },
+  {
+    question: "What is the .env file format?",
+    answer: ".env files contain KEY=VALUE pairs, one per line. Lines starting with # are comments. Quoted values (KEY=\"value with spaces\") are supported. Empty lines are ignored. Keys are conventionally SCREAMING_SNAKE_CASE (e.g. DATABASE_URL, API_KEY)."
+  },
+  {
+    question: "Can I add more than 2 files to merge?",
+    answer: "Yes. Click 'Add another .env file' to add up to 5 input files. Files are processed left-to-right, with later files overriding earlier ones on conflicts — the same precedence as Docker Compose env_file or dotenv-cli."
+  },
+];
+---
+
+<BaseLayout
+  title=".env File Merger — Merge & Deduplicate Environment Files Online"
+  description="Merge 2+ .env files online. Detect key conflicts, duplicates, and produce a clean merged output with diff view. Runs 100% in your browser — secrets never leave your machine."
+  tool="env file merger, .env merge, environment variable merger, dotenv merge, .env conflict checker, env file combiner"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": ".env File Merger",
+    "url": "https://devplaybook.cc/tools/env-file-merger",
+    "description": "Merge multiple .env files, detect conflicts and duplicates, and produce a clean merged output. Runs in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">.env File Merger</h1>
+  <p class="text-text-muted mb-4">
+    Merge multiple <code class="font-mono bg-surface px-1 rounded text-sm">.env</code> files, detect conflicts and duplicate keys,
+    and produce a clean merged output. Later files override earlier ones (same precedence as dotenv).
+    All secrets stay in your browser — nothing is sent to any server.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Conflict detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Duplicate key warnings</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+  </div>
+
+  <!-- File inputs -->
+  <div id="inputs-container" class="space-y-3 mb-4"></div>
+  <div class="flex gap-3 mb-6 flex-wrap">
+    <button id="add-file-btn" class="px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text hover:border-accent transition-colors text-sm">
+      + Add another .env file
+    </button>
+    <button id="load-example-btn" class="px-4 py-2 rounded-lg border border-border text-text-muted hover:text-text hover:border-accent transition-colors text-sm">
+      Load example
+    </button>
+    <button id="merge-btn" class="px-6 py-2 rounded-xl bg-accent hover:bg-accent/80 text-white font-bold transition-colors text-sm">
+      Merge Files
+    </button>
+  </div>
+
+  <!-- Results -->
+  <div id="results-container" class="hidden space-y-4">
+    <!-- Summary -->
+    <div id="summary-card" class="rounded-xl border border-border bg-surface/30 p-4"></div>
+
+    <!-- Conflicts -->
+    <div id="conflicts-section" class="hidden">
+      <h3 class="font-semibold text-text mb-2">Conflicts <span id="conflict-count" class="text-sm font-normal text-text-muted"></span></h3>
+      <div id="conflicts-list" class="space-y-2"></div>
+    </div>
+
+    <!-- Merged output -->
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold text-text">Merged Output</h3>
+        <button id="copy-output-btn" class="text-xs text-text-muted hover:text-accent transition-colors">Copy</button>
+      </div>
+      <pre id="merged-output" class="rounded-xl bg-bg border border-border p-4 text-xs font-mono text-text overflow-x-auto whitespace-pre-wrap max-h-80 overflow-y-auto"></pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool=".env File Merger" relatedTags={['devops', 'environment', 'configuration', 'docker', 'nodejs', 'deployment']} />
+</BaseLayout>
+
+<script is:inline>
+  const EXAMPLES = [
+    { label: '.env.base', content: `# Base config\nDATABASE_URL=postgres://localhost:5432/mydb\nREDIS_URL=redis://localhost:6379\nAPP_PORT=3000\nDEBUG=false\nAPI_KEY=base-key-123\nLOG_LEVEL=info\n` },
+    { label: '.env.local', content: `# Local overrides\nDATABASE_URL=postgres://localhost:5432/mydb_dev\nDEBUG=true\nAPI_KEY=local-dev-key-xyz\nNEW_FEATURE_FLAG=true\n` },
+  ];
+
+  let fileCount = 0;
+
+  function addFileInput(label = '', content = '') {
+    if (fileCount >= 5) return;
+    fileCount++;
+    const idx = fileCount;
+    const div = document.createElement('div');
+    div.className = 'flex flex-col gap-1';
+    div.id = `file-block-${idx}`;
+    div.innerHTML = `
+      <div class="flex items-center justify-between">
+        <input type="text" value="${escHtmlAttr(label || `.env.${idx}`)}" placeholder=".env filename (label only)"
+          class="text-xs px-2 py-1 rounded bg-surface border border-border text-text-muted focus:outline-none focus:border-accent w-40 transition-colors"
+          id="file-label-${idx}" />
+        ${idx > 1 ? `<button onclick="removeFile(${idx})" class="text-xs text-text-muted hover:text-red-400 transition-colors">Remove</button>` : ''}
+      </div>
+      <textarea id="file-content-${idx}" rows="6" placeholder="Paste .env content here..."
+        class="w-full px-3 py-2 rounded-xl bg-bg border border-border text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors font-mono text-xs resize-y"
+        spellcheck="false">${escHtmlVal(content)}</textarea>
+    `;
+    document.getElementById('inputs-container').appendChild(div);
+    document.getElementById('add-file-btn').style.display = fileCount >= 5 ? 'none' : '';
+  }
+
+  function removeFile(idx) {
+    const el = document.getElementById(`file-block-${idx}`);
+    if (el) el.remove();
+    document.getElementById('add-file-btn').style.display = '';
+  }
+
+  function parseEnvFile(text) {
+    const entries = [];
+    const seen = new Set();
+    text.split('\n').forEach((line, lineNum) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const eqPos = trimmed.indexOf('=');
+      if (eqPos === -1) return;
+      const key = trimmed.slice(0, eqPos).trim();
+      let val = trimmed.slice(eqPos + 1).trim();
+      // strip quotes
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      const isDupe = seen.has(key);
+      seen.add(key);
+      entries.push({ key, val, lineNum: lineNum + 1, isDupe });
+    });
+    return entries;
+  }
+
+  function merge() {
+    const files = [];
+    document.querySelectorAll('[id^="file-content-"]').forEach(el => {
+      const idx = el.id.replace('file-content-', '');
+      const label = (document.getElementById(`file-label-${idx}`) || {}).value || el.id;
+      files.push({ label, entries: parseEnvFile(el.value) });
+    });
+
+    if (files.length === 0 || files.every(f => f.entries.length === 0)) {
+      alert('Please paste at least one .env file with content.');
+      return;
+    }
+
+    // Build merged map (last wins)
+    const mergedMap = {};  // key -> { val, source }
+    const conflictMap = {}; // key -> [{label, val}]
+
+    files.forEach(file => {
+      const dupeKeys = new Set(file.entries.filter(e => e.isDupe).map(e => e.key));
+      file.entries.forEach(entry => {
+        if (!entry.isDupe || !mergedMap[entry.key]) {
+          if (mergedMap[entry.key] && mergedMap[entry.key].val !== entry.val) {
+            if (!conflictMap[entry.key]) conflictMap[entry.key] = [mergedMap[entry.key]];
+            conflictMap[entry.key].push({ label: file.label, val: entry.val });
+          }
+          mergedMap[entry.key] = { val: entry.val, source: file.label };
+        }
+      });
+    });
+
+    const conflictKeys = Object.keys(conflictMap);
+    const totalKeys = Object.keys(mergedMap).length;
+    const dupeKeys = new Set();
+    files.forEach(f => f.entries.filter(e => e.isDupe).forEach(e => dupeKeys.add(`${f.label}:${e.key}`)));
+
+    // Summary
+    const summaryEl = document.getElementById('summary-card');
+    summaryEl.innerHTML = `
+      <div class="flex flex-wrap gap-4">
+        <div class="text-center">
+          <div class="text-2xl font-bold text-accent">${files.length}</div>
+          <div class="text-xs text-text-muted">Files merged</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-bold text-text">${totalKeys}</div>
+          <div class="text-xs text-text-muted">Unique keys</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-bold ${conflictKeys.length ? 'text-yellow-400' : 'text-green-400'}">${conflictKeys.length}</div>
+          <div class="text-xs text-text-muted">Conflicts</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-bold ${dupeKeys.size ? 'text-orange-400' : 'text-green-400'}">${dupeKeys.size}</div>
+          <div class="text-xs text-text-muted">Duplicate keys</div>
+        </div>
+      </div>
+    `;
+
+    // Conflicts
+    const conflictsSection = document.getElementById('conflicts-section');
+    if (conflictKeys.length) {
+      document.getElementById('conflict-count').textContent = `(${conflictKeys.length})`;
+      const conflictsList = document.getElementById('conflicts-list');
+      conflictsList.innerHTML = conflictKeys.map(key => {
+        const sources = conflictMap[key];
+        const rows = sources.map(s => `<div class="flex items-start gap-2 text-xs"><span class="text-text-muted w-32 shrink-0">${escHtml(s.label)}:</span><span class="font-mono text-text break-all">${escHtml(maskSecret(key, s.val))}</span></div>`).join('');
+        const winner = mergedMap[key];
+        return `<div class="rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-3 py-2">
+          <div class="font-mono font-semibold text-yellow-400 text-xs mb-2">${escHtml(key)} <span class="font-normal text-text-muted">(${sources.length} sources — last wins)</span></div>
+          ${rows}
+          <div class="flex items-center gap-2 text-xs mt-2 border-t border-yellow-500/20 pt-2">
+            <span class="text-green-400 font-semibold">✓ Used:</span>
+            <span class="font-mono text-text">${escHtml(winner.source)} = ${escHtml(maskSecret(key, winner.val))}</span>
+          </div>
+        </div>`;
+      }).join('');
+      conflictsSection.classList.remove('hidden');
+    } else {
+      conflictsSection.classList.add('hidden');
+    }
+
+    // Merged output
+    let output = `# Merged .env — ${files.map(f => f.label).join(' + ')}\n# Generated by DevPlaybook .env File Merger\n\n`;
+    output += Object.entries(mergedMap).map(([k, {val, source}]) => {
+      const needsQuote = val.includes(' ') || val.includes('#');
+      const formatted = needsQuote ? `"${val}"` : val;
+      return `${k}=${formatted}`;
+    }).join('\n');
+
+    document.getElementById('merged-output').textContent = output;
+
+    document.getElementById('copy-output-btn').onclick = () => {
+      navigator.clipboard.writeText(output).then(() => {
+        document.getElementById('copy-output-btn').textContent = 'Copied!';
+        setTimeout(() => { document.getElementById('copy-output-btn').textContent = 'Copy'; }, 1500);
+      });
+    };
+
+    document.getElementById('results-container').classList.remove('hidden');
+  }
+
+  function maskSecret(key, val) {
+    if (/password|secret|token|key|api_key|apikey|passwd|pwd|credential/i.test(key) && val.length > 4) {
+      return val.slice(0, 3) + '•'.repeat(Math.min(val.length - 3, 8));
+    }
+    return val;
+  }
+
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escHtmlAttr(s) { return escHtml(s).replace(/"/g,'&quot;'); }
+  function escHtmlVal(s) { return escHtml(s); }
+
+  // Init
+  addFileInput('.env.base', '');
+  addFileInput('.env.local', '');
+
+  document.getElementById('add-file-btn').addEventListener('click', () => addFileInput());
+  document.getElementById('load-example-btn').addEventListener('click', () => {
+    document.querySelectorAll('[id^="file-content-"]').forEach(el => el.remove());
+    document.querySelectorAll('[id^="file-block-"]').forEach(el => el.remove());
+    document.querySelectorAll('[id^="file-label-"]').forEach(el => el.value = '');
+    fileCount = 0;
+    document.getElementById('inputs-container').innerHTML = '';
+    EXAMPLES.forEach(ex => addFileInput(ex.label, ex.content));
+  });
+  document.getElementById('merge-btn').addEventListener('click', merge);
+</script>

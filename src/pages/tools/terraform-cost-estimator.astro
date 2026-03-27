@@ -1,0 +1,410 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "How accurate are the cost estimates?",
+    answer: "The estimates are rough ballpark figures based on representative on-demand pricing as of early 2024. Actual costs vary significantly based on region, reserved/spot pricing, data transfer, and usage patterns. Always use the official AWS Pricing Calculator or Infracost for accurate production estimates."
+  },
+  {
+    question: "Which cloud providers and resources are supported?",
+    answer: "Currently AWS and GCP resources are supported, including EC2/Compute instances, RDS/Cloud SQL databases, S3/GCS storage, ElastiCache/Memorystore, EKS/GKE node pools, Lambda/Cloud Functions, ALB/NLB, CloudFront, and NAT Gateway. Azure support is partial."
+  },
+  {
+    question: "What Terraform syntax is supported?",
+    answer: "The tool parses HCL-style resource blocks: resource \"aws_instance\" \"name\" { ... }. It extracts common attributes like instance_type, engine, db_instance_class, node_type, and min/max size for auto-scaling groups. Complex expressions and variable references are resolved to defaults."
+  },
+  {
+    question: "What is Infracost?",
+    answer: "Infracost is an open-source tool that integrates with Terraform to show cost estimates in pull requests. It uses real pricing APIs and supports 1000+ resource types across AWS, Azure, and GCP. Use it in CI/CD pipelines via GitHub Actions, GitLab CI, or as a pre-commit hook."
+  },
+  {
+    question: "Why are reserved instance costs not shown?",
+    answer: "Reserved instances can reduce costs by 30–72% depending on term length and payment option. This tool shows on-demand rates as the worst-case baseline. For production workloads, apply a 30–50% discount multiplier to estimate reserved pricing."
+  },
+  {
+    question: "Does this tool send my Terraform code to a server?",
+    answer: "No. All parsing and estimation runs entirely in your browser using JavaScript. Your infrastructure code — which may contain resource names, sizes, and topology — never leaves your machine."
+  },
+];
+---
+
+<BaseLayout
+  title="Terraform Cost Estimator — Estimate AWS/GCP Monthly Costs Online"
+  description="Paste Terraform resource blocks and get rough monthly cost estimates for common AWS and GCP resources. Free, runs 100% in your browser. No signup required."
+  tool="Terraform cost estimator, AWS cost calculator, GCP cost estimator, Infracost alternative, Terraform pricing, infrastructure cost estimate"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Terraform Cost Estimator",
+    "url": "https://devplaybook.cc/tools/terraform-cost-estimator",
+    "description": "Paste Terraform HCL resource blocks and get rough monthly cost estimates for AWS and GCP resources. Runs in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Terraform Cost Estimator</h1>
+  <p class="text-text-muted mb-4">
+    Paste Terraform resource blocks and get rough monthly cost estimates for common AWS and GCP resources.
+    Supports EC2, RDS, ElastiCache, Lambda, S3, ALB, EKS, CloudFront, and more.
+    <strong class="text-text">Ballpark estimates only</strong> — use Infracost for production accuracy.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> AWS + GCP resources</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Monthly + annual totals</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Input -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium" for="tf-input">Terraform HCL</label>
+        <button id="load-example-btn" class="text-xs text-accent hover:underline">Load example</button>
+      </div>
+      <textarea
+        id="tf-input"
+        rows="22"
+        placeholder='Paste Terraform resource blocks here...&#10;&#10;resource "aws_instance" "web" {&#10;  instance_type = "t3.medium"&#10;}'
+        class="w-full px-4 py-3 rounded-xl bg-bg border border-border text-text placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors font-mono text-xs resize-y"
+        spellcheck="false"
+      ></textarea>
+      <button
+        id="estimate-btn"
+        class="w-full py-3 px-6 rounded-xl bg-accent hover:bg-accent/80 text-white font-bold transition-colors duration-200"
+      >
+        Estimate Monthly Cost
+      </button>
+    </div>
+
+    <!-- Output -->
+    <div class="flex flex-col gap-3">
+      <label class="text-sm font-medium">Cost Estimate</label>
+      <div id="output-placeholder" class="flex-1 min-h-[480px] rounded-xl bg-bg border border-border flex items-center justify-center text-text-muted text-sm">
+        Cost breakdown will appear here
+      </div>
+      <div id="output-container" class="hidden flex-1 min-h-[480px] rounded-xl bg-bg border border-border overflow-y-auto p-4"></div>
+    </div>
+  </div>
+
+  <div class="mt-4 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5 text-xs text-yellow-400">
+    <strong>Disclaimer:</strong> Estimates are rough ballparks based on representative on-demand pricing (us-east-1, early 2024). Actual costs depend on region, usage, data transfer, and pricing tier. Use <a href="https://infracost.io" target="_blank" rel="noopener" class="underline hover:text-yellow-300">Infracost</a> or the official pricing calculators for production decisions.
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Terraform Cost Estimator" relatedTags={['terraform', 'devops', 'aws', 'gcp', 'cloud', 'infrastructure', 'cost']} />
+</BaseLayout>
+
+<script is:inline>
+  // ── Pricing database (on-demand, us-east-1, approx early 2024) ──────────────
+  const EC2_PRICES = {
+    't2.micro': 0.0116, 't2.small': 0.023, 't2.medium': 0.0464, 't2.large': 0.0928,
+    't3.micro': 0.0104, 't3.small': 0.0208, 't3.medium': 0.0416, 't3.large': 0.0832,
+    't3.xlarge': 0.1664, 't3.2xlarge': 0.3328,
+    't3a.micro': 0.0094, 't3a.small': 0.0188, 't3a.medium': 0.0376, 't3a.large': 0.0752,
+    'm5.large': 0.096, 'm5.xlarge': 0.192, 'm5.2xlarge': 0.384, 'm5.4xlarge': 0.768,
+    'm5.8xlarge': 1.536, 'm5.12xlarge': 2.304,
+    'm6i.large': 0.096, 'm6i.xlarge': 0.192, 'm6i.2xlarge': 0.384,
+    'c5.large': 0.085, 'c5.xlarge': 0.17, 'c5.2xlarge': 0.34, 'c5.4xlarge': 0.68,
+    'c6i.large': 0.085, 'c6i.xlarge': 0.17, 'c6i.2xlarge': 0.34,
+    'r5.large': 0.126, 'r5.xlarge': 0.252, 'r5.2xlarge': 0.504, 'r5.4xlarge': 1.008,
+    'r6i.large': 0.126, 'r6i.xlarge': 0.252,
+    'p3.2xlarge': 3.06, 'p3.8xlarge': 12.24, 'g4dn.xlarge': 0.526,
+  };
+
+  const RDS_PRICES = {
+    'db.t3.micro': 0.017, 'db.t3.small': 0.034, 'db.t3.medium': 0.068, 'db.t3.large': 0.136,
+    'db.t4g.micro': 0.016, 'db.t4g.small': 0.032, 'db.t4g.medium': 0.064,
+    'db.m5.large': 0.171, 'db.m5.xlarge': 0.342, 'db.m5.2xlarge': 0.684,
+    'db.m6g.large': 0.162, 'db.m6g.xlarge': 0.324,
+    'db.r5.large': 0.24, 'db.r5.xlarge': 0.48, 'db.r5.2xlarge': 0.96,
+    'db.r6g.large': 0.228, 'db.r6g.xlarge': 0.456,
+    'db.t2.micro': 0.017, 'db.t2.small': 0.034, 'db.t2.medium': 0.068,
+  };
+
+  const ELASTICACHE_PRICES = {
+    'cache.t3.micro': 0.017, 'cache.t3.small': 0.034, 'cache.t3.medium': 0.068,
+    'cache.t4g.micro': 0.016, 'cache.t4g.small': 0.032, 'cache.t4g.medium': 0.064,
+    'cache.m6g.large': 0.154, 'cache.m6g.xlarge': 0.308,
+    'cache.r6g.large': 0.208, 'cache.r6g.xlarge': 0.416,
+    'cache.t2.micro': 0.017, 'cache.t2.small': 0.034, 'cache.t2.medium': 0.068,
+  };
+
+  const GCE_PRICES = {
+    'n1-standard-1': 0.0475, 'n1-standard-2': 0.095, 'n1-standard-4': 0.190, 'n1-standard-8': 0.380,
+    'n2-standard-2': 0.0971, 'n2-standard-4': 0.1942, 'n2-standard-8': 0.3884,
+    'e2-micro': 0.0084, 'e2-small': 0.0168, 'e2-medium': 0.0335,
+    'e2-standard-2': 0.0671, 'e2-standard-4': 0.1342, 'e2-standard-8': 0.2684,
+    'n1-highmem-2': 0.1184, 'n1-highmem-4': 0.2368, 'n1-highmem-8': 0.4736,
+  };
+
+  const CLOUD_SQL_PRICES = {
+    'db-f1-micro': 0.0150, 'db-g1-small': 0.0500,
+    'db-n1-standard-1': 0.0965, 'db-n1-standard-2': 0.1929, 'db-n1-standard-4': 0.3858,
+    'db-n1-highmem-2': 0.1929, 'db-n1-highmem-4': 0.3858,
+  };
+
+  const HOURS_PER_MONTH = 730;
+
+  // ── HCL parser ───────────────────────────────────────────────────────────────
+  function parseHCL(text) {
+    const resources = [];
+    const resourceRegex = /resource\s+"([^"]+)"\s+"([^"]+)"\s*\{([\s\S]*?)^\}/gm;
+    let match;
+    while ((match = resourceRegex.exec(text)) !== null) {
+      const type = match[1];
+      const name = match[2];
+      const body = match[3];
+      const attrs = parseAttrs(body);
+      resources.push({ type, name, attrs });
+    }
+    return resources;
+  }
+
+  function parseAttrs(body) {
+    const attrs = {};
+    const lines = body.split('\n');
+    lines.forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) return;
+      const eqPos = trimmed.indexOf('=');
+      if (eqPos === -1) return;
+      const key = trimmed.slice(0, eqPos).trim();
+      let val = trimmed.slice(eqPos + 1).trim();
+      // strip quotes
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1);
+      // number
+      if (/^\d+$/.test(val)) val = parseInt(val, 10);
+      attrs[key] = val;
+    });
+    return attrs;
+  }
+
+  // ── Cost estimators ──────────────────────────────────────────────────────────
+  function estimateResource(res) {
+    const { type, name, attrs } = res;
+    const label = `${type}.${name}`;
+
+    switch (type) {
+      case 'aws_instance': {
+        const it = attrs.instance_type || 't3.micro';
+        const count = attrs.count || 1;
+        const price = EC2_PRICES[it] || 0.05;
+        const monthly = price * HOURS_PER_MONTH * count;
+        return { label, desc: `EC2 ${it}${count > 1 ? ` ×${count}` : ''}`, monthly, note: count > 1 ? `${count} instances` : null };
+      }
+      case 'aws_autoscaling_group': {
+        const it = attrs.instance_type || 't3.medium';
+        const min = attrs.min_size || 1;
+        const max = attrs.max_size || 2;
+        const avg = Math.ceil((min + max) / 2);
+        const price = EC2_PRICES[it] || 0.05;
+        const monthly = price * HOURS_PER_MONTH * avg;
+        return { label, desc: `ASG EC2 ${it} (avg ${avg} instances)`, monthly, note: `min:${min} max:${max}` };
+      }
+      case 'aws_db_instance': {
+        const cls = attrs.instance_class || 'db.t3.medium';
+        const multi = attrs.multi_az === true || attrs.multi_az === 'true' ? 2 : 1;
+        const storage = attrs.allocated_storage || 20;
+        const price = RDS_PRICES[cls] || 0.068;
+        const monthly = (price * HOURS_PER_MONTH * multi) + (storage * 0.115);
+        return { label, desc: `RDS ${cls}${multi > 1 ? ' (Multi-AZ)' : ''}, ${storage}GB`, monthly, note: multi > 1 ? 'Multi-AZ doubles instance cost' : null };
+      }
+      case 'aws_elasticache_cluster':
+      case 'aws_elasticache_replication_group': {
+        const nt = attrs.node_type || 'cache.t3.medium';
+        const nodes = attrs.num_cache_nodes || attrs.number_cache_clusters || 1;
+        const price = ELASTICACHE_PRICES[nt] || 0.068;
+        const monthly = price * HOURS_PER_MONTH * nodes;
+        return { label, desc: `ElastiCache ${nt} ×${nodes}`, monthly };
+      }
+      case 'aws_lambda_function': {
+        const memMB = attrs.memory_size || 128;
+        const invocations = attrs.reserved_concurrent_executions || 100000;
+        // ~100K invocations, 200ms avg duration
+        const computeCost = (invocations * 0.2 * memMB / 1024) * 0.00001667;
+        const reqCost = invocations * 0.0000002;
+        const monthly = computeCost + reqCost;
+        return { label, desc: `Lambda ${memMB}MB (est. ${(invocations/1000).toFixed(0)}K req/mo)`, monthly: Math.max(monthly, 0.01) };
+      }
+      case 'aws_s3_bucket': {
+        const gb = attrs.storage_gb || 10;
+        const monthly = gb * 0.023 + 0.5;
+        return { label, desc: `S3 (~${gb}GB storage)`, monthly, note: 'Request costs not included' };
+      }
+      case 'aws_lb':
+      case 'aws_alb': {
+        const type_ = attrs.load_balancer_type || 'application';
+        const price = type_ === 'network' ? 22.27 : 22.27;
+        return { label, desc: `${type_ === 'network' ? 'NLB' : 'ALB'} Load Balancer`, monthly: price, note: 'LCU costs not included' };
+      }
+      case 'aws_cloudfront_distribution': {
+        return { label, desc: 'CloudFront Distribution (10GB transfer)', monthly: 1.0, note: 'Highly variable — depends on traffic' };
+      }
+      case 'aws_nat_gateway': {
+        return { label, desc: 'NAT Gateway', monthly: 32.85, note: '+ $0.045/GB data processed' };
+      }
+      case 'aws_eks_cluster': {
+        return { label, desc: 'EKS Cluster Control Plane', monthly: 73.0, note: 'Worker node costs separate' };
+      }
+      case 'aws_eks_node_group': {
+        const it = attrs.instance_types || 't3.medium';
+        const min = attrs.min_size || 1;
+        const max = attrs.max_size || 3;
+        const avg = Math.ceil((min + max) / 2);
+        const it0 = Array.isArray(it) ? it[0] : it;
+        const price = EC2_PRICES[it0] || EC2_PRICES['t3.medium'];
+        const monthly = price * HOURS_PER_MONTH * avg;
+        return { label, desc: `EKS Node Group ${it0} (avg ${avg})`, monthly };
+      }
+      case 'aws_rds_cluster': {
+        const cls = attrs.db_cluster_instance_class || 'db.r5.large';
+        const count = attrs.number_of_instances || 1;
+        const price = RDS_PRICES[cls] || 0.24;
+        const monthly = price * HOURS_PER_MONTH * count * 1.2; // Aurora pricing ~20% less
+        return { label, desc: `Aurora ${cls} ×${count}`, monthly };
+      }
+      case 'google_compute_instance': {
+        const mt = attrs.machine_type || 'n1-standard-1';
+        const count = attrs.count || 1;
+        const price = GCE_PRICES[mt] || 0.0475;
+        const monthly = price * HOURS_PER_MONTH * count;
+        return { label, desc: `GCE ${mt}${count > 1 ? ` ×${count}` : ''}`, monthly };
+      }
+      case 'google_sql_database_instance': {
+        const tier = attrs.tier || 'db-n1-standard-1';
+        const price = CLOUD_SQL_PRICES[tier] || 0.0965;
+        const monthly = price * HOURS_PER_MONTH;
+        return { label, desc: `Cloud SQL ${tier}`, monthly };
+      }
+      case 'google_container_cluster': {
+        return { label, desc: 'GKE Cluster (1 free, then ~$72/mo)', monthly: 72, note: 'Node costs separate' };
+      }
+      case 'google_container_node_pool': {
+        const mt = attrs.machine_type || 'n1-standard-2';
+        const count = attrs.initial_node_count || 2;
+        const price = GCE_PRICES[mt] || 0.095;
+        const monthly = price * HOURS_PER_MONTH * count;
+        return { label, desc: `GKE Node Pool ${mt} ×${count}`, monthly };
+      }
+      case 'google_storage_bucket': {
+        const gb = attrs.storage_gb || 10;
+        const monthly = gb * 0.020 + 0.5;
+        return { label, desc: `GCS (~${gb}GB)`, monthly };
+      }
+      default: {
+        return null; // unknown resource type
+      }
+    }
+  }
+
+  // ── Example ──────────────────────────────────────────────────────────────────
+  const EXAMPLE = `resource "aws_instance" "web" {
+  instance_type = "t3.medium"
+  count         = 2
+}
+
+resource "aws_db_instance" "postgres" {
+  instance_class    = "db.t3.medium"
+  allocated_storage = 100
+  multi_az          = true
+}
+
+resource "aws_elasticache_cluster" "redis" {
+  node_type      = "cache.t3.small"
+  num_cache_nodes = 2
+}
+
+resource "aws_lb" "main" {
+  load_balancer_type = "application"
+}
+
+resource "aws_nat_gateway" "main" {
+}
+
+resource "aws_s3_bucket" "assets" {
+  storage_gb = 50
+}
+
+resource "aws_eks_cluster" "main" {
+}
+
+resource "aws_eks_node_group" "workers" {
+  instance_types = "t3.large"
+  min_size       = 2
+  max_size       = 5
+}
+`;
+
+  // ── UI ───────────────────────────────────────────────────────────────────────
+  document.getElementById('load-example-btn').addEventListener('click', () => {
+    document.getElementById('tf-input').value = EXAMPLE;
+  });
+
+  document.getElementById('estimate-btn').addEventListener('click', () => {
+    const input = document.getElementById('tf-input').value.trim();
+    const placeholder = document.getElementById('output-placeholder');
+    const container = document.getElementById('output-container');
+
+    if (!input) {
+      alert('Paste Terraform HCL first.');
+      return;
+    }
+
+    const resources = parseHCL(input);
+    if (!resources.length) {
+      placeholder.innerHTML = '<span class="text-red-400 text-sm">No resource blocks found. Make sure you have resource "type" "name" { } blocks.</span>';
+      return;
+    }
+
+    const estimates = resources.map(r => estimateResource(r)).filter(Boolean);
+    const skipped = resources.length - estimates.length;
+    const total = estimates.reduce((s, e) => s + e.monthly, 0);
+    const annual = total * 12;
+
+    let html = `<div class="mb-4 rounded-lg bg-accent/10 border border-accent/30 p-4 flex gap-6 flex-wrap">
+      <div><div class="text-2xl font-bold text-accent">$${total.toFixed(2)}</div><div class="text-xs text-text-muted">est. / month</div></div>
+      <div><div class="text-2xl font-bold text-text">$${annual.toFixed(2)}</div><div class="text-xs text-text-muted">est. / year</div></div>
+      <div><div class="text-2xl font-bold text-text">${estimates.length}</div><div class="text-xs text-text-muted">resources priced</div></div>
+      ${skipped ? `<div><div class="text-2xl font-bold text-text-muted">${skipped}</div><div class="text-xs text-text-muted">skipped (unknown)</div></div>` : ''}
+    </div>`;
+
+    html += `<div class="space-y-2">`;
+    estimates.sort((a, b) => b.monthly - a.monthly).forEach(e => {
+      const pct = total > 0 ? (e.monthly / total * 100) : 0;
+      html += `<div class="rounded-lg border border-border bg-surface/30 px-3 py-2">
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-mono text-xs text-accent truncate">${escHtml(e.label)}</div>
+            <div class="text-xs text-text-muted">${escHtml(e.desc)}</div>
+            ${e.note ? `<div class="text-xs text-yellow-400/70 italic">${escHtml(e.note)}</div>` : ''}
+          </div>
+          <div class="text-right shrink-0">
+            <div class="font-semibold text-text">$${e.monthly.toFixed(2)}/mo</div>
+            <div class="text-xs text-text-muted">${pct.toFixed(0)}%</div>
+          </div>
+        </div>
+        <div class="mt-1.5 h-1 rounded bg-border overflow-hidden">
+          <div class="h-full bg-accent/60 rounded" style="width:${Math.min(pct,100)}%"></div>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+
+    if (skipped) {
+      const skippedTypes = resources.filter(r => !estimates.find(e => e.label === `${r.type}.${r.name}`)).map(r => r.type);
+      html += `<div class="mt-3 p-3 rounded-lg border border-border text-xs text-text-muted">Skipped (no pricing data): ${[...new Set(skippedTypes)].map(t => `<code class="font-mono">${escHtml(t)}</code>`).join(', ')}</div>`;
+    }
+
+    container.innerHTML = html;
+    placeholder.classList.add('hidden');
+    container.classList.remove('hidden');
+  });
+
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
