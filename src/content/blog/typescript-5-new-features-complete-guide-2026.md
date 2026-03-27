@@ -1,7 +1,7 @@
 ---
 title: "TypeScript 5.x New Features: Complete Guide 2026"
 description: "Master every TypeScript 5.x feature: decorators, const type parameters, variadic tuple improvements, satisfies operator, using declarations, and major performance improvements. With before/after examples."
-pubDate: "2026-03-27"
+date: "2026-03-27"
 tags: ["typescript", "javascript", "type-system", "frontend", "backend", "web-development"]
 author: "DevPlaybook Team"
 readingTime: "13 min read"

@@ -1,7 +1,7 @@
 ---
 title: "OpenTelemetry for Node.js: Complete Observability Guide 2026"
 description: "Master OpenTelemetry for Node.js observability. Learn auto-instrumentation, traces, metrics, logs, OTLP export to Jaeger/Prometheus, production sampling strategies, and how OTel compares to Datadog."
-pubDate: "2026-03-27"
+date: "2026-03-27"
 tags: ["opentelemetry", "nodejs", "observability", "monitoring", "tracing", "devops", "backend"]
 author: "DevPlaybook Team"
 readingTime: "10 min read"

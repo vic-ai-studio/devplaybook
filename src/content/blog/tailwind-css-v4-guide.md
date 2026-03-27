@@ -1,7 +1,7 @@
 ---
 title: "Tailwind CSS v4 Complete Guide: CSS-First Config, Lightning CSS & What's New"
 description: "Master Tailwind CSS v4 with this complete guide. Learn the CSS-first configuration, Lightning CSS engine, new utility classes, performance improvements, and how to migrate from v3."
-pubDate: "2026-03-27"
+date: "2026-03-27"
 tags: ["tailwind-css", "css", "frontend", "javascript", "web-development", "performance"]
 author: "DevPlaybook Team"
 readingTime: "11 min read"
