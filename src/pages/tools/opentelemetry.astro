@@ -1,0 +1,199 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const sdkExample = `// Node.js — OpenTelemetry SDK setup (tracing + metrics)
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
+
+const sdk = new NodeSDK({
+  resource: resourceFromAttributes({
+    [SEMRESATTRS_SERVICE_NAME]: 'checkout-service',
+    [SEMRESATTRS_SERVICE_VERSION]: '1.2.0',
+  }),
+  traceExporter: new OTLPTraceExporter({
+    url: 'http://otel-collector:4318/v1/traces',
+  }),
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: new OTLPMetricExporter({
+      url: 'http://otel-collector:4318/v1/metrics',
+    }),
+    exportIntervalMillis: 15000,
+  }),
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+
+sdk.start();
+process.on('SIGTERM', () => sdk.shutdown());`;
+
+const manualSpanExample = `// Manual span creation
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+
+const tracer = trace.getTracer('checkout-service', '1.2.0');
+
+async function processOrder(orderId: string) {
+  return tracer.startActiveSpan('processOrder', async (span) => {
+    span.setAttribute('order.id', orderId);
+    span.setAttribute('order.source', 'web');
+    try {
+      const result = await chargeCard(orderId);
+      span.setAttribute('payment.status', 'success');
+      span.setStatus({ code: SpanStatusCode.OK });
+      return result;
+    } catch (err) {
+      span.recordException(err as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+      throw err;
+    } finally {
+      span.end();
+    }
+  });
+}`;
+
+const collectorConfig = `# otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+  memory_limiter:
+    limit_mib: 400
+
+exporters:
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  logging:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [jaeger, logging]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]`;
+
+const faq = [
+  { question: "What is OpenTelemetry?", answer: "OpenTelemetry (OTel) is a CNCF-graduated open-source observability framework that standardizes the collection of traces, metrics, and logs from applications. It provides vendor-neutral SDKs, APIs, and a collector component so you can instrument once and export to any backend — Jaeger, Zipkin, Prometheus, Datadog, Honeycomb, or any OTLP-compatible system. It merged the older OpenTracing and OpenCensus projects into a single standard." },
+  { question: "What are traces, metrics, and logs in OpenTelemetry?", answer: "The three pillars: Traces represent the journey of a single request across multiple services (a tree of spans). Metrics are numeric measurements over time (request rate, error rate, latency percentiles). Logs are timestamped text records of events. OpenTelemetry correlates all three using shared context — a trace ID in a log entry lets you jump from log to trace in your observability backend." },
+  { question: "What is the OTLP protocol?", answer: "OTLP (OpenTelemetry Protocol) is the native wire protocol for OpenTelemetry data. It runs over gRPC (port 4317) or HTTP/protobuf (port 4318). All modern observability backends (Jaeger, SigNoz, Honeycomb, Datadog, Grafana Tempo) accept OTLP natively, eliminating the need for Jaeger or Zipkin-specific exporters. When in doubt, export OTLP — it is the most future-proof choice." },
+  { question: "What is the OpenTelemetry Collector?", answer: "The Collector is an optional but recommended intermediate component. Instead of each service exporting directly to a backend, services send OTLP to the Collector, which batches, filters, enriches, and fans out to multiple backends. This decouples your instrumentation from your storage choice. The Collector has three components: Receivers (accept data), Processors (batch, filter, sample), and Exporters (send to backends). Run it as a sidecar or as a shared gateway." },
+  { question: "What is auto-instrumentation vs manual instrumentation?", answer: "Auto-instrumentation uses language-specific agents or libraries to automatically patch common frameworks (Express, Django, gRPC, HTTP clients, databases) without code changes — just add the auto-instrumentation package and it instruments everything. Manual instrumentation uses the OTel API to create custom spans, add attributes, and record events for business logic that auto-instrumentation can't see. Most production setups use both: auto-instrumentation for infrastructure-level spans, manual for business spans." },
+  { question: "How does context propagation work?", answer: "Context propagation passes trace context (trace ID + span ID) between services via HTTP headers (W3C TraceContext standard: traceparent header) or message queue metadata. When service A calls service B, the SDK injects the current trace context into the outgoing request. Service B extracts the context and creates a child span in the same trace. This links all spans across all services into a single distributed trace, even across async boundaries." },
+];
+---
+
+<BaseLayout
+  title="OpenTelemetry — Vendor-Neutral Observability Framework"
+  description="OpenTelemetry is the CNCF standard for collecting traces, metrics, and logs. Instrument once with the OTel SDK and export to any backend via OTLP — Jaeger, Prometheus, Datadog, or Honeycomb."
+  tool="OpenTelemetry, OTel, OTLP, distributed tracing, observability, traces metrics logs, OpenTelemetry collector, auto-instrumentation, context propagation"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "OpenTelemetry — Vendor-Neutral Observability Framework",
+    "url": "https://devplaybook.cc/tools/opentelemetry",
+    "description": "OpenTelemetry is the CNCF standard for collecting traces, metrics, and logs. Instrument once with the OTel SDK and export to any backend via OTLP.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">OpenTelemetry</h1>
+  <p class="text-text-muted mb-6">
+    The <strong>CNCF-graduated open standard for observability</strong>. OpenTelemetry provides vendor-neutral
+    SDKs, APIs, and a Collector to capture traces, metrics, and logs from any service — then export them
+    to any backend without changing your instrumentation code.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Traces, metrics, and logs</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Vendor-neutral (OTLP)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CNCF graduated project</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auto + manual instrumentation</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is OpenTelemetry?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    OpenTelemetry (OTel) is the merger of OpenTracing and OpenCensus — two competing observability standards — into a single CNCF project. It defines a unified API and SDK for emitting the three pillars of observability: <strong>traces</strong> (distributed request journeys), <strong>metrics</strong> (numeric time-series measurements), and <strong>logs</strong> (timestamped event records).
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    The key innovation is the <strong>OTLP protocol</strong> and the <strong>Collector</strong>: you instrument your code once using the OTel SDK, send data to the Collector, and the Collector fans it out to Jaeger, Prometheus, Datadog, Honeycomb, Grafana Cloud, or any compatible backend simultaneously. Switching backends requires zero code changes.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Signal Types</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Signal</th>
+          <th class="text-left py-2 pr-4 font-semibold">What it captures</th>
+          <th class="text-left py-2 font-semibold">Common backend</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-xs">Traces</td><td class="py-2 pr-4">Request flow across services (spans + attributes)</td><td class="py-2 font-mono text-xs">Jaeger, Tempo, Zipkin</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-xs">Metrics</td><td class="py-2 pr-4">Counters, gauges, histograms over time</td><td class="py-2 font-mono text-xs">Prometheus, VictoriaMetrics</td></tr>
+        <tr><td class="py-2 pr-4 font-mono text-xs">Logs</td><td class="py-2 pr-4">Structured log records with trace correlation</td><td class="py-2 font-mono text-xs">Loki, Elasticsearch</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Node.js SDK Setup</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={sdkExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Manual Span Creation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={manualSpanExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Collector Configuration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={collectorConfig}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Start (Docker Compose)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># docker-compose.yaml
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics endpoint
+
+# Install Node.js SDK
+npm install @opentelemetry/sdk-node \
+  @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/exporter-metrics-otlp-http
+
+# Python
+pip install opentelemetry-sdk \
+  opentelemetry-exporter-otlp \
+  opentelemetry-instrumentation-fastapi
+
+# Go
+go get go.opentelemetry.io/otel \
+  go.opentelemetry.io/otel/sdk \
+  go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp</pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

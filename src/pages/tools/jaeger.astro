@@ -1,0 +1,148 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const dockerExample = `# All-in-one Jaeger container (dev/testing)
+docker run -d --name jaeger \
+  -e COLLECTOR_OTLP_ENABLED=true \
+  -p 6831:6831/udp \   # Jaeger Thrift UDP (legacy)
+  -p 6832:6832/udp \   # Jaeger Thrift Binary UDP (legacy)
+  -p 5778:5778 \        # Agent configs endpoint
+  -p 16686:16686 \      # Jaeger UI
+  -p 4317:4317 \        # OTLP gRPC
+  -p 4318:4318 \        # OTLP HTTP
+  -p 14250:14250 \      # Model.proto gRPC (used by OTel Collector)
+  -p 14268:14268 \      # Jaeger Thrift HTTP (collector)
+  jaegertracing/all-in-one:latest
+
+# Open UI at http://localhost:16686`;
+
+const otelCollectorExport = `# otel-collector-config.yaml — export to Jaeger
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  jaeger:           # legacy gRPC (pre-Jaeger 1.35)
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]`;
+
+const kubernetesExample = `# Install Jaeger Operator via Helm
+helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+helm install jaeger-operator jaegertracing/jaeger-operator \
+  --namespace observability --create-namespace
+
+# Minimal Jaeger CR (uses in-memory storage — dev only)
+apiVersion: jaegertracing.io/v1
+kind: Jaeger
+metadata:
+  name: jaeger
+  namespace: observability
+spec:
+  strategy: allInOne
+
+# Production Jaeger with Elasticsearch storage
+apiVersion: jaegertracing.io/v1
+kind: Jaeger
+metadata:
+  name: jaeger-prod
+spec:
+  strategy: production
+  storage:
+    type: elasticsearch
+    options:
+      es:
+        server-urls: https://elasticsearch:9200
+  collector:
+    replicas: 3
+  query:
+    replicas: 2`;
+
+const faq = [
+  { question: "What is Jaeger?", answer: "Jaeger is an open-source end-to-end distributed tracing system originally built by Uber Technologies and donated to the CNCF (where it graduated in 2019). It collects trace data from instrumented services, stores it, and provides a UI for searching, visualizing, and analyzing distributed traces. Jaeger is compatible with OpenTelemetry natively via OTLP and is one of the most widely deployed tracing backends in Kubernetes environments." },
+  { question: "What is a distributed trace?", answer: "A distributed trace tracks a single request as it flows through multiple services. Each unit of work is represented as a span — a named, timed operation with key-value attributes (tags). Spans are linked in a parent-child tree forming the trace. A trace starts when a user makes a request and ends when the response is returned. The trace contains every service call, database query, and cache lookup along the way, with timing for each." },
+  { question: "What storage backends does Jaeger support?", answer: "Jaeger supports multiple storage backends: Cassandra, Elasticsearch/OpenSearch (most common in production), Badger (embedded key-value store, good for single-node setups), gRPC plugin (extensible custom storage). For production, Elasticsearch or OpenSearch are recommended because they support full-text search on span tags and provide good query performance at scale. Cassandra is a good choice if you already operate it." },
+  { question: "What is the difference between Jaeger all-in-one and the production deployment?", answer: "all-in-one runs all Jaeger components (collector, query, UI) in a single container using in-memory storage. It is ideal for local development and testing but loses all traces on restart. The production deployment separates the components: multiple Collector pods accept spans from services, a persistent storage backend (Elasticsearch) stores them, and Query pods serve the UI and API. This scales horizontally and survives restarts." },
+  { question: "How does Jaeger relate to OpenTelemetry?", answer: "OpenTelemetry is the instrumentation standard (SDKs, APIs, wire protocol). Jaeger is a tracing backend (storage + UI). Your services use the OpenTelemetry SDK to emit trace data in OTLP format, send it to the OTel Collector, and the Collector exports to Jaeger using the OTLP exporter. Jaeger has supported OTLP ingestion natively since version 1.35. The legacy Jaeger client SDKs are deprecated — use OpenTelemetry SDKs instead." },
+  { question: "What is Jaeger's sampling strategy?", answer: "Jaeger supports multiple sampling strategies to control what fraction of traces are recorded. Head-based sampling decides at trace start: Probabilistic (sample X% of requests), Rate Limiting (max N traces/second), Const (always or never). Remote sampling lets you configure per-service sampling rates dynamically via the Jaeger agent without redeploying. For production, adaptive sampling (Jaeger Operator feature) automatically adjusts rates based on traffic volume to keep storage costs stable." },
+];
+---
+
+<BaseLayout
+  title="Jaeger — Open-Source End-to-End Distributed Tracing"
+  description="Jaeger is a CNCF-graduated distributed tracing backend. Collect traces via OpenTelemetry OTLP, visualize request flows across microservices, and diagnose latency in production."
+  tool="Jaeger, distributed tracing, Jaeger UI, Jaeger Operator, OTLP, OpenTelemetry tracing, trace sampling, Jaeger Elasticsearch, microservices observability"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Jaeger — Open-Source End-to-End Distributed Tracing",
+    "url": "https://devplaybook.cc/tools/jaeger",
+    "description": "Jaeger is a CNCF-graduated distributed tracing backend. Collect traces via OpenTelemetry OTLP, visualize request flows across microservices, and diagnose latency in production.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Jaeger</h1>
+  <p class="text-text-muted mb-6">
+    A <strong>CNCF-graduated distributed tracing system</strong> originally built at Uber. Jaeger ingests
+    trace data from OpenTelemetry-instrumented services, stores it in Elasticsearch or Cassandra, and
+    provides a UI for searching traces, analyzing latency, and finding the root cause of slowdowns in
+    distributed systems.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OTLP-native ingestion</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CNCF graduated project</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Kubernetes Operator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Adaptive sampling</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Jaeger?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Jaeger was open-sourced by Uber in 2017 and became a CNCF graduated project in 2019. It solves the problem of diagnosing latency and errors in microservices architectures: when a user request touches 10 services, which one is slow? Jaeger answers that by collecting and correlating <strong>distributed traces</strong> — a complete record of every service call, database query, and cache hit that occurred during a single request.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Modern Jaeger accepts traces via <strong>OTLP</strong> (the OpenTelemetry Protocol), making it the natural storage backend when instrumenting with the OpenTelemetry SDK. The legacy Jaeger client libraries are deprecated — all new instrumentation should use OpenTelemetry SDKs pointing at an OTel Collector, which exports to Jaeger.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Architecture</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Component</th>
+          <th class="text-left py-2 pr-4 font-semibold">Role</th>
+          <th class="text-left py-2 font-semibold">Port</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-xs">Collector</td><td class="py-2 pr-4">Receives spans, validates, and writes to storage</td><td class="py-2 font-mono text-xs">4317 (OTLP gRPC), 14268 (HTTP)</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-xs">Query</td><td class="py-2 pr-4">Serves the UI and REST/gRPC API</td><td class="py-2 font-mono text-xs">16686 (UI), 16685 (gRPC)</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-xs">Storage</td><td class="py-2 pr-4">Elasticsearch, Cassandra, or Badger</td><td class="py-2 font-mono text-xs">—</td></tr>
+        <tr><td class="py-2 pr-4 font-mono text-xs">Operator</td><td class="py-2 pr-4">Manages Jaeger lifecycle in Kubernetes</td><td class="py-2 font-mono text-xs">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Start (All-in-One Docker)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">OTel Collector → Jaeger Export</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={otelCollectorExport}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Kubernetes (Jaeger Operator)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={kubernetesExample}></pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>
