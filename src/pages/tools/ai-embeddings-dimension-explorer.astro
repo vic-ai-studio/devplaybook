@@ -1,0 +1,489 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What are embedding dimensions?",
+    answer: "Dimensions are the length of the vector that represents a piece of text. A 1536-dimensional embedding is a list of 1536 floating-point numbers. More dimensions generally capture more semantic nuance, but require more storage and computation. The optimal dimensionality depends on your task — for simple similarity search, 384–512 dims often performs as well as 1536+ dims."
+  },
+  {
+    question: "What is cosine similarity?",
+    answer: "Cosine similarity measures the angle between two vectors, not their magnitude. It ranges from -1 (opposite meaning) to 1 (identical meaning), with 0 meaning unrelated. It's the standard metric for semantic search because it's scale-invariant — the absolute values of the numbers don't matter, only their relative proportions."
+  },
+  {
+    question: "Why does float16 vs float32 matter for storage?",
+    answer: "float32 stores each dimension as a 4-byte number (32-bit precision). float16 uses 2 bytes (16-bit), halving storage at minor precision loss. int8 quantization uses 1 byte — 75% smaller than float32. For production RAG systems with millions of vectors, quantization can reduce RAM/disk costs by 2–4× with negligible quality impact on most retrieval tasks."
+  },
+  {
+    question: "What is the difference between text-embedding-3-small and ada-002?",
+    answer: "text-embedding-3-small is OpenAI's newer model that outperforms ada-002 on MTEB benchmarks while costing 5× less ($0.02 vs $0.10 per 1M tokens). It also supports dimension reduction — you can truncate to 512 or 1024 dims for lower storage without retraining, a feature ada-002 lacks. For new projects, prefer text-embedding-3-small or text-embedding-3-large."
+  },
+  {
+    question: "When should I use local embedding models?",
+    answer: "Use local models (nomic-embed-text, all-MiniLM-L6-v2, BGE-large) when: (1) data privacy requires no external API calls, (2) you need zero per-token cost at scale, (3) latency requirements are strict and network round-trips matter. Trade-offs: you manage GPU/CPU infrastructure, and quality is generally slightly below top cloud models."
+  },
+  {
+    question: "What is Matryoshka Representation Learning (MRL)?",
+    answer: "MRL is the technique behind text-embedding-3-small and text-embedding-3-large's configurable dimensions. The model is trained such that the first N dimensions of the full embedding are still semantically meaningful — you can truncate to any supported dimension without losing proportional quality. This enables storage/quality tradeoffs without re-embedding your corpus."
+  },
+];
+
+const models = [
+  {
+    id: 'ada-002',
+    name: 'text-embedding-ada-002',
+    provider: 'OpenAI',
+    dims: [1536],
+    defaultDim: 1536,
+    costPerM: 0.10,
+    precision: 'float32',
+    notes: 'Legacy flagship. Still widely used.',
+    configurable: false,
+    local: false
+  },
+  {
+    id: 'te3-small',
+    name: 'text-embedding-3-small',
+    provider: 'OpenAI',
+    dims: [512, 1024, 1536],
+    defaultDim: 1536,
+    costPerM: 0.02,
+    precision: 'float32',
+    notes: 'Best price/performance. MRL configurable.',
+    configurable: true,
+    local: false
+  },
+  {
+    id: 'te3-large',
+    name: 'text-embedding-3-large',
+    provider: 'OpenAI',
+    dims: [256, 1024, 3072],
+    defaultDim: 3072,
+    costPerM: 0.13,
+    precision: 'float32',
+    notes: 'Highest quality. MRL configurable.',
+    configurable: true,
+    local: false
+  },
+  {
+    id: 'voyage-3',
+    name: 'voyage-3',
+    provider: 'Voyage AI',
+    dims: [1024],
+    defaultDim: 1024,
+    costPerM: 0.06,
+    precision: 'float32',
+    notes: 'Strong MTEB performance. Good for RAG.',
+    configurable: false,
+    local: false
+  },
+  {
+    id: 'voyage-3-lite',
+    name: 'voyage-3-lite',
+    provider: 'Voyage AI',
+    dims: [512],
+    defaultDim: 512,
+    costPerM: 0.02,
+    precision: 'float32',
+    notes: 'Budget option. Compact vectors.',
+    configurable: false,
+    local: false
+  },
+  {
+    id: 'cohere-v3',
+    name: 'cohere-embed-v3',
+    provider: 'Cohere',
+    dims: [1024],
+    defaultDim: 1024,
+    costPerM: 0.10,
+    precision: 'float32',
+    notes: 'Multilingual strong. Int8 output supported.',
+    configurable: false,
+    local: false
+  },
+  {
+    id: 'nomic',
+    name: 'nomic-embed-text',
+    provider: 'Nomic AI',
+    dims: [768],
+    defaultDim: 768,
+    costPerM: 0,
+    precision: 'float32',
+    notes: 'Open source. Run locally or via API.',
+    configurable: false,
+    local: true
+  },
+  {
+    id: 'minilm',
+    name: 'all-MiniLM-L6-v2',
+    provider: 'HuggingFace',
+    dims: [384],
+    defaultDim: 384,
+    costPerM: 0,
+    precision: 'float32',
+    notes: 'Ultra-lightweight. Great for edge/local.',
+    configurable: false,
+    local: true
+  },
+  {
+    id: 'bge-large',
+    name: 'BGE-large',
+    provider: 'BAAI',
+    dims: [1024],
+    defaultDim: 1024,
+    costPerM: 0,
+    precision: 'float32',
+    notes: 'Top open source quality. MTEB leader.',
+    configurable: false,
+    local: true
+  }
+];
+---
+
+<BaseLayout
+  title="AI Embeddings Dimension Explorer — Storage, Cost & Model Comparison"
+  description="Explore embedding model dimensions, storage costs, and pricing. Compare text-embedding-3-small, ada-002, voyage-3, BGE, and more. Calculate storage for float32/float16/int8 and embedding costs."
+  tool="AI Embeddings Dimension Explorer, Embedding Model Comparison, Vector Storage Calculator, text-embedding-3 Dimensions, OpenAI Embeddings Cost"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Embeddings Dimension Explorer</h1>
+  <p class="text-text-muted mb-4">Compare embedding models by dimension count, storage size, and cost. Calculate storage requirements and embedding costs for your vector database.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 9 embedding models</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Storage calculator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost estimator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> float32 / float16 / int8</span>
+  </div>
+
+  <!-- Model selector -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+    <div class="lg:col-span-1">
+      <label class="block text-sm font-medium mb-2">Select Model</label>
+      <select id="model-select"
+        class="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary">
+        {models.map(m => (
+          <option value={m.id}>{m.name}</option>
+        ))}
+      </select>
+
+      <!-- Dimension slider (shown for configurable models) -->
+      <div id="dim-slider-section" class="mt-4 hidden">
+        <label class="block text-sm font-medium mb-2">Dimensions: <span id="dim-value" class="text-primary">1536</span></label>
+        <input id="dim-slider" type="range" min="0" max="2" step="1" value="2"
+          class="w-full accent-primary" />
+        <div id="dim-labels" class="flex justify-between text-xs text-text-muted mt-1"></div>
+      </div>
+
+      <!-- Model info card -->
+      <div id="model-info" class="mt-4 bg-bg-card border border-border rounded-xl p-4 space-y-2">
+        <div class="flex justify-between text-sm">
+          <span class="text-text-muted">Provider</span>
+          <span id="info-provider" class="font-medium">—</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-text-muted">Dimensions</span>
+          <span id="info-dims" class="font-mono font-medium">—</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-text-muted">Cost per 1M tokens</span>
+          <span id="info-cost" class="font-mono font-medium">—</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-text-muted">Type</span>
+          <span id="info-type" class="font-medium">—</span>
+        </div>
+        <div class="pt-1 border-t border-border">
+          <p id="info-notes" class="text-xs text-text-muted"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="lg:col-span-2 space-y-4">
+      <!-- Storage calculator -->
+      <div class="bg-bg-card border border-border rounded-xl p-4">
+        <h2 class="text-sm font-semibold mb-3">Storage Calculator</h2>
+        <div class="flex items-center gap-3 mb-4">
+          <label class="text-sm text-text-muted whitespace-nowrap">Number of vectors:</label>
+          <input id="vector-count" type="number" min="1" value="1000000"
+            class="w-40 bg-bg-surface border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary font-mono" />
+          <div class="flex gap-2 flex-wrap">
+            <button class="vec-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="100000">100K</button>
+            <button class="vec-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="1000000">1M</button>
+            <button class="vec-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="10000000">10M</button>
+            <button class="vec-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="100000000">100M</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="bg-bg-surface border border-border rounded-lg p-3 text-center">
+            <p class="text-xs text-text-muted mb-1">float32 (4B/dim)</p>
+            <p id="storage-f32" class="text-lg font-bold font-mono">—</p>
+            <p class="text-xs text-text-muted">full precision</p>
+          </div>
+          <div class="bg-bg-surface border border-border rounded-lg p-3 text-center">
+            <p class="text-xs text-text-muted mb-1">float16 (2B/dim)</p>
+            <p id="storage-f16" class="text-lg font-bold font-mono text-blue-400">—</p>
+            <p class="text-xs text-text-muted">half precision</p>
+          </div>
+          <div class="bg-bg-surface border border-border rounded-lg p-3 text-center">
+            <p class="text-xs text-text-muted mb-1">int8 (1B/dim)</p>
+            <p id="storage-i8" class="text-lg font-bold font-mono text-green-500">—</p>
+            <p class="text-xs text-text-muted">quantized</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cost calculator -->
+      <div class="bg-bg-card border border-border rounded-xl p-4">
+        <h2 class="text-sm font-semibold mb-3">Embedding Cost Calculator</h2>
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Number of documents</label>
+            <input id="doc-count" type="number" min="1" value="100000"
+              class="w-full bg-bg-surface border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Avg tokens per document</label>
+            <input id="tokens-per-doc" type="number" min="1" value="500"
+              class="w-full bg-bg-surface border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary font-mono" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-bg-surface border border-border rounded-lg p-3">
+            <p class="text-xs text-text-muted mb-1">Total tokens</p>
+            <p id="total-tokens" class="text-base font-bold font-mono">—</p>
+          </div>
+          <div class="bg-bg-surface border border-border rounded-lg p-3">
+            <p class="text-xs text-text-muted mb-1">Estimated cost</p>
+            <p id="total-cost" class="text-base font-bold font-mono text-green-500">—</p>
+          </div>
+        </div>
+        <p id="free-note" class="text-xs text-green-500 mt-2 hidden">This is a local/free model — no API cost.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dimension bar chart -->
+  <div class="mb-8">
+    <h2 class="text-base font-semibold mb-3">Dimension Comparison (All Models)</h2>
+    <div id="dim-chart" class="space-y-2"></div>
+  </div>
+
+  <!-- Full comparison table -->
+  <div class="mb-8 overflow-x-auto">
+    <h2 class="text-base font-semibold mb-3">Model Comparison Table</h2>
+    <table class="w-full text-sm min-w-[700px]">
+      <thead>
+        <tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-3 pr-4 font-medium">Model</th>
+          <th class="text-left pb-3 pr-4 font-medium">Provider</th>
+          <th class="text-right pb-3 pr-4 font-medium">Dimensions</th>
+          <th class="text-right pb-3 pr-4 font-medium">$/1M tokens</th>
+          <th class="text-right pb-3 pr-4 font-medium">float32 / 1M vecs</th>
+          <th class="text-left pb-3 font-medium">Notes</th>
+        </tr>
+      </thead>
+      <tbody id="comparison-table" class="divide-y divide-border"></tbody>
+    </table>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Embeddings Dimension Explorer" relatedTags={['ai', 'embeddings', 'vector', 'rag', 'openai', 'llm', 'semantic-search']} />
+</BaseLayout>
+
+<script>
+  var MODELS = [
+    { id: 'ada-002', name: 'text-embedding-ada-002', provider: 'OpenAI', dims: [1536], defaultDim: 1536, costPerM: 0.10, notes: 'Legacy flagship. Still widely used.', configurable: false, local: false },
+    { id: 'te3-small', name: 'text-embedding-3-small', provider: 'OpenAI', dims: [512, 1024, 1536], defaultDim: 1536, costPerM: 0.02, notes: 'Best price/performance. MRL configurable.', configurable: true, local: false },
+    { id: 'te3-large', name: 'text-embedding-3-large', provider: 'OpenAI', dims: [256, 1024, 3072], defaultDim: 3072, costPerM: 0.13, notes: 'Highest quality. MRL configurable.', configurable: true, local: false },
+    { id: 'voyage-3', name: 'voyage-3', provider: 'Voyage AI', dims: [1024], defaultDim: 1024, costPerM: 0.06, notes: 'Strong MTEB performance. Good for RAG.', configurable: false, local: false },
+    { id: 'voyage-3-lite', name: 'voyage-3-lite', provider: 'Voyage AI', dims: [512], defaultDim: 512, costPerM: 0.02, notes: 'Budget option. Compact vectors.', configurable: false, local: false },
+    { id: 'cohere-v3', name: 'cohere-embed-v3', provider: 'Cohere', dims: [1024], defaultDim: 1024, costPerM: 0.10, notes: 'Multilingual strong. Int8 output supported.', configurable: false, local: false },
+    { id: 'nomic', name: 'nomic-embed-text', provider: 'Nomic AI', dims: [768], defaultDim: 768, costPerM: 0, notes: 'Open source. Run locally or via API.', configurable: false, local: true },
+    { id: 'minilm', name: 'all-MiniLM-L6-v2', provider: 'HuggingFace', dims: [384], defaultDim: 384, costPerM: 0, notes: 'Ultra-lightweight. Great for edge/local.', configurable: false, local: true },
+    { id: 'bge-large', name: 'BGE-large', provider: 'BAAI', dims: [1024], defaultDim: 1024, costPerM: 0, notes: 'Top open source quality. MTEB leader.', configurable: false, local: true }
+  ];
+
+  var currentDim = 1536;
+
+  function formatBytes(bytes) {
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
+  function formatCost(n) {
+    if (n === 0) return 'Free';
+    if (n < 0.01) return '$' + n.toFixed(4);
+    if (n < 1) return '$' + n.toFixed(3);
+    if (n < 1000) return '$' + n.toFixed(2);
+    return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  }
+
+  function getSelectedModel() {
+    var id = document.getElementById('model-select').value;
+    return MODELS.find(function(m) { return m.id === id; }) || MODELS[0];
+  }
+
+  function updateModelInfo(model) {
+    document.getElementById('info-provider').textContent = model.provider;
+    document.getElementById('info-dims').textContent = currentDim.toLocaleString();
+    document.getElementById('info-cost').textContent = model.costPerM === 0 ? 'Free (local)' : '$' + model.costPerM.toFixed(2);
+    document.getElementById('info-type').textContent = model.local ? 'Local / Open Source' : 'Cloud API';
+    document.getElementById('info-notes').textContent = model.notes;
+
+    // Dimension slider
+    var sliderSection = document.getElementById('dim-slider-section');
+    if (model.configurable) {
+      sliderSection.classList.remove('hidden');
+      var slider = document.getElementById('dim-slider');
+      slider.max = model.dims.length - 1;
+      slider.value = model.dims.indexOf(currentDim) >= 0 ? model.dims.indexOf(currentDim) : model.dims.length - 1;
+      currentDim = model.dims[parseInt(slider.value)];
+      document.getElementById('dim-value').textContent = currentDim.toLocaleString();
+
+      var labels = document.getElementById('dim-labels');
+      labels.innerHTML = model.dims.map(function(d) { return '<span>' + d + '</span>'; }).join('');
+    } else {
+      sliderSection.classList.add('hidden');
+      currentDim = model.defaultDim;
+    }
+  }
+
+  function updateStorage() {
+    var count = parseInt(document.getElementById('vector-count').value) || 0;
+    var f32 = count * currentDim * 4;
+    var f16 = count * currentDim * 2;
+    var i8 = count * currentDim * 1;
+    document.getElementById('storage-f32').textContent = formatBytes(f32);
+    document.getElementById('storage-f16').textContent = formatBytes(f16);
+    document.getElementById('storage-i8').textContent = formatBytes(i8);
+  }
+
+  function updateCost() {
+    var model = getSelectedModel();
+    var docs = parseInt(document.getElementById('doc-count').value) || 0;
+    var tpd = parseInt(document.getElementById('tokens-per-doc').value) || 0;
+    var totalTokens = docs * tpd;
+    var cost = (totalTokens / 1e6) * model.costPerM;
+
+    document.getElementById('total-tokens').textContent = totalTokens.toLocaleString();
+    document.getElementById('total-cost').textContent = formatCost(cost);
+
+    var freeNote = document.getElementById('free-note');
+    if (model.local) {
+      freeNote.classList.remove('hidden');
+      document.getElementById('total-cost').textContent = '$0.00';
+    } else {
+      freeNote.classList.add('hidden');
+    }
+  }
+
+  function buildDimChart() {
+    var maxDim = Math.max.apply(null, MODELS.map(function(m) { return Math.max.apply(null, m.dims); }));
+    var chart = document.getElementById('dim-chart');
+    chart.innerHTML = '';
+    var selectedId = document.getElementById('model-select').value;
+
+    MODELS.forEach(function(model) {
+      var dim = model.configurable ? Math.max.apply(null, model.dims) : model.defaultDim;
+      var pct = (dim / maxDim) * 100;
+      var isSelected = model.id === selectedId;
+
+      var row = document.createElement('div');
+      row.className = 'flex items-center gap-3 cursor-pointer group' + (isSelected ? ' opacity-100' : ' opacity-70 hover:opacity-100');
+      row.setAttribute('data-model-id', model.id);
+
+      row.innerHTML = '<div class="w-48 text-xs text-right flex-shrink-0 ' + (isSelected ? 'text-primary font-medium' : 'text-text-muted') + '">' +
+        model.name.replace('text-embedding-', 'te-') + '</div>' +
+        '<div class="flex-1 h-5 bg-bg-surface rounded-full overflow-hidden border border-border">' +
+        '<div class="h-full rounded-full transition-all duration-300 flex items-center justify-end pr-2 ' +
+        (isSelected ? 'bg-primary' : (model.local ? 'bg-green-600/60' : 'bg-primary/40')) +
+        '" style="width:' + pct + '%">' +
+        '<span class="text-xs font-mono text-white/90 font-bold">' + dim.toLocaleString() + '</span>' +
+        '</div></div>' +
+        '<div class="w-16 text-xs text-right flex-shrink-0 ' + (model.local ? 'text-green-500' : 'text-text-muted') + '">' +
+        (model.costPerM === 0 ? 'free' : '$' + model.costPerM.toFixed(2)) + '</div>';
+
+      row.addEventListener('click', function() {
+        document.getElementById('model-select').value = this.getAttribute('data-model-id');
+        handleModelChange();
+      });
+
+      chart.appendChild(row);
+    });
+  }
+
+  function buildComparisonTable() {
+    var tbody = document.getElementById('comparison-table');
+    tbody.innerHTML = '';
+    var selectedId = document.getElementById('model-select').value;
+
+    MODELS.forEach(function(model) {
+      var dim = model.configurable ? model.dims.join(' / ') : model.defaultDim.toLocaleString();
+      var storagePer1M = formatBytes(model.defaultDim * 4 * 1000000);
+      var isSelected = model.id === selectedId;
+
+      var tr = document.createElement('tr');
+      tr.className = 'hover:bg-bg-card/50 transition-colors cursor-pointer ' + (isSelected ? 'bg-primary/5' : '');
+      tr.setAttribute('data-model-id', model.id);
+
+      tr.innerHTML = '<td class="py-3 pr-4 font-mono text-xs ' + (isSelected ? 'text-primary font-semibold' : '') + '">' + model.name + '</td>' +
+        '<td class="py-3 pr-4 text-text-muted">' + model.provider + '</td>' +
+        '<td class="py-3 pr-4 text-right tabular-nums font-mono">' + dim + '</td>' +
+        '<td class="py-3 pr-4 text-right tabular-nums ' + (model.local ? 'text-green-500 font-medium' : '') + '">' +
+        (model.costPerM === 0 ? 'Free' : '$' + model.costPerM.toFixed(2)) + '</td>' +
+        '<td class="py-3 pr-4 text-right tabular-nums font-mono text-xs">' + storagePer1M + '</td>' +
+        '<td class="py-3 text-xs text-text-muted">' + model.notes + '</td>';
+
+      tr.addEventListener('click', function() {
+        document.getElementById('model-select').value = this.getAttribute('data-model-id');
+        handleModelChange();
+      });
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  function handleModelChange() {
+    var model = getSelectedModel();
+    currentDim = model.configurable ? model.dims[model.dims.length - 1] : model.defaultDim;
+    updateModelInfo(model);
+    updateStorage();
+    updateCost();
+    buildDimChart();
+    buildComparisonTable();
+  }
+
+  // Dimension slider
+  document.getElementById('dim-slider').addEventListener('input', function() {
+    var model = getSelectedModel();
+    currentDim = model.dims[parseInt(this.value)];
+    document.getElementById('dim-value').textContent = currentDim.toLocaleString();
+    document.getElementById('info-dims').textContent = currentDim.toLocaleString();
+    updateStorage();
+  });
+
+  // Model select
+  document.getElementById('model-select').addEventListener('change', handleModelChange);
+
+  // Storage inputs
+  document.getElementById('vector-count').addEventListener('input', updateStorage);
+
+  // Vector presets
+  document.querySelectorAll('.vec-preset').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.getElementById('vector-count').value = this.getAttribute('data-val');
+      updateStorage();
+    });
+  });
+
+  // Cost inputs
+  document.getElementById('doc-count').addEventListener('input', updateCost);
+  document.getElementById('tokens-per-doc').addEventListener('input', updateCost);
+
+  // Initialize
+  handleModelChange();
+</script>

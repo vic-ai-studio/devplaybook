@@ -1,0 +1,324 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What makes a system prompt effective?",
+    answer: "An effective system prompt has a clear persona (who the AI is), a defined task (what it should do), output format (how to respond), constraints (what to avoid), and appropriate tone. Prompts with all five core components typically produce 40–60% more consistent outputs than vague prompts. Adding examples (few-shot) further improves reliability."
+  },
+  {
+    question: "How are tokens calculated?",
+    answer: "We estimate token count using the formula: tokens ≈ words × 1.3. This approximation works well for English text with GPT/Claude tokenizers. For precise counts, use OpenAI's tiktoken library or Anthropic's token counter API. Code-heavy prompts may tokenize at higher ratios."
+  },
+  {
+    question: "What is the optimal system prompt length?",
+    answer: "For most use cases, 50–500 tokens is optimal — detailed enough to guide behavior without wasting context. Prompts under 50 tokens are often too vague. 500–2000 tokens is appropriate for complex domain-specific tasks (legal, medical, coding agents). Above 2000 tokens risks distraction and can reduce instruction-following in some models."
+  },
+  {
+    question: "Why is error handling important in system prompts?",
+    answer: "Without explicit error handling instructions, LLMs default to confident-sounding hallucinations when they lack information. Adding phrases like 'if you don't know, say so' or 'when the question is unclear, ask for clarification' dramatically reduces confabulation and improves user trust."
+  },
+  {
+    question: "What is few-shot prompting?",
+    answer: "Few-shot prompting means including example input/output pairs in your system prompt. For example: 'User asks: X → You respond: Y'. This technique teaches the model the exact format, tone, and reasoning pattern you want, often more effectively than lengthy instructions. Even 2–3 examples can significantly improve output consistency."
+  },
+  {
+    question: "Should I define the audience in my system prompt?",
+    answer: "Yes — audience context changes vocabulary, complexity, and assumed knowledge. A prompt for 'senior backend engineers' vs 'non-technical managers' should produce very different responses for the same question. Explicitly stating 'the user is a [role]' helps the model calibrate language, depth, and examples appropriately."
+  },
+];
+---
+
+<BaseLayout
+  title="LLM System Prompt Analyzer — Check Completeness & Effectiveness"
+  description="Analyze your AI system prompt for completeness. Checks for persona, task definition, output format, constraints, tone, examples, and more. Get a score with missing component suggestions."
+  tool="LLM System Prompt Analyzer, System Prompt Checker, AI Prompt Quality, Prompt Completeness Score, Claude System Prompt"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">LLM System Prompt Analyzer</h1>
+  <p class="text-text-muted mb-4">Paste your system prompt to check effectiveness across 10 components. Get a completeness score, identify missing elements, and see token estimates.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 10 component checks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Token count estimate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Missing component tips</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Instant analysis</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
+    <!-- Input -->
+    <div class="lg:col-span-3">
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-medium">System Prompt</label>
+        <button id="load-example" class="text-xs text-primary hover:underline">Load example</button>
+      </div>
+      <textarea id="prompt-input" rows="16"
+        placeholder="Paste your system prompt here..."
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary resize-y font-mono"></textarea>
+      <div class="flex items-center justify-between mt-1.5">
+        <p id="word-count" class="text-xs text-text-muted">0 words · 0 tokens</p>
+        <p id="length-assessment" class="text-xs text-text-muted"></p>
+      </div>
+    </div>
+
+    <!-- Score panel -->
+    <div class="lg:col-span-2 space-y-4">
+      <!-- Circular score -->
+      <div class="bg-bg-card border border-border rounded-xl p-5 text-center">
+        <div class="relative inline-flex items-center justify-center mb-3">
+          <svg width="120" height="120" viewBox="0 0 120 120" class="-rotate-90">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="10" class="text-bg-surface" />
+            <circle id="score-circle" cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="10"
+              stroke-dasharray="326.7" stroke-dashoffset="326.7"
+              stroke-linecap="round" class="text-primary transition-all duration-500" />
+          </svg>
+          <div class="absolute text-center">
+            <div id="score-number" class="text-3xl font-bold">0%</div>
+            <div class="text-xs text-text-muted">complete</div>
+          </div>
+        </div>
+        <div id="score-label" class="text-sm font-medium text-text-muted">Paste a prompt to analyze</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="bg-bg-card border border-border rounded-xl p-4 space-y-2">
+        <div class="flex justify-between text-sm">
+          <span class="text-text-muted">Word count</span>
+          <span id="stat-words" class="font-mono font-medium">—</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-text-muted">Est. tokens</span>
+          <span id="stat-tokens" class="font-mono font-medium">—</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-text-muted">Components found</span>
+          <span id="stat-components" class="font-mono font-medium">—</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-text-muted">Length</span>
+          <span id="stat-length" class="font-mono font-medium text-xs">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Component badges -->
+  <div class="mb-6">
+    <h2 class="text-base font-semibold mb-3">Component Analysis</h2>
+    <div id="component-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <!-- filled by JS -->
+    </div>
+  </div>
+
+  <!-- Suggestions -->
+  <div id="suggestions-section" class="mb-8 hidden">
+    <h2 class="text-base font-semibold mb-3">Improvement Suggestions</h2>
+    <div id="suggestions-list" class="space-y-2"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="LLM System Prompt Analyzer" relatedTags={['ai', 'llm', 'prompt', 'claude', 'gpt', 'system-prompt']} />
+</BaseLayout>
+
+<script>
+  var COMPONENTS = [
+    {
+      id: 'persona',
+      label: 'Persona / Role',
+      keywords: ['you are', 'act as', "you're a", 'your role', 'role:', 'you will act', 'you serve as'],
+      tip: 'Add a clear persona: "You are a [role] who specializes in [domain]."'
+    },
+    {
+      id: 'task',
+      label: 'Task Definition',
+      keywords: ['your task', 'your job', 'you will', 'you should', 'you must', 'your goal', 'your purpose', 'help users'],
+      tip: 'Define the core task: "Your job is to [specific task]."'
+    },
+    {
+      id: 'format',
+      label: 'Output Format',
+      keywords: ['format', 'json', 'markdown', 'list', 'table', 'bullet', 'respond with', 'output', 'structure your', 'use headers'],
+      tip: 'Specify output format: "Respond in [format]. Use [structure]."'
+    },
+    {
+      id: 'constraints',
+      label: 'Constraints / Limits',
+      keywords: ["don't", 'do not', 'never', 'avoid', 'only', 'limit', 'restrict', 'must not', 'prohibited', 'refrain'],
+      tip: 'Add constraints: "Never [behavior]. Only [scope]. Avoid [pitfall]."'
+    },
+    {
+      id: 'tone',
+      label: 'Tone / Style',
+      keywords: ['professional', 'casual', 'friendly', 'formal', 'concise', 'detailed', 'brief', 'tone', 'style', 'voice', 'empathetic', 'technical'],
+      tip: 'Define tone: "Maintain a [tone] tone. Be [style]."'
+    },
+    {
+      id: 'examples',
+      label: 'Examples / Few-shot',
+      keywords: ['example', 'for instance', 'e.g.', 'such as', 'like this:', 'for example', 'sample', 'demonstration'],
+      tip: 'Add 2–3 input/output examples to anchor expected behavior.'
+    },
+    {
+      id: 'context',
+      label: 'Context / Background',
+      keywords: ['context:', 'background:', 'given that', 'assuming', 'working with', 'the company', 'the product', 'our system'],
+      tip: 'Provide context: "Context: [relevant background about the use case]."'
+    },
+    {
+      id: 'error',
+      label: 'Error Handling',
+      keywords: ["if you don't know", 'if unsure', 'when unclear', 'cannot find', 'not sure', 'lack information', 'outside your knowledge', 'say so'],
+      tip: 'Add fallback: "If you don\'t know, say so clearly instead of guessing."'
+    },
+    {
+      id: 'audience',
+      label: 'Audience Definition',
+      keywords: ['for a', 'for the', 'user is', 'audience is', 'speaking to', 'talking to', 'the user', 'readers are', 'targeted at'],
+      tip: 'Define audience: "The user is a [role/level]. Tailor language accordingly."'
+    },
+    {
+      id: 'success',
+      label: 'Success Criteria',
+      keywords: ['good response', 'quality response', 'ideal answer', 'aim for', 'success means', 'goal is', 'best response', 'high quality'],
+      tip: 'Define success: "A good response is [criteria]. Aim for [quality standard]."'
+    }
+  ];
+
+  var EXAMPLE_PROMPT = `You are a senior technical writer at a software company, specializing in developer documentation.
+
+Your task is to help developers write clear, accurate API documentation. You should transform rough technical notes into polished, developer-friendly documentation.
+
+Output format: Use Markdown with headers, code blocks, and parameter tables. Structure: Overview → Parameters → Returns → Example → Error Codes.
+
+Constraints: Never invent API behavior that isn't described. Do not include implementation details unless explicitly provided. Only document what is given.
+
+Tone: Professional and precise. Be concise — developers value brevity over verbosity.
+
+The user is a backend engineer who knows the code but struggles with written documentation. Assume strong technical knowledge, no hand-holding needed.
+
+If you don't know something about the API behavior, ask a clarifying question rather than guessing.
+
+A good response transforms the raw notes into documentation that a developer could use immediately without further clarification.`;
+
+  function estimateTokens(text) {
+    var words = text.trim().split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+    return Math.round(words * 1.3);
+  }
+
+  function getLengthLabel(tokens) {
+    if (tokens === 0) return { label: '', color: 'text-text-muted' };
+    if (tokens < 50) return { label: 'Too short', color: 'text-red-400' };
+    if (tokens <= 500) return { label: 'Optimal', color: 'text-green-500' };
+    if (tokens <= 2000) return { label: 'Detailed', color: 'text-blue-400' };
+    return { label: 'Very long', color: 'text-yellow-400' };
+  }
+
+  function getScoreLabel(pct) {
+    if (pct === 0) return 'Paste a prompt to analyze';
+    if (pct < 30) return 'Needs significant improvement';
+    if (pct < 50) return 'Basic prompt — missing key components';
+    if (pct < 70) return 'Decent — a few gaps to fill';
+    if (pct < 90) return 'Good prompt — nearly complete';
+    return 'Excellent — comprehensive prompt';
+  }
+
+  function getScoreColor(pct) {
+    if (pct < 30) return 'text-red-400';
+    if (pct < 50) return 'text-orange-400';
+    if (pct < 70) return 'text-yellow-400';
+    if (pct < 90) return 'text-blue-400';
+    return 'text-green-500';
+  }
+
+  function analyze() {
+    var text = document.getElementById('prompt-input').value;
+    var lower = text.toLowerCase();
+    var words = text.trim().split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+    var tokens = estimateTokens(text);
+
+    // Update stats
+    document.getElementById('word-count').textContent = words + ' words · ' + tokens + ' tokens';
+    document.getElementById('stat-words').textContent = words.toLocaleString();
+    document.getElementById('stat-tokens').textContent = tokens.toLocaleString();
+
+    var lengthInfo = getLengthLabel(tokens);
+    document.getElementById('stat-length').textContent = lengthInfo.label || '—';
+    document.getElementById('stat-length').className = 'font-mono font-medium text-xs ' + lengthInfo.color;
+
+    var lengthEl = document.getElementById('length-assessment');
+    lengthEl.textContent = lengthInfo.label ? 'Length: ' + lengthInfo.label : '';
+    lengthEl.className = 'text-xs ' + lengthInfo.color;
+
+    // Check components
+    var found = 0;
+    var missing = [];
+    var grid = document.getElementById('component-grid');
+    grid.innerHTML = '';
+
+    COMPONENTS.forEach(function(comp) {
+      var present = comp.keywords.some(function(kw) { return lower.includes(kw); });
+      if (present) found++;
+      else missing.push(comp);
+
+      var badge = document.createElement('div');
+      badge.className = 'flex items-start gap-3 p-3 rounded-lg border ' +
+        (present ? 'border-green-500/30 bg-green-500/5' : 'border-border bg-bg-card');
+
+      badge.innerHTML = '<span class="mt-0.5 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ' +
+        (present ? 'bg-green-500 text-white' : 'bg-bg-surface text-text-muted border border-border') + '">' +
+        (present ? '✓' : '✕') + '</span>' +
+        '<div><p class="text-sm font-medium ' + (present ? '' : 'text-text-muted') + '">' + comp.label + '</p>' +
+        '<p class="text-xs text-text-muted mt-0.5">' +
+        (present ? 'Detected in prompt' : 'Not found') + '</p></div>';
+
+      grid.appendChild(badge);
+    });
+
+    // Score
+    var pct = Math.round((found / COMPONENTS.length) * 100);
+    document.getElementById('stat-components').textContent = found + ' / ' + COMPONENTS.length;
+
+    var scoreEl = document.getElementById('score-number');
+    scoreEl.textContent = pct + '%';
+    scoreEl.className = 'text-3xl font-bold ' + getScoreColor(pct);
+
+    document.getElementById('score-label').textContent = getScoreLabel(pct);
+    document.getElementById('score-label').className = 'text-sm font-medium ' + getScoreColor(pct);
+
+    // SVG circle
+    var circumference = 326.7;
+    var offset = circumference - (pct / 100) * circumference;
+    var circle = document.getElementById('score-circle');
+    circle.style.strokeDashoffset = offset;
+    circle.className = circle.className.replace(/text-\w+-\d+/g, '').trim() + ' ' + getScoreColor(pct).replace('text-', 'text-');
+
+    // Suggestions
+    var sugSection = document.getElementById('suggestions-section');
+    var sugList = document.getElementById('suggestions-list');
+    if (missing.length > 0 && text.trim().length > 0) {
+      sugSection.classList.remove('hidden');
+      sugList.innerHTML = '';
+      missing.forEach(function(comp) {
+        var item = document.createElement('div');
+        item.className = 'flex items-start gap-3 p-3 rounded-lg bg-bg-card border border-border';
+        item.innerHTML = '<span class="flex-shrink-0 text-yellow-400 mt-0.5">⚡</span>' +
+          '<div><p class="text-sm font-medium text-yellow-400">' + comp.label + '</p>' +
+          '<p class="text-xs text-text-muted mt-0.5">' + comp.tip + '</p></div>';
+        sugList.appendChild(item);
+      });
+    } else {
+      sugSection.classList.add('hidden');
+    }
+  }
+
+  document.getElementById('prompt-input').addEventListener('input', analyze);
+
+  document.getElementById('load-example').addEventListener('click', function() {
+    document.getElementById('prompt-input').value = EXAMPLE_PROMPT;
+    analyze();
+  });
+
+  analyze();
+</script>
