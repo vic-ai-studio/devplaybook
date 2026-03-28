@@ -1,0 +1,441 @@
+---
+title: "Liveblocks and Partykit: Real-Time Collaboration Infrastructure 2026"
+description: "Build real-time collaborative apps with Liveblocks and PartyKit. Covers presence, shared storage, text editors, WebSocket multiplayer, pricing, and when to choose each platform over Socket.io and Ably."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["liveblocks", "partykit", "real-time", "collaboration", "websocket", "react", "multiplayer", "crdt"]
+readingTime: "12 min read"
+---
+
+Building collaborative features — live cursors, shared document editing, multiplayer state — used to require a custom WebSocket infrastructure, CRDT implementation, and conflict resolution logic. Liveblocks and PartyKit solve this at different layers: Liveblocks provides a complete collaboration SDK with managed infrastructure; PartyKit gives you programmable WebSocket rooms you can control fully.
+
+This guide covers both platforms, when to use each, and how they compare to the alternatives.
+
+---
+
+## What Is Liveblocks?
+
+Liveblocks is a managed real-time collaboration platform. You don't manage WebSocket servers or worry about conflict resolution — you use their SDK and their infrastructure handles the rest.
+
+Core concepts:
+
+- **Rooms** — isolated collaboration spaces (one per document, board, or session)
+- **Presence** — ephemeral per-user state (cursor position, selection, typing status)
+- **Storage** — persistent shared state with CRDT conflict resolution (LiveObject, LiveMap, LiveList)
+- **Text Editor** — collaborative rich text via Tiptap or Lexical
+- **Notifications** — in-app notification system for mentions and activity
+
+The free tier supports 1M monthly active connections. Production pricing is usage-based.
+
+---
+
+## Getting Started with Liveblocks
+
+```bash
+npm install @liveblocks/client @liveblocks/react
+```
+
+Set up Liveblocks config (defines types for TypeScript):
+
+```typescript
+// liveblocks.config.ts
+import { createClient } from "@liveblocks/client";
+import { createRoomContext } from "@liveblocks/react";
+
+const client = createClient({
+  publicApiKey: process.env.NEXT_PUBLIC_LIVEBLOCKS_PUBLIC_KEY!,
+});
+
+type Presence = {
+  cursor: { x: number; y: number } | null;
+  selectedId: string | null;
+};
+
+type Storage = {
+  cards: LiveMap<string, { title: string; content: string }>;
+};
+
+type UserMeta = {
+  id: string;
+  info: { name: string; avatar: string };
+};
+
+export const { RoomProvider, useMyPresence, useOthers, useMutation, useStorage } =
+  createRoomContext<Presence, Storage, UserMeta>(client);
+```
+
+Wrap your app in `RoomProvider`:
+
+```tsx
+// app/board/[boardId]/page.tsx
+import { RoomProvider } from "~/liveblocks.config";
+import { LiveMap } from "@liveblocks/client";
+
+export default function BoardPage({ params }: { params: { boardId: string } }) {
+  return (
+    <RoomProvider
+      id={`board-${params.boardId}`}
+      initialPresence={{ cursor: null, selectedId: null }}
+      initialStorage={{ cards: new LiveMap() }}
+    >
+      <Board />
+    </RoomProvider>
+  );
+}
+```
+
+---
+
+## Presence — Cursors, Avatars, Who Is Online
+
+Presence is per-user ephemeral state. It's not persisted — when a user disconnects, their presence disappears.
+
+### Live Cursors
+
+```tsx
+function Board() {
+  const [myPresence, updateMyPresence] = useMyPresence();
+
+  return (
+    <div
+      style={{ position: 'relative', width: '100%', height: '100vh' }}
+      onPointerMove={(e) => {
+        updateMyPresence({ cursor: { x: e.clientX, y: e.clientY } });
+      }}
+      onPointerLeave={() => {
+        updateMyPresence({ cursor: null });
+      }}
+    >
+      <OtherCursors />
+      {/* board content */}
+    </div>
+  );
+}
+
+function OtherCursors() {
+  const others = useOthers();
+
+  return (
+    <>
+      {others.map(({ connectionId, presence, info }) => {
+        if (!presence.cursor) return null;
+        return (
+          <div
+            key={connectionId}
+            style={{
+              position: 'fixed',
+              left: presence.cursor.x,
+              top: presence.cursor.y,
+              pointerEvents: 'none',
+              transform: 'translate(-2px, -2px)',
+            }}
+          >
+            <CursorIcon color={getUserColor(connectionId)} />
+            <span>{info?.name}</span>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+```
+
+### Who Is Online
+
+```tsx
+function ActiveUsers() {
+  const others = useOthers();
+  const self = useSelf();
+
+  return (
+    <div className="avatar-stack">
+      {self && <Avatar src={self.info?.avatar} name="You" />}
+      {others.map(({ connectionId, info }) => (
+        <Avatar key={connectionId} src={info?.avatar} name={info?.name} />
+      ))}
+      <span>{others.count + 1} online</span>
+    </div>
+  );
+}
+```
+
+---
+
+## Storage — Shared State with LiveObject, LiveMap, LiveList
+
+Storage is persisted, conflict-resolved shared state. Three data structures:
+
+- **LiveObject** — like a plain object, but each property update is tracked individually
+- **LiveMap** — like `Map<K, V>`, with per-key updates
+- **LiveList** — like an array, with insertion/deletion tracked
+
+```typescript
+// LiveObject
+const [myName, setMyName] = useMutation(({ storage }, newName: string) => {
+  storage.get('config').set('name', newName);
+}, []);
+
+// LiveMap — add/update/delete entries
+const addCard = useMutation(({ storage }, id: string, title: string) => {
+  storage.get('cards').set(id, { title, content: '' });
+}, []);
+
+const deleteCard = useMutation(({ storage }, id: string) => {
+  storage.get('cards').delete(id);
+}, []);
+
+// Reading storage
+const cards = useStorage((root) => root.cards);
+// cards is a ReadonlyMap<string, { title: string; content: string }>
+```
+
+Mutations run locally immediately (optimistic) and sync to other clients via the Liveblocks server. Conflicts are resolved automatically using CRDTs — no manual merge logic.
+
+---
+
+## Liveblocks Text Editor
+
+Liveblocks provides a collaborative text editor layer that wraps Tiptap or Lexical:
+
+```bash
+npm install @liveblocks/react-tiptap @tiptap/react @tiptap/starter-kit
+```
+
+```tsx
+import { useLiveblocksExtension } from "@liveblocks/react-tiptap";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+
+function CollaborativeEditor() {
+  const liveblocks = useLiveblocksExtension();
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ history: false }), // disable local history, use Liveblocks
+      liveblocks,
+    ],
+    editorProps: {
+      attributes: {
+        class: 'prose max-w-none focus:outline-none',
+      },
+    },
+  });
+
+  return <EditorContent editor={editor} />;
+}
+```
+
+Liveblocks handles:
+- Operational transforms / CRDT for concurrent edits
+- Remote cursor positions (who is typing where)
+- Comment threads anchored to text ranges
+- Undo/redo that respects collaborative edits
+
+---
+
+## PartyKit — Programmable WebSocket Rooms
+
+PartyKit is different: it gives you a JavaScript/TypeScript function that runs on the edge, with persistent WebSocket connections. You write the server logic.
+
+```bash
+npm install partykit
+npx partykit init
+```
+
+A PartyKit server is a class with lifecycle methods:
+
+```typescript
+// party/index.ts
+import type * as Party from "partykit/server";
+
+export default class DocumentRoom implements Party.Server {
+  options: Party.ServerOptions = {
+    hibernate: true, // keep room alive between connections
+  };
+
+  constructor(readonly room: Party.Room) {}
+
+  // Called when a client connects
+  async onConnect(conn: Party.Connection, ctx: Party.ConnectionContext) {
+    // Send current state to the new connection
+    const state = await this.room.storage.get<string>("document");
+    if (state) {
+      conn.send(JSON.stringify({ type: "init", document: state }));
+    }
+  }
+
+  // Called when a message arrives
+  async onMessage(message: string, sender: Party.Connection) {
+    const data = JSON.parse(message);
+
+    if (data.type === "update") {
+      // Persist the update
+      await this.room.storage.put("document", data.content);
+
+      // Broadcast to all other connections
+      this.room.broadcast(message, [sender.id]);
+    }
+  }
+
+  // Called when a client disconnects
+  async onClose(conn: Party.Connection) {
+    this.room.broadcast(JSON.stringify({
+      type: "user-left",
+      id: conn.id,
+    }), [conn.id]);
+  }
+}
+```
+
+Client usage:
+
+```typescript
+import PartySocket from "partysocket";
+
+const socket = new PartySocket({
+  host: process.env.NEXT_PUBLIC_PARTYKIT_HOST!, // yourapp.partykit.dev
+  room: `doc-${documentId}`,
+});
+
+socket.addEventListener("message", (event) => {
+  const data = JSON.parse(event.data);
+  if (data.type === "init") {
+    setDocument(data.document);
+  } else if (data.type === "update") {
+    applyUpdate(data);
+  }
+});
+
+// Send an update
+socket.send(JSON.stringify({ type: "update", content: newContent }));
+```
+
+---
+
+## Building a Collaborative Whiteboard with Liveblocks
+
+```tsx
+import { useMutation, useStorage } from "~/liveblocks.config";
+import { LiveMap } from "@liveblocks/client";
+
+interface Shape {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fill: string;
+}
+
+function Whiteboard() {
+  const shapes = useStorage((root) => root.shapes);
+
+  const addShape = useMutation(({ storage }) => {
+    const id = Math.random().toString(36).slice(2);
+    storage.get('shapes').set(id, {
+      x: Math.random() * 400,
+      y: Math.random() * 400,
+      width: 100,
+      height: 100,
+      fill: `hsl(${Math.random() * 360}, 70%, 60%)`,
+    });
+  }, []);
+
+  const moveShape = useMutation(({ storage }, id: string, x: number, y: number) => {
+    const shape = storage.get('shapes').get(id);
+    if (shape) {
+      storage.get('shapes').set(id, { ...shape, x, y });
+    }
+  }, []);
+
+  return (
+    <svg width="800" height="600" onClick={addShape}>
+      {shapes && Array.from(shapes.entries()).map(([id, shape]) => (
+        <rect
+          key={id}
+          x={shape.x} y={shape.y}
+          width={shape.width} height={shape.height}
+          fill={shape.fill}
+          style={{ cursor: 'move' }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            const startX = e.clientX - shape.x;
+            const startY = e.clientY - shape.y;
+            const handleMove = (ev: PointerEvent) => {
+              moveShape(id, ev.clientX - startX, ev.clientY - startY);
+            };
+            window.addEventListener('pointermove', handleMove);
+            window.addEventListener('pointerup', () => {
+              window.removeEventListener('pointermove', handleMove);
+            }, { once: true });
+          }}
+        />
+      ))}
+    </svg>
+  );
+}
+```
+
+---
+
+## Liveblocks vs PartyKit vs Socket.io vs Ably
+
+| Feature | Liveblocks | PartyKit | Socket.io | Ably |
+|---|---|---|---|---|
+| Abstraction level | High (SDK) | Medium (edge fn) | Low (transport) | Medium (pub/sub) |
+| CRDT/conflict resolution | Built-in | You implement | You implement | You implement |
+| Presence | Built-in | You implement | You implement | Built-in |
+| Persistent storage | Built-in | Durable Objects | No | No |
+| Text editor support | Tiptap/Lexical | Manual | Manual | Manual |
+| Edge deployment | Managed | Cloudflare Workers | Self-hosted | Managed |
+| Pricing | Usage-based | Usage-based | Free (self-hosted) | Usage-based |
+| Free tier | 1M connections/mo | 1M messages/mo | Unlimited (self-hosted) | 6M messages/mo |
+| Learning curve | Low | Medium | Low | Medium |
+| Customizability | Low | High | High | Medium |
+
+**Choose Liveblocks when:**
+- Building document/design collaboration (Figma-like, Notion-like)
+- You want presence, storage, and text editing out of the box
+- You don't want to manage WebSocket infrastructure
+
+**Choose PartyKit when:**
+- You need custom server logic (game state, custom protocols)
+- You want full control over the edge function
+- Your use case doesn't fit the Liveblocks data model
+
+**Choose Socket.io when:**
+- Self-hosting is a requirement
+- You need maximum control and cost predictability
+- You have existing Node.js infrastructure
+
+**Choose Ably when:**
+- You need pub/sub at scale
+- Fan-out to millions of subscribers (live sports, news feeds)
+- You need guaranteed message delivery / history
+
+---
+
+## Pricing and Scaling
+
+**Liveblocks:**
+- Free: 50 monthly active users (generous for dev)
+- Starter: $99/month — up to 500 MAU, unlimited rooms
+- Pro: $399/month — up to 10K MAU
+- Enterprise: custom
+
+**PartyKit:**
+- Free: 1M WebSocket messages/month, 1GB storage
+- Pro: $20/month — 50M messages, 50GB storage
+- Pay-as-you-go beyond that
+
+For a small SaaS (100-500 users), Liveblocks Starter at $99/month is usually the right call if you need the full collaboration stack. For custom multiplayer games or real-time apps where you need server logic, PartyKit is cheaper and more flexible.
+
+---
+
+## Takeaways
+
+Liveblocks and PartyKit serve different points in the spectrum from "batteries included" to "full control":
+
+- **Liveblocks** is the right choice when you're building document collaboration, shared whiteboards, or multiplayer design tools and you don't want to implement CRDTs, presence, or text editor integration yourself.
+- **PartyKit** is the right choice when you need a programmable WebSocket room that runs on the edge, you have custom server logic, or the Liveblocks data model doesn't fit your use case.
+
+Both are dramatically better than rolling your own WebSocket infrastructure for most use cases. The days of `socket.io` + Redis pub/sub + manual conflict resolution are fading for new projects — pick the layer of abstraction that matches what you're building.

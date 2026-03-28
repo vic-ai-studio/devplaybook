@@ -1,0 +1,463 @@
+---
+title: "CSS Anchor Positioning: No More JavaScript for Tooltips and Popovers 2026"
+description: "Master CSS Anchor Positioning — anchor-name, position-anchor, @position-try, and the Popover API. Build tooltips, dropdowns, and popovers with pure CSS, replacing Popper.js and Floating UI entirely."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["css", "anchor-positioning", "tooltips", "popovers", "frontend", "web", "browser", "no-javascript"]
+readingTime: "10 min read"
+---
+
+CSS Anchor Positioning is now baseline in all major browsers (Chrome 125+, Firefox 130+, Safari 18+). It solves the problem that drove developers to Popper.js, Floating UI, and Tippy.js for the last decade: positioning floating elements relative to a trigger without JavaScript.
+
+With anchor positioning, a tooltip knows where its button is. A dropdown knows where its trigger is. A popover knows where to appear — and where to move when it would overflow the viewport. All in CSS.
+
+---
+
+## What Is CSS Anchor Positioning?
+
+CSS Anchor Positioning lets any element declare itself an **anchor**, and other elements can then position themselves relative to that anchor using new CSS properties.
+
+The traditional problem:
+
+```html
+<!-- Old approach: JavaScript reads button position, sets tooltip style -->
+<button id="btn">Hover me</button>
+<div class="tooltip">Tooltip text</div>
+
+<script>
+  const btn = document.getElementById('btn');
+  const tooltip = document.querySelector('.tooltip');
+  const rect = btn.getBoundingClientRect();
+  tooltip.style.top = `${rect.top - 40}px`;
+  tooltip.style.left = `${rect.left}px`;
+</script>
+```
+
+The new approach — no JavaScript:
+
+```css
+#btn { anchor-name: --my-btn; }
+
+.tooltip {
+  position: absolute;
+  position-anchor: --my-btn;
+  bottom: calc(anchor(top) + 8px);
+  left: anchor(left);
+}
+```
+
+The `anchor()` function references the anchor element's edge positions directly in CSS. The browser handles the geometry.
+
+---
+
+## Browser Support in 2026
+
+CSS Anchor Positioning shipped as baseline available (broadly supported) in 2025:
+
+| Browser | Version | Support |
+|---|---|---|
+| Chrome | 125+ | Full |
+| Edge | 125+ | Full |
+| Firefox | 130+ | Full |
+| Safari | 18+ | Full |
+| Safari iOS | 18+ | Full |
+
+You no longer need a polyfill for production use. The `@oddbird/css-anchor-positioning` polyfill is still available for older browsers if needed, but the baseline coverage is high enough to use natively in most projects.
+
+---
+
+## anchor-name and position-anchor
+
+Two properties establish the anchor relationship:
+
+**anchor-name** — declares an element as an anchor:
+
+```css
+.trigger {
+  anchor-name: --dropdown-trigger;
+}
+```
+
+The value is a `<dashed-ident>` (starts with `--`). This registers the element as a named anchor in the page.
+
+**position-anchor** — tells a positioned element which anchor to use:
+
+```css
+.dropdown {
+  position: absolute;
+  position-anchor: --dropdown-trigger;
+}
+```
+
+Once `position-anchor` is set, you can use `anchor()` functions in positioning properties.
+
+---
+
+## The anchor() Function
+
+`anchor()` returns a length value corresponding to an edge of the anchor element:
+
+```css
+.tooltip {
+  position: absolute;
+  position-anchor: --btn;
+
+  /* Position tooltip above the anchor */
+  bottom: anchor(top);
+  left: anchor(left);
+}
+```
+
+Available edge keywords: `top`, `right`, `bottom`, `left`, `center`, `start`, `end`, `self-start`, `self-end`.
+
+```css
+/* Center horizontally over the anchor */
+.tooltip {
+  position: absolute;
+  position-anchor: --btn;
+  bottom: calc(anchor(top) + 8px);
+  left: anchor(center);
+  transform: translateX(-50%);
+}
+```
+
+**anchor-size()** — access the anchor's dimensions:
+
+```css
+.dropdown {
+  /* Match anchor width */
+  min-width: anchor-size(width);
+
+  /* Or set max-width relative to anchor */
+  max-width: calc(anchor-size(width) * 2);
+}
+```
+
+---
+
+## Building a Tooltip with Pure CSS
+
+```html
+<button class="btn" popovertarget="my-tooltip">
+  Hover or focus me
+</button>
+
+<div id="my-tooltip" class="tooltip" popover="hint">
+  This is the tooltip content
+</div>
+```
+
+```css
+.btn {
+  anchor-name: --tooltip-anchor;
+}
+
+.tooltip {
+  position: fixed;
+  position-anchor: --tooltip-anchor;
+
+  /* Position above the button */
+  bottom: calc(anchor(top) - 8px);
+  left: anchor(center);
+  transform: translateX(-50%);
+
+  /* Styling */
+  background: #1a1a1a;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  white-space: nowrap;
+
+  /* Popover default styles (reset them) */
+  border: none;
+  margin: 0;
+}
+
+/* Arrow */
+.tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1a1a1a;
+}
+```
+
+The `popover="hint"` attribute makes the tooltip show on hover/focus automatically (no JavaScript needed) in browsers that support it. For click-triggered popovers, use `popover` without the value.
+
+---
+
+## @position-try for Adaptive Placement
+
+`@position-try` defines alternate positions to try when the primary position overflows the viewport. This is the CSS equivalent of Floating UI's collision avoidance:
+
+```css
+@position-try --below {
+  top: calc(anchor(bottom) + 8px);
+  bottom: auto;
+  left: anchor(center);
+  transform: translateX(-50%);
+}
+
+@position-try --left {
+  right: calc(anchor(left) - 8px);
+  left: auto;
+  top: anchor(center);
+  transform: translateY(-50%);
+}
+
+.tooltip {
+  /* Default: above */
+  position: fixed;
+  position-anchor: --tooltip-anchor;
+  bottom: calc(anchor(top) - 8px);
+  left: anchor(center);
+  transform: translateX(-50%);
+
+  /* Try these in order if default overflows */
+  position-try-fallbacks: --below, --left;
+}
+```
+
+The browser tries the main position first. If it overflows, it tries `--below`. If that overflows too, it tries `--left`. You get smart repositioning without any JavaScript collision detection.
+
+`position-try-order` controls which axis takes priority:
+
+```css
+.tooltip {
+  position-try-fallbacks: --below, --left, --right;
+  position-try-order: most-height; /* prefer the position with most height available */
+}
+```
+
+---
+
+## Building a Dropdown Menu
+
+```html
+<button class="menu-btn" popovertarget="nav-dropdown">
+  Menu ▾
+</button>
+
+<ul id="nav-dropdown" class="dropdown" popover>
+  <li><a href="/home">Home</a></li>
+  <li><a href="/about">About</a></li>
+  <li><a href="/contact">Contact</a></li>
+</ul>
+```
+
+```css
+.menu-btn {
+  anchor-name: --nav-menu;
+}
+
+.dropdown {
+  position: fixed;
+  position-anchor: --nav-menu;
+
+  /* Align below the button */
+  top: calc(anchor(bottom) + 4px);
+  left: anchor(left);
+  min-width: anchor-size(width);
+
+  /* Styling */
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 4px;
+  list-style: none;
+  margin: 0;
+
+  /* Popover open/close animation */
+  transition: opacity 0.15s, transform 0.15s;
+  transform-origin: top left;
+
+  &:not(:popover-open) {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.dropdown a {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 4px;
+  text-decoration: none;
+  color: inherit;
+
+  &:hover {
+    background: #f3f4f6;
+  }
+}
+```
+
+The `popover` attribute adds auto-dismissal behavior — clicking outside closes it. No `document.addEventListener('click', ...)` needed.
+
+---
+
+## Popover API Integration
+
+The Popover API and CSS Anchor Positioning are designed to work together. Key popover attributes:
+
+- `popover` (or `popover="auto"`) — click outside to close, ESC to close
+- `popover="manual"` — only closes when explicitly dismissed
+- `popover="hint"` — shows on hover/focus, closes when focus moves away
+
+`popovertarget` links a button to a popover by ID:
+
+```html
+<!-- Button opens the popover -->
+<button popovertarget="my-menu">Open</button>
+
+<!-- This is the popover -->
+<div id="my-menu" popover>...</div>
+```
+
+`popovertargetaction` controls the action:
+
+```html
+<!-- Default: toggle -->
+<button popovertarget="my-menu" popovertargetaction="toggle">Toggle</button>
+
+<!-- Show only -->
+<button popovertarget="my-menu" popovertargetaction="show">Open</button>
+
+<!-- Hide only (for a close button inside the popover) -->
+<button popovertarget="my-menu" popovertargetaction="hide">Close</button>
+```
+
+Target the open state with `:popover-open`:
+
+```css
+.dropdown:popover-open {
+  opacity: 1;
+  transform: scale(1);
+}
+```
+
+---
+
+## position: anchor (Shorthand)
+
+Instead of setting `position-anchor` separately, you can use the `position-anchor` shorthand directly in `inset-*` or positioning properties if you prefer:
+
+```css
+/* Explicit anchor reference in each property */
+.tooltip {
+  top: anchor(--btn top);
+  left: anchor(--btn left);
+}
+```
+
+This inline syntax lets you reference different anchors in different properties — useful for complex layouts where an element might be positioned relative to multiple anchors.
+
+---
+
+## Replacing Popper.js and Floating UI
+
+Here's a direct comparison of a tooltip implementation:
+
+**With Floating UI (JavaScript):**
+
+```javascript
+import { computePosition, flip, offset, shift } from '@floating-ui/dom';
+
+const button = document.querySelector('#btn');
+const tooltip = document.querySelector('#tooltip');
+
+button.addEventListener('mouseenter', async () => {
+  const { x, y } = await computePosition(button, tooltip, {
+    placement: 'top',
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
+  });
+  Object.assign(tooltip.style, {
+    left: `${x}px`,
+    top: `${y}px`,
+    display: 'block',
+  });
+});
+
+button.addEventListener('mouseleave', () => {
+  tooltip.style.display = 'none';
+});
+```
+
+**With CSS Anchor Positioning:**
+
+```css
+#btn { anchor-name: --btn; }
+
+#tooltip {
+  position: fixed;
+  position-anchor: --btn;
+  bottom: calc(anchor(top) - 8px);
+  left: anchor(center);
+  transform: translateX(-50%);
+  position-try-fallbacks: --flip-below;
+}
+
+@position-try --flip-below {
+  top: calc(anchor(bottom) + 8px);
+  bottom: auto;
+  left: anchor(center);
+  transform: translateX(-50%);
+}
+```
+
+No JavaScript. No event listeners. No library import. The CSS version is also more performant — no JS execution on hover, no layout thrashing.
+
+**When you still might use Floating UI:**
+- Complex multi-step positioning logic
+- Browsers below the baseline (pre-2025)
+- Virtual element positioning (for non-DOM anchors)
+- Middle-click/right-click context menus with complex logic
+
+---
+
+## Common Patterns
+
+### Select-style Listbox
+
+```css
+.custom-select { anchor-name: --select; }
+
+.select-list {
+  position: fixed;
+  position-anchor: --select;
+  top: anchor(bottom);
+  left: anchor(left);
+  width: anchor-size(width);
+  max-height: 300px;
+  overflow-y: auto;
+  position-try-fallbacks: --above-select;
+}
+
+@position-try --above-select {
+  bottom: anchor(top);
+  top: auto;
+  left: anchor(left);
+}
+```
+
+### Sticky Tooltip (Follows Scroll)
+
+Use `position: fixed` (not `absolute`) for the floating element — it positions relative to the viewport, but `anchor()` still references the anchor's current viewport position. This means the tooltip follows the anchor element as you scroll.
+
+```css
+.floating {
+  position: fixed; /* viewport-relative, but tracks anchor */
+  position-anchor: --my-anchor;
+  top: calc(anchor(bottom) + 8px);
+  left: anchor(left);
+}
+```
+
+---
+
+## Takeaways
+
+CSS Anchor Positioning makes an entire category of JavaScript unnecessary. For any new project targeting modern browsers (2025 baseline), start with anchor positioning before reaching for Floating UI or Popper.js. The combination of `anchor()` for position references, `anchor-size()` for size matching, `@position-try` for fallbacks, and the Popover API for auto-dismiss behavior covers the vast majority of tooltip, dropdown, and popover use cases — with better performance and less code than the JavaScript alternatives.

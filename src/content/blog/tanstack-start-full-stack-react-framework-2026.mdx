@@ -1,0 +1,491 @@
+---
+title: "TanStack Start: Full-Stack React Framework Guide 2026"
+description: "Complete guide to TanStack Start — file-based routing, createServerFn, type-safe server functions, TanStack Query integration, and comparison with Next.js and Remix. Build full-stack React apps with full type safety."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["tanstack", "react", "full-stack", "typescript", "router", "server-functions", "framework", "web"]
+readingTime: "12 min read"
+---
+
+TanStack Start is the full-stack framework built on TanStack Router. It takes the type-safe routing that TanStack Router pioneered and extends it with server functions, data loaders, and full-stack React capabilities. The result is a framework where end-to-end type safety isn't bolted on — it's structural.
+
+If you've been frustrated by Next.js's "trust the string" approach to API routes or Remix's disconnect between loader types and component props, TanStack Start is worth your attention.
+
+---
+
+## What Is TanStack Start and How It Differs
+
+TanStack Start is built on:
+
+- **TanStack Router** — file-based routing with full TypeScript inference
+- **Vinxi** — the underlying build tool (Vite-based, from the Solid Start team)
+- **createServerFn** — type-safe server functions (no REST layer needed)
+
+The core difference from Next.js and Remix:
+
+**Next.js** couples routing to the filesystem but requires manual typing (or codegen) for API routes. Server components blur the client/server boundary in ways that can be confusing.
+
+**Remix** uses loaders and actions with good patterns, but the type connection between `loader` return type and component `useLoaderData()` requires manual type casting.
+
+**TanStack Start** infers types through the routing tree. When you define a loader, the data type flows automatically to the component. When you call a server function, the return type is known at the call site. You can't easily introduce a type mismatch.
+
+---
+
+## Setup
+
+```bash
+# Scaffold a new project
+npm create tanstack@latest
+# Choose: Start, React, TypeScript
+
+# Or add to existing project
+npm install @tanstack/react-start @tanstack/react-router vinxi
+```
+
+Project structure:
+
+```
+app/
+  routes/
+    __root.tsx        # Root layout
+    index.tsx         # / route
+    posts/
+      index.tsx       # /posts route
+      $postId.tsx     # /posts/:postId (dynamic)
+  client.tsx          # Client entry
+  router.tsx          # Router config
+  server.tsx          # Server entry
+app.config.ts         # Vinxi/Start config
+```
+
+`app.config.ts`:
+
+```typescript
+import { defineConfig } from '@tanstack/react-start/config';
+import tsConfigPaths from 'vite-tsconfig-paths';
+
+export default defineConfig({
+  vite: {
+    plugins: [tsConfigPaths()],
+  },
+});
+```
+
+---
+
+## TanStack Router — File-Based Routing
+
+Each file in `app/routes/` maps to a route. The route module exports a `Route` created with `createFileRoute`:
+
+```typescript
+// app/routes/index.tsx
+import { createFileRoute } from '@tanstack/react-router';
+
+export const Route = createFileRoute('/')({
+  component: HomePage,
+});
+
+function HomePage() {
+  return <h1>Home</h1>;
+}
+```
+
+### Dynamic Routes
+
+```typescript
+// app/routes/posts/$postId.tsx
+import { createFileRoute } from '@tanstack/react-router';
+
+export const Route = createFileRoute('/posts/$postId')({
+  component: PostPage,
+});
+
+function PostPage() {
+  const { postId } = Route.useParams(); // fully typed: string
+  return <div>Post: {postId}</div>;
+}
+```
+
+### Root Layout
+
+```typescript
+// app/routes/__root.tsx
+import { createRootRoute, Outlet } from '@tanstack/react-router';
+
+export const Route = createRootRoute({
+  component: RootLayout,
+});
+
+function RootLayout() {
+  return (
+    <html lang="en">
+      <head />
+      <body>
+        <nav>
+          <a href="/">Home</a>
+          <a href="/posts">Posts</a>
+        </nav>
+        <Outlet />
+      </body>
+    </html>
+  );
+}
+```
+
+---
+
+## createServerFn — Type-Safe Server Functions
+
+`createServerFn` is the killer feature of TanStack Start. It lets you define a server-side function that can be called directly from client code — no REST endpoint definition, no fetch call, no manual type casting.
+
+```typescript
+// app/functions/posts.ts
+import { createServerFn } from '@tanstack/react-start';
+import { db } from '~/db';
+
+export const getPosts = createServerFn({
+  method: 'GET',
+}).handler(async () => {
+  return db.posts.findMany({ orderBy: { createdAt: 'desc' } });
+});
+
+export const getPost = createServerFn({
+  method: 'GET',
+})
+  .validator((postId: string) => postId)
+  .handler(async ({ data: postId }) => {
+    return db.posts.findUnique({ where: { id: postId } });
+  });
+```
+
+Calling from a component:
+
+```typescript
+// Client component — the call goes to the server automatically
+const posts = await getPosts(); // inferred type: Post[]
+const post = await getPost({ data: 'post-id-123' }); // inferred type: Post | null
+```
+
+The TypeScript inference flows through: the handler's return type is the function's return type at the call site. No `as Post[]` needed.
+
+### Mutations with createServerFn
+
+```typescript
+export const createPost = createServerFn({
+  method: 'POST',
+})
+  .validator((input: { title: string; content: string }) => input)
+  .handler(async ({ data }) => {
+    const post = await db.posts.create({
+      data: {
+        title: data.title,
+        content: data.content,
+        createdAt: new Date(),
+      },
+    });
+    return post;
+  });
+```
+
+```typescript
+// In a component or action
+const newPost = await createPost({
+  data: { title: 'My Post', content: 'Hello world' },
+});
+// newPost is fully typed
+```
+
+---
+
+## Data Loaders
+
+TanStack Start integrates loaders into the routing system. Define a `loader` in the route config:
+
+```typescript
+// app/routes/posts/index.tsx
+import { createFileRoute } from '@tanstack/react-router';
+import { getPosts } from '~/functions/posts';
+
+export const Route = createFileRoute('/posts/')({
+  loader: async () => {
+    return getPosts();
+  },
+  component: PostsPage,
+});
+
+function PostsPage() {
+  const posts = Route.useLoaderData(); // automatically typed: Post[]
+
+  return (
+    <ul>
+      {posts.map(post => (
+        <li key={post.id}>{post.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+The type flows from `loader` return → `useLoaderData()`. No manual type assertion anywhere.
+
+### Dynamic Route Loaders
+
+```typescript
+// app/routes/posts/$postId.tsx
+import { createFileRoute, notFound } from '@tanstack/react-router';
+import { getPost } from '~/functions/posts';
+
+export const Route = createFileRoute('/posts/$postId')({
+  loader: async ({ params }) => {
+    const post = await getPost({ data: params.postId });
+    if (!post) throw notFound();
+    return post;
+  },
+  component: PostPage,
+  notFoundComponent: () => <div>Post not found</div>,
+});
+
+function PostPage() {
+  const post = Route.useLoaderData(); // typed: Post (not null, notFound threw)
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <p>{post.content}</p>
+    </article>
+  );
+}
+```
+
+---
+
+## TanStack Query Integration
+
+TanStack Start works seamlessly with TanStack Query for client-side data management. Use `ensureQueryData` in loaders to prefetch on the server and hydrate on the client:
+
+```typescript
+// app/routes/posts/index.tsx
+import { createFileRoute } from '@tanstack/react-router';
+import { queryOptions, useSuspenseQuery } from '@tanstack/react-query';
+import { getPosts } from '~/functions/posts';
+
+const postsQueryOptions = queryOptions({
+  queryKey: ['posts'],
+  queryFn: () => getPosts(),
+});
+
+export const Route = createFileRoute('/posts/')({
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(postsQueryOptions),
+  component: PostsPage,
+});
+
+function PostsPage() {
+  const { data: posts } = useSuspenseQuery(postsQueryOptions);
+
+  return (
+    <ul>
+      {posts.map(post => (
+        <li key={post.id}>{post.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+The loader prefetches on the server; `useSuspenseQuery` uses the cached data on the client without a second network request. Mutations use `useMutation` with `queryClient.invalidateQueries` as normal.
+
+---
+
+## Full-Stack RPC Without REST APIs
+
+The traditional pattern is: define REST endpoint → define TypeScript type → write fetch call → use type assertion. TanStack Start collapses this to one step:
+
+**Traditional approach:**
+```typescript
+// server/routes/posts.ts
+app.get('/api/posts', async (req, res) => {
+  const posts = await db.posts.findMany();
+  res.json(posts);
+});
+
+// client code
+const posts = await fetch('/api/posts').then(r => r.json()) as Post[];
+//                                                            ^^^^^^ manual cast
+```
+
+**TanStack Start approach:**
+```typescript
+// One file, full type safety, no REST endpoint
+export const getPosts = createServerFn({ method: 'GET' }).handler(
+  () => db.posts.findMany()
+);
+
+// Client usage — type inferred automatically
+const posts = await getPosts(); // Post[]
+```
+
+Under the hood, TanStack Start generates an HTTP endpoint for each server function, but you never write or think about URLs.
+
+---
+
+## Authentication Pattern
+
+```typescript
+// app/functions/auth.ts
+import { createServerFn } from '@tanstack/react-start';
+import { getSessionFromCookie } from '~/lib/session';
+
+export const getSession = createServerFn({ method: 'GET' }).handler(async () => {
+  return getSessionFromCookie();
+});
+
+// Protect a route
+// app/routes/dashboard/index.tsx
+export const Route = createFileRoute('/dashboard/')({
+  beforeLoad: async () => {
+    const session = await getSession();
+    if (!session) {
+      throw redirect({ to: '/login' });
+    }
+    return { session };
+  },
+  component: DashboardPage,
+});
+
+function DashboardPage() {
+  const { session } = Route.useRouteContext(); // typed: { session: Session }
+  return <div>Welcome, {session.user.name}!</div>;
+}
+```
+
+`beforeLoad` runs before the component renders (server-side on initial load, client-side on navigation). It's where you put auth guards, permission checks, and context setup.
+
+---
+
+## Deployment
+
+### Vercel
+
+```typescript
+// app.config.ts
+import { defineConfig } from '@tanstack/react-start/config';
+
+export default defineConfig({
+  server: {
+    preset: 'vercel',
+  },
+});
+```
+
+```bash
+vercel deploy
+```
+
+### Cloudflare Workers
+
+```typescript
+// app.config.ts
+export default defineConfig({
+  server: {
+    preset: 'cloudflare-pages',
+  },
+});
+```
+
+```bash
+npx wrangler pages deploy
+```
+
+TanStack Start uses Nitro (via Vinxi) under the hood, which supports Node.js, Vercel, Cloudflare Workers, Netlify, Bun, and more presets without code changes — just swap the `preset` in config.
+
+---
+
+## TanStack Start vs Next.js vs Remix
+
+| Feature | TanStack Start | Next.js 15 | Remix v2 |
+|---|---|---|---|
+| Routing | File-based (typed) | File-based (string) | File-based (typed) |
+| Type safety | End-to-end (structural) | Requires codegen or manual | Good (loader → component) |
+| Server functions | `createServerFn` | Server Actions | Actions/Loaders |
+| Data fetching | Loaders + Query | RSC / fetch in components | Loaders |
+| Client state | TanStack Query native | SWR / React Query manual | SWR / React Query manual |
+| Build tool | Vinxi (Vite) | Turbopack / Webpack | Vite |
+| Deployment | Nitro (any platform) | Vercel-optimized | Remix-specific adapters |
+| Maturity | Beta → stable 2025 | Very mature | Mature |
+| React Server Components | No | Yes | No |
+| Bundle size | Medium | Large | Medium |
+
+**When to choose TanStack Start:**
+- You're already using TanStack Router/Query
+- You want maximum TypeScript end-to-end safety
+- You need flexible deployment (Edge, Node, Cloudflare)
+- You prefer explicit data fetching over RSC magic
+
+**When to choose Next.js:**
+- Team familiarity
+- React Server Components needed
+- Vercel ecosystem and ISR/caching features
+
+**When to choose Remix:**
+- Web standards focus (form actions, progressive enhancement)
+- Projects that need to work without JavaScript
+
+---
+
+## Common Patterns
+
+### Optimistic Updates
+
+```typescript
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { createPost } from '~/functions/posts';
+
+function NewPostForm() {
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: (input: { title: string; content: string }) =>
+      createPost({ data: input }),
+    onMutate: async (newPost) => {
+      await queryClient.cancelQueries({ queryKey: ['posts'] });
+      const previous = queryClient.getQueryData(['posts']);
+      queryClient.setQueryData(['posts'], (old: Post[]) => [
+        { id: 'temp', ...newPost, createdAt: new Date() },
+        ...old,
+      ]);
+      return { previous };
+    },
+    onError: (err, _, context) => {
+      queryClient.setQueryData(['posts'], context?.previous);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+    },
+  });
+
+  return (
+    <form onSubmit={(e) => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      mutation.mutate({
+        title: fd.get('title') as string,
+        content: fd.get('content') as string,
+      });
+    }}>
+      <input name="title" required />
+      <textarea name="content" required />
+      <button type="submit" disabled={mutation.isPending}>
+        {mutation.isPending ? 'Saving...' : 'Create Post'}
+      </button>
+    </form>
+  );
+}
+```
+
+---
+
+## Takeaways
+
+TanStack Start's strength is structural type safety. The routing, server functions, and loaders form a connected type graph — change a server function's return type and TypeScript immediately flags every consumer. This eliminates a whole class of bugs that other frameworks only catch at runtime.
+
+It's still maturing compared to Next.js, and the ecosystem is smaller. But for TypeScript-first teams who want to get off the "trust the string" treadmill, TanStack Start is the most compelling full-stack React option available in 2026.
