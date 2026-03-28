@@ -1,0 +1,672 @@
+---
+title: "Payload CMS 3.0: TypeScript-Native Headless CMS Guide 2026"
+description: "A complete guide to Payload CMS 3.0 — the TypeScript-native headless CMS built for Next.js. Learn collections, globals, access control, the Lexical editor, and how it compares to Sanity, Contentful, and Strapi."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["payload-cms", "headless-cms", "typescript", "nextjs", "cms", "content-management", "react", "api"]
+readingTime: "12 min read"
+---
+
+Payload CMS 3.0 changed the rules for headless content management. Where most CMS platforms treat Next.js as an integration target, Payload 3.0 treats it as the runtime. Your CMS **is** your Next.js app — same codebase, same deployment, no separate CMS server to manage.
+
+If you've spent time wrestling with Contentful's API rate limits, Sanity's GROQ learning curve, or Strapi's JavaScript-first config, Payload's TypeScript-native approach will feel like a breath of fresh air.
+
+This guide covers everything you need to go from zero to production with Payload CMS 3.0.
+
+---
+
+## What Is Payload CMS 3.0?
+
+Payload is an open-source, self-hosted headless CMS and application framework. Version 3.0, released in late 2024, is a complete rewrite built on top of Next.js App Router.
+
+**The key architectural shift**: Payload 3.0 doesn't run alongside your Next.js app — it runs *inside* it. You install Payload as a dependency, configure it in TypeScript, and your admin UI is served from `/admin` routes in your existing Next.js project.
+
+This has some significant implications:
+
+- **One deployment** — no separate CMS hosting
+- **Shared TypeScript types** — your content schema generates types used in both the CMS and your frontend
+- **Local API** — query your database directly without HTTP in server components
+- **Full code ownership** — your CMS config is version-controlled like any other code
+
+---
+
+## Why TypeScript-Native Matters
+
+Most CMS platforms are configured through UIs or JSON/YAML files. Payload does it in TypeScript:
+
+```typescript
+// payload.config.ts
+import { buildConfig } from 'payload/config'
+import { Posts } from './collections/Posts'
+import { Users } from './collections/Users'
+
+export default buildConfig({
+  collections: [Posts, Users],
+  secret: process.env.PAYLOAD_SECRET,
+  db: mongooseAdapter({
+    url: process.env.DATABASE_URI,
+  }),
+})
+```
+
+This means:
+- Your IDE autocompletes every config option
+- Mistakes fail at build time, not at runtime
+- Config changes are trackable in git
+- You can use loops, conditionals, and functions in your schema definition
+
+---
+
+## Setup with Next.js App Router
+
+Payload 3.0 has a first-class `create-payload-app` CLI that scaffolds a Next.js + Payload project:
+
+```bash
+npx create-payload-app@latest my-cms-app
+# or add to existing Next.js app:
+npx create-payload-app@latest --template blank
+```
+
+### Adding to an Existing Next.js App
+
+1. Install dependencies:
+
+```bash
+npm install payload @payloadcms/next @payloadcms/richtext-lexical
+```
+
+2. Add the Payload plugin to `next.config.js`:
+
+```javascript
+// next.config.js
+import { withPayload } from '@payloadcms/next/withPayload'
+
+const nextConfig = {
+  // your existing config
+}
+
+export default withPayload(nextConfig)
+```
+
+3. Create `payload.config.ts` at your project root.
+
+4. Add the catch-all route for the admin panel:
+
+```
+app/(payload)/admin/[[...segments]]/page.tsx
+app/(payload)/api/[...slug]/route.ts
+```
+
+Payload provides these files — you just need the directory structure.
+
+---
+
+## Collections: Your Content Types
+
+Collections define the shape of your content. Think of them as database tables with a built-in editor UI.
+
+```typescript
+// collections/Posts.ts
+import type { CollectionConfig } from 'payload'
+
+export const Posts: CollectionConfig = {
+  slug: 'posts',
+  admin: {
+    useAsTitle: 'title',
+    defaultColumns: ['title', 'status', 'publishedAt'],
+  },
+  access: {
+    read: () => true,           // public read
+    create: isAdminOrEditor,    // only admins/editors can create
+    update: isAdminOrEditor,
+    delete: isAdmin,
+  },
+  fields: [
+    {
+      name: 'title',
+      type: 'text',
+      required: true,
+    },
+    {
+      name: 'slug',
+      type: 'text',
+      unique: true,
+      admin: {
+        position: 'sidebar',
+      },
+    },
+    {
+      name: 'content',
+      type: 'richText',
+      editor: lexicalEditor({
+        features: ({ defaultFeatures }) => [
+          ...defaultFeatures,
+          HeadingFeature({ enabledHeadingSizes: ['h1', 'h2', 'h3'] }),
+          BlocksFeature({ blocks: [CodeBlock] }),
+        ],
+      }),
+    },
+    {
+      name: 'status',
+      type: 'select',
+      options: ['draft', 'published', 'archived'],
+      defaultValue: 'draft',
+      admin: { position: 'sidebar' },
+    },
+    {
+      name: 'publishedAt',
+      type: 'date',
+      admin: {
+        position: 'sidebar',
+        condition: (data) => data.status === 'published',
+      },
+    },
+    {
+      name: 'author',
+      type: 'relationship',
+      relationTo: 'users',
+    },
+  ],
+  hooks: {
+    beforeChange: [
+      ({ data, req }) => {
+        if (data.status === 'published' && !data.publishedAt) {
+          return { ...data, publishedAt: new Date() }
+        }
+        return data
+      },
+    ],
+  },
+}
+```
+
+### Field Types
+
+Payload has a rich set of built-in field types:
+
+| Field Type | Use Case |
+|------------|----------|
+| `text` | Short strings |
+| `textarea` | Multi-line text |
+| `richText` | WYSIWYG (Lexical or Slate) |
+| `number` | Integers or floats |
+| `email` | Validated email |
+| `date` | Date/time picker |
+| `select` | Dropdown (string options) |
+| `checkbox` | Boolean |
+| `relationship` | Foreign key to another collection |
+| `upload` | Media files |
+| `array` | Repeatable field group |
+| `blocks` | Block-based layouts |
+| `group` | Namespaced field group |
+| `json` | Raw JSON |
+| `code` | Code editor |
+
+---
+
+## Globals: Singleton Content
+
+Globals are like collections but for content that exists exactly once — site settings, navigation menus, footer content:
+
+```typescript
+// globals/SiteSettings.ts
+import type { GlobalConfig } from 'payload'
+
+export const SiteSettings: GlobalConfig = {
+  slug: 'site-settings',
+  access: {
+    read: () => true,
+    update: isAdmin,
+  },
+  fields: [
+    {
+      name: 'siteName',
+      type: 'text',
+      required: true,
+    },
+    {
+      name: 'seoDescription',
+      type: 'textarea',
+    },
+    {
+      name: 'nav',
+      type: 'array',
+      fields: [
+        { name: 'label', type: 'text' },
+        { name: 'url', type: 'text' },
+      ],
+    },
+    {
+      name: 'socialLinks',
+      type: 'group',
+      fields: [
+        { name: 'twitter', type: 'text' },
+        { name: 'github', type: 'text' },
+        { name: 'linkedin', type: 'text' },
+      ],
+    },
+  ],
+}
+```
+
+---
+
+## Access Control
+
+Payload's access control is function-based — you write plain TypeScript functions that return `true` (allow) or `false` (deny), or a Mongoose query to restrict which documents a user can access:
+
+```typescript
+import type { Access } from 'payload'
+
+// Simple role check
+export const isAdmin: Access = ({ req: { user } }) => {
+  return user?.role === 'admin'
+}
+
+// Users can only edit their own documents
+export const isOwner: Access = ({ req: { user } }) => {
+  if (!user) return false
+  return {
+    author: { equals: user.id },
+  }
+}
+
+// Admins see everything, editors see only published
+export const readPublishedOrAdmin: Access = ({ req: { user } }) => {
+  if (user?.role === 'admin') return true
+  return {
+    status: { equals: 'published' },
+  }
+}
+```
+
+Apply these to collections:
+
+```typescript
+access: {
+  read: readPublishedOrAdmin,
+  create: isAdmin,
+  update: isOwner,
+  delete: isAdmin,
+},
+```
+
+---
+
+## Lexical Rich Text Editor
+
+Payload 3.0 ships `@payloadcms/richtext-lexical` as the default editor, replacing the older Slate editor. Lexical is Meta's extensible text editor framework (the same one powering Facebook).
+
+### Configuring Lexical
+
+```typescript
+import { lexicalEditor, HeadingFeature, BlocksFeature, LinkFeature } from '@payloadcms/richtext-lexical'
+
+{
+  name: 'content',
+  type: 'richText',
+  editor: lexicalEditor({
+    features: ({ defaultFeatures }) => [
+      ...defaultFeatures,
+      HeadingFeature({
+        enabledHeadingSizes: ['h2', 'h3', 'h4'],
+      }),
+      LinkFeature({
+        enabledCollections: ['posts', 'pages'],
+      }),
+      BlocksFeature({
+        blocks: [QuoteBlock, CalloutBlock, CodeBlock],
+      }),
+    ],
+  }),
+}
+```
+
+### Rendering Lexical Content
+
+Lexical serializes content as a JSON structure. Payload provides a React component to render it:
+
+```tsx
+import { RichText } from '@payloadcms/richtext-lexical/react'
+
+export default function PostBody({ content }: { content: SerializedEditorState }) {
+  return <RichText data={content} />
+}
+```
+
+Or serialize to HTML for non-React environments:
+
+```typescript
+import { convertLexicalToHTML, consolidateHTMLConverters } from '@payloadcms/richtext-lexical/html'
+
+const html = await convertLexicalToHTML({
+  converters: consolidateHTMLConverters({ editorConfig }),
+  data: lexicalData,
+})
+```
+
+---
+
+## REST API, GraphQL, and Local API
+
+Payload gives you three ways to access your data:
+
+### REST API
+
+Auto-generated from your collections:
+
+```
+GET    /api/posts           # list with pagination
+GET    /api/posts/:id       # single document
+POST   /api/posts           # create
+PATCH  /api/posts/:id       # update
+DELETE /api/posts/:id       # delete
+```
+
+Query with depth for relationships:
+
+```
+GET /api/posts?depth=2&where[status][equals]=published&sort=-publishedAt
+```
+
+### GraphQL API
+
+Available at `/api/graphql`:
+
+```graphql
+query {
+  Posts(where: { status: { equals: published } }, sort: "-publishedAt") {
+    docs {
+      id
+      title
+      slug
+      publishedAt
+      author {
+        name
+        email
+      }
+    }
+    totalDocs
+    hasNextPage
+  }
+}
+```
+
+### Local API (The Killer Feature)
+
+The local API bypasses HTTP entirely — it calls your database directly. This is the right choice for Next.js server components and server actions:
+
+```typescript
+// app/blog/page.tsx
+import { getPayload } from 'payload'
+import config from '@payload-config'
+
+export default async function BlogPage() {
+  const payload = await getPayload({ config })
+
+  const posts = await payload.find({
+    collection: 'posts',
+    where: {
+      status: { equals: 'published' },
+    },
+    sort: '-publishedAt',
+    limit: 10,
+    depth: 1,
+  })
+
+  return (
+    <ul>
+      {posts.docs.map((post) => (
+        <li key={post.id}>{post.title}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+No serialization, no network round-trip, no rate limits — just a function call. This is where Payload's "same app" architecture pays off.
+
+---
+
+## Block-Based Layouts
+
+One of Payload's most powerful features for page-builder use cases is block fields. Blocks let editors compose pages from a library of content components:
+
+```typescript
+// blocks/Hero.ts
+import type { Block } from 'payload'
+
+export const HeroBlock: Block = {
+  slug: 'hero',
+  fields: [
+    { name: 'heading', type: 'text', required: true },
+    { name: 'subheading', type: 'textarea' },
+    { name: 'ctaLabel', type: 'text' },
+    { name: 'ctaUrl', type: 'text' },
+    {
+      name: 'image',
+      type: 'upload',
+      relationTo: 'media',
+    },
+    {
+      name: 'variant',
+      type: 'select',
+      options: ['centered', 'left-aligned', 'full-bleed'],
+      defaultValue: 'centered',
+    },
+  ],
+}
+
+// Use in a page collection
+{
+  name: 'layout',
+  type: 'blocks',
+  blocks: [HeroBlock, ContentBlock, CTABlock, GalleryBlock],
+}
+```
+
+Rendering blocks in Next.js:
+
+```tsx
+function RenderBlocks({ blocks }: { blocks: Page['layout'] }) {
+  return (
+    <>
+      {blocks.map((block, i) => {
+        switch (block.blockType) {
+          case 'hero': return <HeroBlock key={i} {...block} />
+          case 'content': return <ContentBlock key={i} {...block} />
+          case 'cta': return <CTABlock key={i} {...block} />
+          default: return null
+        }
+      })}
+    </>
+  )
+}
+```
+
+---
+
+## Deploying Payload CMS 3.0
+
+Since Payload 3.0 is a Next.js app, you deploy it anywhere Next.js runs.
+
+### Vercel
+
+The simplest option. Payload + MongoDB Atlas (or Neon for PostgreSQL) works out of the box:
+
+```bash
+vercel deploy
+```
+
+Set env vars in your Vercel dashboard:
+- `DATABASE_URI` — MongoDB Atlas or PostgreSQL connection string
+- `PAYLOAD_SECRET` — random secret for JWT signing
+- `NEXT_PUBLIC_SERVER_URL` — your production URL
+
+**Note**: Vercel's serverless functions have a 250MB limit and ephemeral filesystem. Avoid storing uploads on the local filesystem — use `@payloadcms/storage-s3` or Cloudflare R2 instead.
+
+### Railway
+
+Railway gives you a persistent environment with a built-in PostgreSQL or MongoDB database:
+
+```bash
+railway up
+```
+
+Railway handles persistent volumes, so you can store media files locally (though a cloud storage adapter is still recommended for production).
+
+### Self-Hosted (Docker)
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+COPY . .
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+Run with MongoDB:
+
+```yaml
+# docker-compose.yml
+services:
+  app:
+    build: .
+    ports: ['3000:3000']
+    environment:
+      DATABASE_URI: mongodb://mongo:27017/payload
+      PAYLOAD_SECRET: ${PAYLOAD_SECRET}
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:
+```
+
+---
+
+## Payload vs Sanity vs Contentful vs Strapi
+
+| Feature | Payload 3.0 | Sanity | Contentful | Strapi |
+|---------|-------------|--------|------------|--------|
+| **Hosting** | Self-hosted (or Vercel) | Cloud (hosted) | Cloud (hosted) | Self-hosted |
+| **Pricing** | Free (open source) | Free tier + $99/mo+ | Free tier + $300/mo+ | Free (open source) |
+| **TypeScript** | First-class | Good | Codegen | Good |
+| **Query language** | REST/GraphQL/Local | GROQ | REST/GraphQL | REST/GraphQL |
+| **Next.js integration** | Native (same app) | SDK | SDK | SDK |
+| **Rich text** | Lexical | Portable Text | Rich Text | Blocks |
+| **Real-time** | No | Yes | No | No |
+| **Self-hostable** | Yes | No | No | Yes |
+| **Learning curve** | Medium | High (GROQ) | Low | Medium |
+| **Database** | MongoDB/PostgreSQL | Sanity DB | Contentful DB | MySQL/PostgreSQL |
+
+**When to choose Payload**: You want full code ownership, TypeScript everything, tight Next.js integration, and no per-seat SaaS costs.
+
+**When to choose Sanity**: You need real-time collaboration, a polished hosted editor experience, or you're comfortable with GROQ and the Studio customization model.
+
+**When to choose Contentful**: You're in an enterprise context that prefers managed SaaS, or your content team is non-technical and needs the most accessible editor UI.
+
+**When to choose Strapi**: You're building a REST API primarily, need plugin ecosystem flexibility, or prefer a JavaScript (vs TypeScript-first) workflow.
+
+---
+
+## Hooks: Business Logic in Your Schema
+
+Payload's lifecycle hooks let you run code before/after data operations — similar to database triggers but in TypeScript:
+
+```typescript
+hooks: {
+  // Runs before a document is saved
+  beforeChange: [
+    async ({ data, req, operation }) => {
+      if (operation === 'create') {
+        data.createdBy = req.user?.id
+      }
+      // Autogenerate slug from title
+      if (data.title && !data.slug) {
+        data.slug = data.title
+          .toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/[^\w-]/g, '')
+      }
+      return data
+    },
+  ],
+
+  // Runs after a document is saved
+  afterChange: [
+    async ({ doc, operation }) => {
+      if (operation === 'create' && doc.status === 'published') {
+        // Trigger ISR revalidation
+        await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/api/revalidate`, {
+          method: 'POST',
+          body: JSON.stringify({ slug: doc.slug }),
+        })
+      }
+    },
+  ],
+
+  // Modify queries before they execute
+  beforeRead: [
+    ({ query }) => {
+      // Add default depth
+      return { ...query, depth: query.depth ?? 2 }
+    },
+  ],
+},
+```
+
+Available hook types: `beforeOperation`, `beforeValidate`, `beforeChange`, `afterChange`, `beforeRead`, `afterRead`, `beforeDelete`, `afterDelete`.
+
+---
+
+## Practical Tips
+
+**Use the local API for server-side rendering** — it's the fastest way to query content in Next.js server components and avoids network overhead.
+
+**Generate TypeScript types** from your Payload config:
+
+```bash
+npx payload generate:types
+```
+
+This creates a `payload-types.ts` file with interfaces for all your collections, globals, and blocks. Import them across your frontend for full type safety.
+
+**Enable live preview** during development so content editors can see changes before publishing:
+
+```typescript
+// payload.config.ts
+admin: {
+  livePreview: {
+    url: ({ data, documentInfo }) =>
+      `${process.env.NEXT_PUBLIC_SERVER_URL}/preview/${documentInfo.slug}/${data.slug}`,
+    collections: ['posts', 'pages'],
+    breakpoints: [
+      { label: 'Mobile', name: 'mobile', width: 375, height: 667 },
+      { label: 'Desktop', name: 'desktop', width: 1440, height: 900 },
+    ],
+  },
+},
+```
+
+**Use plugins** for common functionality — Payload has official plugins for SEO, redirects, form builder, nested docs, and cloud storage.
+
+---
+
+## Summary
+
+Payload CMS 3.0 is the first headless CMS that genuinely belongs in a TypeScript-first, Next.js-native stack:
+
+- **Self-hosted, open source** — no vendor lock-in, no per-seat pricing
+- **TypeScript everywhere** — schema, access control, hooks, and queries all in TypeScript
+- **Local API** — zero-overhead database queries in server components
+- **Next.js native** — same app, same deployment, no separate CMS server
+- **Lexical editor** — powerful block-based rich text with custom blocks
+- **Full data ownership** — your schema is your code, your database is your database
+
+If you're starting a new Next.js content project in 2026 and want the developer ergonomics of code-based configuration without paying SaaS prices, Payload 3.0 is the CMS to evaluate first.

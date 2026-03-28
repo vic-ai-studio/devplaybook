@@ -1,0 +1,517 @@
+---
+title: "Angular Signals in 2026: Complete Reactive Primitives Guide"
+description: "Master Angular Signals — signal(), computed(), effect(), input(), output(), and zoneless components. Complete guide covering reactive primitives, RxJS bridge, migration from Zone.js, and Angular 18/19 patterns."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["angular", "signals", "reactive", "typescript", "frontend", "web", "angular18", "angular19"]
+readingTime: "12 min read"
+---
+
+Angular Signals landed as stable in Angular 17 and became the recommended reactivity model in Angular 18 and 19. They solve a problem that Zone.js-based change detection never fully cracked: granular, predictable updates without monkey-patching browser APIs.
+
+This guide covers everything you need — from the core API to zoneless components — with real code you can use today.
+
+---
+
+## What Are Signals and Why Angular Adopted Them
+
+A signal is a reactive value container. Reading it returns the current value; writing it notifies dependents. Angular's previous model relied on Zone.js intercepting async operations (setTimeout, fetch, addEventListener) to trigger change detection across the entire component tree. It worked, but it was magical and expensive.
+
+Signals give Angular a fine-grained dependency graph. Only the parts of the template that actually read a changed signal get re-evaluated — not the entire subtree.
+
+Three reasons Angular moved to signals:
+
+1. **Performance** — no more "check everything on every event"
+2. **Explicitness** — you know exactly what depends on what
+3. **Interop** — signals bridge cleanly to RxJS Observables
+
+---
+
+## signal() — The Core Primitive
+
+`signal()` creates a writable reactive value:
+
+```typescript
+import { signal } from '@angular/core';
+
+const count = signal(0);
+
+// Read
+console.log(count()); // 0
+
+// Write
+count.set(1);
+
+// Update based on previous value
+count.update(v => v + 1);
+```
+
+Signals are typed: `signal<number>(0)` creates a `WritableSignal<number>`. TypeScript infers the type from the initial value, but explicit typing helps with complex objects.
+
+### Mutating Objects and Arrays
+
+For objects and arrays, use `mutate()` or always pass a new reference. Angular 17+ recommends creating a new object:
+
+```typescript
+const user = signal({ name: 'Alice', age: 30 });
+
+// Preferred: new object reference triggers dependents
+user.set({ ...user(), age: 31 });
+
+// mutate() also works but was removed in Angular 18
+// Use update() instead:
+user.update(u => ({ ...u, age: 31 }));
+```
+
+---
+
+## computed() — Derived State
+
+`computed()` creates a read-only signal derived from other signals. It memoizes — the function only re-runs when a dependency changes:
+
+```typescript
+import { signal, computed } from '@angular/core';
+
+const firstName = signal('John');
+const lastName = signal('Doe');
+
+const fullName = computed(() => `${firstName()} ${lastName()}`);
+
+console.log(fullName()); // "John Doe"
+firstName.set('Jane');
+console.log(fullName()); // "Jane Doe" — recomputed
+```
+
+Computed signals are lazy — they don't run until read. They also cache the result until a dependency changes, so multiple reads are cheap.
+
+**Practical example — filtering a list:**
+
+```typescript
+const items = signal(['apple', 'banana', 'apricot', 'cherry']);
+const filter = signal('');
+
+const filtered = computed(() => {
+  const f = filter().toLowerCase();
+  return f ? items().filter(i => i.includes(f)) : items();
+});
+```
+
+---
+
+## effect() — Running Side Effects
+
+`effect()` runs a function whenever any signal it reads changes. It's Angular's replacement for `ngOnChanges` and subscription management in many cases:
+
+```typescript
+import { signal, effect } from '@angular/core';
+
+const theme = signal<'light' | 'dark'>('light');
+
+effect(() => {
+  document.body.classList.toggle('dark', theme() === 'dark');
+  console.log('Theme changed to:', theme());
+});
+
+theme.set('dark'); // effect runs immediately
+```
+
+Effects run in an injection context (component, directive, service). Create them in the constructor or with `runInInjectionContext()`:
+
+```typescript
+@Component({ ... })
+export class ThemeComponent {
+  readonly theme = signal<'light' | 'dark'>('light');
+
+  constructor() {
+    effect(() => {
+      localStorage.setItem('theme', this.theme());
+    });
+  }
+}
+```
+
+### Effect Cleanup
+
+If your effect sets up a subscription or timer, clean up with the `onCleanup` function:
+
+```typescript
+effect((onCleanup) => {
+  const timer = setInterval(() => {
+    this.tick.set(Date.now());
+  }, 1000);
+
+  onCleanup(() => clearInterval(timer));
+});
+```
+
+### When NOT to Use effect()
+
+Don't use `effect()` to synchronize signals — use `computed()` instead. Effects are for **external** side effects (DOM, localStorage, logging). Updating one signal based on another inside an effect is a common mistake that causes unnecessary re-runs.
+
+---
+
+## input() and output() — Signal-Based Component APIs
+
+Angular 17.1 introduced `input()` as a signal-based alternative to `@Input()`. Angular 18 made `output()` stable too.
+
+### input()
+
+```typescript
+import { input, Component } from '@angular/core';
+
+@Component({
+  selector: 'app-user-card',
+  template: `<h2>{{ name() }}</h2><p>Age: {{ age() }}</p>`,
+})
+export class UserCardComponent {
+  // Required input — no default value, TS type is Signal<string>
+  name = input.required<string>();
+
+  // Optional input with default
+  age = input(0);
+
+  // With alias
+  userId = input.required<string>({ alias: 'id' });
+}
+```
+
+Usage in parent template:
+
+```html
+<app-user-card name="Alice" [age]="userAge" id="abc123" />
+```
+
+The key difference from `@Input()`: `input()` returns a `Signal<T>`, so you read it with `name()` and it integrates with `computed()` and `effect()` naturally.
+
+### output()
+
+```typescript
+import { output, Component } from '@angular/core';
+
+@Component({ ... })
+export class CounterComponent {
+  count = signal(0);
+  countChanged = output<number>();
+
+  increment() {
+    this.count.update(v => v + 1);
+    this.countChanged.emit(this.count());
+  }
+}
+```
+
+Parent template:
+
+```html
+<app-counter (countChanged)="handleCount($event)" />
+```
+
+`output()` returns an `OutputEmitterRef` — call `.emit()` to fire it.
+
+---
+
+## toSignal() and toObservable() — RxJS Bridge
+
+Angular provides two functions to interop between signals and RxJS:
+
+### toSignal() — Observable → Signal
+
+```typescript
+import { toSignal } from '@angular/core/rxjs-interop';
+import { interval } from 'rxjs';
+
+@Component({ ... })
+export class TimerComponent {
+  // Requires injection context (constructor or inject())
+  readonly tick = toSignal(interval(1000), { initialValue: 0 });
+}
+```
+
+Options:
+- `initialValue` — value before the observable emits
+- `requireSync` — throws if observable doesn't emit synchronously (useful for BehaviorSubject)
+
+```typescript
+// With HTTP:
+readonly users = toSignal(this.http.get<User[]>('/api/users'), {
+  initialValue: [] as User[],
+});
+```
+
+### toObservable() — Signal → Observable
+
+```typescript
+import { toObservable } from '@angular/core/rxjs-interop';
+
+readonly search = signal('');
+
+// Creates an Observable that emits on every signal change
+readonly search$ = toObservable(this.search);
+
+// Now you can use RxJS operators:
+readonly results$ = this.search$.pipe(
+  debounceTime(300),
+  distinctUntilChanged(),
+  switchMap(q => this.api.search(q))
+);
+```
+
+---
+
+## Comparing Signals to React's useState/useReducer
+
+| Feature | Angular Signals | React useState/useReducer |
+|---|---|---|
+| Read syntax | `count()` (call) | `count` (variable) |
+| Write syntax | `count.set(n)` | `setCount(n)` |
+| Derived state | `computed(() => ...)` | `useMemo(() => ..., [deps])` |
+| Side effects | `effect(() => ...)` | `useEffect(() => ..., [deps])` |
+| Dependency tracking | Automatic (reactive graph) | Manual (deps array) |
+| Stale closures | Not possible | Common gotcha |
+| Component update | Granular (template nodes) | Full component re-render |
+
+The biggest practical difference: Angular signals use **automatic dependency tracking** — you don't declare `[count, name]` in a deps array. The reactive graph figures it out at runtime by observing which signals you read.
+
+---
+
+## Signal-Based Components (Zoneless Angular)
+
+Angular 18 introduced experimental support for running Angular without Zone.js. In Angular 19, zoneless became more production-ready.
+
+Enable zoneless in `app.config.ts`:
+
+```typescript
+import { provideExperimentalZonelessChangeDetection } from '@angular/core';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideExperimentalZonelessChangeDetection()
+  ]
+};
+```
+
+And remove Zone.js from `polyfills` in `angular.json`.
+
+In zoneless mode, Angular only schedules change detection when:
+- A signal changes
+- An async pipe emits
+- You call `ChangeDetectorRef.markForCheck()` manually
+
+This means your components must use signals (or async pipe) to trigger UI updates. Imperative code that mutates component properties without signals won't reflect in the template.
+
+**Zoneless component example:**
+
+```typescript
+@Component({
+  standalone: true,
+  template: `
+    <button (click)="increment()">+</button>
+    <span>{{ count() }}</span>
+    <button (click)="decrement()">-</button>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class CounterComponent {
+  count = signal(0);
+
+  increment() { this.count.update(v => v + 1); }
+  decrement() { this.count.update(v => v - 1); }
+}
+```
+
+No Zone.js needed. The template re-renders the `{{ count() }}` binding whenever `count` changes — nothing else.
+
+---
+
+## Performance Benefits vs Zone.js
+
+Zone.js works by intercepting all async operations and triggering `ApplicationRef.tick()` which checks every component in the tree. For a large app with 200 components, every click event could trigger 200 change detection checks.
+
+Signals eliminate this:
+
+- Only template expressions that read a changed signal are re-evaluated
+- No component tree traversal for unrelated state changes
+- No need for `ChangeDetectionStrategy.OnPush` as a manual optimization (though it still works)
+
+**Benchmark note:** Angular's team showed 40-50% reduction in change detection cycles for signal-based apps vs Zone.js-based apps in typical CRUD dashboards. The gains are higher for apps with frequent background updates (WebSocket data, polling).
+
+---
+
+## Angular 18/19 Standalone + Signals Patterns
+
+Standalone components (no NgModule) + signals is the current Angular best practice:
+
+```typescript
+import { Component, signal, computed, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { toSignal } from '@angular/core/rxjs-interop';
+
+interface Todo {
+  id: number;
+  title: string;
+  completed: boolean;
+}
+
+@Component({
+  standalone: true,
+  selector: 'app-todos',
+  template: `
+    <input [value]="filter()" (input)="filter.set($any($event.target).value)"
+           placeholder="Filter todos..." />
+    <p>Showing {{ visibleCount() }} of {{ todos().length }} todos</p>
+    @for (todo of filteredTodos(); track todo.id) {
+      <div [class.done]="todo.completed">{{ todo.title }}</div>
+    }
+  `,
+})
+export class TodosComponent {
+  private http = inject(HttpClient);
+
+  todos = toSignal(
+    this.http.get<Todo[]>('https://jsonplaceholder.typicode.com/todos'),
+    { initialValue: [] as Todo[] }
+  );
+
+  filter = signal('');
+
+  filteredTodos = computed(() => {
+    const f = this.filter().toLowerCase();
+    return f
+      ? this.todos().filter(t => t.title.includes(f))
+      : this.todos();
+  });
+
+  visibleCount = computed(() => this.filteredTodos().length);
+}
+```
+
+Notice the `@for` block — Angular 17+ control flow syntax. No `*ngFor` needed with standalone components importing CommonModule.
+
+---
+
+## Migration Path from Existing Angular Apps
+
+You don't need to rewrite everything at once. Signals are additive.
+
+**Step 1 — Replace local component state first**
+
+```typescript
+// Before
+export class CounterComponent {
+  count = 0;
+  increment() { this.count++; }
+}
+
+// After — no other changes needed, Zone.js still handles updates
+export class CounterComponent {
+  count = signal(0);
+  increment() { this.count.update(v => v + 1); }
+}
+```
+
+**Step 2 — Replace @Input() with input()**
+
+```typescript
+// Before
+@Input() userId!: string;
+
+// After
+userId = input.required<string>();
+```
+
+Update template usages: `userId` → `userId()`.
+
+**Step 3 — Replace @Output() with output()**
+
+```typescript
+// Before
+@Output() selected = new EventEmitter<string>();
+
+// After
+selected = output<string>();
+// emit() call is the same: this.selected.emit(value)
+```
+
+**Step 4 — Replace RxJS subscriptions in components**
+
+```typescript
+// Before
+users: User[] = [];
+private sub = this.userService.users$.subscribe(u => this.users = u);
+ngOnDestroy() { this.sub.unsubscribe(); }
+
+// After — no manual unsubscribe needed
+users = toSignal(this.userService.users$, { initialValue: [] as User[] });
+```
+
+**Step 5 — Enable zoneless (optional, when ready)**
+
+Add `provideExperimentalZonelessChangeDetection()` and remove Zone.js. Run your test suite — anything that relied on Zone.js ticking after async operations will need to use `fakeAsync` or signal-based patterns.
+
+---
+
+## Common Pitfalls
+
+**Don't read signals outside reactive context to conditionally subscribe:**
+
+```typescript
+// Bad — effect doesn't track this.enabled if read outside
+if (this.enabled()) {
+  effect(() => { ... });
+}
+
+// Good — read inside effect
+effect(() => {
+  if (this.enabled()) {
+    // side effect
+  }
+});
+```
+
+**Don't set signals inside computed():**
+
+```typescript
+// Bad — computed should be pure
+const doubled = computed(() => {
+  this.log.set('computing'); // side effect in computed = bad
+  return this.count() * 2;
+});
+
+// Good — use effect for side effects
+effect(() => console.log('count is', this.count()));
+const doubled = computed(() => this.count() * 2);
+```
+
+**Object identity matters for change detection:**
+
+```typescript
+const item = signal({ id: 1, name: 'test' });
+
+// This does NOT trigger dependents — same object reference
+item().name = 'updated'; // mutating in place
+
+// This DOES trigger dependents — new object reference
+item.update(i => ({ ...i, name: 'updated' }));
+```
+
+---
+
+## Quick Reference
+
+| API | Purpose | Returns |
+|---|---|---|
+| `signal(v)` | Writable reactive value | `WritableSignal<T>` |
+| `computed(() => ...)` | Derived read-only value | `Signal<T>` |
+| `effect(() => ...)` | Side effect on change | `EffectRef` |
+| `input()` / `input.required()` | Component input as signal | `InputSignal<T>` |
+| `output()` | Component event emitter | `OutputEmitterRef<T>` |
+| `toSignal(obs$)` | Observable → Signal | `Signal<T>` |
+| `toObservable(sig)` | Signal → Observable | `Observable<T>` |
+
+---
+
+## Takeaways
+
+Angular Signals represent a fundamental shift from Zone.js magic to explicit reactive primitives. The migration is incremental — you can adopt signals one component at a time without breaking existing code. For new Angular 18/19 projects, start signal-first: use `input()`, `output()`, `computed()`, and `toSignal()` from day one. Zoneless mode is production-ready enough to pilot in non-critical apps and will become the Angular default in a future major version.
+
+The signals model also makes Angular's mental model much closer to modern React (hooks + fine-grained reactivity), which should ease onboarding for developers coming from either ecosystem.

@@ -1,0 +1,474 @@
+---
+title: "Resend Email API: Modern Transactional Email for Developers in 2026"
+description: "Complete guide to Resend email API — setup, React Email templates, webhooks, DNS configuration, Next.js server actions integration, and comparison with SendGrid, Postmark, and AWS SES."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["email", "resend", "react-email", "nodejs", "nextjs", "transactional-email", "api", "backend"]
+readingTime: "11 min read"
+---
+
+Resend is the email API that developers actually enjoy using. Launched in 2023, it's grown to become the default choice for transactional email in the Node.js/React ecosystem because the DX is dramatically better than legacy providers: clean API, first-class React Email integration, useful dashboard, and sane defaults for deliverability.
+
+This guide covers everything from initial setup to production-ready patterns.
+
+---
+
+## What Is Resend and Why Developers Love It
+
+Resend is a transactional email API designed for developers. Unlike SendGrid's form-heavy dashboard or AWS SES's sprawling configuration, Resend focuses on the basics done well:
+
+- **Clean REST API** with an official Node.js SDK
+- **React Email** — write email templates in JSX/TSX
+- **Built-in analytics** — open rates, click rates, bounces per API key
+- **Generous free tier** — 3,000 emails/month, 1 custom domain
+- **Designed for solo devs and startups** — no enterprise friction
+
+The company was founded by former Stripe engineers, and it shows. The API design follows Stripe's conventions: idempotency keys, event webhooks, clean error objects.
+
+---
+
+## Setup and API Key Management
+
+Install the SDK:
+
+```bash
+npm install resend
+# or
+pnpm add resend
+yarn add resend
+```
+
+Get your API key from the [Resend dashboard](https://resend.com) → API Keys → Create API Key.
+
+Store it in your environment:
+
+```bash
+# .env.local (Next.js) or .env
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+The API key prefix `re_` distinguishes Resend keys from other services. Never commit this to version control.
+
+**Key permissions:** Resend supports scoped API keys — full access, sending only, or domain-restricted. For production apps, create a sending-only key and restrict it to your verified domain.
+
+---
+
+## Sending Your First Email
+
+```typescript
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const { data, error } = await resend.emails.send({
+  from: 'Acme <onboarding@acme.com>',
+  to: ['user@example.com'],
+  subject: 'Welcome to Acme',
+  html: '<h1>Welcome!</h1><p>Thanks for signing up.</p>',
+});
+
+if (error) {
+  console.error('Failed to send:', error);
+  return;
+}
+
+console.log('Sent email ID:', data.id);
+```
+
+The SDK returns `{ data, error }` — Stripe-style error handling. No exceptions to catch, just check `error` before using `data`.
+
+### From Address Format
+
+The `from` field accepts either:
+- `noreply@yourdomain.com` — plain address
+- `Your Name <noreply@yourdomain.com>` — display name + address
+
+The display name format is strongly recommended — it improves open rates and looks professional in email clients.
+
+---
+
+## React Email Templates
+
+React Email is Resend's companion library for writing email templates in JSX. Email HTML is notoriously messy (table-based layouts, inline styles, Outlook quirks). React Email handles all of that:
+
+```bash
+npm install @react-email/components react react-dom
+```
+
+**A complete welcome email template:**
+
+```tsx
+// emails/welcome.tsx
+import {
+  Body,
+  Button,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Link,
+  Preview,
+  Section,
+  Text,
+} from '@react-email/components';
+
+interface WelcomeEmailProps {
+  username: string;
+  loginUrl: string;
+}
+
+export default function WelcomeEmail({ username, loginUrl }: WelcomeEmailProps) {
+  return (
+    <Html>
+      <Head />
+      <Preview>Welcome to Acme, {username}!</Preview>
+      <Body style={main}>
+        <Container style={container}>
+          <Heading style={h1}>Welcome, {username}!</Heading>
+          <Text style={text}>
+            Your account is ready. Click below to get started.
+          </Text>
+          <Section style={buttonContainer}>
+            <Button href={loginUrl} style={button}>
+              Go to Dashboard
+            </Button>
+          </Section>
+          <Text style={footer}>
+            If you didn't create an account, you can safely ignore this email.
+          </Text>
+        </Container>
+      </Body>
+    </Html>
+  );
+}
+
+const main = { backgroundColor: '#f6f9fc', fontFamily: 'Arial, sans-serif' };
+const container = { backgroundColor: '#ffffff', margin: '0 auto', padding: '20px', maxWidth: '600px' };
+const h1 = { color: '#333', fontSize: '24px' };
+const text = { color: '#555', fontSize: '16px', lineHeight: '24px' };
+const buttonContainer = { textAlign: 'center' as const, margin: '32px 0' };
+const button = { backgroundColor: '#5469d4', color: '#fff', padding: '12px 24px', borderRadius: '4px', textDecoration: 'none' };
+const footer = { color: '#999', fontSize: '12px' };
+```
+
+**Sending with the template:**
+
+```typescript
+import { Resend } from 'resend';
+import { render } from '@react-email/render';
+import WelcomeEmail from './emails/welcome';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+async function sendWelcomeEmail(to: string, username: string) {
+  const html = await render(
+    <WelcomeEmail username={username} loginUrl="https://app.acme.com/login" />
+  );
+
+  return resend.emails.send({
+    from: 'Acme <welcome@acme.com>',
+    to,
+    subject: `Welcome to Acme, ${username}!`,
+    html,
+  });
+}
+```
+
+### Preview in Development
+
+React Email ships a dev server for previewing templates:
+
+```bash
+npx react-email dev --dir emails --port 3001
+```
+
+Visit `localhost:3001` and you'll see all your email templates rendered in a browser with desktop/mobile view toggle. No more sending test emails to see how they look.
+
+---
+
+## Next.js Integration with Server Actions
+
+Next.js App Router + Resend is the most common integration pattern in 2026:
+
+```typescript
+// app/actions/send-email.ts
+'use server';
+
+import { Resend } from 'resend';
+import { render } from '@react-email/render';
+import WelcomeEmail from '@/emails/welcome';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+export async function sendWelcomeEmail(formData: FormData) {
+  const email = formData.get('email') as string;
+  const name = formData.get('name') as string;
+
+  if (!email || !name) {
+    return { error: 'Missing required fields' };
+  }
+
+  const html = await render(
+    <WelcomeEmail username={name} loginUrl={`${process.env.NEXT_PUBLIC_APP_URL}/login`} />
+  );
+
+  const { data, error } = await resend.emails.send({
+    from: 'Acme <welcome@acme.com>',
+    to: email,
+    subject: `Welcome, ${name}!`,
+    html,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { success: true, id: data.id };
+}
+```
+
+```tsx
+// app/signup/page.tsx
+import { sendWelcomeEmail } from '@/actions/send-email';
+
+export default function SignupPage() {
+  return (
+    <form action={sendWelcomeEmail}>
+      <input name="email" type="email" required placeholder="Email" />
+      <input name="name" type="text" required placeholder="Name" />
+      <button type="submit">Sign Up</button>
+    </form>
+  );
+}
+```
+
+For API routes (pages router or edge functions):
+
+```typescript
+// pages/api/send-welcome.ts (or app/api/send-welcome/route.ts)
+import { NextRequest, NextResponse } from 'next/server';
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+export async function POST(req: NextRequest) {
+  const { email, name } = await req.json();
+
+  const { data, error } = await resend.emails.send({
+    from: 'Acme <noreply@acme.com>',
+    to: email,
+    subject: `Welcome, ${name}!`,
+    html: `<h1>Welcome, ${name}!</h1>`,
+  });
+
+  if (error) {
+    return NextResponse.json({ error }, { status: 400 });
+  }
+
+  return NextResponse.json({ id: data.id });
+}
+```
+
+---
+
+## Webhooks for Delivery Tracking
+
+Resend sends webhook events for every email state change. Set up an endpoint to track delivery:
+
+```typescript
+// app/api/webhooks/resend/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { Webhook } from 'svix'; // Resend uses Svix for webhook verification
+
+const webhookSecret = process.env.RESEND_WEBHOOK_SECRET!;
+
+export async function POST(req: NextRequest) {
+  const payload = await req.text();
+  const headers = {
+    'svix-id': req.headers.get('svix-id')!,
+    'svix-timestamp': req.headers.get('svix-timestamp')!,
+    'svix-signature': req.headers.get('svix-signature')!,
+  };
+
+  const wh = new Webhook(webhookSecret);
+  let event: any;
+
+  try {
+    event = wh.verify(payload, headers);
+  } catch {
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+  }
+
+  switch (event.type) {
+    case 'email.sent':
+      await db.emails.update({ where: { resendId: event.data.email_id }, data: { status: 'sent' } });
+      break;
+    case 'email.delivered':
+      await db.emails.update({ where: { resendId: event.data.email_id }, data: { status: 'delivered', deliveredAt: new Date() } });
+      break;
+    case 'email.bounced':
+      await db.emails.update({ where: { resendId: event.data.email_id }, data: { status: 'bounced' } });
+      await db.users.update({ where: { email: event.data.to[0] }, data: { emailBounced: true } });
+      break;
+    case 'email.complained':
+      // User marked as spam — stop sending to them
+      await db.users.update({ where: { email: event.data.to[0] }, data: { unsubscribed: true } });
+      break;
+  }
+
+  return NextResponse.json({ received: true });
+}
+```
+
+**Event types:** `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.complained`, `email.opened`, `email.clicked`.
+
+Register your webhook URL in Resend Dashboard → Webhooks → Add Endpoint.
+
+---
+
+## Domain Setup and Deliverability
+
+For production, you need a verified custom domain. Using `@resend.dev` addresses is for testing only.
+
+### DNS Records to Add
+
+In your DNS provider (Cloudflare, Route 53, etc.), add:
+
+```
+# SPF — authorize Resend to send on your behalf
+TXT  @  v=spf1 include:amazonses.com ~all
+
+# DKIM — cryptographic email signing (Resend provides the value)
+CNAME  resend._domainkey  <value from Resend dashboard>
+
+# DMARC — policy for failed authentication (start with p=none for monitoring)
+TXT  _dmarc  v=DMARC1; p=none; rua=mailto:dmarc@yourdomain.com
+```
+
+Resend's dashboard shows the exact DNS records to add and verifies them automatically. DNS propagation takes up to 48 hours but usually completes within minutes.
+
+**Deliverability tips:**
+- Use a subdomain for transactional email (`mail.acme.com`) to protect your root domain reputation
+- Set `p=quarantine` or `p=reject` in DMARC once you've confirmed legitimate email isn't being rejected
+- Keep bounce rate below 5% — hard bounces hurt your sender reputation permanently
+- Never email people who didn't explicitly opt in
+
+---
+
+## Resend vs SendGrid vs Postmark vs AWS SES
+
+| Feature | Resend | SendGrid | Postmark | AWS SES |
+|---|---|---|---|---|
+| Free tier | 3k emails/month | 100/day | None (trial only) | 62k/month (EC2) |
+| Pricing (10k/mo) | $0 (free tier) | $19.95 | $15 | ~$1 |
+| React Email support | Native | No | No | No |
+| Dashboard UX | Excellent | Complex | Good | Poor |
+| Setup complexity | Low | Medium | Low | High |
+| Deliverability | Good | Good | Excellent | Good |
+| Webhooks | Yes (Svix) | Yes | Yes | SES Events |
+| Template system | React Email / HTML | Handlebars / HTML | Inky / HTML | SES Templates |
+| Transactional focus | Yes | Yes + marketing | Yes (transactional only) | Yes |
+| Support | Email (fast) | Tiered | Excellent | AWS Support |
+
+**When to choose what:**
+- **Resend** — new projects, React/Next.js stack, developer-focused, moderate volume
+- **Postmark** — best deliverability, mission-critical transactional (password resets, 2FA)
+- **SendGrid** — marketing email + transactional combined, existing SendGrid contract
+- **AWS SES** — massive volume at minimum cost, when you're already deep in AWS
+
+---
+
+## Batch Sending and Rate Limits
+
+Resend supports sending to multiple recipients and batch operations:
+
+```typescript
+// Multiple recipients (same email)
+await resend.emails.send({
+  from: 'noreply@acme.com',
+  to: ['alice@example.com', 'bob@example.com'],
+  subject: 'Team update',
+  html: '<p>Hello team!</p>',
+});
+
+// Batch send (different emails, one API call)
+const { data, error } = await resend.batch.send([
+  {
+    from: 'noreply@acme.com',
+    to: 'alice@example.com',
+    subject: 'Your invoice',
+    html: '<p>Invoice for Alice</p>',
+  },
+  {
+    from: 'noreply@acme.com',
+    to: 'bob@example.com',
+    subject: 'Your invoice',
+    html: '<p>Invoice for Bob</p>',
+  },
+]);
+```
+
+**Rate limits (as of 2026):**
+- Free: 2 req/sec, 100 emails/day
+- Pro: 10 req/sec, no daily limit
+- Enterprise: custom
+
+For bulk sending (newsletters, announcements), use batch and implement a queue (BullMQ, Inngest, or simple setTimeout loops) to stay within rate limits.
+
+---
+
+## Idempotency Keys
+
+For critical emails (password resets, payment receipts), use idempotency keys to prevent duplicate sends on retries:
+
+```typescript
+const idempotencyKey = `password-reset-${userId}-${Date.now()}`;
+
+const { data, error } = await resend.emails.send(
+  {
+    from: 'security@acme.com',
+    to: userEmail,
+    subject: 'Reset your password',
+    html: resetEmailHtml,
+  },
+  {
+    idempotencyKey,
+  }
+);
+```
+
+If the same `idempotencyKey` is sent twice within 24 hours, Resend returns the original email's ID without sending a duplicate.
+
+---
+
+## Quick Reference
+
+```typescript
+// Initialize
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Send email
+await resend.emails.send({ from, to, subject, html });
+
+// Send with React Email template
+const html = await render(<MyTemplate {...props} />);
+await resend.emails.send({ from, to, subject, html });
+
+// Batch send
+await resend.batch.send([email1, email2, ...]);
+
+// List sent emails
+await resend.emails.list();
+
+// Get email status
+await resend.emails.get(emailId);
+
+// Cancel scheduled email
+await resend.emails.cancel(emailId);
+```
+
+---
+
+## Takeaways
+
+Resend is the right choice for most modern Node.js/Next.js projects in 2026. The React Email integration eliminates the pain of writing email HTML, the SDK is clean, and the free tier is generous enough for early-stage projects. For production, verify your domain, set up DMARC, implement webhook tracking, and use idempotency keys for critical sends. When you outgrow the free tier, the Pro plan is competitively priced and the deliverability is solid.
