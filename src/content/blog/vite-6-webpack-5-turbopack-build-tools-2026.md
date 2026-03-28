@@ -1,8 +1,9 @@
 ---
 title: "Vite 6 vs Webpack 5 vs Turbopack: Which Build Tool Should You Use in 2026?"
 description: "A comprehensive comparison of Vite 6, Webpack 5, and Turbopack for JavaScript projects in 2026. Real benchmarks, migration guides, and clear recommendations."
-pubDate: 2026-03-28
+date: "2026-03-28"
 tags: [vite, webpack, turbopack, build-tools, javascript]
+readingTime: "7 min read"
 ---
 
 # Vite 6 vs Webpack 5 vs Turbopack: Which Build Tool Should You Use in 2026?

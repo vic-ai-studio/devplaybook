@@ -1,8 +1,9 @@
 ---
 title: "OpenTelemetry 2026: Complete Observability Guide - Traces, Metrics & Logs"
 description: "Master OpenTelemetry in 2026: set up distributed tracing, metrics, and logs with Node.js and Python. Auto-instrumentation, custom spans, Jaeger, Grafana, and how it compares to Datadog and New Relic."
-pubDate: 2026-03-28
+date: "2026-03-28"
 tags: [opentelemetry, observability, tracing, metrics, monitoring]
+readingTime: "7 min read"
 ---
 
 # OpenTelemetry 2026: Complete Observability Guide — Traces, Metrics & Logs

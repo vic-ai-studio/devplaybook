@@ -1,8 +1,9 @@
 ---
 title: "Bun 2.0 vs Node.js 22 vs Deno 2: Which JavaScript Runtime in 2026?"
 description: "Compare Bun 2.0, Node.js 22, and Deno 2 across performance, compatibility, ecosystem, and developer experience. Find out which JavaScript runtime is right for your project in 2026."
-pubDate: 2026-03-28
+date: "2026-03-28"
 tags: [bun, nodejs, deno, javascript, runtime]
+readingTime: "8 min read"
 ---
 
 # Bun 2.0 vs Node.js 22 vs Deno 2: Which JavaScript Runtime in 2026?

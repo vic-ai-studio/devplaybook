@@ -1,8 +1,9 @@
 ---
 title: "Hono.js Complete Guide 2026: Build Ultra-Fast APIs with TypeScript"
 description: "Learn Hono.js from scratch in 2026. Complete guide covering routing, middleware, Zod validation, and deploying to Cloudflare Workers and Bun. Includes Express.js performance comparison."
-pubDate: 2026-03-28
+date: "2026-03-28"
 tags: [hono, typescript, api, edge, bun, cloudflare-workers]
+readingTime: "7 min read"
 ---
 
 # Hono.js Complete Guide 2026: Build Ultra-Fast APIs with TypeScript

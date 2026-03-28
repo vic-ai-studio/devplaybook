@@ -1,0 +1,434 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a DAG in AI workflows?", answer: "A DAG (Directed Acyclic Graph) is a graph where nodes represent tasks or LLM calls, and edges represent data dependencies. 'Directed' means data flows one way; 'acyclic' means no circular dependencies. DAGs enable parallel execution of independent steps, making AI pipelines faster and more efficient than purely sequential chains." },
+  { question: "How is a DAG different from a chain?", answer: "A chain executes steps sequentially: A → B → C. Each step waits for the previous. A DAG allows parallel branches: A → {B, C} → D, where B and C run simultaneously. For AI workflows, this means you can call multiple LLMs in parallel, dramatically reducing wall-clock latency." },
+  { question: "What frameworks support DAG-based AI workflows?", answer: "LangGraph (LangChain) uses graph-based state machines. Prefect and Airflow support Python DAGs with AI integrations. Ray and Dask enable distributed parallel execution. n8n has a visual DAG editor. For lightweight Python, you can use asyncio.gather() for parallel LLM calls without a framework." },
+  { question: "How do I estimate DAG execution time?", answer: "Critical path = the longest path through the graph. If A takes 2s and B takes 3s in parallel, the critical path is 3s (not 5s). Total elapsed time = sum of critical path steps, not sum of all steps. Identify your critical path to focus optimization efforts — speeding up non-critical steps doesn't reduce overall latency." },
+  { question: "When should I use parallel vs sequential steps?", answer: "Use parallel when steps are independent (no data dependency between them). Use sequential when step B needs output from step A. Common parallel patterns: fan-out (one → many), map-reduce (parallel processing + aggregation), ensemble (multiple models → vote). Always check for shared state that could cause race conditions." },
+];
+---
+
+<BaseLayout
+  title="AI Pipeline DAG Builder — Workflow Graph Visualizer and Cost Estimator"
+  description="Design AI pipeline DAGs visually. Add nodes, define dependencies, calculate critical path latency, estimate LLM costs per branch, and export workflow configuration."
+  tool="AI Pipeline DAG Builder, Workflow Graph Visualizer, LangGraph DAG Designer, AI Workflow Cost Estimator, Critical Path Calculator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Pipeline DAG Builder</h1>
+  <p class="text-text-muted mb-4">Design and analyze AI workflow DAGs. Define nodes, dependencies, and execution costs. Calculate critical path latency and total pipeline cost.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual DAG editor</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Critical path calculator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost + latency estimator</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <!-- Node editor -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold">Pipeline Nodes</h2>
+          <button id="add-node" class="text-xs px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors">+ Node</button>
+        </div>
+        <div id="node-list" class="space-y-2 max-h-96 overflow-y-auto"></div>
+      </div>
+
+      <!-- Edge editor -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Dependencies</h2>
+          <button id="add-edge" class="text-xs px-3 py-1.5 border border-border text-text-muted rounded-lg hover:border-primary hover:text-primary transition-all">+ Edge</button>
+        </div>
+        <div id="edge-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+      </div>
+
+      <!-- Templates -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Templates</h2>
+        <div class="space-y-2">
+          <button class="dag-template w-full text-left text-xs px-3 py-2 border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-tpl="rag">RAG Pipeline</button>
+          <button class="dag-template w-full text-left text-xs px-3 py-2 border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-tpl="ensemble">LLM Ensemble</button>
+          <button class="dag-template w-full text-left text-xs px-3 py-2 border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-tpl="agent">Multi-Tool Agent</button>
+          <button class="dag-template w-full text-left text-xs px-3 py-2 border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-tpl="research">Research + Summarize</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DAG visualization -->
+    <div class="lg:col-span-2 space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">DAG Visualization</h2>
+        <div id="dag-canvas" class="min-h-64 relative overflow-x-auto"></div>
+      </div>
+
+      <!-- Metrics -->
+      <div id="metrics-cards" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+
+      <!-- Critical path + analysis -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Analysis</h2>
+        <div id="analysis-output" class="text-sm space-y-2"></div>
+      </div>
+
+      <!-- Export -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Export Config</h2>
+          <div class="flex gap-2">
+            <button class="export-btn text-xs px-2 py-1 border border-border text-text-muted rounded hover:border-primary" data-fmt="python">Python</button>
+            <button class="export-btn text-xs px-2 py-1 border border-border text-text-muted rounded hover:border-primary" data-fmt="json">JSON</button>
+            <button id="copy-export" class="text-xs px-2 py-1 bg-primary text-white rounded hover:bg-primary/80">Copy</button>
+          </div>
+        </div>
+        <pre id="export-output" class="text-xs font-mono overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto text-text-muted"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Pipeline DAG Builder" relatedTags={['ai', 'agent', 'workflow', 'dag', 'langgraph', 'pipeline', 'orchestration']} />
+</BaseLayout>
+
+<script>
+  interface DagNode {
+    id: string;
+    label: string;
+    type: string;
+    latencyMs: number;
+    cost: number;
+    level?: number;
+  }
+  interface DagEdge { from: string; to: string }
+
+  const NODE_TYPES: Record<string, { color: string; icon: string }> = {
+    llm: { color: 'bg-blue-500/20 border-blue-500 text-blue-400', icon: '🤖' },
+    tool: { color: 'bg-green-500/20 border-green-500 text-green-400', icon: '🔧' },
+    retrieval: { color: 'bg-purple-500/20 border-purple-500 text-purple-400', icon: '🔍' },
+    input: { color: 'bg-yellow-500/20 border-yellow-500 text-yellow-400', icon: '📥' },
+    output: { color: 'bg-orange-500/20 border-orange-500 text-orange-400', icon: '📤' },
+    decision: { color: 'bg-red-500/20 border-red-500 text-red-400', icon: '❓' },
+  };
+
+  const TEMPLATES: Record<string, { nodes: DagNode[]; edges: DagEdge[] }> = {
+    rag: {
+      nodes: [
+        { id: 'q', label: 'User Query', type: 'input', latencyMs: 10, cost: 0 },
+        { id: 'embed', label: 'Embed Query', type: 'tool', latencyMs: 100, cost: 0.00002 },
+        { id: 'retrieve', label: 'Vector Retrieval', type: 'retrieval', latencyMs: 200, cost: 0.001 },
+        { id: 'rerank', label: 'Reranker', type: 'tool', latencyMs: 150, cost: 0.0005 },
+        { id: 'llm', label: 'LLM Answer', type: 'llm', latencyMs: 1500, cost: 0.01 },
+        { id: 'out', label: 'Response', type: 'output', latencyMs: 10, cost: 0 },
+      ],
+      edges: [
+        { from: 'q', to: 'embed' }, { from: 'embed', to: 'retrieve' },
+        { from: 'retrieve', to: 'rerank' }, { from: 'rerank', to: 'llm' }, { from: 'llm', to: 'out' }
+      ]
+    },
+    ensemble: {
+      nodes: [
+        { id: 'in', label: 'Input', type: 'input', latencyMs: 10, cost: 0 },
+        { id: 'llm1', label: 'GPT-4o', type: 'llm', latencyMs: 1200, cost: 0.015 },
+        { id: 'llm2', label: 'Claude 3.5', type: 'llm', latencyMs: 1000, cost: 0.012 },
+        { id: 'llm3', label: 'Gemini Pro', type: 'llm', latencyMs: 800, cost: 0.008 },
+        { id: 'vote', label: 'Voting Aggregator', type: 'tool', latencyMs: 50, cost: 0 },
+        { id: 'out', label: 'Final Answer', type: 'output', latencyMs: 10, cost: 0 },
+      ],
+      edges: [
+        { from: 'in', to: 'llm1' }, { from: 'in', to: 'llm2' }, { from: 'in', to: 'llm3' },
+        { from: 'llm1', to: 'vote' }, { from: 'llm2', to: 'vote' }, { from: 'llm3', to: 'vote' },
+        { from: 'vote', to: 'out' }
+      ]
+    },
+    agent: {
+      nodes: [
+        { id: 'in', label: 'User Task', type: 'input', latencyMs: 10, cost: 0 },
+        { id: 'plan', label: 'Planning LLM', type: 'llm', latencyMs: 1000, cost: 0.01 },
+        { id: 'search', label: 'Web Search', type: 'tool', latencyMs: 500, cost: 0.005 },
+        { id: 'code', label: 'Code Exec', type: 'tool', latencyMs: 300, cost: 0.001 },
+        { id: 'summarize', label: 'Summarize', type: 'llm', latencyMs: 800, cost: 0.008 },
+        { id: 'out', label: 'Response', type: 'output', latencyMs: 10, cost: 0 },
+      ],
+      edges: [
+        { from: 'in', to: 'plan' }, { from: 'plan', to: 'search' }, { from: 'plan', to: 'code' },
+        { from: 'search', to: 'summarize' }, { from: 'code', to: 'summarize' }, { from: 'summarize', to: 'out' }
+      ]
+    },
+    research: {
+      nodes: [
+        { id: 'q', label: 'Research Query', type: 'input', latencyMs: 10, cost: 0 },
+        { id: 's1', label: 'Search 1', type: 'tool', latencyMs: 600, cost: 0.005 },
+        { id: 's2', label: 'Search 2', type: 'tool', latencyMs: 700, cost: 0.005 },
+        { id: 's3', label: 'Search 3', type: 'tool', latencyMs: 500, cost: 0.005 },
+        { id: 'agg', label: 'Aggregate', type: 'tool', latencyMs: 100, cost: 0 },
+        { id: 'analyze', label: 'Analysis LLM', type: 'llm', latencyMs: 2000, cost: 0.025 },
+        { id: 'out', label: 'Research Report', type: 'output', latencyMs: 10, cost: 0 },
+      ],
+      edges: [
+        { from: 'q', to: 's1' }, { from: 'q', to: 's2' }, { from: 'q', to: 's3' },
+        { from: 's1', to: 'agg' }, { from: 's2', to: 'agg' }, { from: 's3', to: 'agg' },
+        { from: 'agg', to: 'analyze' }, { from: 'analyze', to: 'out' }
+      ]
+    }
+  };
+
+  let nodes: DagNode[] = TEMPLATES.agent.nodes.map(n => ({ ...n }));
+  let edges: DagEdge[] = TEMPLATES.agent.edges.map(e => ({ ...e }));
+  let exportFmt = 'python';
+
+  function computeLevels(): Map<string, number> {
+    const levels = new Map<string, number>();
+    const inDegree = new Map<string, number>();
+    nodes.forEach(n => inDegree.set(n.id, 0));
+    edges.forEach(e => inDegree.set(e.to, (inDegree.get(e.to) || 0) + 1));
+
+    const queue = nodes.filter(n => (inDegree.get(n.id) || 0) === 0).map(n => n.id);
+    queue.forEach(id => levels.set(id, 0));
+
+    while (queue.length) {
+      const curr = queue.shift()!;
+      const currLevel = levels.get(curr) || 0;
+      edges.filter(e => e.from === curr).forEach(e => {
+        const newLevel = currLevel + 1;
+        if ((levels.get(e.to) || 0) < newLevel) levels.set(e.to, newLevel);
+        inDegree.set(e.to, (inDegree.get(e.to) || 1) - 1);
+        if ((inDegree.get(e.to) || 0) === 0) queue.push(e.to);
+      });
+    }
+    return levels;
+  }
+
+  function computeCriticalPath(): { path: string[]; latencyMs: number } {
+    const earliest = new Map<string, number>();
+    nodes.forEach(n => earliest.set(n.id, 0));
+
+    const levels = computeLevels();
+    const sorted = [...nodes].sort((a, b) => (levels.get(a.id) || 0) - (levels.get(b.id) || 0));
+
+    sorted.forEach(n => {
+      const start = earliest.get(n.id) || 0;
+      edges.filter(e => e.from === n.id).forEach(e => {
+        const arrival = start + n.latencyMs;
+        if ((earliest.get(e.to) || 0) < arrival) earliest.set(e.to, arrival);
+      });
+    });
+
+    const maxLatency = Math.max(...[...earliest.values()]);
+    // Find last node
+    const lastNode = nodes.find(n => !edges.some(e => e.from === n.id));
+    return { path: [], latencyMs: maxLatency + (lastNode?.latencyMs || 0) };
+  }
+
+  function renderDAG() {
+    const levels = computeLevels();
+    const maxLevel = Math.max(...[...levels.values()], 0);
+    const canvas = document.getElementById('dag-canvas')!;
+
+    // Group nodes by level
+    const byLevel: Map<number, DagNode[]> = new Map();
+    nodes.forEach(n => {
+      const lv = levels.get(n.id) || 0;
+      if (!byLevel.has(lv)) byLevel.set(lv, []);
+      byLevel.get(lv)!.push(n);
+    });
+
+    const nodeW = 120, nodeH = 52, colGap = 60, rowGap = 16;
+    const positions = new Map<string, { x: number; y: number }>();
+
+    for (let lv = 0; lv <= maxLevel; lv++) {
+      const lvNodes = byLevel.get(lv) || [];
+      const colX = lv * (nodeW + colGap);
+      lvNodes.forEach((n, i) => {
+        positions.set(n.id, { x: colX, y: i * (nodeH + rowGap) });
+      });
+    }
+
+    const maxX = (maxLevel + 1) * (nodeW + colGap);
+    const maxY = Math.max(...[...positions.values()].map(p => p.y)) + nodeH + 20;
+
+    let svg = `<svg width="${maxX}" height="${maxY}" class="overflow-visible">`;
+
+    // Draw edges
+    edges.forEach(e => {
+      const from = positions.get(e.from);
+      const to = positions.get(e.to);
+      if (!from || !to) return;
+      const x1 = from.x + nodeW, y1 = from.y + nodeH / 2;
+      const x2 = to.x, y2 = to.y + nodeH / 2;
+      const mx = (x1 + x2) / 2;
+      svg += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" stroke="#4b5563" stroke-width="1.5" fill="none" marker-end="url(#arrow)" />`;
+    });
+
+    svg += `<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4b5563" /></marker></defs>`;
+
+    // Draw nodes
+    nodes.forEach(n => {
+      const pos = positions.get(n.id);
+      if (!pos) return;
+      const style = NODE_TYPES[n.type] || NODE_TYPES.tool;
+      const color = n.type === 'llm' ? '#3b82f6' : n.type === 'tool' ? '#22c55e' : n.type === 'retrieval' ? '#a855f7' : n.type === 'input' ? '#eab308' : n.type === 'output' ? '#f97316' : '#ef4444';
+      svg += `
+        <rect x="${pos.x}" y="${pos.y}" width="${nodeW}" height="${nodeH}" rx="8" fill="#1e2130" stroke="${color}" stroke-width="1.5" />
+        <text x="${pos.x + nodeW/2}" y="${pos.y + 16}" text-anchor="middle" font-size="9" fill="${color}">${style.icon} ${n.type.toUpperCase()}</text>
+        <text x="${pos.x + nodeW/2}" y="${pos.y + 30}" text-anchor="middle" font-size="11" fill="#e2e8f0" font-weight="600">${n.label.substring(0, 14)}</text>
+        <text x="${pos.x + nodeW/2}" y="${pos.y + 44}" text-anchor="middle" font-size="9" fill="#6b7280">${n.latencyMs}ms · $${n.cost.toFixed(4)}</text>
+      `;
+    });
+
+    svg += '</svg>';
+    canvas.innerHTML = svg;
+  }
+
+  function renderNodeList() {
+    const list = document.getElementById('node-list')!;
+    list.innerHTML = nodes.map(n => `
+      <div class="node-item border border-border rounded-lg p-2 bg-bg-card" data-id="${n.id}">
+        <div class="flex items-center gap-1 mb-1">
+          <select class="node-type bg-bg-card border border-border rounded px-1 py-0.5 text-xs">
+            ${Object.keys(NODE_TYPES).map(t => `<option ${t===n.type?'selected':''}>${t}</option>`).join('')}
+          </select>
+          <input type="text" value="${n.label}" class="node-label flex-1 bg-bg-card border border-border rounded px-1 py-0.5 text-xs focus:outline-none focus:border-primary" />
+          <button class="remove-node text-xs text-red-400">✕</button>
+        </div>
+        <div class="flex gap-1">
+          <div class="flex-1">
+            <label class="text-[10px] text-text-muted">ms</label>
+            <input type="number" value="${n.latencyMs}" class="node-latency w-full bg-bg-card border border-border rounded px-1 py-0.5 text-xs font-mono" />
+          </div>
+          <div class="flex-1">
+            <label class="text-[10px] text-text-muted">cost $</label>
+            <input type="number" value="${n.cost}" step="0.0001" class="node-cost w-full bg-bg-card border border-border rounded px-1 py-0.5 text-xs font-mono" />
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.node-item').forEach(item => {
+      const id = item.getAttribute('data-id')!;
+      const node = nodes.find(n => n.id === id)!;
+      item.querySelector('.node-type')!.addEventListener('change', (e) => { node.type = (e.target as HTMLSelectElement).value; update(); });
+      item.querySelector('.node-label')!.addEventListener('input', (e) => { node.label = (e.target as HTMLInputElement).value; update(); });
+      item.querySelector('.node-latency')!.addEventListener('input', (e) => { node.latencyMs = parseInt((e.target as HTMLInputElement).value) || 0; update(); });
+      item.querySelector('.node-cost')!.addEventListener('input', (e) => { node.cost = parseFloat((e.target as HTMLInputElement).value) || 0; update(); });
+      item.querySelector('.remove-node')!.addEventListener('click', () => {
+        nodes = nodes.filter(n => n.id !== id);
+        edges = edges.filter(e => e.from !== id && e.to !== id);
+        renderEdgeList();
+        update();
+      });
+    });
+  }
+
+  function renderEdgeList() {
+    const list = document.getElementById('edge-list')!;
+    list.innerHTML = edges.map((e, i) => `
+      <div class="flex items-center gap-2 text-xs" data-idx="${i}">
+        <select class="edge-from flex-1 bg-bg-card border border-border rounded px-1 py-0.5">
+          ${nodes.map(n => `<option ${n.id===e.from?'selected':''} value="${n.id}">${n.label}</option>`).join('')}
+        </select>
+        <span class="text-text-muted">→</span>
+        <select class="edge-to flex-1 bg-bg-card border border-border rounded px-1 py-0.5">
+          ${nodes.map(n => `<option ${n.id===e.to?'selected':''} value="${n.id}">${n.label}</option>`).join('')}
+        </select>
+        <button class="remove-edge text-red-400">✕</button>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('[data-idx]').forEach(row => {
+      const idx = parseInt(row.getAttribute('data-idx')!);
+      row.querySelector('.edge-from')!.addEventListener('change', (e) => { edges[idx].from = (e.target as HTMLSelectElement).value; update(); });
+      row.querySelector('.edge-to')!.addEventListener('change', (e) => { edges[idx].to = (e.target as HTMLSelectElement).value; update(); });
+      row.querySelector('.remove-edge')!.addEventListener('click', () => { edges.splice(idx, 1); renderEdgeList(); update(); });
+    });
+  }
+
+  function update() {
+    renderDAG();
+    renderNodeList();
+    const cp = computeCriticalPath();
+    const totalCost = nodes.reduce((s, n) => s + n.cost, 0);
+    const parallelGroups = computeLevels();
+    const maxLevel = Math.max(...[...parallelGroups.values()], 0);
+    const seqTime = nodes.reduce((s, n) => s + n.latencyMs, 0);
+
+    const metrics = [
+      { label: 'Nodes', value: nodes.length.toString() },
+      { label: 'Critical Path', value: `${cp.latencyMs}ms` },
+      { label: 'Sequential Time', value: `${seqTime}ms` },
+      { label: 'Total Cost', value: `$${totalCost.toFixed(4)}` },
+    ];
+    document.getElementById('metrics-cards')!.innerHTML = metrics.map(m => `
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div class="text-lg font-bold text-primary">${m.value}</div>
+        <div class="text-xs text-text-muted">${m.label}</div>
+      </div>
+    `).join('');
+
+    const savings = seqTime > 0 ? Math.round(((seqTime - cp.latencyMs) / seqTime) * 100) : 0;
+    document.getElementById('analysis-output')!.innerHTML = `
+      <div class="flex items-center gap-2"><span class="text-green-500">✓</span> <span>Parallelism saves <strong>${savings}%</strong> of sequential time (${seqTime}ms → ${cp.latencyMs}ms)</span></div>
+      <div class="flex items-center gap-2"><span class="text-blue-400">ℹ</span> <span>${maxLevel + 1} execution levels, ${edges.length} data dependencies</span></div>
+      ${cp.latencyMs > 3000 ? `<div class="flex items-center gap-2"><span class="text-yellow-500">⚠</span> <span>Critical path > 3s. Consider caching or model optimization.</span></div>` : ''}
+      ${totalCost > 0.05 ? `<div class="flex items-center gap-2"><span class="text-yellow-500">⚠</span> <span>Cost per run > $0.05. Consider cheaper models for non-critical steps.</span></div>` : ''}
+    `;
+
+    updateExport();
+  }
+
+  function updateExport() {
+    const el = document.getElementById('export-output')!;
+    if (exportFmt === 'python') {
+      const nodeLines = nodes.map(n => `    "${n.id}": {"label": "${n.label}", "type": "${n.type}", "latency_ms": ${n.latencyMs}, "cost": ${n.cost}}`).join(',\n');
+      const edgeLines = edges.map(e => `    ("${e.from}", "${e.to}")`).join(',\n');
+      el.textContent = `# AI Pipeline DAG Config\nDAG_NODES = {\n${nodeLines}\n}\n\nDAG_EDGES = [\n${edgeLines}\n]\n\n# Run with asyncio for parallel execution\nimport asyncio\nasync def run_dag(inputs):\n    # Implement topological sort + asyncio.gather for parallel nodes\n    pass`;
+    } else {
+      el.textContent = JSON.stringify({ nodes: nodes.map(({id,label,type,latencyMs,cost}) => ({id,label,type,latencyMs,cost})), edges }, null, 2);
+    }
+  }
+
+  document.getElementById('add-node')!.addEventListener('click', () => {
+    const id = `n${Date.now()}`;
+    nodes.push({ id, label: 'New Node', type: 'llm', latencyMs: 500, cost: 0.005 });
+    renderEdgeList();
+    update();
+  });
+
+  document.getElementById('add-edge')!.addEventListener('click', () => {
+    if (nodes.length < 2) return;
+    edges.push({ from: nodes[0].id, to: nodes[nodes.length - 1].id });
+    renderEdgeList();
+    update();
+  });
+
+  document.querySelectorAll('.dag-template').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tpl = TEMPLATES[btn.getAttribute('data-tpl')!];
+      if (!tpl) return;
+      nodes = tpl.nodes.map(n => ({ ...n }));
+      edges = tpl.edges.map(e => ({ ...e }));
+      renderEdgeList();
+      update();
+    });
+  });
+
+  document.querySelectorAll('.export-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      exportFmt = btn.getAttribute('data-fmt')!;
+      updateExport();
+    });
+  });
+
+  document.getElementById('copy-export')!.addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('export-output')!.textContent || '');
+    const btn = document.getElementById('copy-export')!;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+
+  renderEdgeList();
+  update();
+</script>

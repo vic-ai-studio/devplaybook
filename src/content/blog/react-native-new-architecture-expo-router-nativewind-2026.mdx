@@ -1,238 +1,158 @@
 ---
 title: "React Native New Architecture 2026: Expo Router v3 + NativeWind"
-description: "The definitive guide to React Native's New Architecture in 2026. Understand JSI, Fabric, and TurboModules, migrate your app, and build universal iOS/Android/Web apps with Expo Router v3, NativeWind v4, and EAS."
-date: "2026-03-28"
-author: "DevPlaybook Team"
-tags: ["react-native", "expo", "expo-router", "nativewind", "tailwind", "typescript", "ios", "android", "mobile", "cross-platform"]
-readingTime: "14 min read"
+description: "Complete guide to React Native New Architecture with JSI, Fabric, and TurboModules. Learn Expo Router v3, NativeWind v4, Reanimated 3, and EAS for universal app development in 2026."
+pubDate: 2026-03-28
+tags: ["react-native", "expo", "mobile", "typescript", "nativewind"]
+category: "mobile"
 ---
 
-React Native's New Architecture shipped as default in React Native 0.74 (2024) and is now fully stable in the React Native 0.76+ / Expo SDK 52+ stack. If you're still on the old bridge-based architecture, you're leaving significant performance on the table — and running on a system that Hermes has quietly deprecated.
+# React Native New Architecture 2026: Expo Router v3 + NativeWind
 
-This guide covers everything: what changed under the hood, how to migrate, and how to build a full universal app with Expo Router v3, NativeWind v4, and Reanimated 3.
-
----
-
-## The Old Architecture: What Was Wrong
-
-The original React Native bridge had one fundamental problem: **all communication between JavaScript and native code was asynchronous and serialized through JSON**.
-
-```
-JS Thread → JSON serialize → Bridge → JSON deserialize → Native Thread
-```
-
-This caused:
-- **UI jank on heavy interactions**: scroll handlers, gestures, and animations had to cross the bridge on every frame
-- **Startup overhead**: the bridge initialization added 200-400ms to cold start
-- **No synchronous access**: you couldn't call native APIs synchronously, even when you needed to
-- **Memory overhead**: every native object had a JavaScript shadow object maintaining the bridge contract
+React Native has undergone its most significant transformation since its initial release. As of 2026, the **New Architecture is the default** for all new projects — no more opt-in flags, no more legacy bridge. If you are starting a new mobile app today, you are already on JSI, Fabric, and TurboModules. This guide walks you through the complete modern stack: Expo SDK 52+, Expo Router v3, NativeWind v4, Reanimated 3, and EAS deployments.
 
 ---
 
-## The New Architecture: JSI, Fabric, TurboModules
+## What Changed and Why It Matters
 
-### JSI (JavaScript Interface)
+For years, React Native used a **JavaScript Bridge** — an asynchronous serialization layer that passed JSON messages between JS and native code. Every interaction (layout, gesture, module call) had to cross this bridge, introducing latency and jank.
 
-JSI is the foundation. It replaces the JSON bridge with **direct C++ function calls** from JavaScript. Your JavaScript code can hold real references to C++ objects and call their methods synchronously.
+The New Architecture replaces this with three core primitives:
 
+### 1. JavaScript Interface (JSI)
+
+JSI is a lightweight C++ layer that lets JavaScript hold **direct references** to native objects. No serialization. No async queue. You call a native function the same way you call any JS function.
+
+```typescript
+// Old Architecture (Bridge) — fire and forget, async
+NativeModules.MyModule.getValue((result) => {
+  console.log(result);
+});
+
+// New Architecture (JSI) — synchronous, direct
+import { NativeMyModule } from "./specs/NativeMyModule";
+
+const value = NativeMyModule.getValue(); // synchronous!
+console.log(value);
 ```
-JS (Hermes/V8) → JSI → C++ → Native Platform APIs
+
+### 2. Fabric (New Renderer)
+
+Fabric is the new rendering system for React Native. It brings React 18 Concurrent Mode features — Suspense, transitions, and automatic batching — to mobile. Layouts are calculated on the C++ Shadow Tree and can be committed synchronously on the main thread when needed.
+
+```typescript
+// React 18 Concurrent features now work natively
+import { Suspense, startTransition } from "react";
+
+function App() {
+  const [tab, setTab] = useState("home");
+
+  function handleTabPress(nextTab: string) {
+    startTransition(() => {
+      setTab(nextTab); // non-urgent, deferred
+    });
+  }
+
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <TabContent tab={tab} />
+    </Suspense>
+  );
+}
 ```
 
-Benefits:
-- Synchronous native calls (no async roundtrip)
-- Shared memory between JS and C++ (no serialization overhead)
-- Host Objects: native objects exposed directly to JavaScript
+### 3. TurboModules
 
-### Fabric
+TurboModules replace the old NativeModules registry. They are lazily loaded — a module is not instantiated until your JS code first accesses it. This dramatically improves startup time for apps with many native dependencies.
 
-Fabric is the new rendering system. It replaces the old shadow thread + UIManager with a C++ core that handles layout (via Yoga) directly:
+```typescript
+// TurboModule spec definition (TypeScript-first)
+import type { TurboModule } from "react-native/Libraries/TurboModule/RCTExport";
+import { TurboModuleRegistry } from "react-native";
 
-- **Synchronous rendering**: layout calculations happen on-demand rather than asynchronously
-- **Concurrent features**: Fabric supports React 18's concurrent rendering (Suspense, transitions)
-- **View flattening**: fewer native view layers = better performance
-- **Thread safety**: multiple threads can read the UI state simultaneously
+export interface Spec extends TurboModule {
+  multiply(a: number, b: number): number;
+  fetchUser(id: string): Promise<{ name: string; email: string }>;
+}
 
-### TurboModules
-
-TurboModules replace NativeModules. Key differences:
-
-| | NativeModules (old) | TurboModules (new) |
-|---|---|---|
-| Initialization | All modules at startup | Lazy-loaded on demand |
-| Type safety | No (runtime errors) | Yes (Codegen-generated types) |
-| Call mechanism | Bridge (async JSON) | JSI (sync or async) |
-| Memory | Shadow objects for all | Only what's needed |
+export default TurboModuleRegistry.getEnforcing<Spec>("MyTurboModule");
+```
 
 ---
 
-## Performance Comparison: New vs Old Architecture
-
-Real-world benchmarks from the React Native 0.76 release notes and community reports:
+## Performance Comparison
 
 | Metric | Old Architecture | New Architecture | Improvement |
-|---|---|---|---|
-| Cold startup | ~800ms | ~450ms | ~44% faster |
-| List scroll FPS | 45-55 fps | 58-60 fps | Near-native |
-| Gesture response | 16-32ms | 4-8ms | 4x faster |
-| Memory usage | Higher (shadow objects) | Lower | ~20% reduction |
-| Animation jank | Frequent on heavy load | Rare | Significant |
+|--------|-----------------|-----------------|-------------|
+| JS-to-Native call | ~1-2ms (async) | ~0.01ms (sync JSI) | ~100x faster |
+| App startup (cold) | 800-1200ms | 400-600ms | ~50% faster |
+| Animation dropped frames | 5-15% | less than 1% | ~10x fewer drops |
+| Memory overhead | High (bridge serialization) | Low (shared C++ objects) | ~30% reduction |
+| Large list scroll | 55-58fps | 59-60fps | Consistently smooth |
+| Concurrent renders | Not supported | Full React 18 support | New capability |
 
 ---
 
-## Migrating to the New Architecture
+## Setting Up Expo SDK 52+
 
-### Check Your Current Setup
-
-```bash
-npx react-native info
-```
-
-### Expo SDK 52+ (Recommended Path)
-
-Expo SDK 52 enables the New Architecture by default for all new projects. For existing projects:
+Expo is the recommended way to use React Native in 2026. SDK 52 ships with New Architecture enabled by default and includes Expo Router v3.
 
 ```bash
-npx expo install expo@^52 react-native@0.76
+npx create-expo-app@latest MyApp --template tabs
+cd MyApp
+npx expo install --fix
 ```
 
-In `app.json`:
+Your `app.json` will already have the correct flags:
 
 ```json
 {
   "expo": {
-    "newArchEnabled": true
+    "name": "MyApp",
+    "slug": "my-app",
+    "version": "1.0.0",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourorg.myapp"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.yourorg.myapp"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router"
+    ]
   }
 }
 ```
 
-### Auditing Your Dependencies
-
-Not all libraries support the New Architecture yet. Check compatibility:
+Install NativeWind and Reanimated in one shot:
 
 ```bash
-npx react-native-new-arch-helper check
+npx expo install nativewind tailwindcss react-native-reanimated react-native-gesture-handler
 ```
 
-Common libraries with New Architecture support in 2026:
-- ✅ `react-native-reanimated` v3+
-- ✅ `react-native-gesture-handler` v2.14+
-- ✅ `react-native-screens` v3.29+
-- ✅ `@shopify/flash-list` v1.6+
-- ✅ `react-native-mmkv` v2.11+
-- ⚠️ Some older camera/bluetooth modules still need migration
-
----
-
-## Expo Router v3: File-Based Routing
-
-Expo Router v3 brings Next.js-style file-based routing to React Native — and it targets iOS, Android, and Web from a single codebase.
-
-### Project Structure
-
-```
-app/
-├── _layout.tsx          # Root layout (navigation container)
-├── index.tsx            # "/" route
-├── (tabs)/              # Tab group
-│   ├── _layout.tsx      # Tab bar layout
-│   ├── index.tsx        # First tab
-│   └── explore.tsx      # Second tab
-├── profile/
-│   ├── [id].tsx         # Dynamic route: /profile/123
-│   └── settings.tsx     # /profile/settings
-└── +not-found.tsx       # 404 page (web)
-```
-
-### Root Layout
-
-```tsx
-// app/_layout.tsx
-import { Stack } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-
-export default function RootLayout() {
-  return (
-    <>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="profile/[id]" options={{ title: "Profile" }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </>
-  );
-}
-```
-
-### Tab Navigation
-
-```tsx
-// app/(tabs)/_layout.tsx
-import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-
-export default function TabLayout() {
-  return (
-    <Tabs>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: "Explore",
-          tabBarIcon: ({ color }) => <Ionicons name="search" size={24} color={color} />,
-        }}
-      />
-    </Tabs>
-  );
-}
-```
-
-### Navigation and Linking
-
-```tsx
-import { Link, router, useLocalSearchParams } from "expo-router";
-
-// Declarative navigation
-<Link href="/profile/123">View Profile</Link>
-<Link href={{ pathname: "/profile/[id]", params: { id: "456" } }}>Profile 456</Link>
-
-// Programmatic navigation
-router.push("/profile/123");
-router.replace("/(tabs)");
-router.back();
-
-// Reading params in a dynamic route
-function ProfileScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  return <Text>User ID: {id}</Text>;
-}
-```
-
----
-
-## NativeWind v4: Tailwind CSS for React Native
-
-NativeWind v4 is a complete rewrite. It now compiles Tailwind classes to StyleSheet objects at build time — no runtime overhead.
-
-### Installation
+Run the Tailwind init:
 
 ```bash
-npx expo install nativewind tailwindcss react-native-reanimated react-native-safe-area-context
 npx tailwindcss init
 ```
 
-`tailwind.config.js`:
+Update `tailwind.config.js`:
 
-```js
-/** @type {import('tailwindcss').Config} */
+```javascript
+/** @type {import("tailwindcss").Config} */
 module.exports = {
-  content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],
+  content: [
+    "./app/**/*.{js,jsx,ts,tsx}",
+    "./components/**/*.{js,jsx,ts,tsx}",
+  ],
   presets: [require("nativewind/preset")],
   theme: {
     extend: {},
@@ -241,159 +161,454 @@ module.exports = {
 };
 ```
 
-`babel.config.js`:
+Add NativeWind to your `metro.config.js`:
 
-```js
-module.exports = function (api) {
-  api.cache(true);
-  return {
-    presets: [
-      ["babel-preset-expo", { jsxImportSource: "nativewind" }],
-      "nativewind/babel",
-    ],
-  };
-};
+```javascript
+const { getDefaultConfig } = require("expo/metro-config");
+const { withNativeWind } = require("nativewind/metro");
+
+const config = getDefaultConfig(__dirname);
+
+module.exports = withNativeWind(config, { input: "./global.css" });
 ```
 
-### Usage
+Create `global.css`:
 
-```tsx
-import { View, Text, TouchableOpacity } from "react-native";
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
 
-export function Card({ title, onPress }: { title: string; onPress: () => void }) {
+Import it in your root `_layout.tsx`:
+
+```typescript
+import "../global.css";
+```
+
+---
+
+## Expo Router v3: File-Based Routing
+
+Expo Router v3 brings Next.js-style file-based routing to React Native. Every file in the `app/` directory becomes a route. This works on iOS, Android, and the Web from a single codebase.
+
+### Directory Structure
+
+```
+app/
+├── _layout.tsx          # Root layout (providers, fonts)
+├── index.tsx            # "/" — Home screen
+├── (tabs)/
+│   ├── _layout.tsx      # Tab navigator layout
+│   ├── index.tsx        # "/tabs" — First tab
+│   ├── explore.tsx      # "/tabs/explore" — Second tab
+│   └── profile.tsx      # "/tabs/profile" — Third tab
+├── (auth)/
+│   ├── _layout.tsx      # Auth stack layout
+│   ├── login.tsx        # "/auth/login"
+│   └── register.tsx     # "/auth/register"
+├── post/
+│   ├── [id].tsx         # "/post/123" — Dynamic route
+│   └── [id]/
+│       └── comments.tsx # "/post/123/comments" — Nested
+└── +not-found.tsx       # 404 fallback
+```
+
+### Root Layout
+
+```typescript
+// app/_layout.tsx
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+
+export default function RootLayout() {
   return (
-    <View className="bg-white rounded-2xl p-4 shadow-md mx-4 my-2">
-      <Text className="text-lg font-bold text-gray-900">{title}</Text>
-      <TouchableOpacity
-        className="mt-3 bg-blue-500 rounded-xl py-2 px-4 active:bg-blue-600"
-        onPress={onPress}
-      >
-        <Text className="text-white font-semibold text-center">Open</Text>
-      </TouchableOpacity>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="post/[id]"
+          options={{ title: "Post", headerBackTitle: "Back" }}
+        />
+        <Stack.Screen name="+not-found" />
+      </Stack>
+      <StatusBar style="auto" />
+    </GestureHandlerRootView>
+  );
+}
+```
+
+### Tab Navigator
+
+```typescript
+// app/(tabs)/_layout.tsx
+import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+
+export default function TabLayout() {
+  return (
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: "#6366f1",
+        headerShown: false,
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: "Home",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: "Explore",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="compass" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tabs>
+  );
+}
+```
+
+---
+
+## Typed Navigation with Link and useLocalSearchParams
+
+Expo Router v3 ships with **typed routes** out of the box. Enable them in `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "plugins": [{ "name": "expo/typescript-plugin" }]
+  }
+}
+```
+
+Now `Link` and `router.push` are fully typed:
+
+```typescript
+// Navigating to a typed route
+import { Link, router } from "expo-router";
+import { Pressable, Text } from "react-native";
+
+export default function HomeScreen() {
+  return (
+    <>
+      {/* Declarative navigation — fully typed */}
+      <Link href="/post/42" asChild>
+        <Pressable>
+          <Text>View Post 42</Text>
+        </Pressable>
+      </Link>
+
+      {/* Imperative navigation */}
+      <Pressable onPress={() => router.push("/post/42")}>
+        <Text>Go to Post 42</Text>
+      </Pressable>
+    </>
+  );
+}
+```
+
+Reading dynamic params in the target screen:
+
+```typescript
+// app/post/[id].tsx
+import { useLocalSearchParams } from "expo-router";
+import { View, Text } from "react-native";
+import { useQuery } from "@tanstack/react-query";
+
+export default function PostScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["post", id],
+    queryFn: () => fetchPost(id),
+  });
+
+  if (isLoading) return <Text>Loading...</Text>;
+
+  return (
+    <View>
+      <Text>{data?.title}</Text>
+      <Text>{data?.body}</Text>
     </View>
   );
 }
 ```
 
-### Dark Mode
+---
 
-```tsx
-// Automatic system dark mode
-<View className="bg-white dark:bg-gray-900">
-  <Text className="text-gray-900 dark:text-white">Hello</Text>
-</View>
+## Universal Apps: iOS + Android + Web
+
+Expo Router v3 compiles the same `app/` directory for all three platforms. Metro handles platform-specific extensions:
+
+```
+components/
+├── Card.tsx           # shared (all platforms)
+├── Card.native.tsx    # overrides for iOS + Android
+└── Card.web.tsx       # overrides for Web
 ```
 
-Configure in `app.json`:
+Use `Platform.OS` for inline branching when the difference is small:
 
-```json
-{
-  "expo": {
-    "userInterfaceStyle": "automatic"
-  }
-}
+```typescript
+import { Platform, StyleSheet } from "react-native";
+
+const styles = StyleSheet.create({
+  container: {
+    padding: Platform.OS === "web" ? 24 : 16,
+    shadowColor: Platform.OS === "ios" ? "#000" : "transparent",
+    elevation: Platform.OS === "android" ? 4 : 0,
+  },
+});
 ```
 
 ---
 
-## Shared Transitions with Reanimated 3
+## NativeWind v4: Tailwind on Native
 
-Reanimated 3 + the New Architecture enables frame-perfect animations without ever touching the JS thread:
+NativeWind v4 compiles Tailwind classes to StyleSheet objects at **build time** using Babel. The DX is identical to web Tailwind. No runtime overhead.
 
-```bash
-npx expo install react-native-reanimated
+### Before NativeWind (verbose StyleSheet)
+
+```typescript
+import { View, Text, Pressable, StyleSheet } from "react-native";
+
+export function Button({ label }: { label: string }) {
+  return (
+    <Pressable style={styles.button}>
+      <Text style={styles.label}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  button: {
+    backgroundColor: "#6366f1",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  label: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+});
 ```
 
-### Basic Animation
+### After NativeWind v4 (clean Tailwind classes)
 
-```tsx
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-} from "react-native-reanimated";
-import { Pressable } from "react-native";
+```typescript
+import { Pressable, Text } from "react-native";
 
-function AnimatedButton() {
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
+export function Button({ label }: { label: string }) {
   return (
-    <Pressable
-      onPressIn={() => (scale.value = withSpring(0.95))}
-      onPressOut={() => (scale.value = withSpring(1))}
-    >
-      <Animated.View style={[styles.button, animatedStyle]}>
-        <Text className="text-white font-bold">Press Me</Text>
-      </Animated.View>
+    <Pressable className="bg-indigo-500 px-6 py-3 rounded-lg items-center active:bg-indigo-600">
+      <Text className="text-white text-base font-semibold">{label}</Text>
     </Pressable>
   );
 }
 ```
 
-### Shared Element Transitions
+### Responsive Design with NativeWind
 
-```tsx
+NativeWind v4 supports responsive breakpoints and dark mode:
+
+```typescript
+export function Card({ title, body }: { title: string; body: string }) {
+  return (
+    <View className="bg-white dark:bg-zinc-900 rounded-2xl p-4 md:p-6 shadow-md m-4 md:mx-8">
+      <Text className="text-zinc-900 dark:text-white text-xl font-bold mb-2">
+        {title}
+      </Text>
+      <Text className="text-zinc-500 dark:text-zinc-400 text-sm leading-relaxed">
+        {body}
+      </Text>
+    </View>
+  );
+}
+```
+
+---
+
+## Reanimated 3: Worklets and Gesture Handler
+
+React Native Reanimated 3 runs animations entirely on the **UI thread** using worklets — small JS functions that are serialized and executed in C++, bypassing the JS thread entirely.
+
+### Swipe Card Animation
+
+```typescript
+import { View, Text, Dimensions } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  runOnJS,
+} from "react-native-reanimated";
+import {
+  Gesture,
+  GestureDetector,
+} from "react-native-gesture-handler";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.35;
+
+interface SwipeCardProps {
+  title: string;
+  onSwipeLeft: () => void;
+  onSwipeRight: () => void;
+}
+
+export function SwipeCard({ title, onSwipeLeft, onSwipeRight }: SwipeCardProps) {
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const rotation = useSharedValue(0);
+
+  const pan = Gesture.Pan()
+    .onUpdate((event) => {
+      translateX.value = event.translationX;
+      translateY.value = event.translationY;
+      rotation.value = (event.translationX / SCREEN_WIDTH) * 15;
+    })
+    .onEnd((event) => {
+      if (event.translationX > SWIPE_THRESHOLD) {
+        translateX.value = withSpring(SCREEN_WIDTH * 1.5);
+        runOnJS(onSwipeRight)();
+      } else if (event.translationX < -SWIPE_THRESHOLD) {
+        translateX.value = withSpring(-SCREEN_WIDTH * 1.5);
+        runOnJS(onSwipeLeft)();
+      } else {
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+        rotation.value = withSpring(0);
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { rotate: `${rotation.value}deg` },
+    ],
+  }));
+
+  return (
+    <GestureDetector gesture={pan}>
+      <Animated.View
+        className="w-80 h-96 bg-white rounded-3xl shadow-xl items-center justify-center"
+        style={animatedStyle}
+      >
+        <Text className="text-2xl font-bold text-zinc-800">{title}</Text>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+```
+
+### Interpolating Opacity for Like/Dislike Labels
+
+```typescript
+import {
+  useAnimatedStyle,
+  interpolate,
+  Extrapolation,
+} from "react-native-reanimated";
+
+function useLikeStyle(translateX: Animated.SharedValue<number>) {
+  return useAnimatedStyle(() => ({
+    opacity: interpolate(
+      translateX.value,
+      [0, SWIPE_THRESHOLD],
+      [0, 1],
+      Extrapolation.CLAMP
+    ),
+  }));
+}
+
+function useDislikeStyle(translateX: Animated.SharedValue<number>) {
+  return useAnimatedStyle(() => ({
+    opacity: interpolate(
+      translateX.value,
+      [-SWIPE_THRESHOLD, 0],
+      [1, 0],
+      Extrapolation.CLAMP
+    ),
+  }));
+}
+```
+
+---
+
+## Shared Element Transitions
+
+Expo Router v3 includes built-in shared element transitions powered by the New Architecture:
+
+```typescript
+// In the source screen (list item)
 import { SharedTransition, withSpring } from "react-native-reanimated";
 
-// Source screen
-<Animated.Image
-  source={{ uri: item.image }}
-  sharedTransitionTag={`item-${item.id}`}
-  style={styles.thumbnail}
-/>
-
-// Detail screen
-<Animated.Image
-  source={{ uri: item.image }}
-  sharedTransitionTag={`item-${item.id}`}
-  style={styles.hero}
-/>
-// Reanimated automatically handles the smooth cross-screen animation
-```
-
----
-
-## Universal Apps: iOS + Android + Web with Expo
-
-Expo Router v3 supports Web out of the box via Metro's web bundling:
-
-```bash
-# Run on web
-npx expo start --web
-
-# Build web
-npx expo export --platform web
-```
-
-### Platform-Specific Code
-
-```tsx
-import { Platform } from "react-native";
-
-// Inline platform check
-const shadowStyle = Platform.select({
-  ios: { shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 4 },
-  android: { elevation: 4 },
-  web: { boxShadow: "0 2px 8px rgba(0,0,0,0.2)" },
+const customTransition = SharedTransition.custom((values) => {
+  "worklet";
+  return {
+    height: withSpring(values.targetHeight),
+    width: withSpring(values.targetWidth),
+    originX: withSpring(values.targetOriginX),
+    originY: withSpring(values.targetOriginY),
+  };
 });
 
-// Platform-specific file extensions (auto-resolved by Metro)
-// component.ios.tsx  → used on iOS
-// component.android.tsx → used on Android
-// component.web.tsx  → used on Web
-// component.tsx      → fallback for all
+export function PostCard({ post }: { post: Post }) {
+  return (
+    <Link href={`/post/${post.id}`} asChild>
+      <Pressable>
+        <Animated.Image
+          source={{ uri: post.imageUrl }}
+          sharedTransitionTag={`post-image-${post.id}`}
+          sharedTransitionStyle={customTransition}
+          className="w-full h-48 rounded-xl"
+        />
+        <Text className="text-lg font-semibold mt-2">{post.title}</Text>
+      </Pressable>
+    </Link>
+  );
+}
+
+// In the destination screen (detail)
+export default function PostDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  return (
+    <View>
+      <Animated.Image
+        source={{ uri: post.imageUrl }}
+        sharedTransitionTag={`post-image-${id}`}
+        className="w-full h-72"
+      />
+      <Text className="text-2xl font-bold p-4">{post.title}</Text>
+    </View>
+  );
+}
 ```
 
 ---
 
-## OTA Updates with EAS Update
+## EAS Update: OTA Deployments
 
-EAS Update pushes JavaScript bundles to users without going through the App Store review:
+Expo Application Services (EAS) lets you push JavaScript updates to production without going through the App Store review process. Critical bug fixes can be live in minutes.
+
+### Setup
 
 ```bash
 npm install -g eas-cli
@@ -401,53 +616,94 @@ eas login
 eas update:configure
 ```
 
-```bash
-# Deploy an update
-eas update --branch production --message "Fix login bug"
-```
-
-Configure in `app.json`:
+This creates an `eas.json`:
 
 ```json
 {
-  "expo": {
-    "updates": {
-      "url": "https://u.expo.dev/your-project-id",
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0
+  "cli": {
+    "version": ">= 7.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview"
+    },
+    "production": {
+      "channel": "production",
+      "autoIncrement": true
     }
+  },
+  "update": {
+    "channel": "production"
   }
 }
 ```
 
-EAS Update respects `runtimeVersion` — native changes (adding a new native module) increment the version and require a full App Store release. Pure JS changes can be pushed OTA.
+### Pushing an OTA Update
+
+```bash
+# Push to production channel
+eas update --branch production --message "Fix checkout crash on Android"
+
+# Preview before pushing
+eas update --branch preview --message "Test new home screen layout"
+```
+
+### Rollback
+
+```bash
+# List recent updates
+eas update:list --branch production
+
+# Rollback to a previous update ID
+eas update:republish --group <update-group-id> --branch production
+```
 
 ---
 
-## Summary
+## Migration Tips from Old Architecture
 
-The React Native New Architecture in 2026 is a genuine step-change in mobile development:
+If you are migrating an existing app, follow these steps:
 
-- **JSI** eliminates the JSON bridge bottleneck
-- **Fabric** enables concurrent rendering and synchronous layout
-- **TurboModules** lazy-load native code and provide type-safe interfaces
+1. **Enable New Architecture incrementally.** Set `newArchEnabled: true` in `app.json` and run a fresh native build. Fix native module errors one at a time.
 
-Paired with the modern Expo stack:
-- **Expo Router v3**: intuitive file-based routing for mobile and web
-- **NativeWind v4**: write Tailwind CSS classes that compile to native StyleSheet
-- **Reanimated 3**: 60fps animations running on the UI thread
+2. **Audit third-party libraries.** Check reactnative.directory for the New Architecture badge. Most popular libraries (React Navigation, MMKV, Reanimated, Gesture Handler) are already compatible.
 
-For new apps in 2026, start with `npx create-expo-app@latest --template`. The new architecture is the default. For existing apps, check library compatibility first, then enable `newArchEnabled: true` — most apps see immediate improvements in scroll performance and startup time.
+3. **Replace deprecated APIs.** `NativeModules.X` should become typed TurboModule specs. `requireNativeComponent` should migrate to Fabric components with `codegenNativeComponent`.
+
+4. **Remove InteractionManager workarounds.** Many old patterns used `InteractionManager.runAfterInteractions` to defer heavy work. With Concurrent Mode, React itself handles prioritization — these workarounds often cause more harm than good.
+
+5. **Test on physical devices.** The Hermes JS engine and Fabric renderer behave differently from Chrome DevTools. Always profile on real hardware before shipping.
+
+6. **Enable Strict Mode.** Wrap your app in `<React.StrictMode>` to catch concurrent-unsafe effects early.
 
 ---
 
-## Resources
+## Summary: The 2026 React Native Stack
 
-- [Expo Router Docs](https://expo.github.io/router/docs/)
-- [NativeWind Docs](https://www.nativewind.dev/overview/)
-- [React Native New Architecture Migration Guide](https://reactnative.dev/docs/new-architecture-intro)
-- [Reanimated 3 Docs](https://docs.swmansion.com/react-native-reanimated/)
-- [EAS Update Docs](https://docs.expo.dev/eas-update/introduction/)
+| Layer | Technology | Version | Purpose |
+|-------|-----------|---------|---------|
+| Runtime | Hermes + JSI | SDK 52 | Fast JS execution, sync native calls |
+| Renderer | Fabric | New Arch | Concurrent rendering, sync commits |
+| Native Modules | TurboModules | New Arch | Lazy-loaded, typed, synchronous |
+| Framework | Expo | SDK 52+ | Managed workflow, EAS, universal apps |
+| Routing | Expo Router | v3 | File-based, typed, web + native |
+| Styling | NativeWind | v4 | Tailwind CSS on native, build-time |
+| Animations | Reanimated | v3 | UI-thread worklets, 60fps |
+| Gestures | Gesture Handler | v2 | Native-driven gesture recognition |
+| State | Zustand / Jotai | latest | Lightweight, concurrent-safe |
+| Data Fetching | TanStack Query | v5 | Server state, caching, offline |
+| OTA Updates | EAS Update | latest | Skip App Store for JS-only changes |
+| Type Safety | TypeScript | 5.x | End-to-end typed routes and modules |
+
+---
+
+## Conclusion
+
+The React Native New Architecture is not just a performance upgrade — it is a foundational shift that enables React 18 Concurrent Mode, synchronous native calls, and shared C++ state on mobile. Combined with Expo Router v3 for universal file-based routing, NativeWind v4 for consistent Tailwind styling, Reanimated 3 for fluid 60fps animations, and EAS for frictionless OTA deployments, the 2026 React Native stack is genuinely competitive with native development — and dramatically more productive.
+
+Start a new project today with `npx create-expo-app@latest` and you will have all of this wired up before your first commit.

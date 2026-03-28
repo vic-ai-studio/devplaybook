@@ -1,0 +1,316 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is MCP (Model Context Protocol)?", answer: "MCP is an open protocol by Anthropic that standardizes how AI models connect to external tools, data sources, and services. An MCP server exposes tools (functions), resources (data), and prompts to AI clients like Claude Desktop, Cursor, and custom agents. It uses JSON-RPC 2.0 over stdio or HTTP/SSE." },
+  { question: "How do I build an MCP server?", answer: "Use the official MCP SDKs: @modelcontextprotocol/sdk for TypeScript/Node.js, or mcp Python package. Define tools with input schemas, implement handlers, and start a server. For stdio servers: `npx @modelcontextprotocol/sdk`. For HTTP servers: expose a /sse endpoint. Register your server in the MCP client config." },
+  { question: "What is the difference between tools and resources in MCP?", answer: "Tools are callable functions with defined input schemas — they perform actions (search, calculate, write). Resources are read-only data sources identified by URIs (files, database rows, API responses). Prompts are pre-defined conversation templates. Most custom MCP servers primarily expose tools." },
+  { question: "How do I test an MCP server locally?", answer: "Use the MCP Inspector (npx @modelcontextprotocol/inspector), Claude Desktop with local config, or build a simple test client. For HTTP servers, you can test the /list endpoint manually. This tool generates valid MCP JSON-RPC payloads you can send directly to test your server's protocol compliance." },
+  { question: "What transports does MCP support?", answer: "MCP supports two transports: (1) stdio — the server runs as a subprocess and communicates via stdin/stdout, used by most desktop clients. (2) HTTP with SSE — server exposes HTTP endpoints for server-sent events, better for remote/cloud deployments. Most local development uses stdio for simplicity." },
+];
+---
+
+<BaseLayout
+  title="MCP Server Tester — Model Context Protocol Endpoint Validator"
+  description="Test and validate MCP (Model Context Protocol) servers. Generate JSON-RPC payloads, validate tool schemas, simulate initialize/list/call sequences, and debug your MCP implementation."
+  tool="MCP Server Tester, Model Context Protocol Validator, MCP Tool Schema Tester, JSON-RPC MCP Client, MCP Endpoint Debugger"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">MCP Server Tester</h1>
+  <p class="text-text-muted mb-4">Generate and validate MCP (Model Context Protocol) JSON-RPC payloads. Build tool call requests, inspect schemas, and test your MCP server implementation.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JSON-RPC payload generator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Tool schema validator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> MCP lifecycle simulator</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Left panel -->
+    <div class="space-y-4">
+      <!-- Method selector -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">MCP Method</h2>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <button class="method-btn active text-xs px-3 py-2 bg-primary text-white rounded-lg" data-method="initialize">initialize</button>
+          <button class="method-btn text-xs px-3 py-2 border border-border text-text-muted rounded-lg hover:border-primary" data-method="tools/list">tools/list</button>
+          <button class="method-btn text-xs px-3 py-2 border border-border text-text-muted rounded-lg hover:border-primary" data-method="tools/call">tools/call</button>
+          <button class="method-btn text-xs px-3 py-2 border border-border text-text-muted rounded-lg hover:border-primary" data-method="resources/list">resources/list</button>
+          <button class="method-btn text-xs px-3 py-2 border border-border text-text-muted rounded-lg hover:border-primary" data-method="resources/read">resources/read</button>
+          <button class="method-btn text-xs px-3 py-2 border border-border text-text-muted rounded-lg hover:border-primary" data-method="prompts/list">prompts/list</button>
+        </div>
+
+        <!-- Dynamic params -->
+        <div id="params-form" class="space-y-3"></div>
+      </div>
+
+      <!-- Tool schema builder -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Tool Definition Builder</h2>
+        <p class="text-xs text-text-muted mb-3">Build a valid MCP tool definition to validate your server's schema format.</p>
+        <div class="space-y-2">
+          <input id="tool-name" type="text" placeholder="Tool name (e.g. search_web)" value="search_web"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+          <textarea id="tool-desc" rows="2" placeholder="Tool description"
+            class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary resize-none">Search the web for current information</textarea>
+          <div class="flex gap-2">
+            <button id="gen-tool-schema" class="text-xs px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors">Generate Tool Schema</button>
+            <button id="add-param" class="text-xs px-3 py-1.5 border border-border text-text-muted rounded-lg hover:border-primary hover:text-primary transition-all">+ Add Parameter</button>
+          </div>
+          <div id="tool-params" class="space-y-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel: output -->
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-semibold">Generated Payload</h2>
+        <div class="flex gap-2">
+          <button id="copy-payload" class="text-xs px-3 py-1.5 border border-border text-text-muted rounded-lg hover:border-primary hover:text-primary transition-all">Copy</button>
+          <button id="validate-btn" class="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors">Validate</button>
+        </div>
+      </div>
+      <pre id="payload-output" class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap min-h-[200px] max-h-[350px] overflow-y-auto"></pre>
+
+      <div id="validation-result" class="hidden bg-bg-card border border-border rounded-xl p-4"></div>
+
+      <!-- Test sequence guide -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">MCP Lifecycle Sequence</h2>
+        <div class="space-y-2">
+          {[
+            { step: '1', label: 'initialize', desc: 'Handshake + capabilities negotiation' },
+            { step: '2', label: 'initialized (notify)', desc: 'Client confirms ready' },
+            { step: '3', label: 'tools/list', desc: 'Discover available tools' },
+            { step: '4', label: 'tools/call', desc: 'Invoke a specific tool' },
+            { step: '5', label: 'ping', desc: 'Keep-alive (optional)' },
+          ].map(s => `
+            <div class="flex items-start gap-2 text-xs">
+              <span class="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center font-semibold flex-shrink-0">${s.step}</span>
+              <div><span class="font-mono text-primary">${s.label}</span><span class="text-text-muted ml-2">${s.desc}</span></div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="MCP Server Tester" relatedTags={['mcp', 'ai', 'agent', 'claude', 'protocol', 'json-rpc', 'tools']} />
+</BaseLayout>
+
+<script>
+  let currentMethod = 'initialize';
+  let msgId = 1;
+  let toolParams: { name: string; type: string; required: boolean; desc: string }[] = [
+    { name: 'query', type: 'string', required: true, desc: 'Search query string' },
+    { name: 'max_results', type: 'number', required: false, desc: 'Maximum results to return' },
+  ];
+
+  const METHOD_TEMPLATES: Record<string, () => object> = {
+    initialize: () => ({
+      jsonrpc: '2.0',
+      id: msgId++,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: { roots: { listChanged: true }, sampling: {} },
+        clientInfo: { name: 'mcp-tester', version: '1.0.0' }
+      }
+    }),
+    'tools/list': () => ({
+      jsonrpc: '2.0',
+      id: msgId++,
+      method: 'tools/list',
+      params: {}
+    }),
+    'tools/call': () => {
+      const toolName = (document.getElementById('tools-call-name') as HTMLInputElement)?.value || 'search_web';
+      let toolArgs: Record<string, unknown> = {};
+      try { toolArgs = JSON.parse((document.getElementById('tools-call-args') as HTMLTextAreaElement)?.value || '{}'); } catch {}
+      return {
+        jsonrpc: '2.0',
+        id: msgId++,
+        method: 'tools/call',
+        params: { name: toolName, arguments: toolArgs }
+      };
+    },
+    'resources/list': () => ({
+      jsonrpc: '2.0',
+      id: msgId++,
+      method: 'resources/list',
+      params: {}
+    }),
+    'resources/read': () => ({
+      jsonrpc: '2.0',
+      id: msgId++,
+      method: 'resources/read',
+      params: { uri: (document.getElementById('resource-uri') as HTMLInputElement)?.value || 'file:///etc/hosts' }
+    }),
+    'prompts/list': () => ({
+      jsonrpc: '2.0',
+      id: msgId++,
+      method: 'prompts/list',
+      params: {}
+    }),
+  };
+
+  function renderParamsForm() {
+    const form = document.getElementById('params-form')!;
+    if (currentMethod === 'tools/call') {
+      form.innerHTML = `
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Tool name</label>
+          <input id="tools-call-name" type="text" value="search_web" placeholder="tool_name"
+            class="w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary font-mono" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Arguments (JSON)</label>
+          <textarea id="tools-call-args" rows="3" class="w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary font-mono resize-none">{"query": "MCP protocol tutorial", "max_results": 5}</textarea>
+        </div>
+      `;
+      form.querySelectorAll('input, textarea').forEach(el => el.addEventListener('input', updatePayload));
+    } else if (currentMethod === 'resources/read') {
+      form.innerHTML = `
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Resource URI</label>
+          <input id="resource-uri" type="text" value="file:///workspace/README.md" placeholder="resource://..."
+            class="w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary font-mono" />
+        </div>
+      `;
+      form.querySelector('input')!.addEventListener('input', updatePayload);
+    } else {
+      form.innerHTML = `<p class="text-xs text-text-muted">No additional parameters for <code class="font-mono">${currentMethod}</code></p>`;
+    }
+  }
+
+  function updatePayload() {
+    const fn = METHOD_TEMPLATES[currentMethod];
+    if (!fn) return;
+    const payload = fn();
+    document.getElementById('payload-output')!.textContent = JSON.stringify(payload, null, 2);
+  }
+
+  function renderToolParams() {
+    const container = document.getElementById('tool-params')!;
+    container.innerHTML = toolParams.map((p, i) => `
+      <div class="grid grid-cols-4 gap-1 items-center" data-idx="${i}">
+        <input type="text" value="${p.name}" placeholder="param" class="tp-name bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-mono" />
+        <select class="tp-type bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary">
+          ${['string','number','boolean','array','object'].map(t => `<option ${t===p.type?'selected':''}>${t}</option>`).join('')}
+        </select>
+        <input type="text" value="${p.desc}" placeholder="description" class="tp-desc bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary" />
+        <div class="flex items-center gap-1">
+          <label class="flex items-center gap-1 text-xs text-text-muted"><input type="checkbox" class="tp-req" ${p.required?'checked':''} /> Req</label>
+          <button class="tp-remove text-xs text-red-400 ml-1">✕</button>
+        </div>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('[data-idx]').forEach(row => {
+      const idx = parseInt(row.getAttribute('data-idx')!);
+      row.querySelector('.tp-name')!.addEventListener('input', (e) => { toolParams[idx].name = (e.target as HTMLInputElement).value; });
+      row.querySelector('.tp-type')!.addEventListener('change', (e) => { toolParams[idx].type = (e.target as HTMLSelectElement).value; });
+      row.querySelector('.tp-desc')!.addEventListener('input', (e) => { toolParams[idx].desc = (e.target as HTMLInputElement).value; });
+      row.querySelector('.tp-req')!.addEventListener('change', (e) => { toolParams[idx].required = (e.target as HTMLInputElement).checked; });
+      row.querySelector('.tp-remove')!.addEventListener('click', () => { toolParams.splice(idx, 1); renderToolParams(); });
+    });
+  }
+
+  document.querySelectorAll('.method-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentMethod = btn.getAttribute('data-method')!;
+      document.querySelectorAll('.method-btn').forEach(b => {
+        b.classList.remove('bg-primary', 'text-white');
+        b.classList.add('border', 'border-border', 'text-text-muted');
+      });
+      btn.classList.add('bg-primary', 'text-white');
+      btn.classList.remove('border', 'border-border', 'text-text-muted');
+      renderParamsForm();
+      updatePayload();
+      document.getElementById('validation-result')!.classList.add('hidden');
+    });
+  });
+
+  document.getElementById('add-param')!.addEventListener('click', () => {
+    toolParams.push({ name: 'param', type: 'string', required: false, desc: '' });
+    renderToolParams();
+  });
+
+  document.getElementById('gen-tool-schema')!.addEventListener('click', () => {
+    const name = (document.getElementById('tool-name') as HTMLInputElement).value;
+    const desc = (document.getElementById('tool-desc') as HTMLTextAreaElement).value;
+    const props: Record<string, object> = {};
+    const required: string[] = [];
+    toolParams.forEach(p => {
+      props[p.name] = { type: p.type, description: p.desc };
+      if (p.required) required.push(p.name);
+    });
+    const schema = {
+      name,
+      description: desc,
+      inputSchema: { type: 'object', properties: props, required }
+    };
+    document.getElementById('payload-output')!.textContent = JSON.stringify(schema, null, 2);
+  });
+
+  document.getElementById('copy-payload')!.addEventListener('click', () => {
+    const text = document.getElementById('payload-output')!.textContent || '';
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('copy-payload')!;
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  });
+
+  document.getElementById('validate-btn')!.addEventListener('click', () => {
+    const resultEl = document.getElementById('validation-result')!;
+    resultEl.classList.remove('hidden');
+    try {
+      const text = document.getElementById('payload-output')!.textContent || '{}';
+      const obj = JSON.parse(text);
+      const checks: { pass: boolean; msg: string }[] = [];
+
+      if (obj.jsonrpc !== undefined) {
+        checks.push({ pass: obj.jsonrpc === '2.0', msg: `jsonrpc === "2.0"` });
+        checks.push({ pass: obj.id !== undefined, msg: 'id field present' });
+        checks.push({ pass: typeof obj.method === 'string', msg: 'method is string' });
+        checks.push({ pass: obj.params !== undefined, msg: 'params field present' });
+        if (obj.method === 'initialize') {
+          checks.push({ pass: !!obj.params?.protocolVersion, msg: 'protocolVersion present' });
+          checks.push({ pass: !!obj.params?.clientInfo?.name, msg: 'clientInfo.name present' });
+        }
+        if (obj.method === 'tools/call') {
+          checks.push({ pass: typeof obj.params?.name === 'string', msg: 'tools/call: name is string' });
+          checks.push({ pass: typeof obj.params?.arguments === 'object', msg: 'tools/call: arguments is object' });
+        }
+      } else if (obj.inputSchema) {
+        checks.push({ pass: typeof obj.name === 'string', msg: 'Tool name is string' });
+        checks.push({ pass: obj.inputSchema.type === 'object', msg: 'inputSchema.type === "object"' });
+        checks.push({ pass: !!obj.inputSchema.properties, msg: 'inputSchema.properties present' });
+      }
+
+      const allPass = checks.every(c => c.pass);
+      resultEl.innerHTML = `
+        <div class="flex items-center gap-2 mb-3">
+          <span class="${allPass ? 'text-green-500' : 'text-yellow-500'} text-lg">${allPass ? '✓' : '⚠'}</span>
+          <span class="font-semibold text-sm">${allPass ? 'Valid MCP payload' : 'Validation issues found'}</span>
+        </div>
+        <div class="space-y-1">${checks.map(c => `
+          <div class="flex items-center gap-2 text-xs">
+            <span class="${c.pass ? 'text-green-500' : 'text-red-500'}">${c.pass ? '✓' : '✗'}</span>
+            <span class="${c.pass ? 'text-text-muted' : 'text-red-400'}">${c.msg}</span>
+          </div>`).join('')}</div>
+      `;
+    } catch {
+      resultEl.innerHTML = '<div class="text-red-500 text-sm">✗ Invalid JSON — parse error</div>';
+    }
+  });
+
+  renderParamsForm();
+  renderToolParams();
+  updatePayload();
+</script>
