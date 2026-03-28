@@ -1,0 +1,635 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is the pool_size formula used here?",
+    answer: "The tool uses the HikariCP formula popularised by the article 'About Pool Sizing': pool_size = (core_count × 2) + effective_spindle_count. For SSDs, effective_spindle_count = 1. This formula is a starting point — workloads with very long queries or high I/O wait may need more connections, while CPU-bound workloads need fewer."
+  },
+  {
+    question: "Why does adding more connections not always help?",
+    answer: "Each database connection consumes memory on both the application server and the database server (PostgreSQL uses ~5–10 MB per backend process). Beyond a certain point, more connections cause context-switching overhead and lock contention that slows everything down. The formula is designed to keep the database busy without overwhelming it."
+  },
+  {
+    question: "What is the difference between pool min and max?",
+    answer: "The min pool size is the number of connections kept open at idle — keeping some warm connections avoids connection establishment latency on request spikes. The max pool size is the hard ceiling — requests that arrive when all connections are busy wait in a queue (with a timeout). Setting min = max (fixed pool) is common in high-traffic production environments to avoid connection churn."
+  },
+  {
+    question: "How does the number of application instances affect the total?",
+    answer: "Each application instance maintains its own connection pool independently. If you have 3 instances each with a max pool of 10, your database receives up to 30 simultaneous connections. Always compute total_connections = max_pool × instances and verify this is below your database's max_connections setting."
+  },
+  {
+    question: "What is PostgreSQL's max_connections limit?",
+    answer: "PostgreSQL defaults to max_connections = 100 (some managed providers set 500 or more). Exceeding this causes new connection attempts to fail with 'too many connections'. For high-concurrency workloads, use PgBouncer or pgpool-II as a connection proxy — your app connects to PgBouncer, which maintains a smaller number of real connections to PostgreSQL."
+  },
+  {
+    question: "Should I use a connection pool for Redis?",
+    answer: "Redis is single-threaded and processes commands sequentially, so a large pool does not parallelise Redis operations. A small pool (5–20) is usually sufficient. For Cluster mode, maintain a separate pool per shard. Redis clients like ioredis and redis-py handle pooling automatically."
+  },
+];
+---
+
+<BaseLayout
+  title="Database Connection Pool Sizer — Calculate Optimal Pool Size"
+  description="Calculate the optimal database connection pool size for PostgreSQL, MySQL, MongoDB, and Redis. Enter CPU cores, concurrent users, query duration, and instances to get min/max pool recommendations with Prisma, Drizzle, SQLAlchemy, and Sequelize config snippets."
+  tool="connection pool calculator, database pool size, PostgreSQL pool, Prisma connection pool, SQLAlchemy pool, pgBouncer, HikariCP formula, database connections"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Database Connection Pool Sizer",
+    "url": "https://devplaybook.cc/tools/connection-pool-sizer",
+    "description": "Calculate optimal database connection pool min/max size using the HikariCP formula. Outputs config snippets for Prisma, Drizzle, SQLAlchemy, and Sequelize.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Database Connection Pool Sizer</h1>
+  <p class="text-text-muted mb-4">
+    Enter your infrastructure details to calculate the optimal <strong>min and max connection pool size</strong> for your database. Get ready-to-use config snippets for Prisma, Drizzle, SQLAlchemy, and Sequelize. Runs entirely in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HikariCP formula</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Total connections across all instances</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Prisma / Drizzle / SQLAlchemy / Sequelize</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Over-limit warnings</span>
+  </div>
+
+  <!-- Inputs -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-2" for="sel-db-type">Database Type</label>
+      <select id="sel-db-type" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+        <option value="postgresql">PostgreSQL</option>
+        <option value="mysql">MySQL / MariaDB</option>
+        <option value="mongodb">MongoDB</option>
+        <option value="redis">Redis</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2" for="inp-cores">
+        Server CPU Cores
+        <span class="text-text-muted font-normal">(app server)</span>
+      </label>
+      <input id="inp-cores" type="number" min="1" max="256" value="4"
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary font-mono" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2" for="inp-users">
+        Expected Concurrent Users
+      </label>
+      <input id="inp-users" type="number" min="1" max="100000" value="200"
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary font-mono" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2" for="inp-query-ms">
+        Avg Query Duration (ms)
+      </label>
+      <input id="inp-query-ms" type="number" min="1" max="60000" value="50"
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary font-mono" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2" for="inp-rw-ratio">
+        Read / Write Ratio
+        <span class="text-text-muted font-normal">(% reads)</span>
+      </label>
+      <input id="inp-rw-ratio" type="number" min="0" max="100" value="80"
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary font-mono" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2" for="inp-instances">
+        Application Instances
+        <span class="text-text-muted font-normal">(pods / containers)</span>
+      </label>
+      <input id="inp-instances" type="number" min="1" max="500" value="2"
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary font-mono" />
+    </div>
+  </div>
+
+  <button id="btn-calculate" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors mb-6">Calculate Pool Size</button>
+
+  <div id="error-box" class="hidden mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400"></div>
+
+  <!-- Output -->
+  <div id="output-section" class="hidden space-y-4">
+    <!-- Key metrics -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold font-mono text-primary" id="out-min-pool">—</div>
+        <div class="text-xs text-text-muted mt-1">Min Pool Size</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold font-mono text-green-400" id="out-max-pool">—</div>
+        <div class="text-xs text-text-muted mt-1">Max Pool Size</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold font-mono text-blue-400" id="out-total-conns">—</div>
+        <div class="text-xs text-text-muted mt-1">Total DB Connections</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold font-mono text-yellow-400" id="out-queue-timeout">—</div>
+        <div class="text-xs text-text-muted mt-1">Suggested Timeout (ms)</div>
+      </div>
+    </div>
+
+    <!-- Formula breakdown -->
+    <div class="p-4 bg-bg-card border border-border rounded-xl">
+      <div class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Formula Breakdown</div>
+      <div id="formula-breakdown" class="font-mono text-sm space-y-1 text-foreground leading-relaxed"></div>
+    </div>
+
+    <!-- Warning -->
+    <div id="warning-box" class="hidden p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
+      <div class="text-xs font-semibold text-red-400 uppercase tracking-wide mb-2">Warning</div>
+      <p id="warning-text" class="text-sm text-red-300 leading-relaxed"></p>
+    </div>
+
+    <!-- PgBouncer tip -->
+    <div id="pgbouncer-tip" class="hidden p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-xl text-sm text-text-muted leading-relaxed">
+      <span class="text-yellow-400 font-semibold">PgBouncer recommended:</span>
+      Your total connection count is approaching PostgreSQL's default limit.
+      Consider adding <strong>PgBouncer</strong> in transaction pooling mode between your app and PostgreSQL.
+      Your app connects to PgBouncer with a large pool; PgBouncer forwards to PostgreSQL with a small pool (matching the formula above).
+    </div>
+
+    <!-- Read replica tip -->
+    <div id="replica-tip" class="hidden p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl text-sm text-text-muted leading-relaxed">
+      <span class="text-blue-400 font-semibold">Read replica opportunity:</span>
+      Your workload is <span id="replica-read-pct" class="font-mono text-foreground"></span>% reads.
+      Consider adding a read replica and routing reads there — this halves the write connection pressure on your primary.
+    </div>
+
+    <!-- ORM config tabs -->
+    <div>
+      <div class="flex gap-1 border-b border-border flex-wrap">
+        <button data-orm="prisma"      class="orm-tab px-4 py-2 text-sm font-medium border-b-2 border-primary text-primary transition-colors">Prisma</button>
+        <button data-orm="drizzle"     class="orm-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">Drizzle</button>
+        <button data-orm="sqlalchemy"  class="orm-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">SQLAlchemy</button>
+        <button data-orm="sequelize"   class="orm-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">Sequelize</button>
+      </div>
+      <div id="orm-tab-prisma"     class="orm-panel bg-bg-card border border-border border-t-0 rounded-b-xl overflow-hidden">
+        <div class="flex justify-end px-4 py-2 border-b border-border">
+          <button class="copy-orm-btn px-3 py-1 text-xs bg-bg-card border border-border rounded hover:border-primary transition-colors" data-target="code-prisma">Copy</button>
+        </div>
+        <pre id="code-prisma" class="font-mono text-sm p-4 whitespace-pre overflow-x-auto text-blue-300 leading-relaxed"></pre>
+      </div>
+      <div id="orm-tab-drizzle"    class="orm-panel hidden bg-bg-card border border-border border-t-0 rounded-b-xl overflow-hidden">
+        <div class="flex justify-end px-4 py-2 border-b border-border">
+          <button class="copy-orm-btn px-3 py-1 text-xs bg-bg-card border border-border rounded hover:border-primary transition-colors" data-target="code-drizzle">Copy</button>
+        </div>
+        <pre id="code-drizzle" class="font-mono text-sm p-4 whitespace-pre overflow-x-auto text-green-300 leading-relaxed"></pre>
+      </div>
+      <div id="orm-tab-sqlalchemy" class="orm-panel hidden bg-bg-card border border-border border-t-0 rounded-b-xl overflow-hidden">
+        <div class="flex justify-end px-4 py-2 border-b border-border">
+          <button class="copy-orm-btn px-3 py-1 text-xs bg-bg-card border border-border rounded hover:border-primary transition-colors" data-target="code-sqlalchemy">Copy</button>
+        </div>
+        <pre id="code-sqlalchemy" class="font-mono text-sm p-4 whitespace-pre overflow-x-auto text-yellow-300 leading-relaxed"></pre>
+      </div>
+      <div id="orm-tab-sequelize"  class="orm-panel hidden bg-bg-card border border-border border-t-0 rounded-b-xl overflow-hidden">
+        <div class="flex justify-end px-4 py-2 border-b border-border">
+          <button class="copy-orm-btn px-3 py-1 text-xs bg-bg-card border border-border rounded hover:border-primary transition-colors" data-target="code-sequelize">Copy</button>
+        </div>
+        <pre id="code-sequelize" class="font-mono text-sm p-4 whitespace-pre overflow-x-auto text-purple-300 leading-relaxed"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Database Connection Pool Sizer" relatedTags={['database', 'postgresql', 'mysql', 'performance', 'backend', 'prisma', 'devops']} />
+</BaseLayout>
+
+<script>
+type DbType = 'postgresql' | 'mysql' | 'mongodb' | 'redis';
+
+interface PoolResult {
+  minPool: number;
+  maxPool: number;
+  totalConns: number;
+  queueTimeout: number;
+  formulaLines: string[];
+  warnings: string[];
+  pgBouncerNeeded: boolean;
+  replicaSuggested: boolean;
+}
+
+// Default max_connections per DB type
+const DB_MAX_CONNS: Record<DbType, number> = {
+  postgresql: 100,
+  mysql:      151,
+  mongodb:    1000000, // effectively unlimited
+  redis:      10000,
+};
+
+function calculatePool(
+  dbType: DbType,
+  cores: number,
+  users: number,
+  queryMs: number,
+  rwRatio: number,
+  instances: number
+): PoolResult {
+  const warnings: string[] = [];
+
+  // HikariCP base formula: (cores × 2) + 1 (SSD effective spindle = 1)
+  const basePool = cores * 2 + 1;
+
+  // Concurrency demand: how many connections does the peak workload need?
+  // Arrival rate (req/s) × avg service time (s) = Little's Law
+  const arrivalRate = users;                        // requests per second at peak
+  const serviceTime = queryMs / 1000;               // seconds
+  const demandPool = Math.ceil(arrivalRate * serviceTime);
+
+  // Take the larger of formula vs demand, cap at 2× formula to avoid over-provisioning
+  let maxPool = Math.min(Math.max(basePool, Math.min(demandPool, basePool * 3)), basePool * 4);
+
+  // Redis special case — small pool is fine
+  if (dbType === 'redis') {
+    maxPool = Math.max(5, Math.min(basePool, 20));
+  }
+
+  const minPool = Math.max(2, Math.floor(maxPool * 0.25));
+  const totalConns = maxPool * instances;
+
+  // Queue timeout heuristic: 2× avg query duration, min 5s
+  const queueTimeout = Math.max(5000, queryMs * 2);
+
+  const formulaLines: string[] = [
+    `base_pool  = (${cores} cores × 2) + 1 (SSD)         = ${basePool}`,
+    `demand     = ${users} users × ${serviceTime.toFixed(3)}s avg latency   = ${demandPool} connections`,
+    `max_pool   = clamp(max(${basePool}, ${Math.min(demandPool, basePool * 3)}), ceil)        = ${maxPool}`,
+    `min_pool   = max(2, floor(${maxPool} × 0.25))     = ${minPool}`,
+    `total      = ${maxPool} × ${instances} instance${instances !== 1 ? 's' : ''}               = ${totalConns} connections`,
+    `timeout    = max(5000, ${queryMs}ms × 2)              = ${queueTimeout}ms`,
+  ];
+
+  const dbMaxConns = DB_MAX_CONNS[dbType];
+  let pgBouncerNeeded = false;
+
+  if (totalConns > dbMaxConns * 0.8) {
+    warnings.push(`Total connections (${totalConns}) exceeds 80% of ${dbType === 'postgresql' ? 'PostgreSQL default' : 'recommended'} max_connections (${dbMaxConns}). ${dbType === 'postgresql' ? 'Add PgBouncer in transaction mode.' : 'Consider connection proxying.'}`);
+    pgBouncerNeeded = dbType === 'postgresql';
+  }
+
+  if (maxPool > 50 && dbType !== 'redis') {
+    warnings.push(`Max pool size of ${maxPool} is unusually high. Verify query latency is accurate — long-running queries inflate pool requirements.`);
+  }
+
+  if (instances > 10 && maxPool > 10) {
+    warnings.push(`With ${instances} instances × ${maxPool} connections = ${totalConns} total. Monitor your database's connection count closely.`);
+  }
+
+  const replicaSuggested = rwRatio >= 70 && dbType !== 'redis';
+
+  return { minPool, maxPool, totalConns, queueTimeout, formulaLines, warnings, pgBouncerNeeded, replicaSuggested };
+}
+
+// ─── Config generators ────────────────────────────────────────────────────────
+function genPrisma(dbType: DbType, min: number, max: number, timeout: number): string {
+  const scheme = dbType === 'postgresql' ? 'postgresql' : dbType === 'mysql' ? 'mysql' : 'mongodb';
+  if (dbType === 'redis') {
+    return `// Redis: use ioredis with connection pool
+import Redis from "ioredis";
+
+const redis = new Redis({
+  host: process.env.REDIS_HOST,
+  port: 6379,
+  maxRetriesPerRequest: 3,
+  // ioredis manages a single connection by default.
+  // For a pool use a Cluster or Redis Sentinel client.
+  lazyConnect: true,
+});`;
+  }
+  return `// schema.prisma
+datasource db {
+  provider = "${scheme}"
+  url      = env("DATABASE_URL")
+}
+
+// .env — connection pool via URL params
+// DATABASE_URL="${scheme}://user:pass@host:5432/db?connection_limit=${max}&pool_timeout=${Math.round(timeout / 1000)}"
+
+// prisma/client.ts
+import { PrismaClient } from "@prisma/client";
+
+const globalForPrisma = global as unknown as { prisma: PrismaClient };
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL,
+      },
+    },
+    // Prisma uses connection_limit from the URL.
+    // Recommended: connection_limit=${max}, pool_timeout=${Math.round(timeout / 1000)}
+  });
+
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+// ─── URL with pool params ───────────────────────────────────────────
+// DATABASE_URL="${scheme}://user:pass@localhost:5432/mydb\\
+//   ?connection_limit=${max}\\
+//   &pool_timeout=${Math.round(timeout / 1000)}\\
+//   &connect_timeout=10"`;
+}
+
+function genDrizzle(dbType: DbType, min: number, max: number, timeout: number): string {
+  if (dbType === 'mongodb') {
+    return `// Drizzle does not support MongoDB natively.
+// Use the MongoDB Node.js driver directly:
+
+import { MongoClient } from "mongodb";
+
+const client = new MongoClient(process.env.MONGODB_URI!, {
+  maxPoolSize: ${max},
+  minPoolSize: ${min},
+  maxIdleTimeMS: ${timeout},
+  connectTimeoutMS: 10000,
+  serverSelectionTimeoutMS: 5000,
+});
+await client.connect();`;
+  }
+  if (dbType === 'redis') {
+    return `// Redis: use ioredis directly (Drizzle does not wrap Redis)
+import Redis from "ioredis";
+
+export const redis = new Redis(process.env.REDIS_URL!, {
+  maxRetriesPerRequest: 3,
+  enableReadyCheck: true,
+  lazyConnect: false,
+});`;
+  }
+  const driver = dbType === 'mysql' ? 'mysql2' : 'postgres';
+  const importPkg = dbType === 'mysql'
+    ? `import { drizzle } from "drizzle-orm/mysql2";\nimport mysql from "mysql2/promise";`
+    : `import { drizzle } from "drizzle-orm/node-postgres";\nimport { Pool } from "pg";`;
+  const poolSetup = dbType === 'mysql'
+    ? `const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  connectionLimit: ${max},
+  queueLimit: 0,
+  acquireTimeout: ${timeout},
+  waitForConnections: true,
+});`
+    : `const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  min: ${min},
+  max: ${max},
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: ${timeout},
+});`;
+  const drizzleInit = dbType === 'mysql'
+    ? `export const db = drizzle(pool);`
+    : `export const db = drizzle(pool);`;
+
+  return `// db.ts (Drizzle ORM + ${driver})
+${importPkg}
+
+${poolSetup}
+
+${drizzleInit}
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  await pool.end();
+  process.exit(0);
+});`;
+}
+
+function genSQLAlchemy(dbType: DbType, min: number, max: number, timeout: number): string {
+  if (dbType === 'mongodb') {
+    return `# Use pymongo directly for MongoDB
+from pymongo import MongoClient
+
+client = MongoClient(
+    host=os.environ["MONGODB_URI"],
+    maxPoolSize=${max},
+    minPoolSize=${min},
+    maxIdleTimeMS=${timeout},
+    connectTimeoutMS=10000,
+    serverSelectionTimeoutMS=5000,
+)
+db = client["mydb"]`;
+  }
+  if (dbType === 'redis') {
+    return `# Use redis-py with connection pool
+import redis
+
+pool = redis.ConnectionPool(
+    host=os.environ.get("REDIS_HOST", "localhost"),
+    port=6379,
+    db=0,
+    max_connections=${max},
+    decode_responses=True,
+)
+
+r = redis.Redis(connection_pool=pool)`;
+  }
+  const dialect = dbType === 'mysql' ? 'mysql+mysqlconnector' : 'postgresql+psycopg2';
+  return `# SQLAlchemy 2.0 (sync)
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+import os
+
+engine = create_engine(
+    os.environ["DATABASE_URL"],
+    pool_size=${min},          # min connections kept open
+    max_overflow=${max - min},  # additional connections above pool_size (max total: ${max})
+    pool_timeout=${timeout / 1000},         # seconds to wait for a connection
+    pool_recycle=1800,          # recycle connections after 30 min
+    pool_pre_ping=True,         # test connections before using
+    echo=False,
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# FastAPI dependency
+from contextlib import contextmanager
+
+@contextmanager
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+# ─── Async (SQLAlchemy 2.0 + asyncpg) ──────────────────────────────
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+
+async_engine = create_async_engine(
+    os.environ["DATABASE_URL"].replace("${dialect}", "${dbType === 'mysql' ? 'mysql+aiomysql' : 'postgresql+asyncpg'}"),
+    pool_size=${min},
+    max_overflow=${max - min},
+    pool_timeout=${timeout / 1000},
+    pool_recycle=1800,
+    pool_pre_ping=True,
+)
+AsyncSession = async_sessionmaker(async_engine, expire_on_commit=False)`;
+}
+
+function genSequelize(dbType: DbType, min: number, max: number, timeout: number): string {
+  if (dbType === 'mongodb') {
+    return `// Sequelize does not support MongoDB.
+// Use Mongoose instead:
+
+import mongoose from "mongoose";
+
+await mongoose.connect(process.env.MONGODB_URI!, {
+  maxPoolSize: ${max},
+  minPoolSize: ${min},
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+});`;
+  }
+  if (dbType === 'redis') {
+    return `// Sequelize does not wrap Redis. Use ioredis:
+import Redis from "ioredis";
+
+export const redis = new Redis({
+  host: process.env.REDIS_HOST ?? "localhost",
+  port: 6379,
+  maxRetriesPerRequest: 3,
+  enableOfflineQueue: false,
+});`;
+  }
+  const dialect = dbType === 'mysql' ? 'mysql' : 'postgres';
+  return `// Sequelize 6 (TypeScript)
+import { Sequelize } from "sequelize";
+
+export const sequelize = new Sequelize(
+  process.env.DB_NAME!,
+  process.env.DB_USER!,
+  process.env.DB_PASS!,
+  {
+    host: process.env.DB_HOST ?? "localhost",
+    dialect: "${dialect}",
+    pool: {
+      min: ${min},
+      max: ${max},
+      acquire: ${timeout},   // ms to wait before throwing error
+      idle: 10000,           // ms a connection can be idle before release
+      evict: 1000,           // how often to run eviction checks (ms)
+    },
+    logging: process.env.NODE_ENV === "development" ? console.log : false,
+  }
+);
+
+// Test connection on startup
+await sequelize.authenticate();
+console.log("Database connection pool established (max=${max})");
+
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+  await sequelize.close();
+  process.exit(0);
+});`;
+}
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+let activeOrm = 'prisma';
+
+function switchOrm(orm: string): void {
+  activeOrm = orm;
+  document.querySelectorAll<HTMLElement>('.orm-tab').forEach(t => {
+    const active = t.dataset.orm === orm;
+    t.classList.toggle('border-primary', active);
+    t.classList.toggle('text-primary', active);
+    t.classList.toggle('border-transparent', !active);
+    t.classList.toggle('text-text-muted', !active);
+  });
+  document.querySelectorAll('.orm-panel').forEach(p => p.classList.add('hidden'));
+  document.getElementById(`orm-tab-${orm}`)?.classList.remove('hidden');
+}
+
+document.querySelectorAll<HTMLElement>('.orm-tab').forEach(t => {
+  t.addEventListener('click', () => switchOrm(t.dataset.orm!));
+});
+
+document.querySelectorAll<HTMLButtonElement>('.copy-orm-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const el = document.getElementById(btn.dataset.target!);
+    if (!el) return;
+    navigator.clipboard.writeText(el.textContent || '').then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  });
+});
+
+// ─── Calculate ───────────────────────────────────────────────────────────────
+function numVal(id: string): number {
+  return Math.max(1, parseFloat((document.getElementById(id) as HTMLInputElement).value) || 1);
+}
+
+document.getElementById('btn-calculate')?.addEventListener('click', () => {
+  const dbType = (document.getElementById('sel-db-type') as HTMLSelectElement).value as DbType;
+  const cores     = numVal('inp-cores');
+  const users     = numVal('inp-users');
+  const queryMs   = numVal('inp-query-ms');
+  const rwRatio   = numVal('inp-rw-ratio');
+  const instances = numVal('inp-instances');
+
+  const errorBox = document.getElementById('error-box')!;
+  errorBox.classList.add('hidden');
+
+  if (cores < 1 || cores > 256) {
+    errorBox.textContent = 'CPU cores must be between 1 and 256.';
+    errorBox.classList.remove('hidden');
+    return;
+  }
+
+  const result = calculatePool(dbType, cores, users, queryMs, rwRatio, instances);
+
+  document.getElementById('out-min-pool')!.textContent = String(result.minPool);
+  document.getElementById('out-max-pool')!.textContent = String(result.maxPool);
+  document.getElementById('out-total-conns')!.textContent = String(result.totalConns);
+  document.getElementById('out-queue-timeout')!.textContent = String(result.queueTimeout);
+
+  const formulaEl = document.getElementById('formula-breakdown')!;
+  formulaEl.innerHTML = result.formulaLines.map(l => `<div>${l}</div>`).join('');
+
+  const warningBox = document.getElementById('warning-box')!;
+  if (result.warnings.length > 0) {
+    document.getElementById('warning-text')!.textContent = result.warnings.join(' ');
+    warningBox.classList.remove('hidden');
+  } else {
+    warningBox.classList.add('hidden');
+  }
+
+  const pgTip = document.getElementById('pgbouncer-tip')!;
+  result.pgBouncerNeeded ? pgTip.classList.remove('hidden') : pgTip.classList.add('hidden');
+
+  const replicaTip = document.getElementById('replica-tip')!;
+  if (result.replicaSuggested) {
+    document.getElementById('replica-read-pct')!.textContent = String(Math.round(rwRatio));
+    replicaTip.classList.remove('hidden');
+  } else {
+    replicaTip.classList.add('hidden');
+  }
+
+  document.getElementById('code-prisma')!.textContent     = genPrisma(dbType, result.minPool, result.maxPool, result.queueTimeout);
+  document.getElementById('code-drizzle')!.textContent    = genDrizzle(dbType, result.minPool, result.maxPool, result.queueTimeout);
+  document.getElementById('code-sqlalchemy')!.textContent = genSQLAlchemy(dbType, result.minPool, result.maxPool, result.queueTimeout);
+  document.getElementById('code-sequelize')!.textContent  = genSequelize(dbType, result.minPool, result.maxPool, result.queueTimeout);
+
+  document.getElementById('output-section')!.classList.remove('hidden');
+  switchOrm(activeOrm);
+  setTimeout(() => document.getElementById('output-section')!.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+});
+
+// Auto-calculate on load
+document.getElementById('btn-calculate')?.dispatchEvent(new Event('click'));
+</script>

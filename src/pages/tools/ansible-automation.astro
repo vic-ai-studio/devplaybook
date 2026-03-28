@@ -4,6 +4,85 @@ import ToolPageCta from '../../components/ToolPageCta.astro';
 import FaqSection from '../../components/FaqSection.astro';
 import AdUnit from '../../components/AdUnit.astro';
 
+const playbookExample = `# site.yml
+- name: Configure web servers
+  hosts: web
+  become: true
+  vars:
+    nginx_port: 80
+    app_user: www-data
+
+  pre_tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+  tasks:
+    - name: Install nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+
+    - name: Deploy nginx configuration
+      ansible.builtin.template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart nginx
+
+    - name: Ensure nginx is enabled and started
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Deploy application code
+      ansible.builtin.git:
+        repo: https://github.com/example/app.git
+        dest: /var/www/app
+        version: "{{ app_version | default('main') }}"
+      notify: Restart app service
+
+  handlers:
+    - name: Restart nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+
+    - name: Restart app service
+      ansible.builtin.systemd:
+        name: myapp
+        state: restarted`;
+
+const jinja2Example = `{# templates/nginx.conf.j2 #}
+worker_processes {{ ansible_processor_vcpus }};
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    server {
+        listen {{ nginx_port }};
+        server_name {{ inventory_hostname }};
+        root /var/www/{{ app_name | default('app') }};
+
+        {% if ssl_enabled | default(false) %}
+        listen 443 ssl;
+        ssl_certificate /etc/ssl/certs/{{ inventory_hostname }}.crt;
+        ssl_certificate_key /etc/ssl/private/{{ inventory_hostname }}.key;
+        {% endif %}
+
+        location / {
+            proxy_pass http://127.0.0.1:{{ app_port | default(3000) }};
+            proxy_set_header Host $host;
+        }
+    }
+}`;
+
 const faq = [
   { question: "What makes Ansible 'agentless' and why does it matter?", answer: "Ansible connects to managed nodes over SSH (Linux) or WinRM (Windows) without requiring any software to be pre-installed on those hosts. It copies small Python scripts to the remote node, executes them, then removes them. This agentless architecture dramatically simplifies adoption — you don't need to bootstrap an agent on every server before you can manage it. It also reduces the attack surface and eliminates the need to maintain and update agents across your fleet. The only requirement is Python on the managed node and SSH access from the control node." },
   { question: "What is the difference between a task, role, and playbook in Ansible?", answer: "A task is a single unit of work — one call to an Ansible module (e.g., install a package, copy a file, restart a service). A playbook is a YAML file that defines a sequence of plays; each play targets a group of hosts and runs a list of tasks against them. A role is a reusable, self-contained unit that packages tasks, variables, handlers, templates, and files into a structured directory layout. Roles enable code reuse across playbooks and projects, similar to a library or module in programming." },
@@ -79,85 +158,10 @@ ansible_ssh_private_key_file=~/.ssh/prod_key
 env=production</pre>
 
   <h2 class="text-xl font-semibold mt-8 mb-3">Example Playbook</h2>
-  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># site.yml
-- name: Configure web servers
-  hosts: web
-  become: true
-  vars:
-    nginx_port: 80
-    app_user: www-data
-
-  pre_tasks:
-    - name: Update apt cache
-      ansible.builtin.apt:
-        update_cache: true
-        cache_valid_time: 3600
-
-  tasks:
-    - name: Install nginx
-      ansible.builtin.apt:
-        name: nginx
-        state: present
-
-    - name: Deploy nginx configuration
-      ansible.builtin.template:
-        src: templates/nginx.conf.j2
-        dest: /etc/nginx/nginx.conf
-        owner: root
-        group: root
-        mode: '0644'
-      notify: Restart nginx
-
-    - name: Ensure nginx is enabled and started
-      ansible.builtin.systemd:
-        name: nginx
-        state: started
-        enabled: true
-
-    - name: Deploy application code
-      ansible.builtin.git:
-        repo: https://github.com/example/app.git
-        dest: /var/www/app
-        version: "{{ app_version | default('main') }}"
-      notify: Restart app service
-
-  handlers:
-    - name: Restart nginx
-      ansible.builtin.systemd:
-        name: nginx
-        state: restarted
-
-    - name: Restart app service
-      ansible.builtin.systemd:
-        name: myapp
-        state: restarted</pre>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={playbookExample}></pre>
 
   <h2 class="text-xl font-semibold mt-8 mb-3">Jinja2 Template Example</h2>
-  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">{# templates/nginx.conf.j2 #}
-worker_processes {{ ansible_processor_vcpus }};
-
-events {
-    worker_connections 1024;
-}
-
-http {
-    server {
-        listen {{ nginx_port }};
-        server_name {{ inventory_hostname }};
-        root /var/www/{{ app_name | default('app') }};
-
-        {% if ssl_enabled | default(false) %}
-        listen 443 ssl;
-        ssl_certificate /etc/ssl/certs/{{ inventory_hostname }}.crt;
-        ssl_certificate_key /etc/ssl/private/{{ inventory_hostname }}.key;
-        {% endif %}
-
-        location / {
-            proxy_pass http://127.0.0.1:{{ app_port | default(3000) }};
-            proxy_set_header Host $host;
-        }
-    }
-}</pre>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={jinja2Example}></pre>
 
   <h2 class="text-xl font-semibold mt-8 mb-3">Ansible vs Configuration Management Alternatives</h2>
   <div class="overflow-x-auto mb-6">
