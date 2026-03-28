@@ -1,0 +1,602 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What are the core principles of GitOps?",
+    answer: "GitOps is built on four principles: (1) Declarative — the entire system is described declaratively in Git. (2) Versioned and Immutable — the desired state is stored in Git, providing a full audit trail and enabling rollback via revert. (3) Pulled Automatically — an agent (ArgoCD, Flux) continuously pulls from Git and reconciles the live cluster state. (4) Continuously Reconciled — a software agent detects and corrects drift between desired (Git) and actual (cluster) state. Unlike push-based CI/CD, GitOps agents pull changes rather than having CI pipelines push them, eliminating the need for cluster credentials in CI."
+  },
+  {
+    question: "When should I choose ArgoCD over Flux CD?",
+    answer: "Choose ArgoCD if: you need a rich web UI for developers to monitor app health, you want an application-centric model (one Application CRD per app), or your team is less comfortable with pure YAML/CLI. Choose Flux if: you prefer composable, controller-per-resource architecture (GitRepository + HelmRelease + Kustomization are separate CRDs), need native multi-tenancy, or want tighter image automation (ImageUpdateAutomation writes tags back to Git). Both are CNCF graduated projects. ArgoCD has a larger community and better UI; Flux is more flexible and GitOps-toolkit native."
+  },
+  {
+    question: "Mono-repo vs multi-repo: which strategy should I use?",
+    answer: "Mono-repo (all apps and config in one repo) is simpler to start with — one place to search, fewer permissions to manage, easy cross-service changes. It scales well to ~20-30 services. Multi-repo separates each app or team into its own repo — better for large organizations with isolated teams, different release cadences, or strict access control requirements. A common hybrid: per-app source repos for application code, plus a dedicated 'config repo' or 'fleet repo' for all Kubernetes manifests. The fleet repo is the GitOps source of truth regardless of where application code lives."
+  },
+  {
+    question: "How does drift reconciliation work?",
+    answer: "Drift occurs when someone makes a manual change to a running cluster (e.g., kubectl edit, Helm upgrade) that differs from what Git declares. GitOps agents detect drift by continuously comparing live cluster resources to the desired state in Git. ArgoCD shows drift in its UI and marks apps as 'OutOfSync'. With selfHeal: true (ArgoCD) or force: true (Flux), the agent automatically reverts manual changes back to the Git state — typically within seconds. This is the key safety property of GitOps: Git is always the authority. Drift remediation eliminates the 'snowflake cluster' problem."
+  },
+  {
+    question: "What is the App of Apps pattern in ArgoCD?",
+    answer: "App of Apps is a bootstrap pattern where a root ArgoCD Application points to a Git directory that contains other Application manifests. When ArgoCD syncs the root app, it discovers and creates child Applications automatically. This creates a self-managing hierarchy: root app → app definitions → deployed apps. It's useful for managing many apps across multiple clusters without manual registration. The alternative is ApplicationSets, which use generators (cluster, git, list, matrix) to template Applications dynamically. For Fleet CD patterns, use ApplicationSets with a cluster generator to deploy the same app across dozens of clusters."
+  },
+];
+---
+
+<BaseLayout
+  title="GitOps Pipeline Workflow Designer — ArgoCD, Flux, Tekton Pipeline Visualizer"
+  description="Design GitOps pipeline workflows visually. Select your GitOps pattern (ArgoCD App of Apps, Flux CD, Jenkins X, Tekton), repository strategy, environment stages, and components. Generate kustomization.yaml or Application CR config snippets."
+  tool="GitOps Pipeline Workflow Designer, ArgoCD workflow designer, Flux CD pipeline builder, GitOps pattern selector, Kubernetes GitOps pipeline visualizer, kustomization yaml generator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "GitOps Pipeline Workflow Designer",
+    "url": "https://devplaybook.cc/tools/gitops-workflow-designer",
+    "description": "Design GitOps pipeline workflows visually. Select pattern, repository strategy, environment stages, and components. Generate config snippets.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">GitOps Pipeline Workflow Designer</h1>
+  <p class="text-text-muted mb-4">
+    Design your <strong>GitOps pipeline</strong> visually. Choose a pattern, repository strategy, environment stages, and components — see the pipeline flow and get a ready-to-use config snippet.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> ArgoCD / Flux / Tekton / Jenkins X</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual pipeline stages</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Config snippet generator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Best practices panel</span>
+  </div>
+
+  <!-- Main grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+    <!-- Left: Controls -->
+    <div class="space-y-4">
+
+      <!-- GitOps Pattern -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">GitOps Pattern</h2>
+        <div id="pattern-list" class="space-y-2">
+          <label class="flex items-start gap-3 p-3 border border-border rounded-lg cursor-pointer hover:border-primary transition-colors pattern-opt" data-value="app-of-apps">
+            <input type="radio" name="pattern" value="app-of-apps" class="mt-0.5 accent-primary" checked />
+            <div>
+              <div class="text-sm font-medium">App of Apps <span class="text-xs text-primary ml-1">(ArgoCD)</span></div>
+              <div class="text-xs text-text-muted">Root Application manages child Applications in Git</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 p-3 border border-border rounded-lg cursor-pointer hover:border-primary transition-colors pattern-opt" data-value="fleet">
+            <input type="radio" name="pattern" value="fleet" class="mt-0.5 accent-primary" />
+            <div>
+              <div class="text-sm font-medium">Fleet <span class="text-xs text-text-muted ml-1">(Fleet CD)</span></div>
+              <div class="text-xs text-text-muted">Large-scale multi-cluster with bundles</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 p-3 border border-border rounded-lg cursor-pointer hover:border-primary transition-colors pattern-opt" data-value="flux">
+            <input type="radio" name="pattern" value="flux" class="mt-0.5 accent-primary" />
+            <div>
+              <div class="text-sm font-medium">Flux CD <span class="text-xs text-text-muted ml-1">(GitOps Toolkit)</span></div>
+              <div class="text-xs text-text-muted">Composable controllers, native image automation</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 p-3 border border-border rounded-lg cursor-pointer hover:border-primary transition-colors pattern-opt" data-value="jenkins-x">
+            <input type="radio" name="pattern" value="jenkins-x" class="mt-0.5 accent-primary" />
+            <div>
+              <div class="text-sm font-medium">Jenkins X <span class="text-xs text-text-muted ml-1">(CI + GitOps)</span></div>
+              <div class="text-xs text-text-muted">Preview environments, Tekton pipelines, automated PRs</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 p-3 border border-border rounded-lg cursor-pointer hover:border-primary transition-colors pattern-opt" data-value="tekton-argo">
+            <input type="radio" name="pattern" value="tekton-argo" class="mt-0.5 accent-primary" />
+            <div>
+              <div class="text-sm font-medium">Tekton + ArgoCD <span class="text-xs text-text-muted ml-1">(CI + CD)</span></div>
+              <div class="text-xs text-text-muted">Tekton builds images, ArgoCD deploys from Git</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Repository Strategy -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Repository Strategy</h2>
+        <div class="space-y-2">
+          <label class="flex items-start gap-3 p-3 border border-border rounded-lg cursor-pointer hover:border-primary transition-colors repo-opt" data-value="mono">
+            <input type="radio" name="repo-strategy" value="mono" class="mt-0.5 accent-primary" checked />
+            <div>
+              <div class="text-sm font-medium">Mono-Repo</div>
+              <div class="text-xs text-text-muted">All apps + config in one repo. Simple, unified history.</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 p-3 border border-border rounded-lg cursor-pointer hover:border-primary transition-colors repo-opt" data-value="multi">
+            <input type="radio" name="repo-strategy" value="multi" class="mt-0.5 accent-primary" />
+            <div>
+              <div class="text-sm font-medium">Multi-Repo</div>
+              <div class="text-xs text-text-muted">Separate source + config repos per service/team.</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Environment Setup -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Environments</h2>
+        <div class="space-y-2 mb-3" id="env-list">
+          <!-- rendered by JS -->
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs font-medium mb-1 text-text-muted">Promotion Strategy</label>
+          <select id="promo-strategy" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+            <option value="auto">Auto — promote on green CI</option>
+            <option value="manual">Manual — PR approval required</option>
+            <option value="gate">Gate — approval + integration tests</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Components -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Components</h2>
+        <div class="space-y-1.5" id="component-list">
+          <!-- rendered by JS -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right: Visualization + Output -->
+    <div class="lg:col-span-2 space-y-4">
+
+      <!-- Pipeline Visualization -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Pipeline Flow</h2>
+        <div id="pipeline-viz" class="overflow-x-auto"></div>
+      </div>
+
+      <!-- Config Snippet -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Generated Config</h2>
+          <div class="flex gap-2">
+            <button class="config-tab text-xs px-2 py-1 border border-border text-text-muted rounded hover:border-primary" data-tab="kustomize" id="tab-kustomize">kustomization.yaml</button>
+            <button class="config-tab text-xs px-2 py-1 border border-border text-text-muted rounded hover:border-primary" data-tab="appconfig" id="tab-appconfig">Application CR</button>
+            <button id="copy-config" class="text-xs px-2 py-1 bg-primary text-white rounded hover:bg-primary/80">Copy</button>
+          </div>
+        </div>
+        <pre id="config-output" class="text-xs font-mono overflow-x-auto whitespace-pre-wrap bg-[#0d1117] border border-border rounded-lg p-4 min-h-[200px] max-h-[320px] overflow-y-auto text-green-300/90"></pre>
+      </div>
+
+      <!-- Best Practices -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Best Practices</h2>
+        <div id="best-practices" class="space-y-2 text-sm"></div>
+      </div>
+
+      <AdUnit format="rectangle" label="Advertisement" />
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta
+    currentTool="GitOps Pipeline Workflow Designer"
+    relatedTags={['gitops', 'argocd', 'flux', 'kubernetes', 'k8s', 'devops', 'tekton', 'cicd', 'kustomize', 'helm']}
+  />
+</BaseLayout>
+
+<script>
+  // ─── Types ───────────────────────────────────────────────────────────────────
+  interface Env { name: string; enabled: boolean }
+  interface Component { id: string; label: string; description: string }
+
+  // ─── State ───────────────────────────────────────────────────────────────────
+  let selectedPattern = 'app-of-apps';
+  let repoStrategy = 'mono';
+  let promoStrategy = 'auto';
+  let configTab = 'kustomize';
+
+  const ALL_ENVS: Env[] = [
+    { name: 'dev', enabled: true },
+    { name: 'staging', enabled: true },
+    { name: 'prod', enabled: true },
+  ];
+
+  const ALL_COMPONENTS: Component[] = [
+    { id: 'argocd',    label: 'ArgoCD / Flux',         description: 'GitOps reconciliation controller' },
+    { id: 'sealed',    label: 'Sealed Secrets',        description: 'Encrypt secrets safe for Git' },
+    { id: 'cert',      label: 'Cert Manager',          description: 'Automatic TLS via Let\'s Encrypt' },
+    { id: 'external',  label: 'External Secrets',      description: 'Sync secrets from Vault / AWS SM' },
+    { id: 'kustomize', label: 'Kustomize Overlays',    description: 'Environment-specific patches' },
+    { id: 'helm',      label: 'Helm Charts',           description: 'Helm-based application packaging' },
+    { id: 'updater',   label: 'Image Updater',         description: 'Auto-commit new image tags to Git' },
+  ];
+
+  const enabledComponents = new Set<string>(['argocd', 'kustomize', 'helm']);
+
+  // ─── Pattern metadata ────────────────────────────────────────────────────────
+  const PATTERN_META: Record<string, { tool: string; color: string; stages: string[] }> = {
+    'app-of-apps':  { tool: 'ArgoCD',    color: '#f97316', stages: ['Source Repo', 'Root App', 'Child Apps', 'Cluster Sync'] },
+    'fleet':        { tool: 'Fleet CD',  color: '#8b5cf6', stages: ['Source Repo', 'Bundle Repo', 'Fleet Manager', 'GitRepo', 'Cluster'] },
+    'flux':         { tool: 'Flux CD',   color: '#3b82f6', stages: ['Source Repo', 'GitRepository CR', 'Kustomization', 'HelmRelease', 'Cluster'] },
+    'jenkins-x':    { tool: 'Jenkins X', color: '#ec4899', stages: ['Source Repo', 'Tekton Pipeline', 'Preview Env', 'Staging PR', 'Prod Merge'] },
+    'tekton-argo':  { tool: 'Tekton+Argo', color: '#22c55e', stages: ['Source Repo', 'Tekton CI', 'Image Registry', 'Git Config Repo', 'ArgoCD Sync', 'Cluster'] },
+  };
+
+  const PROMO_META: Record<string, { icon: string; label: string }> = {
+    auto:   { icon: '⚡', label: 'Auto-promote' },
+    manual: { icon: '👤', label: 'Manual gate' },
+    gate:   { icon: '🔒', label: 'Approval + tests' },
+  };
+
+  // ─── Render environment list ──────────────────────────────────────────────────
+  function renderEnvList() {
+    const el = document.getElementById('env-list')!;
+    el.innerHTML = ALL_ENVS.map((env, i) => `
+      <label class="flex items-center gap-2 text-sm cursor-pointer select-none p-2.5 border rounded-lg transition-colors ${env.enabled ? 'border-primary/50 bg-primary/5' : 'border-border'}">
+        <input type="checkbox" class="env-check accent-primary" data-idx="${i}" ${env.enabled ? 'checked' : ''} />
+        <span class="capitalize font-medium">${env.name}</span>
+        <span class="ml-auto text-xs text-text-muted">${i === 0 ? 'first' : i === ALL_ENVS.length - 1 ? 'last' : 'mid'}</span>
+      </label>
+    `).join('');
+
+    el.querySelectorAll('.env-check').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const idx = parseInt((e.target as HTMLInputElement).dataset.idx!);
+        ALL_ENVS[idx].enabled = (e.target as HTMLInputElement).checked;
+        renderEnvList();
+        update();
+      });
+    });
+  }
+
+  // ─── Render component list ────────────────────────────────────────────────────
+  function renderComponentList() {
+    const el = document.getElementById('component-list')!;
+    el.innerHTML = ALL_COMPONENTS.map(c => `
+      <label class="flex items-start gap-2 text-sm cursor-pointer select-none p-2 rounded-lg hover:bg-white/5 transition-colors">
+        <input type="checkbox" class="comp-check accent-primary mt-0.5" data-id="${c.id}" ${enabledComponents.has(c.id) ? 'checked' : ''} />
+        <div>
+          <span class="font-medium">${c.label}</span>
+          <span class="block text-xs text-text-muted">${c.description}</span>
+        </div>
+      </label>
+    `).join('');
+
+    el.querySelectorAll('.comp-check').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const id = (e.target as HTMLInputElement).dataset.id!;
+        if ((e.target as HTMLInputElement).checked) enabledComponents.add(id);
+        else enabledComponents.delete(id);
+        update();
+      });
+    });
+  }
+
+  // ─── Pipeline Visualization ───────────────────────────────────────────────────
+  function renderPipeline() {
+    const meta = PATTERN_META[selectedPattern];
+    const activeEnvs = ALL_ENVS.filter(e => e.enabled);
+    const promoMeta = PROMO_META[promoStrategy];
+    const color = meta.color;
+
+    // Build stage list: base stages + environment stages
+    const baseStages = meta.stages;
+    const envStages = activeEnvs.map((e, i) => ({
+      label: e.name.charAt(0).toUpperCase() + e.name.slice(1),
+      isEnv: true,
+      isLast: i === activeEnvs.length - 1,
+      idx: i,
+    }));
+
+    // HTML/CSS pipeline boxes with arrows
+    const boxStyle = `display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:96px;padding:10px 12px;border-radius:10px;border:1.5px solid ${color};background:${color}15;color:#e2e8f0;font-size:11px;font-weight:600;text-align:center;flex-shrink:0;`;
+    const envBoxStyle = (isLast: boolean) => `display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:80px;padding:8px 10px;border-radius:10px;border:1.5px solid ${isLast ? '#22c55e' : '#3b82f6'};background:${isLast ? '#22c55e' : '#3b82f6'}18;color:#e2e8f0;font-size:11px;font-weight:600;text-align:center;flex-shrink:0;`;
+    const arrowStyle = `display:flex;align-items:center;color:#4b5563;font-size:16px;flex-shrink:0;padding:0 4px;`;
+    const promoArrowStyle = `display:flex;flex-direction:column;align-items:center;color:#f59e0b;font-size:10px;flex-shrink:0;padding:0 6px;`;
+
+    let html = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:8px 0;">`;
+
+    // Base tool stages
+    baseStages.forEach((stage, i) => {
+      html += `<div style="${boxStyle}">
+        <span style="font-size:9px;color:${color};margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em;">${meta.tool}</span>
+        ${stage}
+      </div>`;
+      if (i < baseStages.length - 1) {
+        html += `<div style="${arrowStyle}">→</div>`;
+      }
+    });
+
+    // Environment stages with promotion arrows
+    if (activeEnvs.length > 0) {
+      html += `<div style="${arrowStyle}">→</div>`;
+      envStages.forEach((env, i) => {
+        html += `<div style="${envBoxStyle(env.isLast)}">
+          <span style="font-size:9px;color:${env.isLast ? '#22c55e' : '#3b82f6'};margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em;">ENV</span>
+          ${env.label}
+        </div>`;
+        if (i < envStages.length - 1) {
+          html += `<div style="${promoArrowStyle}">${promoMeta.icon}<span>→</span><span style="font-size:9px;">${promoMeta.label}</span></div>`;
+        }
+      });
+    }
+
+    html += `</div>`;
+
+    // Component badges row
+    if (enabledComponents.size > 0) {
+      html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid #374151;">`;
+      html += `<span style="font-size:10px;color:#6b7280;align-self:center;margin-right:4px;">Components:</span>`;
+      ALL_COMPONENTS.filter(c => enabledComponents.has(c.id)).forEach(c => {
+        html += `<span style="font-size:10px;padding:3px 8px;border-radius:999px;border:1px solid #374151;color:#9ca3af;background:#1f2937;">${c.label}</span>`;
+      });
+      html += `</div>`;
+    }
+
+    // Repo strategy badge
+    html += `<div style="margin-top:10px;font-size:10px;color:#6b7280;">
+      Repo strategy: <strong style="color:#e2e8f0;">${repoStrategy === 'mono' ? 'Mono-repo' : 'Multi-repo'}</strong>
+      &nbsp;·&nbsp; Pattern: <strong style="color:${color};">${meta.tool}</strong>
+    </div>`;
+
+    document.getElementById('pipeline-viz')!.innerHTML = html;
+  }
+
+  // ─── Config Snippet ───────────────────────────────────────────────────────────
+  function generateConfig(): string {
+    const activeEnvs = ALL_ENVS.filter(e => e.enabled);
+    const hasKustomize = enabledComponents.has('kustomize');
+    const hasHelm = enabledComponents.has('helm');
+    const hasSealed = enabledComponents.has('sealed');
+    const hasExternal = enabledComponents.has('external');
+    const hasCert = enabledComponents.has('cert');
+    const hasUpdater = enabledComponents.has('updater');
+
+    if (configTab === 'kustomize') {
+      // Generate kustomization.yaml
+      const resources: string[] = [];
+      if (selectedPattern === 'app-of-apps') resources.push('../../base');
+      else resources.push('../base');
+      activeEnvs.forEach(e => resources.push(`./environments/${e.name}`));
+      if (hasSealed) resources.push('../../components/sealed-secrets');
+      if (hasCert) resources.push('../../components/cert-manager');
+      if (hasExternal) resources.push('../../components/external-secrets');
+
+      const patches: string[] = [];
+      if (hasKustomize) {
+        activeEnvs.forEach(e => {
+          patches.push(`  - path: patches/${e.name}-values.yaml\n    target:\n      kind: ${selectedPattern === 'flux' ? 'HelmRelease' : 'Deployment'}`);
+        });
+      }
+
+      const images: string[] = [];
+      if (hasUpdater) {
+        images.push(`  - name: ghcr.io/my-org/my-app\n    newTag: latest  # managed by Image Updater`);
+      }
+
+      let yaml = `# kustomization.yaml — Generated by GitOps Workflow Designer\n# Pattern: ${PATTERN_META[selectedPattern].tool} | Strategy: ${repoStrategy === 'mono' ? 'Mono-repo' : 'Multi-repo'}\napiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n\nresources:\n${resources.map(r => `  - ${r}`).join('\n')}\n`;
+
+      if (patches.length > 0) {
+        yaml += `\npatches:\n${patches.join('\n')}\n`;
+      }
+
+      if (images.length > 0) {
+        yaml += `\nimages:\n${images.join('\n')}\n`;
+      }
+
+      if (hasSealed) {
+        yaml += `\n# Sealed Secrets — encrypt with:\n# kubeseal --format yaml < secret.yaml > sealed-secret.yaml\n`;
+      }
+
+      if (promoStrategy === 'gate') {
+        yaml += `\n# Promotion gated by approval + integration tests.\n# Merge to env branch after gate passes to trigger sync.\n`;
+      }
+
+      return yaml;
+
+    } else {
+      // Generate Application CR or equivalent
+      if (selectedPattern === 'flux') {
+        const envBlocks = activeEnvs.map(e => `---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: my-app-${e.name}
+  namespace: flux-system
+spec:
+  interval: ${e.name === 'prod' ? '5m' : '1m'}
+  path: ./k8s/overlays/${e.name}
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: my-app-repo
+  targetNamespace: my-app-${e.name}
+  ${promoStrategy !== 'auto' && e.name !== 'dev' ? `# Promotion: ${PROMO_META[promoStrategy].label} required\n  suspend: false  # set to true to hold promotion` : ''}${hasHelm ? `\n  dependsOn:\n    - name: helm-controller` : ''}`.trim()
+        ).join('\n\n');
+
+        let result = `# Flux Kustomization CRs — Generated by GitOps Workflow Designer\n${envBlocks}`;
+        if (hasUpdater) {
+          result += `\n\n---\napiVersion: image.toolkit.fluxcd.io/v1beta2\nkind: ImageUpdateAutomation\nmetadata:\n  name: my-app-image-update\n  namespace: flux-system\nspec:\n  interval: 1m\n  sourceRef:\n    kind: GitRepository\n    name: my-app-repo\n  git:\n    checkout:\n      ref:\n        branch: main\n    commit:\n      author:\n        name: fluxcdbot\n        email: fluxcdbot@users.noreply.github.com\n      messageTemplate: \'chore(image): update {{range .Updated.Images}}{{println .}}{{end}}\'\n    push:\n      branch: main\n  update:\n    strategy: Setters\n    path: ./k8s`;
+        }
+        return result;
+
+      } else if (selectedPattern === 'tekton-argo') {
+        return `# Tekton Pipeline + ArgoCD Application — Generated by GitOps Workflow Designer\n---\napiVersion: tekton.dev/v1\nkind: Pipeline\nmetadata:\n  name: my-app-ci\n  namespace: tekton-pipelines\nspec:\n  params:\n    - name: repo-url\n      type: string\n    - name: image-tag\n      type: string\n  tasks:\n    - name: clone\n      taskRef:\n        name: git-clone\n      params:\n        - name: url\n          value: $(params.repo-url)\n    - name: build-push\n      taskRef:\n        name: buildah\n      runAfter: [clone]\n      params:\n        - name: IMAGE\n          value: ghcr.io/my-org/my-app:$(params.image-tag)\n    - name: update-config\n      taskRef:\n        name: git-cli\n      runAfter: [build-push]\n      params:\n        - name: GIT_USER_NAME\n          value: tekton-bot\n        - name: GIT_SCRIPT\n          value: |\n            git clone https://github.com/my-org/my-config\n            cd my-config\n            kustomize edit set image ghcr.io/my-org/my-app:$(params.image-tag)\n            git commit -am "chore(image): $(params.image-tag)"\n            git push\n---\n${activeEnvs.map(e => `apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: my-app-${e.name}\n  namespace: argocd\nspec:\n  project: default\n  source:\n    repoURL: https://github.com/my-org/my-config\n    targetRevision: HEAD\n    path: k8s/overlays/${e.name}\n  destination:\n    server: https://kubernetes.default.svc\n    namespace: my-app-${e.name}\n  syncPolicy:\n    ${e.name !== 'prod' || promoStrategy === 'auto' ? 'automated:\n      prune: true\n      selfHeal: true' : '# prod: manual sync required'}\n    syncOptions:\n      - CreateNamespace=true`).join('\n---\n')}`;
+
+      } else {
+        // Default: ArgoCD Application CR (App of Apps / fleet)
+        return `# ArgoCD Application CR — Generated by GitOps Workflow Designer\n# Pattern: ${PATTERN_META[selectedPattern].tool}\n---\napiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: my-app-root\n  namespace: argocd\n  labels:\n    app.kubernetes.io/managed-by: argocd\nspec:\n  project: default\n  source:\n    repoURL: https://github.com/my-org/${repoStrategy === 'mono' ? 'my-monorepo' : 'my-config-repo'}\n    targetRevision: HEAD\n    path: ${selectedPattern === 'app-of-apps' ? 'apps/' : 'k8s/'}\n  destination:\n    server: https://kubernetes.default.svc\n    namespace: argocd\n  syncPolicy:\n    automated:\n      prune: true\n      selfHeal: true\n    syncOptions:\n      - CreateNamespace=true\n---\n${activeEnvs.map(e => `apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: my-app-${e.name}\n  namespace: argocd\nspec:\n  project: default\n  source:\n    repoURL: https://github.com/my-org/${repoStrategy === 'mono' ? 'my-monorepo' : `my-app-${e.name}-config`}\n    targetRevision: HEAD\n    path: k8s/overlays/${e.name}\n  destination:\n    server: https://kubernetes.default.svc\n    namespace: my-app-${e.name}\n  syncPolicy:\n    ${e.name !== 'prod' || promoStrategy === 'auto' ? 'automated:\n      prune: true\n      selfHeal: true' : '# prod: manual approval via PR'}\n    syncOptions:\n      - CreateNamespace=true`).join('\n---\n')}`;
+      }
+    }
+  }
+
+  // ─── Best Practices ───────────────────────────────────────────────────────────
+  function renderBestPractices() {
+    const tips: { type: 'ok' | 'warn' | 'info'; text: string }[] = [];
+    const activeEnvs = ALL_ENVS.filter(e => e.enabled);
+
+    // Pattern-specific
+    if (selectedPattern === 'app-of-apps') {
+      tips.push({ type: 'info', text: 'App of Apps: keep the root Application in a dedicated <code>apps/</code> directory, separate from environment overlays.' });
+    }
+    if (selectedPattern === 'tekton-argo') {
+      tips.push({ type: 'ok', text: 'Tekton + ArgoCD split: Tekton handles CI (build, test, push image), ArgoCD handles CD (Git config update → deploy). This keeps cluster credentials out of CI.' });
+    }
+    if (selectedPattern === 'flux') {
+      tips.push({ type: 'ok', text: 'Flux uses pull-based reconciliation. Set <code>prune: true</code> on Kustomizations to auto-remove deleted resources, and <code>interval: 5m</code> for production.' });
+    }
+
+    // Repo strategy
+    if (repoStrategy === 'multi') {
+      tips.push({ type: 'info', text: 'Multi-repo: use a separate "config repo" (gitops-fleet) as the GitOps source of truth. Application source repos trigger CI that commits image tag bumps to the config repo.' });
+    } else {
+      tips.push({ type: 'ok', text: 'Mono-repo: structure as <code>apps/{app-name}/</code> and <code>k8s/overlays/{env}/</code> so each app and environment is independently deployable.' });
+    }
+
+    // Promotion strategy
+    if (promoStrategy === 'auto') {
+      tips.push({ type: 'warn', text: 'Auto-promotion to production can be risky. Consider requiring manual approval or a gate for the final prod promotion even if dev→staging is automated.' });
+    }
+    if (promoStrategy === 'gate') {
+      tips.push({ type: 'ok', text: 'Gate strategy: run integration tests in staging before promoting to prod. Use ArgoCD sync hooks or Flux notifications to trigger tests and block promotion on failure.' });
+    }
+
+    // Components
+    if (!enabledComponents.has('sealed') && !enabledComponents.has('external')) {
+      tips.push({ type: 'warn', text: 'No secret management component selected. Never commit raw Kubernetes Secrets to Git. Add Sealed Secrets (offline encryption) or External Secrets Operator (Vault/AWS SM sync).' });
+    }
+    if (enabledComponents.has('updater') && !enabledComponents.has('argocd')) {
+      tips.push({ type: 'warn', text: 'Image Updater works best with Flux (ImageUpdateAutomation) or ArgoCD Image Updater. Ensure the controller is installed in your cluster.' });
+    }
+    if (enabledComponents.has('kustomize') && enabledComponents.has('helm')) {
+      tips.push({ type: 'info', text: 'Kustomize + Helm: use Helm for application packaging and Kustomize overlays to patch values per environment without forking the Helm chart.' });
+    }
+    if (enabledComponents.has('cert')) {
+      tips.push({ type: 'ok', text: 'Cert Manager: store ClusterIssuer and Certificate CRs in Git under <code>k8s/infrastructure/cert-manager/</code>. Use a dedicated ArgoCD project or Flux Kustomization with higher sync priority.' });
+    }
+
+    // Env count
+    if (activeEnvs.length < 2) {
+      tips.push({ type: 'warn', text: 'Only one environment enabled. GitOps best practice is at least dev + prod, with staging as an optional gate between them.' });
+    }
+    if (activeEnvs.length >= 3) {
+      tips.push({ type: 'ok', text: `${activeEnvs.length} environments configured. Use Kustomize overlays or Helm value files per environment to keep config DRY while allowing environment-specific overrides.` });
+    }
+
+    const icons: Record<string, string> = { ok: '✓', warn: '⚠', info: 'ℹ' };
+    const colors: Record<string, string> = {
+      ok:   'text-green-400 bg-green-500/10 border-green-500/30',
+      warn: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
+      info: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+    };
+    const iconColors: Record<string, string> = { ok: 'text-green-500', warn: 'text-yellow-500', info: 'text-blue-400' };
+
+    document.getElementById('best-practices')!.innerHTML = tips.map(t => `
+      <div class="flex items-start gap-2 p-2.5 rounded-lg border ${colors[t.type]}">
+        <span class="${iconColors[t.type]} font-bold text-base leading-5">${icons[t.type]}</span>
+        <span class="text-xs leading-relaxed">${t.text}</span>
+      </div>
+    `).join('');
+  }
+
+  // ─── Update config output ─────────────────────────────────────────────────────
+  function updateConfigOutput() {
+    const output = generateConfig();
+    document.getElementById('config-output')!.textContent = output;
+  }
+
+  // ─── Master update ────────────────────────────────────────────────────────────
+  function update() {
+    renderPipeline();
+    updateConfigOutput();
+    renderBestPractices();
+  }
+
+  // ─── Event listeners ──────────────────────────────────────────────────────────
+
+  // Pattern radio buttons
+  document.querySelectorAll('input[name="pattern"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      selectedPattern = (e.target as HTMLInputElement).value;
+
+      // Update border highlight on pattern cards
+      document.querySelectorAll('.pattern-opt').forEach(el => {
+        const val = el.getAttribute('data-value');
+        if (val === selectedPattern) {
+          el.classList.add('border-primary');
+          el.classList.remove('border-border');
+        } else {
+          el.classList.remove('border-primary');
+          el.classList.add('border-border');
+        }
+      });
+
+      update();
+    });
+  });
+
+  // Repo strategy radio buttons
+  document.querySelectorAll('input[name="repo-strategy"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      repoStrategy = (e.target as HTMLInputElement).value;
+
+      document.querySelectorAll('.repo-opt').forEach(el => {
+        const val = el.getAttribute('data-value');
+        if (val === repoStrategy) {
+          el.classList.add('border-primary');
+          el.classList.remove('border-border');
+        } else {
+          el.classList.remove('border-primary');
+          el.classList.add('border-border');
+        }
+      });
+
+      update();
+    });
+  });
+
+  // Promotion strategy
+  document.getElementById('promo-strategy')!.addEventListener('change', (e) => {
+    promoStrategy = (e.target as HTMLSelectElement).value;
+    update();
+  });
+
+  // Config tabs
+  document.querySelectorAll('.config-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      configTab = btn.getAttribute('data-tab')!;
+      document.querySelectorAll('.config-tab').forEach(b => {
+        b.classList.remove('bg-primary', 'text-white');
+        b.classList.add('border', 'border-border', 'text-text-muted');
+      });
+      btn.classList.add('bg-primary', 'text-white');
+      btn.classList.remove('border', 'border-border', 'text-text-muted');
+      update();
+    });
+  });
+
+  // Copy config
+  document.getElementById('copy-config')!.addEventListener('click', () => {
+    const text = document.getElementById('config-output')!.textContent || '';
+    navigator.clipboard.writeText(text);
+    const btn = document.getElementById('copy-config')!;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+
+  // ─── Init ────────────────────────────────────────────────────────────────────
+  // Set default tab highlight
+  document.getElementById('tab-kustomize')!.classList.add('bg-primary', 'text-white');
+  document.getElementById('tab-kustomize')!.classList.remove('border', 'border-border', 'text-text-muted');
+
+  renderEnvList();
+  renderComponentList();
+  update();
+</script>

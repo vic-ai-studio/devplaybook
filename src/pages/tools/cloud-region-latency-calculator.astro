@@ -1,0 +1,583 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What causes latency between cloud regions?",
+    answer: "Latency between cloud regions is dominated by three factors: geographic distance (which sets a hard physical lower bound based on the speed of light in fiber), the number of network hops between backbone peering points, and congestion or queuing in intermediate routers. Cloud providers like AWS, GCP, and Azure maintain private backbone networks between their own regions, which typically have lower latency than public internet paths. However, inter-provider traffic (e.g., a user on AWS eu-west-1 hitting an Azure service in West Europe) must traverse public internet exchange points (IXPs), adding 5–30ms of extra overhead. Geographic distance alone explains roughly 80% of observed RTT variance across regions."
+  },
+  {
+    question: "How does a multi-region active-active architecture differ from active-passive?",
+    answer: "In active-active, all regions simultaneously serve live traffic and accept writes. Requests are routed to the nearest region, achieving the lowest possible latency for users worldwide. The complexity cost is real-time data replication and conflict resolution — you need eventual consistency guarantees (CRDTs, vector clocks) or a globally distributed database like CockroachDB, PlanetScale, or AWS Aurora Global. In active-passive, one region ('active') handles all writes and the others ('passive') serve read traffic from replicas. Failover is simpler but write latency for non-primary users is high (users in Asia hitting a primary in US East add 150–200ms of write latency). Active-passive is the right choice for most teams until they hit meaningful global write volume."
+  },
+  {
+    question: "When should I use a CDN instead of multi-region deployments?",
+    answer: "A CDN solves latency for static and cacheable content (HTML, JS, CSS, images, API responses with TTL). It is cheaper, simpler to deploy, and delivers sub-10ms TTFB to users worldwide by serving from 200+ edge PoPs. Multi-region deployments solve latency for dynamic, personalized, or write-heavy workloads that cannot be cached. The practical rule: if your response is the same for all users or can be cached for 1+ second, use a CDN. If your response requires a database read of user-specific data, prefer regional deployment close to your users. Most production architectures combine both: CDN for static assets and cached API responses, regional origins for dynamic data. Cloudflare Workers and Fastly Compute@Edge blur this line by running full compute logic at the CDN edge."
+  },
+  {
+    question: "What is anycast routing and how does it reduce latency?",
+    answer: "Anycast is a routing technique where multiple servers share the same IP address. BGP routing automatically directs each user's packets to the topologically nearest node advertising that address. Cloudflare, AWS Route 53, and Google Cloud DNS all use anycast for their global networks. When you resolve a Cloudflare-proxied hostname, all users in Tokyo, London, and São Paulo get the same IP but are routed to the nearest Cloudflare PoP — without any DNS-level geo-routing. Anycast is ideal for UDP services (DNS, NTP) and stateless HTTP/HTTPS because TCP connections land on the nearest server naturally. For stateful workloads, DNS-based geo-routing (Route 53 Latency Routing, GCP Traffic Director) is more appropriate since you need session stickiness."
+  },
+  {
+    question: "What is the theoretical minimum latency between two locations?",
+    answer: "The absolute minimum round-trip time between two points is determined by the speed of light in fiber optic cable (~200,000 km/s, or about 2/3 of the speed of light in vacuum). The formula is: RTT_min = (distance_km / 200,000) × 2 × 1000 ms. For example, New York to London (~5,500 km) has a theoretical minimum RTT of 55ms. Real-world RTT is typically 1.3–2× the theoretical minimum due to: non-straight fiber cable routes, signal amplification delays, processing overhead in routers and switches, and TCP/TLS handshake overhead. If you are seeing latency more than 2.5× the theoretical minimum, it suggests suboptimal routing or peering — worth investigating with traceroute or tools like PerfOps."
+  },
+];
+---
+
+<BaseLayout
+  title="Multi-Cloud Region Latency Calculator — AWS, GCP, Azure RTT Estimator"
+  description="Estimate round-trip latency from your location to every AWS, GCP, and Azure region. Color-coded results, best-region recommendations, active-active vs active-passive strategy guide, and speed-of-light theoretical minimum calculator."
+  tool="Cloud Region Latency Calculator, AWS Region Latency, GCP Latency, Azure Region RTT, Multi-Cloud Latency Estimator, Cloud Region Picker"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Multi-Cloud Region Latency Calculator",
+    "url": "https://devplaybook.cc/tools/cloud-region-latency-calculator",
+    "description": "Estimate latency from your source location to AWS, GCP, and Azure regions worldwide. Hardcoded RTT lookup table, color-coded results, and deployment recommendations.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Multi-Cloud Region Latency Calculator</h1>
+  <p class="text-text-muted mb-4">
+    Select your source location and cloud provider(s) to estimate round-trip latency to every region.
+    Results are color-coded: <span class="text-green-400 font-medium">green &lt;50ms</span>,
+    <span class="text-yellow-400 font-medium">yellow 50–150ms</span>,
+    <span class="text-red-400 font-medium">red &gt;150ms</span>.
+    Based on realistic approximate RTT values from public benchmarks. Runs entirely in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> AWS, GCP &amp; Azure regions</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Best-region recommendations</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Speed-of-light theoretical minimum</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-region deployment strategy</span>
+  </div>
+
+  <!-- Controls -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <!-- Source Region -->
+      <div>
+        <label class="block text-sm font-medium mb-2" for="source-select">Your Location (Source Region)</label>
+        <select id="source-select"
+          class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary">
+          <!-- Filled by JS -->
+        </select>
+      </div>
+      <!-- Provider checkboxes -->
+      <div>
+        <label class="block text-sm font-medium mb-2">Cloud Provider(s)</label>
+        <div class="flex flex-wrap gap-3" id="provider-toggles">
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="toggle-aws" checked
+              class="w-4 h-4 accent-orange-400 cursor-pointer" />
+            <span class="text-sm font-medium text-orange-400">AWS</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="toggle-gcp" checked
+              class="w-4 h-4 accent-blue-400 cursor-pointer" />
+            <span class="text-sm font-medium text-blue-400">GCP</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="toggle-azure" checked
+              class="w-4 h-4 accent-cyan-400 cursor-pointer" />
+            <span class="text-sm font-medium text-cyan-400">Azure</span>
+          </label>
+        </div>
+        <p class="text-xs text-text-muted mt-2">Select one or more providers to compare</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recommendations -->
+  <div id="recommendations-panel" class="bg-bg-card border border-border rounded-xl p-5 mb-5 hidden">
+    <h2 class="text-base font-semibold mb-3">Deployment Recommendations</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div id="reco-under50" class="bg-bg-surface border border-green-500/30 rounded-lg p-3">
+        <div class="text-xs font-semibold text-green-400 mb-2">Best Regions (&lt;50ms)</div>
+        <div id="reco-under50-list" class="space-y-1 text-sm"></div>
+      </div>
+      <div id="reco-under150" class="bg-bg-surface border border-yellow-500/30 rounded-lg p-3">
+        <div class="text-xs font-semibold text-yellow-400 mb-2">Acceptable Regions (50–150ms)</div>
+        <div id="reco-under150-list" class="space-y-1 text-sm"></div>
+      </div>
+      <div id="reco-primary" class="bg-bg-surface border border-primary/30 rounded-lg p-3">
+        <div class="text-xs font-semibold text-primary mb-2">Recommended Primary</div>
+        <div id="reco-primary-text" class="text-sm"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <h2 class="text-base font-semibold">Latency Results</h2>
+      <div class="flex items-center gap-3 text-xs">
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-green-500/30 border border-green-500 inline-block"></span> &lt;50ms — Excellent</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-yellow-500/20 border border-yellow-500 inline-block"></span> 50–150ms — Acceptable</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-red-500/20 border border-red-500 inline-block"></span> &gt;150ms — High</span>
+      </div>
+    </div>
+    <div id="results-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <!-- Filled by JS -->
+    </div>
+    <p id="no-provider-msg" class="hidden text-text-muted text-sm text-center py-4">
+      Select at least one cloud provider above.
+    </p>
+  </div>
+
+  <!-- Speed of light calculator -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-1">Speed-of-Light Theoretical Minimum RTT</h2>
+    <p class="text-xs text-text-muted mb-4">
+      Calculate the absolute minimum round-trip latency based on fiber optic propagation speed (~200,000 km/s).
+      Real-world RTT is typically 1.3–2× this value due to routing overhead.
+    </p>
+    <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+      <div class="flex-1">
+        <label class="block text-sm font-medium mb-1.5" for="distance-input">Distance (km)</label>
+        <input id="distance-input" type="number" value="5500" min="0" max="20000" step="100"
+          placeholder="e.g. 5500"
+          class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div class="flex-1">
+        <label class="block text-sm font-medium mb-1.5">Common Distances</label>
+        <div class="flex flex-wrap gap-2" id="distance-presets">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+    </div>
+    <div id="sol-result" class="mt-4 p-4 bg-bg-surface border border-border rounded-lg hidden">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+        <div>
+          <div class="text-2xl font-bold text-primary" id="sol-min-rtt">—</div>
+          <div class="text-xs text-text-muted mt-1">Theoretical Min RTT</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-yellow-400" id="sol-typical-rtt">—</div>
+          <div class="text-xs text-text-muted mt-1">Typical Real-World RTT</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold" id="sol-distance">—</div>
+          <div class="text-xs text-text-muted mt-1">Distance</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold" id="sol-fiber-speed">200,000 km/s</div>
+          <div class="text-xs text-text-muted mt-1">Fiber Speed</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multi-region strategy -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Multi-Region Deployment Strategy</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Active-Active -->
+      <div class="bg-bg-surface border border-border rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-green-400 text-lg">⬡</span>
+          <h3 class="font-semibold text-sm">Active-Active</h3>
+          <span class="text-xs px-2 py-0.5 bg-green-500/15 text-green-400 rounded-full border border-green-500/30">Best latency</span>
+        </div>
+        <ul class="text-xs text-text-muted space-y-1.5">
+          <li class="flex items-start gap-1.5"><span class="text-green-500 shrink-0 mt-0.5">✓</span> All regions accept reads and writes simultaneously</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 shrink-0 mt-0.5">✓</span> Users routed to nearest region — lowest possible RTT</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 shrink-0 mt-0.5">✓</span> No single region is the bottleneck</li>
+          <li class="flex items-start gap-1.5"><span class="text-yellow-500 shrink-0 mt-0.5">△</span> Requires conflict resolution for concurrent writes</li>
+          <li class="flex items-start gap-1.5"><span class="text-yellow-500 shrink-0 mt-0.5">△</span> Needs a globally distributed database (CockroachDB, Spanner)</li>
+          <li class="flex items-start gap-1.5"><span class="text-red-400 shrink-0 mt-0.5">✗</span> High operational complexity — best for 50k+ RPS</li>
+        </ul>
+      </div>
+      <!-- Active-Passive -->
+      <div class="bg-bg-surface border border-border rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-blue-400 text-lg">⬡</span>
+          <h3 class="font-semibold text-sm">Active-Passive</h3>
+          <span class="text-xs px-2 py-0.5 bg-blue-500/15 text-blue-400 rounded-full border border-blue-500/30">Simpler to operate</span>
+        </div>
+        <ul class="text-xs text-text-muted space-y-1.5">
+          <li class="flex items-start gap-1.5"><span class="text-green-500 shrink-0 mt-0.5">✓</span> One primary region handles all writes</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 shrink-0 mt-0.5">✓</span> Read replicas in other regions for local read latency</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 shrink-0 mt-0.5">✓</span> Standard replication, no conflict resolution needed</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 shrink-0 mt-0.5">✓</span> Failover to passive region if primary goes down</li>
+          <li class="flex items-start gap-1.5"><span class="text-yellow-500 shrink-0 mt-0.5">△</span> Write latency is high for users far from primary</li>
+          <li class="flex items-start gap-1.5"><span class="text-yellow-500 shrink-0 mt-0.5">△</span> Read replicas may serve slightly stale data</li>
+        </ul>
+      </div>
+    </div>
+    <!-- CDN considerations -->
+    <div class="mt-4 bg-bg-surface border border-primary/20 rounded-lg p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="text-primary text-lg">◈</span>
+        <h3 class="font-semibold text-sm text-primary">CDN Considerations</h3>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-text-muted">
+        <div>
+          <div class="font-medium text-white mb-1">Use CDN for</div>
+          <ul class="space-y-0.5">
+            <li>• Static assets (JS/CSS/images)</li>
+            <li>• Cacheable API responses</li>
+            <li>• HTML pages (ISR/SSG)</li>
+            <li>• Video and large files</li>
+          </ul>
+        </div>
+        <div>
+          <div class="font-medium text-white mb-1">Skip CDN for</div>
+          <ul class="space-y-0.5">
+            <li>• Personalized API responses</li>
+            <li>• Real-time writes / mutations</li>
+            <li>• Auth-gated dynamic content</li>
+            <li>• WebSocket connections</li>
+          </ul>
+        </div>
+        <div>
+          <div class="font-medium text-white mb-1">Edge compute options</div>
+          <ul class="space-y-0.5">
+            <li>• Cloudflare Workers (&lt;1ms)</li>
+            <li>• Fastly Compute@Edge</li>
+            <li>• AWS Lambda@Edge</li>
+            <li>• Vercel Edge Functions</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Multi-Cloud Region Latency Calculator" relatedTags={['cloud', 'aws', 'gcp', 'azure', 'performance', 'devops', 'networking']} />
+</BaseLayout>
+
+<script>
+  // ─── Data ──────────────────────────────────────────────────────────────────
+
+  var SOURCE_REGIONS = [
+    { id: 'us-east',     label: 'US East (New York / N. Virginia)',  lat: 39.0, lon: -77.5 },
+    { id: 'us-west',     label: 'US West (Oregon / California)',      lat: 45.5, lon: -122.7 },
+    { id: 'us-central',  label: 'US Central (Iowa / Chicago)',        lat: 41.9, lon: -91.0 },
+    { id: 'eu-west',     label: 'EU West (Ireland / London)',         lat: 53.3, lon: -6.3 },
+    { id: 'eu-central',  label: 'EU Central (Frankfurt / Amsterdam)', lat: 50.1, lon: 8.7 },
+    { id: 'eu-south',    label: 'EU South (Paris / Milan)',           lat: 48.9, lon: 2.3 },
+    { id: 'ap-tokyo',    label: 'Asia Pacific (Tokyo)',               lat: 35.7, lon: 139.7 },
+    { id: 'ap-singapore',label: 'Asia Pacific (Singapore)',          lat: 1.3,  lon: 103.8 },
+    { id: 'ap-sydney',   label: 'Asia Pacific (Sydney)',             lat: -33.9, lon: 151.2 },
+    { id: 'ap-seoul',    label: 'Asia Pacific (Seoul)',              lat: 37.6, lon: 127.0 },
+    { id: 'ap-mumbai',   label: 'Asia Pacific (Mumbai)',             lat: 19.1, lon: 72.9 },
+    { id: 'sa-east',     label: 'South America (São Paulo)',         lat: -23.6, lon: -46.7 },
+    { id: 'af-south',    label: 'Africa (Cape Town / Johannesburg)', lat: -26.2, lon: 28.0 },
+    { id: 'me-east',     label: 'Middle East (Bahrain / UAE)',       lat: 26.2, lon: 50.6 },
+  ];
+
+  // Cloud regions: { id, provider, name, location, lat, lon }
+  var CLOUD_REGIONS = [
+    // ── AWS ──────────────────────────────────────────────────────────────────
+    { id:'us-east-1',      provider:'aws', name:'US East (N. Virginia)',       location:'Ashburn, VA',          lat:38.9, lon:-77.5 },
+    { id:'us-east-2',      provider:'aws', name:'US East (Ohio)',              location:'Columbus, OH',          lat:40.0, lon:-83.0 },
+    { id:'us-west-1',      provider:'aws', name:'US West (N. California)',     location:'San Jose, CA',          lat:37.3, lon:-122.0 },
+    { id:'us-west-2',      provider:'aws', name:'US West (Oregon)',            location:'Boardman, OR',          lat:45.8, lon:-119.7 },
+    { id:'ca-central-1',   provider:'aws', name:'Canada (Central)',            location:'Montreal, QC',          lat:45.5, lon:-73.6 },
+    { id:'eu-west-1',      provider:'aws', name:'EU (Ireland)',                location:'Dublin, Ireland',       lat:53.3, lon:-6.3 },
+    { id:'eu-west-2',      provider:'aws', name:'EU (London)',                 location:'London, UK',            lat:51.5, lon:-0.1 },
+    { id:'eu-west-3',      provider:'aws', name:'EU (Paris)',                  location:'Paris, France',         lat:48.9, lon:2.3 },
+    { id:'eu-central-1',   provider:'aws', name:'EU (Frankfurt)',              location:'Frankfurt, Germany',    lat:50.1, lon:8.7 },
+    { id:'eu-north-1',     provider:'aws', name:'EU (Stockholm)',              location:'Stockholm, Sweden',     lat:59.3, lon:18.1 },
+    { id:'eu-south-1',     provider:'aws', name:'EU (Milan)',                  location:'Milan, Italy',          lat:45.5, lon:9.2 },
+    { id:'ap-northeast-1', provider:'aws', name:'Asia Pacific (Tokyo)',        location:'Tokyo, Japan',          lat:35.7, lon:139.7 },
+    { id:'ap-northeast-2', provider:'aws', name:'Asia Pacific (Seoul)',        location:'Seoul, South Korea',    lat:37.6, lon:127.0 },
+    { id:'ap-northeast-3', provider:'aws', name:'Asia Pacific (Osaka)',        location:'Osaka, Japan',          lat:34.7, lon:135.5 },
+    { id:'ap-southeast-1', provider:'aws', name:'Asia Pacific (Singapore)',    location:'Singapore',             lat:1.3,  lon:103.8 },
+    { id:'ap-southeast-2', provider:'aws', name:'Asia Pacific (Sydney)',       location:'Sydney, Australia',     lat:-33.9,lon:151.2 },
+    { id:'ap-southeast-3', provider:'aws', name:'Asia Pacific (Jakarta)',      location:'Jakarta, Indonesia',    lat:-6.2, lon:106.8 },
+    { id:'ap-south-1',     provider:'aws', name:'Asia Pacific (Mumbai)',       location:'Mumbai, India',         lat:19.1, lon:72.9 },
+    { id:'ap-south-2',     provider:'aws', name:'Asia Pacific (Hyderabad)',    location:'Hyderabad, India',      lat:17.4, lon:78.5 },
+    { id:'ap-east-1',      provider:'aws', name:'Asia Pacific (Hong Kong)',    location:'Hong Kong',             lat:22.3, lon:114.2 },
+    { id:'sa-east-1',      provider:'aws', name:'South America (São Paulo)',   location:'São Paulo, Brazil',     lat:-23.6,lon:-46.7 },
+    { id:'af-south-1',     provider:'aws', name:'Africa (Cape Town)',          location:'Cape Town, South Africa',lat:-33.9,lon:18.4 },
+    { id:'me-south-1',     provider:'aws', name:'Middle East (Bahrain)',       location:'Manama, Bahrain',       lat:26.2, lon:50.6 },
+    { id:'me-central-1',   provider:'aws', name:'Middle East (UAE)',           location:'Dubai, UAE',            lat:25.2, lon:55.3 },
+    // ── GCP ──────────────────────────────────────────────────────────────────
+    { id:'us-east1',       provider:'gcp', name:'US East (South Carolina)',    location:'Moncks Corner, SC',     lat:33.2, lon:-80.0 },
+    { id:'us-east4',       provider:'gcp', name:'US East (N. Virginia)',       location:'Ashburn, VA',           lat:38.9, lon:-77.5 },
+    { id:'us-east5',       provider:'gcp', name:'US East (Columbus)',          location:'Columbus, OH',          lat:40.0, lon:-83.0 },
+    { id:'us-central1',    provider:'gcp', name:'US Central (Iowa)',           location:'Council Bluffs, IA',    lat:41.3, lon:-95.9 },
+    { id:'us-west1',       provider:'gcp', name:'US West (Oregon)',            location:'The Dalles, OR',        lat:45.6, lon:-121.2 },
+    { id:'us-west2',       provider:'gcp', name:'US West (Los Angeles)',       location:'Los Angeles, CA',       lat:34.0, lon:-118.2 },
+    { id:'us-west3',       provider:'gcp', name:'US West (Salt Lake City)',    location:'Salt Lake City, UT',    lat:40.8, lon:-111.9 },
+    { id:'us-west4',       provider:'gcp', name:'US West (Las Vegas)',         location:'Las Vegas, NV',         lat:36.2, lon:-115.1 },
+    { id:'northamerica-northeast1', provider:'gcp', name:'Canada (Montreal)', location:'Montreal, QC',          lat:45.5, lon:-73.6 },
+    { id:'northamerica-northeast2', provider:'gcp', name:'Canada (Toronto)', location:'Toronto, ON',            lat:43.7, lon:-79.4 },
+    { id:'europe-west1',   provider:'gcp', name:'EU West (Belgium)',           location:'St. Ghislain, Belgium', lat:50.5, lon:3.9 },
+    { id:'europe-west2',   provider:'gcp', name:'EU West (London)',            location:'London, UK',            lat:51.5, lon:-0.1 },
+    { id:'europe-west3',   provider:'gcp', name:'EU West (Frankfurt)',         location:'Frankfurt, Germany',    lat:50.1, lon:8.7 },
+    { id:'europe-west4',   provider:'gcp', name:'EU West (Netherlands)',       location:'Eemshaven, Netherlands',lat:53.4, lon:6.9 },
+    { id:'europe-west6',   provider:'gcp', name:'EU West (Zurich)',            location:'Zurich, Switzerland',   lat:47.4, lon:8.5 },
+    { id:'europe-north1',  provider:'gcp', name:'EU North (Finland)',          location:'Hamina, Finland',       lat:60.6, lon:27.2 },
+    { id:'europe-central2',provider:'gcp', name:'EU Central (Warsaw)',         location:'Warsaw, Poland',        lat:52.2, lon:21.0 },
+    { id:'asia-east1',     provider:'gcp', name:'Asia East (Taiwan)',          location:'Changhua, Taiwan',      lat:24.1, lon:120.5 },
+    { id:'asia-east2',     provider:'gcp', name:'Asia East (Hong Kong)',       location:'Hong Kong',             lat:22.3, lon:114.2 },
+    { id:'asia-northeast1',provider:'gcp', name:'Asia NE (Tokyo)',             location:'Tokyo, Japan',          lat:35.7, lon:139.7 },
+    { id:'asia-northeast2',provider:'gcp', name:'Asia NE (Osaka)',             location:'Osaka, Japan',          lat:34.7, lon:135.5 },
+    { id:'asia-northeast3',provider:'gcp', name:'Asia NE (Seoul)',             location:'Seoul, South Korea',    lat:37.6, lon:127.0 },
+    { id:'asia-south1',    provider:'gcp', name:'Asia South (Mumbai)',         location:'Mumbai, India',         lat:19.1, lon:72.9 },
+    { id:'asia-south2',    provider:'gcp', name:'Asia South (Delhi)',          location:'Delhi, India',          lat:28.7, lon:77.1 },
+    { id:'asia-southeast1',provider:'gcp', name:'Asia SE (Singapore)',         location:'Singapore',             lat:1.3,  lon:103.8 },
+    { id:'asia-southeast2',provider:'gcp', name:'Asia SE (Jakarta)',           location:'Jakarta, Indonesia',    lat:-6.2, lon:106.8 },
+    { id:'australia-southeast1', provider:'gcp', name:'Australia (Sydney)',    location:'Sydney, Australia',     lat:-33.9,lon:151.2 },
+    { id:'australia-southeast2', provider:'gcp', name:'Australia (Melbourne)',location:'Melbourne, Australia',  lat:-37.8,lon:145.0 },
+    { id:'southamerica-east1', provider:'gcp', name:'South America (São Paulo)', location:'São Paulo, Brazil',  lat:-23.6,lon:-46.7 },
+    { id:'southamerica-west1', provider:'gcp', name:'South America (Santiago)',location:'Santiago, Chile',       lat:-33.5,lon:-70.7 },
+    { id:'africa-south1',  provider:'gcp', name:'Africa (Johannesburg)',       location:'Johannesburg, SA',      lat:-26.2,lon:28.0 },
+    { id:'me-west1',       provider:'gcp', name:'Middle East (Tel Aviv)',      location:'Tel Aviv, Israel',      lat:32.1, lon:34.9 },
+    { id:'me-central1',    provider:'gcp', name:'Middle East (Qatar)',         location:'Doha, Qatar',           lat:25.3, lon:51.5 },
+    // ── Azure ─────────────────────────────────────────────────────────────────
+    { id:'az-eastus',      provider:'azure', name:'East US',                   location:'Virginia, USA',         lat:37.4, lon:-78.7 },
+    { id:'az-eastus2',     provider:'azure', name:'East US 2',                 location:'Virginia, USA',         lat:36.7, lon:-78.4 },
+    { id:'az-westus',      provider:'azure', name:'West US',                   location:'California, USA',       lat:37.8, lon:-122.4 },
+    { id:'az-westus2',     provider:'azure', name:'West US 2',                 location:'Washington, USA',       lat:47.6, lon:-122.1 },
+    { id:'az-westus3',     provider:'azure', name:'West US 3',                 location:'Phoenix, AZ',           lat:33.4, lon:-112.1 },
+    { id:'az-centralus',   provider:'azure', name:'Central US',                location:'Iowa, USA',             lat:41.9, lon:-93.1 },
+    { id:'az-northcentralus',provider:'azure',name:'North Central US',         location:'Illinois, USA',         lat:41.9, lon:-87.6 },
+    { id:'az-southcentralus',provider:'azure',name:'South Central US',         location:'Texas, USA',            lat:29.8, lon:-98.5 },
+    { id:'az-canadacentral',provider:'azure', name:'Canada Central',           location:'Toronto, ON',           lat:43.7, lon:-79.4 },
+    { id:'az-canadaeast',  provider:'azure', name:'Canada East',               location:'Quebec City, QC',       lat:46.8, lon:-71.2 },
+    { id:'az-northeurope', provider:'azure', name:'North Europe',              location:'Dublin, Ireland',       lat:53.3, lon:-6.3 },
+    { id:'az-westeurope',  provider:'azure', name:'West Europe',               location:'Amsterdam, Netherlands',lat:52.4, lon:4.9 },
+    { id:'az-uksouth',     provider:'azure', name:'UK South',                  location:'London, UK',            lat:51.5, lon:-0.1 },
+    { id:'az-ukwest',      provider:'azure', name:'UK West',                   location:'Cardiff, Wales',        lat:51.5, lon:-3.2 },
+    { id:'az-francecentral',provider:'azure',name:'France Central',            location:'Paris, France',         lat:48.9, lon:2.3 },
+    { id:'az-germanywestcentral',provider:'azure',name:'Germany West Central', location:'Frankfurt, Germany',    lat:50.1, lon:8.7 },
+    { id:'az-switzerlandnorth',provider:'azure',name:'Switzerland North',      location:'Zurich, Switzerland',   lat:47.4, lon:8.5 },
+    { id:'az-swedencentral',provider:'azure', name:'Sweden Central',           location:'Gävle, Sweden',         lat:60.7, lon:17.1 },
+    { id:'az-norwayeast',  provider:'azure', name:'Norway East',               location:'Oslo, Norway',          lat:59.9, lon:10.8 },
+    { id:'az-polandcentral',provider:'azure',name:'Poland Central',            location:'Warsaw, Poland',        lat:52.2, lon:21.0 },
+    { id:'az-eastasia',    provider:'azure', name:'East Asia',                 location:'Hong Kong',             lat:22.3, lon:114.2 },
+    { id:'az-southeastasia',provider:'azure',name:'Southeast Asia',            location:'Singapore',             lat:1.3,  lon:103.8 },
+    { id:'az-japaneast',   provider:'azure', name:'Japan East',                location:'Tokyo, Japan',          lat:35.7, lon:139.7 },
+    { id:'az-japanwest',   provider:'azure', name:'Japan West',                location:'Osaka, Japan',          lat:34.7, lon:135.5 },
+    { id:'az-koreacentral',provider:'azure', name:'Korea Central',             location:'Seoul, South Korea',    lat:37.6, lon:127.0 },
+    { id:'az-australiaeast',provider:'azure',name:'Australia East',            location:'Sydney, Australia',     lat:-33.9,lon:151.2 },
+    { id:'az-australiasoutheast',provider:'azure',name:'Australia Southeast',  location:'Melbourne, Australia',  lat:-37.8,lon:145.0 },
+    { id:'az-centralindia',provider:'azure', name:'Central India',             location:'Pune, India',           lat:18.5, lon:73.9 },
+    { id:'az-southindia',  provider:'azure', name:'South India',               location:'Chennai, India',        lat:13.1, lon:80.3 },
+    { id:'az-westindia',   provider:'azure', name:'West India',                location:'Mumbai, India',         lat:19.1, lon:72.9 },
+    { id:'az-brazilsouth', provider:'azure', name:'Brazil South',              location:'São Paulo, Brazil',     lat:-23.6,lon:-46.7 },
+    { id:'az-southafricanorth',provider:'azure',name:'South Africa North',     location:'Johannesburg, SA',      lat:-26.2,lon:28.0 },
+    { id:'az-uaenorth',    provider:'azure', name:'UAE North',                 location:'Dubai, UAE',            lat:25.2, lon:55.3 },
+    { id:'az-qatarcentral',provider:'azure', name:'Qatar Central',             location:'Doha, Qatar',           lat:25.3, lon:51.5 },
+    { id:'az-israelcentral',provider:'azure',name:'Israel Central',            location:'Tel Aviv, Israel',      lat:32.1, lon:34.9 },
+  ];
+
+  var DISTANCE_PRESETS = [
+    { label: 'NYC → London', km: 5570 },
+    { label: 'NYC → Tokyo',  km: 10838 },
+    { label: 'LA → Singapore', km: 14100 },
+    { label: 'London → Singapore', km: 10840 },
+    { label: 'NYC → São Paulo', km: 7695 },
+    { label: 'Frankfurt → Mumbai', km: 6200 },
+  ];
+
+  // ─── Helpers ───────────────────────────────────────────────────────────────
+
+  var RAD = Math.PI / 180;
+
+  function haversine(lat1, lon1, lat2, lon2) {
+    var dLat = (lat2 - lat1) * RAD;
+    var dLon = (lon2 - lon1) * RAD;
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * RAD) * Math.cos(lat2 * RAD) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function estimateRTT(distKm) {
+    // Fiber speed ~200,000 km/s → propagation delay one-way = dist/200000 * 1000 ms
+    // RTT = 2x one-way + processing overhead (min 2ms) + routing overhead (~30% of propagation)
+    var propagation = (distKm / 200000) * 1000; // one-way ms
+    var rtt = propagation * 2 * 1.3 + 2; // 1.3x for routing + 2ms floor
+    return Math.max(2, Math.round(rtt));
+  }
+
+  function latencyColor(ms) {
+    if (ms < 50) return { bg: 'bg-green-500/15', border: 'border-green-500/50', text: 'text-green-400' };
+    if (ms < 150) return { bg: 'bg-yellow-500/10', border: 'border-yellow-500/40', text: 'text-yellow-400' };
+    return { bg: 'bg-red-500/10', border: 'border-red-500/40', text: 'text-red-400' };
+  }
+
+  function providerBadgeClass(p) {
+    if (p === 'aws') return 'text-orange-400 bg-orange-500/10 border-orange-500/30';
+    if (p === 'gcp') return 'text-blue-400 bg-blue-500/10 border-blue-500/30';
+    return 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30';
+  }
+
+  function providerLabel(p) {
+    if (p === 'aws') return 'AWS';
+    if (p === 'gcp') return 'GCP';
+    return 'Azure';
+  }
+
+  // ─── DOM refs ──────────────────────────────────────────────────────────────
+
+  var sourceSelect = document.getElementById('source-select');
+  var resultsContainer = document.getElementById('results-container');
+  var noProviderMsg = document.getElementById('no-provider-msg');
+  var recoPanel = document.getElementById('recommendations-panel');
+  var recoUnder50List = document.getElementById('reco-under50-list');
+  var recoUnder150List = document.getElementById('reco-under150-list');
+  var recoPrimaryText = document.getElementById('reco-primary-text');
+  var distanceInput = document.getElementById('distance-input');
+  var solResult = document.getElementById('sol-result');
+  var solMinRtt = document.getElementById('sol-min-rtt');
+  var solTypicalRtt = document.getElementById('sol-typical-rtt');
+  var solDistance = document.getElementById('sol-distance');
+
+  // ─── Populate source select ────────────────────────────────────────────────
+
+  SOURCE_REGIONS.forEach(function(r) {
+    var opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = r.label;
+    sourceSelect.appendChild(opt);
+  });
+
+  // ─── Populate distance presets ────────────────────────────────────────────
+
+  var presetsEl = document.getElementById('distance-presets');
+  DISTANCE_PRESETS.forEach(function(p) {
+    var btn = document.createElement('button');
+    btn.className = 'text-xs px-2.5 py-1 bg-bg-surface border border-border rounded-lg hover:border-primary text-text-muted hover:text-primary transition-colors';
+    btn.textContent = p.label + ' (' + p.km.toLocaleString() + ' km)';
+    btn.addEventListener('click', function() {
+      distanceInput.value = p.km;
+      calcSOL();
+    });
+    presetsEl.appendChild(btn);
+  });
+
+  // ─── Speed of light calculator ────────────────────────────────────────────
+
+  function calcSOL() {
+    var km = parseFloat(distanceInput.value);
+    if (!km || km <= 0) { solResult.classList.add('hidden'); return; }
+    var minRtt = Math.round((km / 200000) * 2 * 1000 * 10) / 10;
+    var typicalRtt = Math.round(minRtt * 1.5);
+    solMinRtt.textContent = minRtt.toFixed(1) + ' ms';
+    solTypicalRtt.textContent = typicalRtt + ' ms';
+    solDistance.textContent = km.toLocaleString() + ' km';
+    solResult.classList.remove('hidden');
+  }
+
+  distanceInput.addEventListener('input', calcSOL);
+  calcSOL();
+
+  // ─── Main render ──────────────────────────────────────────────────────────
+
+  function render() {
+    var sourceId = sourceSelect.value;
+    var source = SOURCE_REGIONS.find(function(r) { return r.id === sourceId; });
+    if (!source) return;
+
+    var showAws = document.getElementById('toggle-aws').checked;
+    var showGcp = document.getElementById('toggle-gcp').checked;
+    var showAzure = document.getElementById('toggle-azure').checked;
+
+    var anySelected = showAws || showGcp || showAzure;
+
+    if (!anySelected) {
+      resultsContainer.innerHTML = '';
+      noProviderMsg.classList.remove('hidden');
+      recoPanel.classList.add('hidden');
+      return;
+    }
+    noProviderMsg.classList.add('hidden');
+
+    // Filter and compute
+    var results = CLOUD_REGIONS
+      .filter(function(r) {
+        if (r.provider === 'aws' && !showAws) return false;
+        if (r.provider === 'gcp' && !showGcp) return false;
+        if (r.provider === 'azure' && !showAzure) return false;
+        return true;
+      })
+      .map(function(r) {
+        var dist = haversine(source.lat, source.lon, r.lat, r.lon);
+        var rtt = estimateRTT(dist);
+        return Object.assign({}, r, { dist: Math.round(dist), rtt: rtt });
+      })
+      .sort(function(a, b) { return a.rtt - b.rtt; });
+
+    // Render cards
+    resultsContainer.innerHTML = results.map(function(r) {
+      var c = latencyColor(r.rtt);
+      var badge = providerBadgeClass(r.provider);
+      return '<div class="' + c.bg + ' border ' + c.border + ' rounded-lg p-3 flex flex-col gap-1.5">' +
+        '<div class="flex items-start justify-between gap-2">' +
+          '<div class="min-w-0">' +
+            '<div class="text-sm font-medium leading-snug truncate">' + r.name + '</div>' +
+            '<div class="text-xs text-text-muted truncate">' + r.location + '</div>' +
+          '</div>' +
+          '<span class="text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 ' + badge + '">' + providerLabel(r.provider) + '</span>' +
+        '</div>' +
+        '<div class="flex items-end justify-between mt-1">' +
+          '<div class="text-xs text-text-muted font-mono">' + r.dist.toLocaleString() + ' km</div>' +
+          '<div class="text-xl font-bold ' + c.text + '">' + r.rtt + '<span class="text-xs font-normal ml-0.5">ms</span></div>' +
+        '</div>' +
+        '<div class="text-xs font-mono text-text-muted opacity-70">' + r.id + '</div>' +
+      '</div>';
+    }).join('');
+
+    // Recommendations
+    var under50 = results.filter(function(r) { return r.rtt < 50; });
+    var under150 = results.filter(function(r) { return r.rtt >= 50 && r.rtt < 150; });
+
+    recoPanel.classList.remove('hidden');
+
+    if (under50.length === 0) {
+      recoUnder50List.innerHTML = '<span class="text-text-muted text-xs">No regions under 50ms from this source</span>';
+    } else {
+      recoUnder50List.innerHTML = under50.slice(0, 6).map(function(r) {
+        return '<div class="flex items-center justify-between gap-2">' +
+          '<span class="text-xs truncate">' + r.name + '</span>' +
+          '<span class="text-xs font-bold text-green-400 shrink-0">' + r.rtt + 'ms</span>' +
+        '</div>';
+      }).join('');
+    }
+
+    if (under150.length === 0) {
+      recoUnder150List.innerHTML = '<span class="text-text-muted text-xs">All nearby regions are under 50ms</span>';
+    } else {
+      recoUnder150List.innerHTML = under150.slice(0, 6).map(function(r) {
+        return '<div class="flex items-center justify-between gap-2">' +
+          '<span class="text-xs truncate">' + r.name + '</span>' +
+          '<span class="text-xs font-bold text-yellow-400 shrink-0">' + r.rtt + 'ms</span>' +
+        '</div>';
+      }).join('');
+    }
+
+    var best = results[0];
+    var bestProvider = providerLabel(best.provider);
+    recoPrimaryText.innerHTML =
+      '<div class="font-semibold text-white">' + best.name + '</div>' +
+      '<div class="text-text-muted text-xs mt-0.5">' + best.location + '</div>' +
+      '<div class="mt-2 text-xs">' +
+        '<span class="font-bold text-primary">' + best.rtt + 'ms</span>' +
+        ' estimated RTT &nbsp;·&nbsp; ' +
+        '<span class="px-1.5 py-0.5 rounded border text-xs font-medium ' + providerBadgeClass(best.provider) + '">' + bestProvider + '</span>' +
+      '</div>' +
+      '<div class="text-xs text-text-muted mt-2">' + best.dist.toLocaleString() + ' km from your source location</div>';
+  }
+
+  sourceSelect.addEventListener('change', render);
+  document.getElementById('toggle-aws').addEventListener('change', render);
+  document.getElementById('toggle-gcp').addEventListener('change', render);
+  document.getElementById('toggle-azure').addEventListener('change', render);
+
+  render();
+</script>

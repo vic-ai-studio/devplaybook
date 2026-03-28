@@ -1,0 +1,756 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is IaC drift and why is it dangerous?",
+    answer: "IaC drift occurs when your live cloud infrastructure diverges from what your Infrastructure-as-Code configuration describes. It's dangerous for several reasons: it breaks the predictability of IaC (your 'source of truth' no longer reflects reality), it makes the next automated deployment unpredictable or destructive, it can introduce security vulnerabilities (e.g. a security group rule opened manually), and it erodes team trust in automation. Even small drifts compound over time — a manually added S3 bucket policy today becomes an unexpected terraform destroy next sprint."
+  },
+  {
+    question: "What is the difference between terraform plan, terraform refresh, and driftctl?",
+    answer: "These three tools detect drift at different scopes. 'terraform plan' is the standard approach: it compares your config against the state file and shows what Terraform would change — but it only knows about resources tracked in your state file. 'terraform refresh' (deprecated in TF 1.x, replaced by 'terraform apply -refresh-only') updates the state file to match actual cloud reality without making changes, which lets you see what drifted. Driftctl is a dedicated open-source drift scanner that goes further: it detects cloud resources that exist in your account but are NOT in any Terraform state at all — so-called 'unmanaged resources'. This is the coverage driftctl excels at."
+  },
+  {
+    question: "How do I prevent IaC drift in production?",
+    answer: "Prevention has four pillars. First, enforce IaC-only changes: use IAM policies and OPA/Sentinel rules to block direct console edits in production accounts. Second, run drift detection in CI/CD: schedule 'terraform plan' or driftctl scans daily or on every push, and alert on any diff. Third, use state locking with DynamoDB (Terraform) or Pulumi Cloud to prevent concurrent modifications. Fourth, implement GitOps: treat your IaC repo as the only source of truth, and use automated reconciliation (ArgoCD, Atlantis, Flux) so any deviation triggers an automatic correction. Teams that skip even one pillar typically see drift accumulate within weeks."
+  },
+  {
+    question: "What should I do when I detect drift — fix the IaC or apply a terraform apply?",
+    answer: "The decision depends on why the drift happened. If someone made an emergency fix that should be permanent (e.g., opening a port during an incident), update the IaC to match, commit, and run a plan/apply to reconcile. If the drift is unintentional or unauthorized (someone clicked around in the console), run 'terraform apply' to revert cloud to match IaC — after confirming no data loss. If it's auto-scaling state (instance counts, read replicas), consider using 'lifecycle { ignore_changes }' to tell Terraform to ignore those attributes. Never just 'terraform refresh' and commit the drifted state without understanding why the drift occurred."
+  },
+  {
+    question: "Which drift detection tool should I use for Terraform, Pulumi, CDK, and Ansible?",
+    answer: "For Terraform: start with 'terraform plan -refresh-only' built-in, add driftctl for unmanaged resource detection, and Infracost for cost drift. For Pulumi: 'pulumi refresh' updates stack state and shows drift; Pulumi Cloud also provides drift reports. For AWS CDK: use 'cdk diff' which shows CloudFormation change sets — CloudFormation natively tracks drift via 'aws cloudformation detect-stack-drift'. For Ansible: use '--check' mode (dry-run) to see what would change; ansible-lint and Molecule help validate configuration state. For all platforms, AWS Config Rules provide a compliance layer that continuously evaluates resources against your policies regardless of which IaC tool manages them."
+  },
+];
+---
+
+<BaseLayout
+  title="IaC Drift Detection Patterns Guide — Terraform, Pulumi, CDK, Ansible"
+  description="Complete guide to IaC drift: what it is, drift detection methods compared (terraform plan, driftctl, Pulumi refresh, AWS Config), drift scenario explorer, prevention checklist, and tool recommendations by platform."
+  tool="IaC drift detection, terraform drift, driftctl, infrastructure drift, Pulumi refresh, AWS Config drift, CDK drift"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "IaC Drift Detection Patterns Guide",
+    "url": "https://devplaybook.cc/tools/iac-drift-detector-guide",
+    "description": "Interactive guide to IaC drift detection: methods comparison, scenario explorer, prevention checklist, alert thresholds, remediation workflow, and tool recommendations by platform.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">IaC Drift Detection Patterns Guide</h1>
+  <p class="text-text-muted mb-4">
+    Infrastructure drift is the silent killer of IaC reliability. This guide covers what drift is, how to detect it across
+    Terraform, Pulumi, CDK, and Ansible, and how to build a prevention workflow that keeps your cloud and your code in sync.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Detection methods compared</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Interactive scenario explorer</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Prevention checklist</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Remediation workflow</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Platform recommendations</span>
+  </div>
+
+  <!-- ── What is Drift? ── -->
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is IaC Drift?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    <strong>Infrastructure drift</strong> is any difference between the state your IaC tool believes the world is in
+    and what the cloud provider actually has. Drift can be as minor as a tag value changing, or as severe as an entire
+    database instance being deleted or a security group rule being added that opens a critical port.
+  </p>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <div class="text-2xl mb-2">🖱️</div>
+      <h3 class="font-semibold text-sm mb-1">Manual Console Changes</h3>
+      <p class="text-text-muted text-xs leading-relaxed">An engineer opens the AWS Console and adds an ingress rule to a security group during an incident. The rule is never removed. Terraform's state file still shows the old rule.</p>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <div class="text-2xl mb-2">⚖️</div>
+      <h3 class="font-semibold text-sm mb-1">Auto-scaling & Cloud Events</h3>
+      <p class="text-text-muted text-xs leading-relaxed">AWS Auto Scaling adds or removes EC2 instances. RDS creates read replicas automatically. These cloud-managed changes are expected drift that IaC should be configured to ignore.</p>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <div class="text-2xl mb-2">🔀</div>
+      <h3 class="font-semibold text-sm mb-1">Parallel Tool Changes</h3>
+      <p class="text-text-muted text-xs leading-relaxed">Another team uses a different IaC tool (CloudFormation, Ansible) or a deployment pipeline that modifies shared resources — VPCs, IAM roles, Route53 records — without updating your state.</p>
+    </div>
+  </div>
+
+  <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-6 text-sm text-text-muted">
+    <strong class="text-yellow-400">Why drift is dangerous:</strong> The next <code class="font-mono text-xs bg-surface px-1 rounded">terraform apply</code> may silently revert a
+    critical fix, delete resources that were manually added, or make the plan output unpredictable — turning a routine deploy
+    into a production incident.
+  </div>
+
+  <!-- ── Detection Methods Comparison ── -->
+  <h2 class="text-xl font-semibold mt-8 mb-3">Drift Detection Methods Compared</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Tool / Method</th>
+          <th class="border border-border px-3 py-2 text-left">What It Detects</th>
+          <th class="border border-border px-3 py-2 text-left">Scope</th>
+          <th class="border border-border px-3 py-2 text-left">Speed</th>
+          <th class="border border-border px-3 py-2 text-left">Unmanaged Resources</th>
+          <th class="border border-border px-3 py-2 text-left">Best For</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2 font-mono text-xs">terraform plan</td>
+          <td class="border border-border px-3 py-2">Config vs state drift</td>
+          <td class="border border-border px-3 py-2">State-tracked resources only</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2">Daily CI drift check</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2 font-mono text-xs">terraform apply -refresh-only</td>
+          <td class="border border-border px-3 py-2">Real cloud vs state</td>
+          <td class="border border-border px-3 py-2">State-tracked resources only</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2">State reconciliation</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2 font-mono text-xs">driftctl</td>
+          <td class="border border-border px-3 py-2">All cloud resources vs IaC</td>
+          <td class="border border-border px-3 py-2">Entire AWS account</td>
+          <td class="border border-border px-3 py-2">Slow (full scan)</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+          <td class="border border-border px-3 py-2">Coverage & compliance</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2 font-mono text-xs">Infracost</td>
+          <td class="border border-border px-3 py-2">Cost drift from IaC changes</td>
+          <td class="border border-border px-3 py-2">Config-level cost impact</td>
+          <td class="border border-border px-3 py-2">Fast</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">Partial</td>
+          <td class="border border-border px-3 py-2">PR cost review</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2 font-mono text-xs">pulumi refresh</td>
+          <td class="border border-border px-3 py-2">Real cloud vs Pulumi state</td>
+          <td class="border border-border px-3 py-2">Stack-tracked resources</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2">Pulumi stack sync</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2 font-mono text-xs">AWS Config Rules</td>
+          <td class="border border-border px-3 py-2">Compliance violations</td>
+          <td class="border border-border px-3 py-2">All AWS resources</td>
+          <td class="border border-border px-3 py-2">Continuous</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+          <td class="border border-border px-3 py-2">Policy enforcement</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2 font-mono text-xs">Custom scripts (AWS CLI)</td>
+          <td class="border border-border px-3 py-2">Specific resource attributes</td>
+          <td class="border border-border px-3 py-2">Targeted</td>
+          <td class="border border-border px-3 py-2">Fast (targeted)</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">If scripted</td>
+          <td class="border border-border px-3 py-2">Custom business rules</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Drift Scenario Explorer ── -->
+  <h2 class="text-xl font-semibold mt-8 mb-3">Drift Scenario Explorer</h2>
+  <p class="text-text-muted mb-4 text-sm">Select a scenario to see what drift it causes and how to detect and remediate it.</p>
+
+  <div id="scenario-explorer" class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <div class="flex flex-wrap gap-2 mb-5" id="scenario-tabs">
+      <button class="scenario-btn px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors" data-scenario="console">Manual Console Change</button>
+      <button class="scenario-btn px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors" data-scenario="autoscaling">Auto-Scaling Event</button>
+      <button class="scenario-btn px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors" data-scenario="incident">Security Incident Response</button>
+      <button class="scenario-btn px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors" data-scenario="pipeline">Broken CI/CD Pipeline</button>
+    </div>
+    <div id="scenario-content" class="hidden">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-surface border border-border rounded-lg p-4">
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">What Happened</h4>
+          <p id="sc-what" class="text-sm text-text leading-relaxed"></p>
+        </div>
+        <div class="bg-surface border border-border rounded-lg p-4">
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-yellow-400 mb-2">Drift Caused</h4>
+          <ul id="sc-drift" class="text-sm text-text space-y-1 list-disc list-inside"></ul>
+        </div>
+        <div class="bg-surface border border-border rounded-lg p-4">
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-green-400 mb-2">Detect &amp; Fix</h4>
+          <ul id="sc-fix" class="text-sm text-text space-y-1 list-disc list-inside"></ul>
+        </div>
+      </div>
+      <div class="mt-4 bg-bg rounded-lg p-3 border border-border">
+        <p class="text-xs font-semibold text-text-muted mb-1">Recommended Command</p>
+        <code id="sc-cmd" class="font-mono text-xs text-green-400 whitespace-pre-wrap"></code>
+      </div>
+    </div>
+    <p id="scenario-placeholder" class="text-text-muted text-sm text-center py-6">Click a scenario above to explore drift details.</p>
+  </div>
+
+  <!-- ── Prevention Checklist ── -->
+  <h2 class="text-xl font-semibold mt-8 mb-3">IaC Drift Prevention Checklist</h2>
+  <p class="text-text-muted mb-4 text-sm">Check off the practices your team has implemented. Your score updates live.</p>
+
+  <div id="checklist-container" class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <span class="text-sm text-text-muted">Prevention score</span>
+      <div class="flex items-center gap-3">
+        <div class="w-32 h-2 bg-surface rounded-full overflow-hidden">
+          <div id="score-bar" class="h-2 rounded-full transition-all duration-300 bg-red-500" style="width: 0%"></div>
+        </div>
+        <span id="score-label" class="text-sm font-bold text-text">0 / 14</span>
+      </div>
+    </div>
+
+    <div class="space-y-2" id="checklist">
+      <!-- Category: Access Control -->
+      <p class="text-xs font-semibold uppercase tracking-wider text-text-muted mt-3 mb-1">Access Control</p>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Block direct console changes in production via IAM SCPs or policies</p>
+          <p class="text-xs text-text-muted mt-0.5">Deny <code class="font-mono text-xs">ec2:AuthorizeSecurityGroupIngress</code>, <code class="font-mono text-xs">s3:PutBucketPolicy</code> etc. except for CI/CD roles</p>
+        </div>
+      </label>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Use separate IAM roles for IaC deployment vs. operator access</p>
+          <p class="text-xs text-text-muted mt-0.5">Deployment role has write access; operator role has read-only + break-glass procedures</p>
+        </div>
+      </label>
+
+      <!-- Category: State Management -->
+      <p class="text-xs font-semibold uppercase tracking-wider text-text-muted mt-3 mb-1">State Management</p>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Enable state locking (DynamoDB for Terraform, Pulumi Cloud for Pulumi)</p>
+          <p class="text-xs text-text-muted mt-0.5">Prevents concurrent runs that corrupt state</p>
+        </div>
+      </label>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Store state in versioned remote backend (S3+DynamoDB, GCS, TF Cloud)</p>
+          <p class="text-xs text-text-muted mt-0.5">Enables state rollback and audit history</p>
+        </div>
+      </label>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Use <code class="font-mono text-xs">lifecycle &#123; ignore_changes &#125;</code> for auto-managed attributes</p>
+          <p class="text-xs text-text-muted mt-0.5">Tell Terraform to ignore auto-scaling instance_count, RDS replica_count, etc.</p>
+        </div>
+      </label>
+
+      <!-- Category: CI/CD -->
+      <p class="text-xs font-semibold uppercase tracking-wider text-text-muted mt-3 mb-1">CI/CD Integration</p>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Run <code class="font-mono text-xs">terraform plan</code> on every pull request</p>
+          <p class="text-xs text-text-muted mt-0.5">Post the plan output as a PR comment; block merge if there are unexpected changes</p>
+        </div>
+      </label>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Schedule daily drift detection scans (driftctl or scheduled plan)</p>
+          <p class="text-xs text-text-muted mt-0.5">A cron job that runs a plan and alerts Slack/PagerDuty if non-empty</p>
+        </div>
+      </label>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Use Atlantis or Terraform Cloud for GitOps-style apply workflow</p>
+          <p class="text-xs text-text-muted mt-0.5">All applies go through PR review; no one runs terraform locally against prod</p>
+        </div>
+      </label>
+
+      <!-- Category: Monitoring -->
+      <p class="text-xs font-semibold uppercase tracking-wider text-text-muted mt-3 mb-1">Monitoring & Alerting</p>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Enable AWS Config Rules or Azure Policy for continuous compliance</p>
+          <p class="text-xs text-text-muted mt-0.5">Rules like s3-bucket-public-read-prohibited, restricted-ssh detect drift independently of IaC</p>
+        </div>
+      </label>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Set up CloudTrail / audit logs and alert on manual resource changes</p>
+          <p class="text-xs text-text-muted mt-0.5">Alert when anyone calls <code class="font-mono text-xs">CreateSecurityGroup</code>, <code class="font-mono text-xs">ModifyDBInstance</code> outside the CI role</p>
+        </div>
+      </label>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Track IaC coverage: percentage of cloud resources managed by IaC</p>
+          <p class="text-xs text-text-muted mt-0.5">Use driftctl's coverage metric. Target: 90%+ managed. Alert when it drops.</p>
+        </div>
+      </label>
+
+      <!-- Category: Culture -->
+      <p class="text-xs font-semibold uppercase tracking-wider text-text-muted mt-3 mb-1">Culture & Process</p>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Define a break-glass procedure for emergency changes</p>
+          <p class="text-xs text-text-muted mt-0.5">Documented process: temporary console access → immediate IaC update → team notification</p>
+        </div>
+      </label>
+      <label class="checklist-item flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/50 transition-colors">
+        <input type="checkbox" class="mt-0.5 w-4 h-4 accent-blue-500 shrink-0" />
+        <div>
+          <p class="text-sm font-medium">Review drift reports in post-incident reviews and sprint retros</p>
+          <p class="text-xs text-text-muted mt-0.5">Track drift frequency per team/account as an engineering health metric</p>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <!-- ── Drift Alert Thresholds ── -->
+  <h2 class="text-xl font-semibold mt-8 mb-3">Drift Alert Thresholds (UI Mock)</h2>
+  <p class="text-text-muted mb-4 text-sm">Configure what constitutes critical vs minor drift for your environment. Adjust sliders to see recommended alert levels.</p>
+
+  <div id="threshold-ui" class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <label class="block text-sm font-medium mb-1">Security group rule changes</label>
+        <p class="text-xs text-text-muted mb-2">Ingress/egress rules added or removed outside IaC</p>
+        <select id="th-sg" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text">
+          <option value="critical">Critical — alert immediately</option>
+          <option value="high">High — alert within 1 hour</option>
+          <option value="medium">Medium — daily digest</option>
+          <option value="ignore">Ignore</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">IAM policy changes</label>
+        <p class="text-xs text-text-muted mb-2">Role/policy attachments modified directly</p>
+        <select id="th-iam" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text">
+          <option value="critical">Critical — alert immediately</option>
+          <option value="high">High — alert within 1 hour</option>
+          <option value="medium">Medium — daily digest</option>
+          <option value="ignore">Ignore</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">EC2 / compute instance count</label>
+        <p class="text-xs text-text-muted mb-2">Auto-scaling changes to fleet size</p>
+        <select id="th-ec2" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text">
+          <option value="critical">Critical — alert immediately</option>
+          <option value="high">High — alert within 1 hour</option>
+          <option value="medium">Medium — daily digest</option>
+          <option value="ignore" selected>Ignore</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">S3 bucket policy changes</label>
+        <p class="text-xs text-text-muted mb-2">Bucket ACLs or policies modified manually</p>
+        <select id="th-s3" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text">
+          <option value="critical">Critical — alert immediately</option>
+          <option value="high">High — alert within 1 hour</option>
+          <option value="medium">Medium — daily digest</option>
+          <option value="ignore">Ignore</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">DNS / Route53 record changes</label>
+        <p class="text-xs text-text-muted mb-2">Records added or modified outside IaC</p>
+        <select id="th-dns" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text">
+          <option value="critical">Critical — alert immediately</option>
+          <option value="high" selected>High — alert within 1 hour</option>
+          <option value="medium">Medium — daily digest</option>
+          <option value="ignore">Ignore</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Database config changes (RDS/DynamoDB)</label>
+        <p class="text-xs text-text-muted mb-2">Backup retention, parameter groups, read replicas</p>
+        <select id="th-db" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text">
+          <option value="critical">Critical — alert immediately</option>
+          <option value="high">High — alert within 1 hour</option>
+          <option value="medium" selected>Medium — daily digest</option>
+          <option value="ignore">Ignore</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="threshold-summary" class="mt-5 p-4 bg-surface border border-border rounded-lg text-sm">
+      <p class="font-semibold mb-2">Your Drift Alert Configuration Summary</p>
+      <ul id="threshold-list" class="space-y-1 text-text-muted text-xs"></ul>
+    </div>
+  </div>
+
+  <!-- ── Remediation Workflow Diagram ── -->
+  <h2 class="text-xl font-semibold mt-8 mb-3">Remediation Workflow</h2>
+  <p class="text-text-muted mb-4 text-sm">When drift is detected, follow this structured decision flow.</p>
+
+  <div class="relative mb-6 overflow-x-auto">
+    <div class="flex flex-col sm:flex-row items-stretch gap-0 min-w-[600px]">
+
+      <!-- Step 1: Detect -->
+      <div class="flex-1 flex flex-col">
+        <div class="bg-blue-500/10 border border-blue-500/40 rounded-xl p-4 h-full">
+          <div class="text-blue-400 text-xs font-bold uppercase tracking-wider mb-1">Step 1</div>
+          <div class="font-semibold text-sm mb-2">Detect</div>
+          <ul class="text-xs text-text-muted space-y-1">
+            <li>• CI plan shows diff</li>
+            <li>• driftctl scan alert</li>
+            <li>• AWS Config violation</li>
+            <li>• CloudTrail audit hit</li>
+          </ul>
+        </div>
+        <div class="flex justify-center mt-1 text-text-muted text-lg font-bold sm:hidden">↓</div>
+      </div>
+
+      <div class="hidden sm:flex items-center text-text-muted text-2xl px-1">→</div>
+
+      <!-- Step 2: Assess -->
+      <div class="flex-1 flex flex-col">
+        <div class="bg-yellow-500/10 border border-yellow-500/40 rounded-xl p-4 h-full">
+          <div class="text-yellow-400 text-xs font-bold uppercase tracking-wider mb-1">Step 2</div>
+          <div class="font-semibold text-sm mb-2">Assess</div>
+          <ul class="text-xs text-text-muted space-y-1">
+            <li>• Who made the change?</li>
+            <li>• Is it intentional?</li>
+            <li>• Security impact?</li>
+            <li>• Data at risk?</li>
+          </ul>
+        </div>
+        <div class="flex justify-center mt-1 text-text-muted text-lg font-bold sm:hidden">↓</div>
+      </div>
+
+      <div class="hidden sm:flex items-center text-text-muted text-2xl px-1">→</div>
+
+      <!-- Step 3: Decide -->
+      <div class="flex-1 flex flex-col">
+        <div class="bg-purple-500/10 border border-purple-500/40 rounded-xl p-4 h-full">
+          <div class="text-purple-400 text-xs font-bold uppercase tracking-wider mb-1">Step 3</div>
+          <div class="font-semibold text-sm mb-2">Decide</div>
+          <ul class="text-xs text-text-muted space-y-1">
+            <li class="font-medium text-purple-300">A: Update IaC to match</li>
+            <li class="font-medium text-purple-300">B: Apply to revert cloud</li>
+            <li class="font-medium text-purple-300">C: Add ignore_changes</li>
+            <li class="font-medium text-purple-300">D: Escalate to security</li>
+          </ul>
+        </div>
+        <div class="flex justify-center mt-1 text-text-muted text-lg font-bold sm:hidden">↓</div>
+      </div>
+
+      <div class="hidden sm:flex items-center text-text-muted text-2xl px-1">→</div>
+
+      <!-- Step 4: Reconcile -->
+      <div class="flex-1 flex flex-col">
+        <div class="bg-orange-500/10 border border-orange-500/40 rounded-xl p-4 h-full">
+          <div class="text-orange-400 text-xs font-bold uppercase tracking-wider mb-1">Step 4</div>
+          <div class="font-semibold text-sm mb-2">Reconcile</div>
+          <ul class="text-xs text-text-muted space-y-1">
+            <li>• Open PR with fix</li>
+            <li>• Run plan → review</li>
+            <li>• Apply via CI/CD</li>
+            <li>• Document incident</li>
+          </ul>
+        </div>
+        <div class="flex justify-center mt-1 text-text-muted text-lg font-bold sm:hidden">↓</div>
+      </div>
+
+      <div class="hidden sm:flex items-center text-text-muted text-2xl px-1">→</div>
+
+      <!-- Step 5: Verify -->
+      <div class="flex-1 flex flex-col">
+        <div class="bg-green-500/10 border border-green-500/40 rounded-xl p-4 h-full">
+          <div class="text-green-400 text-xs font-bold uppercase tracking-wider mb-1">Step 5</div>
+          <div class="font-semibold text-sm mb-2">Verify</div>
+          <ul class="text-xs text-text-muted space-y-1">
+            <li>• Plan shows no diff</li>
+            <li>• driftctl shows 100%</li>
+            <li>• Config Rules pass</li>
+            <li>• Add to post-mortem</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Decision callout -->
+    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3 text-xs">
+        <strong class="text-purple-300">A — Update IaC:</strong>
+        <span class="text-text-muted"> The change was intentional (e.g. an approved emergency fix). Codify it in IaC so it's permanent and tracked.</span>
+      </div>
+      <div class="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3 text-xs">
+        <strong class="text-purple-300">B — Revert cloud:</strong>
+        <span class="text-text-muted"> The change was unauthorized or accidental. Run <code class="font-mono">terraform apply</code> to restore IaC-defined state.</span>
+      </div>
+      <div class="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3 text-xs">
+        <strong class="text-purple-300">C — Ignore changes:</strong>
+        <span class="text-text-muted"> The drift is expected (auto-scaling). Add <code class="font-mono">lifecycle &#123; ignore_changes &#125;</code> to prevent false alerts.</span>
+      </div>
+      <div class="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3 text-xs">
+        <strong class="text-purple-300">D — Escalate:</strong>
+        <span class="text-text-muted"> The change looks like a security breach. Engage your security team; isolate resources before modifying anything.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tool Recommendations by Platform ── -->
+  <h2 class="text-xl font-semibold mt-8 mb-3">Tool Recommendations by IaC Platform</h2>
+
+  <div id="platform-selector" class="mb-4 flex flex-wrap gap-2">
+    <button class="platform-btn px-4 py-2 rounded-lg text-sm font-medium border transition-colors" data-platform="terraform">Terraform</button>
+    <button class="platform-btn px-4 py-2 rounded-lg text-sm font-medium border transition-colors" data-platform="pulumi">Pulumi</button>
+    <button class="platform-btn px-4 py-2 rounded-lg text-sm font-medium border transition-colors" data-platform="cdk">AWS CDK</button>
+    <button class="platform-btn px-4 py-2 rounded-lg text-sm font-medium border transition-colors" data-platform="ansible">Ansible</button>
+  </div>
+
+  <div id="platform-content" class="hidden bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h3 id="pl-title" class="font-semibold text-base mb-3"></h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">Primary Drift Detection</p>
+        <ul id="pl-primary" class="space-y-1"></ul>
+      </div>
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">Complementary Tools</p>
+        <ul id="pl-secondary" class="space-y-1"></ul>
+      </div>
+    </div>
+    <div class="bg-surface rounded-lg p-3 border border-border">
+      <p class="text-xs font-semibold text-text-muted mb-1">Quick Start Command</p>
+      <code id="pl-cmd" class="font-mono text-xs text-green-400 whitespace-pre-wrap"></code>
+    </div>
+    <p id="pl-note" class="text-xs text-text-muted mt-3 leading-relaxed"></p>
+  </div>
+  <p id="platform-placeholder" class="text-text-muted text-sm text-center py-4 bg-bg-card border border-border rounded-xl mb-6">Select your IaC platform above for tailored tool recommendations.</p>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="IaC Drift Detection Guide" relatedTags={['terraform', 'iac', 'devops', 'infrastructure', 'cloud', 'aws', 'pulumi', 'ansible']} />
+</BaseLayout>
+
+<script>
+// ── Scenario Explorer ──
+const scenarios = {
+  console: {
+    what: "An engineer opened the AWS Console during an incident and added an inbound security group rule to allow port 5432 (PostgreSQL) from 0.0.0.0/0. The incident is resolved but the rule was never removed. Terraform's state file still shows the original rules.",
+    drift: ["Security group has 1 extra inbound rule (0.0.0.0/0:5432) vs. IaC state", "Potential exposure of database port to the internet", "IaC state is stale — next apply may or may not revert it depending on lifecycle config"],
+    fix: ["Run: terraform plan to see the unexpected rule in the diff", "If unauthorized: terraform apply to revert to IaC-defined state", "If intentional: update security group resource in .tf file to add the rule, open PR, apply via CI", "Add CloudTrail alert for AuthorizeSecurityGroupIngress outside CI role"],
+    cmd: "terraform plan -refresh-only\n# Review output — if it shows the port 5432 rule:\n# Either: terraform apply (revert) or update .tf and commit"
+  },
+  autoscaling: {
+    what: "AWS Auto Scaling added 3 EC2 instances to handle a traffic spike. The ASG's desired_capacity changed from 2 to 5. Your Terraform config has desired_capacity = 2. When the next terraform plan runs, it shows 3 instances to destroy — even though they're actively serving traffic.",
+    drift: ["EC2 desired_capacity in cloud: 5 vs IaC config: 2", "terraform plan will want to set desired_capacity back to 2", "If applied, 3 production instances will be terminated"],
+    fix: ["Add lifecycle { ignore_changes = [desired_capacity] } to the aws_autoscaling_group resource", "Alternatively, use min_size/max_size bounds and let ASG manage desired_capacity entirely", "Use terraform plan --target to check only specific resources if needed", "Set up Infracost to track cost drift from scaling events"],
+    cmd: "# In your .tf file:\nresource \"aws_autoscaling_group\" \"web\" {\n  # ... other config ...\n  lifecycle {\n    ignore_changes = [desired_capacity]\n  }\n}"
+  },
+  incident: {
+    what: "Your security team responded to a breach attempt. They created temporary IAM users with admin access, modified S3 bucket policies to block public access, and rotated API keys — all directly in the console as emergency response. Now IaC state diverges from reality across 8 resources.",
+    drift: ["2 IAM users exist in cloud but not in IaC state (unmanaged resources)", "S3 bucket policy changed to block public access (was permissive in IaC)", "4 IAM access keys rotated — IaC still shows old key IDs", "1 CloudFront distribution temporarily disabled"],
+    fix: ["Do NOT run terraform apply immediately — you may revert protective changes", "Run driftctl scan to identify all unmanaged resources created during incident", "For protective changes (S3 policy): update IaC to codify the improved policy", "For temporary resources (IAM users): confirm with security if they should be removed, then remove from cloud AND ensure IaC doesn't create them"],
+    cmd: "# Step 1: Full drift scan\ndriftctl scan --from tfstate://terraform.tfstate\n\n# Step 2: Check specific S3 resource\nterraform state show aws_s3_bucket_policy.main\n\n# Step 3: Update IaC, then plan\nterraform plan -target=aws_s3_bucket_policy.main"
+  },
+  pipeline: {
+    what: "Your CI/CD pipeline ran terraform apply and failed partway through — after creating an RDS instance but before configuring its parameter group, security group, and subnet group. The partial state was saved. The next run tries to create duplicate resources and fails with 'already exists' errors.",
+    drift: ["RDS instance exists in cloud but with incomplete configuration", "Parameter group missing from cloud (apply failed before that resource)", "Security group association not applied", "Terraform state is partially correct — some resources tracked, some not"],
+    fix: ["Run terraform refresh (or apply -refresh-only) to update state to match current cloud reality", "Check terraform state list to see what's currently tracked", "Run terraform plan to see the full diff of what still needs to happen", "Complete the apply from where it left off — Terraform will skip already-created resources"],
+    cmd: "# Audit current state\nterraform state list | grep aws_db\n\n# Refresh state to match cloud\nterraform apply -refresh-only\n\n# Complete the original apply\nterraform plan\nterraform apply"
+  }
+};
+
+document.querySelectorAll('.scenario-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.scenario-btn').forEach(b => {
+      b.classList.remove('bg-blue-500', 'border-blue-500', 'text-white');
+      b.classList.add('border-border', 'text-text-muted');
+    });
+    btn.classList.add('bg-blue-500', 'border-blue-500', 'text-white');
+    btn.classList.remove('border-border', 'text-text-muted');
+
+    const key = btn.getAttribute('data-scenario');
+    const sc = scenarios[key];
+    document.getElementById('sc-what').textContent = sc.what;
+
+    const driftList = document.getElementById('sc-drift');
+    driftList.innerHTML = sc.drift.map(d => `<li>${d}</li>`).join('');
+
+    const fixList = document.getElementById('sc-fix');
+    fixList.innerHTML = sc.fix.map(f => `<li>${f}</li>`).join('');
+
+    document.getElementById('sc-cmd').textContent = sc.cmd;
+
+    document.getElementById('scenario-content').classList.remove('hidden');
+    document.getElementById('scenario-placeholder').classList.add('hidden');
+  });
+});
+
+// ── Prevention Checklist Score ──
+const checkboxes = document.querySelectorAll('#checklist input[type="checkbox"]');
+const total = checkboxes.length;
+
+function updateScore() {
+  const checked = document.querySelectorAll('#checklist input[type="checkbox"]:checked').length;
+  const pct = Math.round((checked / total) * 100);
+  document.getElementById('score-label').textContent = `${checked} / ${total}`;
+  const bar = document.getElementById('score-bar');
+  bar.style.width = pct + '%';
+  if (pct >= 80) {
+    bar.className = 'h-2 rounded-full transition-all duration-300 bg-green-500';
+  } else if (pct >= 50) {
+    bar.className = 'h-2 rounded-full transition-all duration-300 bg-yellow-500';
+  } else {
+    bar.className = 'h-2 rounded-full transition-all duration-300 bg-red-500';
+  }
+}
+
+checkboxes.forEach(cb => {
+  cb.addEventListener('change', () => {
+    const label = cb.closest('label');
+    if (cb.checked) {
+      label.classList.add('border-green-500/50', 'bg-green-500/5');
+    } else {
+      label.classList.remove('border-green-500/50', 'bg-green-500/5');
+    }
+    updateScore();
+  });
+});
+
+// ── Threshold Summary ──
+function updateThresholdSummary() {
+  const fields = [
+    { id: 'th-sg', label: 'Security group rules' },
+    { id: 'th-iam', label: 'IAM policy changes' },
+    { id: 'th-ec2', label: 'EC2 instance count' },
+    { id: 'th-s3', label: 'S3 bucket policies' },
+    { id: 'th-dns', label: 'DNS / Route53 records' },
+    { id: 'th-db', label: 'Database config changes' },
+  ];
+  const colorMap = {
+    critical: 'text-red-400',
+    high: 'text-orange-400',
+    medium: 'text-yellow-400',
+    ignore: 'text-text-muted line-through',
+  };
+  const list = document.getElementById('threshold-list');
+  list.innerHTML = fields.map(f => {
+    const val = document.getElementById(f.id).value;
+    const cls = colorMap[val] || '';
+    return `<li class="flex justify-between"><span>${f.label}</span><span class="${cls} font-medium">${document.getElementById(f.id).selectedOptions[0].text}</span></li>`;
+  }).join('');
+}
+
+['th-sg', 'th-iam', 'th-ec2', 'th-s3', 'th-dns', 'th-db'].forEach(id => {
+  document.getElementById(id).addEventListener('change', updateThresholdSummary);
+});
+updateThresholdSummary();
+
+// ── Platform Recommendations ──
+const platforms = {
+  terraform: {
+    title: 'Terraform — Drift Detection Stack',
+    primary: [
+      'terraform plan -refresh-only — built-in, catches managed resource drift',
+      'driftctl scan — detects unmanaged resources not in state',
+      'Atlantis / Terraform Cloud — GitOps automation with PR comments',
+    ],
+    secondary: [
+      'Infracost — cost drift on every PR',
+      'Checkov / tfsec — IaC security misconfig scanning',
+      'AWS Config Rules — continuous compliance independently of Terraform',
+      'Prowler — AWS security posture and drift assessment',
+    ],
+    cmd: `# Daily drift detection cron (GitHub Actions)\njobs:\n  drift-check:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: hashicorp/setup-terraform@v3\n      - run: terraform init\n      - run: terraform plan -refresh-only -detailed-exitcode\n        continue-on-error: true\n        id: plan\n      - name: Alert on drift\n        if: steps.plan.outputs.exitcode == '2'\n        uses: slackapi/slack-github-action@v1\n        with:\n          payload: '{"text":"Terraform drift detected in prod!"}'`,
+    note: 'Run terraform plan -refresh-only in CI nightly. Exit code 2 means changes detected (drift). Exit code 0 means clean. Pipe to Slack or PagerDuty for alerting. Combine with driftctl weekly for unmanaged resource discovery.'
+  },
+  pulumi: {
+    title: 'Pulumi — Drift Detection Stack',
+    primary: [
+      'pulumi refresh — syncs Pulumi state to match actual cloud resources',
+      'pulumi preview — shows pending changes after refresh',
+      'Pulumi Cloud Drift Detection — automated scheduled drift checks (Team plan)',
+    ],
+    secondary: [
+      'AWS Config Rules — platform-level compliance detection',
+      'Pulumi CrossGuard — policy-as-code enforcement on preview/up',
+      'Infracost — cost impact of config changes',
+      'CloudTrail + EventBridge — alert on out-of-band changes',
+    ],
+    cmd: `# Pulumi drift check\npulumi refresh --yes         # update state to match cloud\npulumi preview               # see what's still diverged\n\n# Scheduled CI check (GitHub Actions)\n- run: pulumi refresh --yes\n  env:\n    PULUMI_ACCESS_TOKEN: \${{ secrets.PULUMI_ACCESS_TOKEN }}\n- run: pulumi preview --diff\n  id: preview\n- name: Alert on drift\n  if: contains(steps.preview.outputs.stdout, 'changes')`,
+    note: 'pulumi refresh is the equivalent of terraform refresh — it queries the cloud and updates the Pulumi state file. Always follow with pulumi preview to see what still needs to be reconciled. Pulumi Cloud subscribers get automated drift detection on a schedule.'
+  },
+  cdk: {
+    title: 'AWS CDK — Drift Detection Stack',
+    primary: [
+      'cdk diff — compares synthesized template against deployed CloudFormation stack',
+      'aws cloudformation detect-stack-drift — native CloudFormation drift detection',
+      'aws cloudformation describe-stack-resource-drifts — list specific drifted resources',
+    ],
+    secondary: [
+      'AWS Config Rules — continuous resource compliance monitoring',
+      'CloudTrail + AWS Security Hub — detect unauthorized changes',
+      'cdk-nag — CDK construct-level security and compliance checks',
+      'Checkov — scan synthesized CloudFormation templates for misconfigs',
+    ],
+    cmd: `# CDK drift check\ncdk diff                    # see what changed vs deployed stack\n\n# CloudFormation native drift detection\naws cloudformation detect-stack-drift \\\n  --stack-name MyAppStack\n\n# Wait and check results\naws cloudformation describe-stack-resource-drifts \\\n  --stack-name MyAppStack \\\n  --stack-resource-drift-status-filters MODIFIED DELETED`,
+    note: 'CloudFormation (which CDK uses) has built-in drift detection via detect-stack-drift. Run it periodically via a cron job. Resources that were modified outside CloudFormation will show as MODIFIED or DELETED. CDK diff compares your current code against the last deployed template, not the actual cloud state — so use both together.'
+  },
+  ansible: {
+    title: 'Ansible — Drift Detection Stack',
+    primary: [
+      'ansible-playbook --check — dry-run mode, shows what would change',
+      'ansible-playbook --diff — shows file content changes during dry-run',
+      'ansible --list-hosts — verify target host inventory',
+    ],
+    secondary: [
+      'Molecule — test Ansible roles with idempotency checks',
+      'ansible-lint — static analysis for Ansible best practices',
+      'AWX / Ansible Tower — scheduled playbook runs with drift reporting',
+      'Steampipe — query cloud resources and compare against Ansible vars',
+    ],
+    cmd: `# Ansible drift check (dry-run)\nansible-playbook site.yml --check --diff\n\n# Check specific tags only\nansible-playbook site.yml --check --diff --tags security\n\n# Idempotency test (in CI)\nansible-playbook site.yml          # first run: make changes\nansible-playbook site.yml --check  # second run: should report 0 changes\n\n# With Molecule (idempotency stage)\nmolecule converge\nmolecule idempotence`,
+    note: 'Ansible drift detection relies on idempotency: a playbook run should produce 0 changed tasks if no drift exists. Schedule regular --check runs in CI and alert if any tasks report "changed". AWX/Tower provides a GUI for scheduling and tracking these runs across your entire fleet.'
+  }
+};
+
+document.querySelectorAll('.platform-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.platform-btn').forEach(b => {
+      b.classList.remove('bg-blue-500', 'border-blue-500', 'text-white');
+      b.classList.add('border-border', 'text-text-muted');
+    });
+    btn.classList.add('bg-blue-500', 'border-blue-500', 'text-white');
+    btn.classList.remove('border-border', 'text-text-muted');
+
+    const key = btn.getAttribute('data-platform');
+    const pl = platforms[key];
+    document.getElementById('pl-title').textContent = pl.title;
+
+    document.getElementById('pl-primary').innerHTML = pl.primary.map(t =>
+      `<li class="text-xs text-text-muted flex items-start gap-1.5"><span class="text-green-400 shrink-0">✓</span>${t}</li>`
+    ).join('');
+
+    document.getElementById('pl-secondary').innerHTML = pl.secondary.map(t =>
+      `<li class="text-xs text-text-muted flex items-start gap-1.5"><span class="text-blue-400 shrink-0">+</span>${t}</li>`
+    ).join('');
+
+    document.getElementById('pl-cmd').textContent = pl.cmd;
+    document.getElementById('pl-note').textContent = pl.note;
+
+    document.getElementById('platform-content').classList.remove('hidden');
+    document.getElementById('platform-placeholder').classList.add('hidden');
+  });
+});
+</script>
