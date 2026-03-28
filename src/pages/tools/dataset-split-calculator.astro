@@ -1,0 +1,581 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is the standard train/validation/test split ratio?",
+    answer: "The most common split for general-purpose datasets is 70/15/15 (train/val/test) or 80/10/10. For very large datasets (100K+ samples), you can use 90/5/5 since even 5% gives thousands of examples. For small datasets (<1,000 samples), 80/20 (train/test only) with cross-validation on the training set is often preferred. The key principle: your test set must stay completely unseen until final evaluation to give an honest estimate of generalization performance."
+  },
+  {
+    question: "What is stratified splitting and when is it necessary?",
+    answer: "Stratified splitting ensures each split has the same class distribution as the full dataset. For example, if 10% of your data is class A and 90% is class B, a stratified split keeps that 10/90 ratio in train, validation, and test sets. It is essential for imbalanced datasets — without it, a random split might give your test set zero examples of a rare class. Most ML libraries (scikit-learn's train_test_split with stratify=y, sklearn's StratifiedKFold) support this. Always use stratification for classification tasks unless your dataset is perfectly balanced and very large."
+  },
+  {
+    question: "What is k-fold cross-validation and when should I use it?",
+    answer: "K-fold cross-validation divides the training data into k equal folds, trains k models (each time using k-1 folds for training and 1 fold for validation), then averages the validation metrics. It makes maximum use of limited data — every sample is used for both training and validation across different folds. Use k=5 or k=10 as defaults. K-fold is especially valuable when your dataset is small (<5,000 samples) or when you need a reliable estimate of model performance. Keep a separate held-out test set for final evaluation — never use cross-validation folds as your test set."
+  },
+  {
+    question: "Why can't I use random splits for time series data?",
+    answer: "Random splits for time series data cause data leakage: your model trains on future data and predicts the past, which is impossible in production but makes validation metrics look artificially good. Instead, use temporal splits — train on earlier data, validate/test on later data, preserving chronological order. For example, train on months 1-8, validate on months 9-10, test on months 11-12. For rolling evaluation, use walk-forward validation: train on t=1..n, predict t=n+1, then expand the window. The gap between train and validation sets should match your real deployment lag."
+  },
+  {
+    question: "What is the minimum recommended sample count per split?",
+    answer: "As a rule of thumb: at least 30 samples per class per split for basic statistical validity. For reliable model evaluation, aim for 100+ samples per class in your validation/test sets. With fewer than 30 samples in a class per split, your metrics (accuracy, F1, AUC) will have very high variance and may not be trustworthy. For very small datasets, k-fold cross-validation is preferable to a fixed split. If you have fewer than 10 samples per class in the full dataset, consider data augmentation, transfer learning, or few-shot methods instead of traditional train/test splits."
+  },
+];
+---
+
+<BaseLayout
+  title="Train/Validation/Test Split Calculator — Dataset Split Ratio Tool for ML"
+  description="Calculate optimal train, validation, and test split sizes for machine learning datasets. Supports custom ratios, k-fold cross-validation, stratified splitting, time series splits, and class distribution analysis."
+  tool="train test split calculator, dataset split ratio, validation set size, k-fold cross-validation calculator, stratified split, time series split, ML dataset planning, class distribution"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Train / Validation / Test Split Calculator</h1>
+  <p class="text-text-muted mb-4">Plan your ML dataset splits with precision. Calculate sample counts per split, check class distribution, configure k-fold cross-validation, and get warnings when splits are too small.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Standard & custom split ratios</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Class distribution & stratification</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> K-fold cross-validation sizing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Time series split guidance</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Scientific standards reference</span>
+  </div>
+
+  <!-- Dataset Configuration -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Dataset Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Total Dataset Size (samples)</label>
+        <input id="total-samples" type="number" value="10000" min="10" max="100000000"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Enter the total number of labeled examples in your dataset.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Split Strategy</label>
+        <select id="split-strategy" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="70-15-15">70 / 15 / 15 — Train / Val / Test (classic)</option>
+          <option value="80-10-10">80 / 10 / 10 — Train / Val / Test (large dataset)</option>
+          <option value="80-20-0">80 / 20 / 0 — Train / Test only (no validation)</option>
+          <option value="60-20-20">60 / 20 / 20 — Train / Val / Test (small dataset)</option>
+          <option value="custom">Custom — set your own percentages</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Custom Sliders -->
+    <div id="custom-sliders" class="mt-5 hidden">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Train % — <span id="train-pct-label" class="text-primary font-bold">70%</span></label>
+          <input id="train-pct" type="range" min="10" max="95" value="70" step="1"
+            class="w-full accent-primary h-2 rounded-full cursor-pointer" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Validation % — <span id="val-pct-label" class="text-purple-400 font-bold">15%</span></label>
+          <input id="val-pct" type="range" min="0" max="50" value="15" step="1"
+            class="w-full accent-purple-500 h-2 rounded-full cursor-pointer" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Test % — <span id="test-pct-label" class="text-green-400 font-bold">15%</span></label>
+          <input id="test-pct" type="range" min="5" max="50" value="15" step="1"
+            class="w-full accent-green-500 h-2 rounded-full cursor-pointer" />
+        </div>
+      </div>
+      <div id="pct-sum-warning" class="mt-2 text-xs font-medium hidden"></div>
+      <div class="mt-2 text-xs text-text-muted">Sliders auto-balance: adjusting Train or Val clamps Test to keep the total at 100%.</div>
+    </div>
+  </div>
+
+  <!-- Class Distribution -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Class Distribution</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Distribution Type</label>
+        <select id="class-dist" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="balanced">Balanced (equal classes)</option>
+          <option value="imbalanced">Imbalanced (varies by class)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Classes</label>
+        <input id="num-classes" type="number" value="3" min="2" max="1000"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div id="minority-class-wrap">
+        <label class="block text-sm font-medium mb-1.5">Minority Class % <span class="text-text-muted font-normal">(imbalanced only)</span></label>
+        <input id="minority-pct" type="number" value="5" min="0.1" max="49" step="0.1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+    <div id="stratification-note" class="mt-3 p-3 rounded-lg text-sm hidden"></div>
+  </div>
+
+  <!-- Cross-Validation -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Cross-Validation</h2>
+    <div class="flex items-center gap-3 mb-4">
+      <label class="relative inline-flex items-center cursor-pointer">
+        <input id="kfold-toggle" type="checkbox" class="sr-only peer" />
+        <div class="w-10 h-5 bg-border rounded-full peer peer-checked:bg-primary transition-colors"></div>
+        <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+      </label>
+      <span class="text-sm font-medium">Enable k-fold cross-validation on training set</span>
+    </div>
+    <div id="kfold-config" class="hidden">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Number of Folds (k)</label>
+          <select id="k-folds" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+            <option value="3">k = 3 (fast, less stable)</option>
+            <option value="5" selected>k = 5 (recommended default)</option>
+            <option value="10">k = 10 (more stable, slower)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Fold Type</label>
+          <select id="fold-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+            <option value="stratified">Stratified K-Fold (preserves class ratio)</option>
+            <option value="standard">Standard K-Fold</option>
+          </select>
+        </div>
+      </div>
+      <div id="kfold-results" class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3"></div>
+    </div>
+  </div>
+
+  <!-- Time Series Option -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Time Series Data</h2>
+    <div class="flex items-center gap-3 mb-3">
+      <label class="relative inline-flex items-center cursor-pointer">
+        <input id="timeseries-toggle" type="checkbox" class="sr-only peer" />
+        <div class="w-10 h-5 bg-border rounded-full peer peer-checked:bg-primary transition-colors"></div>
+        <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+      </label>
+      <span class="text-sm font-medium">My dataset is time series / sequential data</span>
+    </div>
+    <div id="timeseries-warning" class="hidden p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm">
+      <p class="font-semibold text-amber-400 mb-2">Random split is wrong for time series data</p>
+      <ul class="space-y-1.5 text-text-muted list-disc list-inside">
+        <li>Random splits allow the model to "see the future" during training, causing data leakage.</li>
+        <li>Validation metrics will be over-optimistic and won't reflect real deployment performance.</li>
+        <li><strong class="text-text">Use temporal split instead:</strong> train on earlier data, validate and test on strictly later data.</li>
+        <li>Example: Train on months 1–8, Validate on months 9–10, Test on months 11–12.</li>
+        <li>For rolling evaluation, use <strong class="text-text">walk-forward validation</strong> (expanding or sliding window).</li>
+        <li>Add a <strong class="text-text">gap period</strong> between train and val to match your real prediction horizon.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Split Results</h2>
+
+    <!-- Visual bar -->
+    <div id="split-bar" class="flex rounded-full overflow-hidden h-8 mb-4 text-xs font-semibold text-white"></div>
+    <div id="split-legend" class="flex flex-wrap gap-4 text-sm mb-5"></div>
+
+    <!-- Stat cards -->
+    <div id="split-cards" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5"></div>
+
+    <!-- Warnings -->
+    <div id="warnings-area" class="space-y-2 mb-4"></div>
+
+    <!-- Class breakdown -->
+    <div id="class-table-wrap" class="overflow-x-auto"></div>
+  </div>
+
+  <!-- Scientific Standards Reference -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Scientific Standards Reference</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[540px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Dataset Size</th>
+            <th class="text-left pb-2 pr-4">Recommended Split</th>
+            <th class="text-left pb-2 pr-4">Validation Strategy</th>
+            <th class="text-left pb-2">Notes</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted" id="standards-table-body">
+          <tr>
+            <td class="py-2.5 pr-4 font-medium text-text">&lt; 500</td>
+            <td class="py-2.5 pr-4">80 / 0 / 20</td>
+            <td class="py-2.5 pr-4">Leave-one-out or 5-fold CV</td>
+            <td class="py-2.5">Every sample counts; skip fixed val set</td>
+          </tr>
+          <tr>
+            <td class="py-2.5 pr-4 font-medium text-text">500 – 5,000</td>
+            <td class="py-2.5 pr-4">60 / 20 / 20</td>
+            <td class="py-2.5 pr-4">5-fold or 10-fold CV on train</td>
+            <td class="py-2.5">Larger val/test for reliable metrics</td>
+          </tr>
+          <tr>
+            <td class="py-2.5 pr-4 font-medium text-text">5,000 – 50,000</td>
+            <td class="py-2.5 pr-4">70 / 15 / 15</td>
+            <td class="py-2.5 pr-4">Fixed val set or 5-fold CV</td>
+            <td class="py-2.5">Classic split, widely accepted</td>
+          </tr>
+          <tr>
+            <td class="py-2.5 pr-4 font-medium text-text">50,000 – 500,000</td>
+            <td class="py-2.5 pr-4">80 / 10 / 10</td>
+            <td class="py-2.5 pr-4">Fixed val set</td>
+            <td class="py-2.5">10% still gives 5,000–50,000 val/test samples</td>
+          </tr>
+          <tr>
+            <td class="py-2.5 pr-4 font-medium text-text">&gt; 500,000</td>
+            <td class="py-2.5 pr-4">90 / 5 / 5</td>
+            <td class="py-2.5 pr-4">Fixed val set</td>
+            <td class="py-2.5">5% = 25,000+ samples; diminishing returns on more val data</td>
+          </tr>
+          <tr>
+            <td class="py-2.5 pr-4 font-medium text-text">Time series (any)</td>
+            <td class="py-2.5 pr-4">Temporal order</td>
+            <td class="py-2.5 pr-4">Walk-forward validation</td>
+            <td class="py-2.5">Never use random splits; preserve chronology</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="standards-highlight" class="mt-3 p-3 bg-primary/10 border border-primary/30 rounded-lg text-sm hidden"></div>
+  </div>
+
+  <AdUnit />
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Train/Val/Test Split Calculator" relatedTags={['ml', 'dataset', 'training', 'validation', 'cross-validation', 'machine-learning', 'data']} />
+</BaseLayout>
+
+<script>
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  function getNum(id: string): number {
+    return parseFloat((document.getElementById(id) as HTMLInputElement).value) || 0;
+  }
+  function getStr(id: string): string {
+    const el = document.getElementById(id) as HTMLSelectElement | HTMLInputElement;
+    return el.value;
+  }
+  function getBool(id: string): boolean {
+    return (document.getElementById(id) as HTMLInputElement).checked;
+  }
+  function fmt(n: number): string {
+    return Math.round(n).toLocaleString();
+  }
+
+  // ── State ────────────────────────────────────────────────────────────────────
+  let trainPct = 70;
+  let valPct   = 15;
+  let testPct  = 15;
+
+  // ── Split strategy sync ──────────────────────────────────────────────────────
+  const strategyPresets: Record<string, [number, number, number]> = {
+    '70-15-15': [70, 15, 15],
+    '80-10-10': [80, 10, 10],
+    '80-20-0':  [80, 20, 0],
+    '60-20-20': [60, 20, 20],
+  };
+
+  function applyStrategy(val: string) {
+    const customSliders = document.getElementById('custom-sliders')!;
+    if (val === 'custom') {
+      customSliders.classList.remove('hidden');
+      syncSlidersFromState();
+    } else {
+      customSliders.classList.add('hidden');
+      const preset = strategyPresets[val];
+      if (preset) {
+        [trainPct, valPct, testPct] = preset;
+      }
+    }
+    calculate();
+  }
+
+  function syncSlidersFromState() {
+    (document.getElementById('train-pct') as HTMLInputElement).value = String(trainPct);
+    (document.getElementById('val-pct') as HTMLInputElement).value   = String(valPct);
+    (document.getElementById('test-pct') as HTMLInputElement).value  = String(testPct);
+    (document.getElementById('train-pct-label') as HTMLElement).textContent = trainPct + '%';
+    (document.getElementById('val-pct-label') as HTMLElement).textContent   = valPct + '%';
+    (document.getElementById('test-pct-label') as HTMLElement).textContent  = testPct + '%';
+  }
+
+  function onSliderChange(which: 'train' | 'val' | 'test') {
+    const t = parseInt((document.getElementById('train-pct') as HTMLInputElement).value);
+    const v = parseInt((document.getElementById('val-pct') as HTMLInputElement).value);
+    const s = parseInt((document.getElementById('test-pct') as HTMLInputElement).value);
+
+    if (which === 'train') {
+      trainPct = t;
+      // clamp val first, then test takes the rest
+      valPct = Math.min(v, 100 - trainPct - 5);
+      testPct = Math.max(0, 100 - trainPct - valPct);
+    } else if (which === 'val') {
+      valPct = v;
+      testPct = Math.max(0, 100 - trainPct - valPct);
+    } else {
+      testPct = s;
+      valPct = Math.max(0, 100 - trainPct - testPct);
+    }
+
+    // clamp
+    trainPct = Math.max(10, Math.min(95, trainPct));
+    valPct   = Math.max(0,  Math.min(50, valPct));
+    testPct  = Math.max(0,  Math.min(50, testPct));
+
+    // re-normalise if needed
+    const total = trainPct + valPct + testPct;
+    if (total !== 100) {
+      // adjust train to absorb the difference
+      trainPct = 100 - valPct - testPct;
+      trainPct = Math.max(10, Math.min(95, trainPct));
+    }
+
+    syncSlidersFromState();
+    calculate();
+  }
+
+  // ── Main calculate ──────────────────────────────────────────────────────────
+  function calculate() {
+    const total       = Math.max(1, Math.round(getNum('total-samples')));
+    const strategy    = getStr('split-strategy');
+    const classDist   = getStr('class-dist');
+    const numClasses  = Math.max(2, Math.round(getNum('num-classes')));
+    const minorityPct = getNum('minority-pct') / 100;
+    const kfoldOn     = getBool('kfold-toggle');
+    const kFolds      = parseInt(getStr('k-folds'));
+    const foldType    = getStr('fold-type');
+    const tsOn        = getBool('timeseries-toggle');
+
+    // Use global pct state (already synced from sliders or preset)
+    const tPct = trainPct / 100;
+    const vPct = valPct   / 100;
+    const sPct = testPct  / 100;
+
+    const trainN = Math.round(total * tPct);
+    const valN   = Math.round(total * vPct);
+    const testN  = total - trainN - valN;
+
+    // ── Visual bar ─────────────────────────────────────────────────────────────
+    const barEl = document.getElementById('split-bar')!;
+    barEl.innerHTML = [
+      { n: trainN, pct: tPct, color: 'bg-primary',    label: 'Train' },
+      { n: valN,   pct: vPct, color: 'bg-purple-500', label: 'Val'   },
+      { n: testN,  pct: sPct, color: 'bg-green-500',  label: 'Test'  },
+    ].filter(s => s.n > 0).map(s => {
+      const pctDisplay = (s.pct * 100).toFixed(0);
+      return `<div class="${s.color} flex items-center justify-center transition-all" style="width:${s.pct*100}%" title="${s.label}: ${fmt(s.n)} samples">
+        ${s.pct > 0.08 ? `${pctDisplay}%` : ''}
+      </div>`;
+    }).join('');
+
+    // ── Legend ─────────────────────────────────────────────────────────────────
+    const legendEl = document.getElementById('split-legend')!;
+    legendEl.innerHTML = [
+      { label: 'Train',      n: trainN, color: 'bg-primary'    },
+      { label: 'Validation', n: valN,   color: 'bg-purple-500' },
+      { label: 'Test',       n: testN,  color: 'bg-green-500'  },
+    ].filter(s => s.n > 0).map(s =>
+      `<div class="flex items-center gap-2">
+        <span class="${s.color} w-3 h-3 rounded-sm inline-block flex-shrink-0"></span>
+        <span class="text-text-muted">${s.label}</span>
+        <span class="font-mono font-semibold text-text">${fmt(s.n)}</span>
+      </div>`
+    ).join('');
+
+    // ── Stat cards ─────────────────────────────────────────────────────────────
+    const cards = [
+      { label: 'Train samples',      value: fmt(trainN), sub: `${(tPct*100).toFixed(0)}% of dataset`, color: 'text-primary' },
+      { label: 'Validation samples', value: valN > 0 ? fmt(valN) : 'N/A', sub: valN > 0 ? `${(vPct*100).toFixed(0)}% of dataset` : 'Skipped', color: 'text-purple-400' },
+      { label: 'Test samples',       value: fmt(testN), sub: `${(sPct*100).toFixed(0)}% of dataset`, color: 'text-green-400' },
+    ];
+    document.getElementById('split-cards')!.innerHTML = cards.map(c =>
+      `<div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+        <div class="text-2xl font-bold ${c.color} mb-1">${c.value}</div>
+        <div class="text-sm font-medium">${c.label}</div>
+        <div class="text-xs text-text-muted mt-0.5">${c.sub}</div>
+      </div>`
+    ).join('');
+
+    // ── Warnings ───────────────────────────────────────────────────────────────
+    const warnings: string[] = [];
+    const MIN_SAMPLES = 30;
+
+    if (valN > 0 && valN < MIN_SAMPLES)
+      warnings.push(`Validation set has only ${valN} samples — below the minimum of ${MIN_SAMPLES}. Increase dataset size or use k-fold CV.`);
+    if (testN < MIN_SAMPLES)
+      warnings.push(`Test set has only ${testN} samples — below the minimum of ${MIN_SAMPLES}. Metrics will have high variance.`);
+    if (trainN < 100)
+      warnings.push(`Training set has only ${trainN} samples. Consider data augmentation, transfer learning, or few-shot methods.`);
+
+    // Class-level warnings
+    let minClassSamplesInTest = 0;
+    if (classDist === 'balanced') {
+      minClassSamplesInTest = Math.floor(testN / numClasses);
+      if (minClassSamplesInTest < MIN_SAMPLES)
+        warnings.push(`With ${numClasses} balanced classes, each class gets only ${minClassSamplesInTest} test samples — below ${MIN_SAMPLES}. Evaluation may be unreliable.`);
+    } else {
+      const minorityTestSamples = Math.floor(total * minorityPct * sPct);
+      minClassSamplesInTest = minorityTestSamples;
+      if (minorityTestSamples < MIN_SAMPLES)
+        warnings.push(`Minority class (${(minorityPct*100).toFixed(1)}%) has only ~${minorityTestSamples} test samples. Stratified splitting is strongly recommended.`);
+      if (minorityPct < 0.1 && total < 10000)
+        warnings.push(`Severe class imbalance detected (<10%). Consider oversampling (SMOTE), undersampling, or class-weighted loss.`);
+    }
+
+    if (total < 500 && strategy !== '80-20-0')
+      warnings.push(`Small dataset detected (${total} samples). Consider using k-fold cross-validation instead of a fixed validation set.`);
+
+    const warnEl = document.getElementById('warnings-area')!;
+    warnEl.innerHTML = warnings.map(w =>
+      `<div class="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
+        <span class="mt-0.5 flex-shrink-0">⚠</span>
+        <span>${w}</span>
+      </div>`
+    ).join('');
+
+    // ── Stratification note ────────────────────────────────────────────────────
+    const stratNote = document.getElementById('stratification-note')!;
+    if (classDist === 'imbalanced') {
+      stratNote.classList.remove('hidden');
+      stratNote.className = 'mt-3 p-3 rounded-lg text-sm bg-amber-500/10 border border-amber-500/30 text-amber-300';
+      stratNote.innerHTML = `<strong>Stratified splitting recommended.</strong> With an imbalanced dataset, use <code class="bg-black/20 px-1 rounded">stratify=y</code> in scikit-learn's <code class="bg-black/20 px-1 rounded">train_test_split</code> to preserve the ${(minorityPct*100).toFixed(1)}% minority class ratio across all splits.`;
+    } else {
+      stratNote.classList.add('hidden');
+    }
+
+    // ── Class table ────────────────────────────────────────────────────────────
+    const tableWrap = document.getElementById('class-table-wrap')!;
+    let rows = '';
+    const MIN_PER_CLASS = 30;
+
+    if (classDist === 'balanced') {
+      const perClassTotal = Math.floor(total / numClasses);
+      const perClassTrain = Math.floor(trainN / numClasses);
+      const perClassVal   = valN > 0 ? Math.floor(valN / numClasses) : 0;
+      const perClassTest  = Math.floor(testN / numClasses);
+      for (let c = 1; c <= Math.min(numClasses, 8); c++) {
+        const testOk = perClassTest >= MIN_PER_CLASS;
+        rows += `<tr class="border-b border-border last:border-0">
+          <td class="py-2 pr-4 text-text-muted">Class ${c}</td>
+          <td class="py-2 pr-4 font-mono">${fmt(perClassTotal)}</td>
+          <td class="py-2 pr-4 font-mono">${fmt(perClassTrain)}</td>
+          <td class="py-2 pr-4 font-mono">${valN > 0 ? fmt(perClassVal) : '—'}</td>
+          <td class="py-2 font-mono ${testOk ? 'text-green-400' : 'text-red-400'}">${fmt(perClassTest)}</td>
+        </tr>`;
+      }
+      if (numClasses > 8) rows += `<tr><td colspan="5" class="py-2 text-text-muted text-xs">... and ${numClasses - 8} more classes (all balanced)</td></tr>`;
+    } else {
+      // Show majority + minority
+      const majorPct = (1 - minorityPct) / Math.max(1, numClasses - 1);
+      const classes = [
+        { name: 'Majority class (×' + (numClasses - 1) + ')', pct: majorPct },
+        { name: 'Minority class',                              pct: minorityPct },
+      ];
+      classes.forEach(cls => {
+        const n      = Math.round(total * cls.pct);
+        const nTrain = Math.round(n * tPct);
+        const nVal   = Math.round(n * vPct);
+        const nTest  = Math.round(n * sPct);
+        const testOk = nTest >= MIN_PER_CLASS;
+        rows += `<tr class="border-b border-border last:border-0">
+          <td class="py-2 pr-4 text-text-muted">${cls.name}</td>
+          <td class="py-2 pr-4 font-mono">${fmt(n)}</td>
+          <td class="py-2 pr-4 font-mono">${fmt(nTrain)}</td>
+          <td class="py-2 pr-4 font-mono">${valN > 0 ? fmt(nVal) : '—'}</td>
+          <td class="py-2 font-mono ${testOk ? 'text-green-400' : 'text-red-400'}">${fmt(nTest)} ${testOk ? '' : '⚠'}</td>
+        </tr>`;
+      });
+    }
+
+    tableWrap.innerHTML = `
+      <h3 class="text-sm font-semibold mb-2 mt-1">Samples Per Class Per Split</h3>
+      <table class="w-full text-sm min-w-[480px]">
+        <thead><tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-2 pr-4">Class</th>
+          <th class="text-right pb-2 pr-4">Total</th>
+          <th class="text-right pb-2 pr-4">Train</th>
+          <th class="text-right pb-2 pr-4">Val</th>
+          <th class="text-right pb-2">Test</th>
+        </tr></thead>
+        <tbody class="text-right">${rows}</tbody>
+      </table>
+      <p class="text-xs text-text-muted mt-2">Green = ≥ 30 samples (statistically valid). Red = &lt; 30 samples (too small).</p>
+    `;
+
+    // ── K-fold results ─────────────────────────────────────────────────────────
+    if (kfoldOn) {
+      const foldSize    = Math.floor(trainN / kFolds);
+      const foldTrain   = foldSize * (kFolds - 1);
+      const foldVal     = foldSize;
+      const typeLabel   = foldType === 'stratified' ? 'Stratified K-Fold' : 'Standard K-Fold';
+      document.getElementById('kfold-results')!.innerHTML = [
+        { label: `Fold size (1/${kFolds} of train)`, value: fmt(foldSize) },
+        { label: 'Train per fold',                  value: fmt(foldTrain) },
+        { label: `Val per fold (${typeLabel})`,     value: fmt(foldVal)   },
+      ].map(r =>
+        `<div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+          <div class="text-xl font-bold text-primary mb-1">${r.value}</div>
+          <div class="text-xs text-text-muted">${r.label}</div>
+        </div>`
+      ).join('');
+    }
+
+    // ── Standards highlight ────────────────────────────────────────────────────
+    const hlEl = document.getElementById('standards-highlight')!;
+    let recommendation = '';
+    if (total < 500) recommendation = 'Your dataset is very small (&lt;500). Recommend: 80/20 split + leave-one-out or 5-fold CV.';
+    else if (total < 5000) recommendation = 'Small-medium dataset (500–5,000). Recommend: 60/20/20 split + 10-fold CV on training set.';
+    else if (total < 50000) recommendation = 'Medium dataset (5,000–50,000). Recommend: 70/15/15 split — the scientific standard for this range.';
+    else if (total < 500000) recommendation = 'Large dataset (50,000–500,000). Recommend: 80/10/10 split. Even 10% gives ample evaluation samples.';
+    else recommendation = 'Very large dataset (&gt;500,000). Recommend: 90/5/5 split. 5% still yields tens of thousands of evaluation samples.';
+
+    hlEl.classList.remove('hidden');
+    hlEl.innerHTML = `<strong class="text-primary">Recommendation for your dataset (${fmt(total)} samples):</strong> ${recommendation}`;
+  }
+
+  // ── Event wiring ─────────────────────────────────────────────────────────────
+  document.getElementById('split-strategy')!.addEventListener('change', function() {
+    const val = (this as HTMLSelectElement).value;
+    if (val !== 'custom') {
+      const preset = { '70-15-15': [70,15,15], '80-10-10': [80,10,10], '80-20-0': [80,20,0], '60-20-20': [60,20,20] }[val] as [number,number,number];
+      if (preset) { trainPct = preset[0]; valPct = preset[1]; testPct = preset[2]; }
+    }
+    applyStrategy(val);
+  });
+
+  document.getElementById('train-pct')!.addEventListener('input', () => onSliderChange('train'));
+  document.getElementById('val-pct')!.addEventListener('input',   () => onSliderChange('val'));
+  document.getElementById('test-pct')!.addEventListener('input',  () => onSliderChange('test'));
+
+  document.getElementById('class-dist')!.addEventListener('change', function() {
+    const imbalanced = (this as HTMLSelectElement).value === 'imbalanced';
+    const wrap = document.getElementById('minority-class-wrap')!;
+    imbalanced ? wrap.classList.remove('hidden') : wrap.classList.add('hidden');
+    calculate();
+  });
+
+  document.getElementById('kfold-toggle')!.addEventListener('change', function() {
+    const on = (this as HTMLInputElement).checked;
+    document.getElementById('kfold-config')!.classList.toggle('hidden', !on);
+    calculate();
+  });
+
+  document.getElementById('timeseries-toggle')!.addEventListener('change', function() {
+    const on = (this as HTMLInputElement).checked;
+    document.getElementById('timeseries-warning')!.classList.toggle('hidden', !on);
+  });
+
+  ['total-samples', 'num-classes', 'minority-pct', 'k-folds', 'fold-type'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', calculate);
+  });
+
+  // Initial render
+  calculate();
+</script>

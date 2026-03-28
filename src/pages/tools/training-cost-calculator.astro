@@ -1,0 +1,590 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "How much does it cost to train a large language model?",
+    answer: "Training costs vary enormously by model scale. A small 7B parameter model might cost $5,000–$20,000 on cloud A100s for a full training run, while GPT-3 (175B) was estimated at $4.6M. Key cost drivers are: number of GPU-hours (determined by dataset size, model parameters, and batch efficiency), GPU hourly rate, and training efficiency (MFU). Mixed precision (BF16/FP16) roughly halves memory and can enable 2× larger batch sizes, significantly reducing wall-clock time and cost. Always factor in checkpoint storage and data loading overhead."
+  },
+  {
+    question: "What is mixed precision training and how does it save cost?",
+    answer: "Mixed precision training uses FP16 or BF16 for forward and backward passes (faster, lower memory) while keeping an FP32 master copy of weights for optimizer updates. On Ampere+ GPUs (A100, RTX 3090/4090), BF16 Tensor Cores deliver ~2–3× higher throughput than FP32. This means faster training, fewer GPU-hours, and lower cost — often 30–50% cheaper for the same dataset. BF16 is preferred over FP16 for large models because it has the same dynamic range as FP32, avoiding loss scaling hacks needed with FP16."
+  },
+  {
+    question: "What is gradient checkpointing and when should I use it?",
+    answer: "Gradient checkpointing (activation checkpointing) trades compute for memory by discarding intermediate activations during the forward pass and recomputing them during the backward pass. This reduces activation memory from O(n_layers) to O(sqrt(n_layers)), enabling larger batch sizes or training bigger models on limited VRAM. The tradeoff is ~30–40% extra compute time per step. Use it when you're VRAM-constrained and want to increase batch size (better throughput) or fit a larger model on your hardware. It's usually worth it unless you're already compute-bound with small batches."
+  },
+  {
+    question: "When does it make financial sense to buy a GPU instead of renting cloud?",
+    answer: "The break-even point depends on utilization rate. If you're running training jobs > 40% of the time, owning often wins over 2–3 years. An RTX 4090 (~$1,800) at $0.60/hr electricity cost breaks even vs. a $3/hr cloud A100 after roughly 1,000 hours of use (~6 weeks at 24/7). However, owned GPUs add hidden costs: idle time, power, cooling, maintenance, and no burst scaling. For one-off large experiments, cloud spot instances (50–70% discount) are almost always cheaper. Use cloud for spiky workloads, own for steady 24/7 training."
+  },
+  {
+    question: "What are spot/preemptible instances and should I use them for training?",
+    answer: "Spot instances (AWS), preemptible VMs (GCP), or interruptible nodes offer cloud GPUs at 50–80% discount in exchange for the risk of being terminated with short notice (2 min on AWS, 30 sec on GCP). They're ideal for training workloads IF you implement checkpoint-and-resume: save model state every N steps so a preemption only loses minutes of work. Libraries like PyTorch Lightning, HuggingFace Accelerate, and Ray Train all support automatic checkpoint recovery. At a 70% discount, spot instances pay for themselves quickly. Avoid for latency-sensitive inference serving."
+  },
+];
+---
+
+<BaseLayout
+  title="GPU Training Cost Estimator — Cloud vs Own GPU, Training Time & Cost Calculator"
+  description="Estimate GPU training costs for ML models. Compare A100, H100, V100, RTX 4090, A10G, L40S, and TPU v4 pricing. Calculate training time, cloud cost, electricity cost, and break-even analysis for buying vs renting GPUs."
+  tool="GPU training cost calculator, cloud GPU pricing, A100 training cost, H100 training cost, ML training time estimator, buy vs rent GPU, mixed precision training, gradient checkpointing calculator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">GPU Training Cost Estimator</h1>
+  <p class="text-text-muted mb-4">Estimate ML model training time and cloud cost across all major GPU types. Compare providers, calculate electricity costs, and find the break-even point for buying vs renting hardware.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> A100 / H100 / V100 / RTX 4090 / L40S / TPU v4</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Training time & total cost</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cross-provider comparison table</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Buy vs rent break-even analysis</span>
+  </div>
+
+  <!-- GPU / Hardware Selector -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Hardware Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">GPU / Accelerator</label>
+        <select id="gpu-select" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="a100-80">A100 80GB — $3.00/hr (cloud)</option>
+          <option value="h100-80">H100 80GB — $6.00/hr (cloud)</option>
+          <option value="v100-16">V100 16GB — $2.48/hr (cloud)</option>
+          <option value="rtx4090">RTX 4090 24GB — own / $0.60/hr elec.</option>
+          <option value="a10g">A10G 24GB — $1.50/hr (cloud)</option>
+          <option value="l40s">L40S 48GB — $2.50/hr (cloud)</option>
+          <option value="tpu-v4">TPU v4 — $4.20/hr (cloud)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of GPUs / TPUs</label>
+        <input id="num-gpus" type="number" value="8" min="1" max="1024"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Multi-GPU uses linear scaling estimate</p>
+      </div>
+      <div id="own-gpu-section" class="hidden">
+        <label class="block text-sm font-medium mb-1.5">GPU Purchase Price ($)</label>
+        <input id="gpu-purchase-price" type="number" value="1800" min="100"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">RTX 4090 street price ~$1,800</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Training Inputs -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Training Parameters</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Dataset Size (samples)</label>
+        <input id="dataset-size" type="number" value="1000000" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">e.g. 1M for medium, 300B tokens for LLM</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Batch Size (total, all GPUs)</label>
+        <input id="batch-size" type="number" value="256" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Global batch size across all devices</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Epochs</label>
+        <input id="epochs" type="number" value="3" min="1" max="1000"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Model Parameters (billions)</label>
+        <input id="model-params-b" type="number" value="7" min="0.001" step="0.1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">e.g. 0.1 for BERT-base, 7 for LLaMA-7B</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Sequence Length (tokens)</label>
+        <input id="seq-len" type="number" value="2048" min="64" max="131072" step="64"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">For CV models, use 1</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Step Time Override (ms/step)</label>
+        <input id="step-time-override" type="number" value="0" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">0 = auto-estimate from GPU specs</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Advanced Options -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Advanced Options</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+      <div class="flex items-center justify-between p-3 border border-border rounded-lg">
+        <div>
+          <div class="text-sm font-medium">Gradient Checkpointing</div>
+          <div class="text-xs text-text-muted">Saves VRAM, +33% compute time</div>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer ml-3">
+          <input type="checkbox" id="grad-checkpoint" class="sr-only peer" />
+          <div class="w-10 h-5 bg-border rounded-full peer peer-checked:bg-primary transition-colors"></div>
+          <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+        </label>
+      </div>
+      <div class="flex items-center justify-between p-3 border border-border rounded-lg">
+        <div>
+          <div class="text-sm font-medium">Mixed Precision (BF16/FP16)</div>
+          <div class="text-xs text-text-muted">~2× throughput on Ampere+</div>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer ml-3">
+          <input type="checkbox" id="mixed-precision" class="sr-only peer" checked />
+          <div class="w-10 h-5 bg-border rounded-full peer peer-checked:bg-primary transition-colors"></div>
+          <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+        </label>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Data Loading Bottleneck (%)</label>
+        <input id="data-bottleneck" type="number" value="5" min="0" max="80"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">% of step time spent waiting on data I/O</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Multi-GPU Scaling Efficiency (%)</label>
+        <input id="scaling-efficiency" type="number" value="90" min="50" max="100"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Communication overhead (DDP/FSDP). 8-GPU typical: 85–92%</p>
+      </div>
+      <div id="elec-cost-section">
+        <label class="block text-sm font-medium mb-1.5">Electricity Cost ($/kWh)</label>
+        <input id="elec-cost" type="number" value="0.12" min="0" step="0.01"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">US avg ~$0.12. Used for all GPU electricity calc.</p>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit />
+
+  <!-- Results -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Estimated Results</h2>
+    <div id="main-results" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+    <div id="throughput-results" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+  </div>
+
+  <!-- Provider Comparison Table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-1">Cross-Provider Cost Comparison</h2>
+    <p class="text-xs text-text-muted mb-4">Same training job across all GPU types (auto-adjusted for relative FLOP performance)</p>
+    <div id="comparison-table" class="overflow-x-auto"></div>
+  </div>
+
+  <!-- Break-Even Analysis -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-1">Buy vs Rent Break-Even Analysis</h2>
+    <p class="text-xs text-text-muted mb-4">At what utilization rate does owning a GPU pay off over renting cloud?</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">GPU to Buy</label>
+        <select id="be-gpu-buy" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="rtx4090">RTX 4090 — $1,800 purchase</option>
+          <option value="a100-80">A100 80GB — $10,000 purchase</option>
+          <option value="h100-80">H100 80GB — $30,000 purchase</option>
+          <option value="l40s">L40S 48GB — $7,500 purchase</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Cloud GPU to Compare Against</label>
+        <select id="be-gpu-rent" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="a100-80">A100 80GB — $3.00/hr</option>
+          <option value="h100-80">H100 80GB — $6.00/hr</option>
+          <option value="v100-16">V100 16GB — $2.48/hr</option>
+          <option value="a10g">A10G 24GB — $1.50/hr</option>
+          <option value="l40s">L40S 48GB — $2.50/hr</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Amortization Period (years)</label>
+        <input id="amort-years" type="number" value="3" min="1" max="10"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+    <div id="breakeven-results" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+    <div id="breakeven-chart" class="mt-4 space-y-2"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="GPU Training Cost Estimator" relatedTags={['ai', 'ml', 'gpu', 'training', 'cost', 'cloud', 'llm']} />
+</BaseLayout>
+
+<script>
+  // ─── GPU Specs ──────────────────────────────────────────────────────────────
+  const GPU_SPECS: Record<string, {
+    label: string;
+    cloudRate: number;       // $/hr
+    electricRate: number;    // $/hr (if own)
+    purchasePrice: number;   // $ (0 = cloud only)
+    tflops_bf16: number;     // BF16 TFLOPs
+    tflops_fp32: number;     // FP32 TFLOPs
+    vram_gb: number;
+    tdp_w: number;           // watts
+    isOwn?: boolean;
+  }> = {
+    'a100-80': { label: 'A100 80GB', cloudRate: 3.00, electricRate: 0, purchasePrice: 10000, tflops_bf16: 312, tflops_fp32: 19.5, vram_gb: 80, tdp_w: 400 },
+    'h100-80': { label: 'H100 80GB', cloudRate: 6.00, electricRate: 0, purchasePrice: 30000, tflops_bf16: 989, tflops_fp32: 67, vram_gb: 80, tdp_w: 700 },
+    'v100-16': { label: 'V100 16GB', cloudRate: 2.48, electricRate: 0, purchasePrice: 3000, tflops_bf16: 28, tflops_fp32: 14, vram_gb: 16, tdp_w: 300 },
+    'rtx4090': { label: 'RTX 4090', cloudRate: 0, electricRate: 0.60, purchasePrice: 1800, tflops_bf16: 330, tflops_fp32: 82.6, vram_gb: 24, tdp_w: 450, isOwn: true },
+    'a10g':    { label: 'A10G 24GB', cloudRate: 1.50, electricRate: 0, purchasePrice: 5000, tflops_bf16: 125, tflops_fp32: 31.2, vram_gb: 24, tdp_w: 150 },
+    'l40s':    { label: 'L40S 48GB', cloudRate: 2.50, electricRate: 0, purchasePrice: 7500, tflops_bf16: 362, tflops_fp32: 91.6, vram_gb: 48, tdp_w: 350 },
+    'tpu-v4':  { label: 'TPU v4', cloudRate: 4.20, electricRate: 0, purchasePrice: 0, tflops_bf16: 275, tflops_fp32: 137.5, vram_gb: 32, tdp_w: 170 },
+  };
+
+  // All GPU keys in order for comparison table
+  const ALL_GPU_KEYS = ['a100-80', 'h100-80', 'v100-16', 'rtx4090', 'a10g', 'l40s', 'tpu-v4'];
+
+  // ─── Helper ─────────────────────────────────────────────────────────────────
+  function getVal(id: string): number {
+    const el = document.getElementById(id) as HTMLInputElement;
+    return parseFloat(el?.value) || 0;
+  }
+  function getBool(id: string): boolean {
+    return (document.getElementById(id) as HTMLInputElement)?.checked ?? false;
+  }
+  function getSelect(id: string): string {
+    return (document.getElementById(id) as HTMLSelectElement)?.value ?? '';
+  }
+  function fmt(n: number, decimals = 2): string {
+    if (n >= 1e9) return (n / 1e9).toFixed(decimals) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(decimals) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(decimals) + 'K';
+    return n.toFixed(decimals);
+  }
+  function fmtCost(n: number): string {
+    if (n >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
+    if (n >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'K';
+    return '$' + n.toFixed(2);
+  }
+  function fmtTime(hrs: number): string {
+    if (hrs < 1) return (hrs * 60).toFixed(1) + ' min';
+    if (hrs < 24) return hrs.toFixed(1) + ' hrs';
+    const days = hrs / 24;
+    if (days < 30) return days.toFixed(1) + ' days';
+    return (days / 30).toFixed(1) + ' months';
+  }
+
+  // ─── Core Calculation ───────────────────────────────────────────────────────
+  function calcTrainingTime(
+    gpuKey: string,
+    numGpus: number,
+    datasetSize: number,
+    batchSize: number,
+    epochs: number,
+    modelParamsB: number,
+    seqLen: number,
+    gradCheckpoint: boolean,
+    mixedPrecision: boolean,
+    dataBottleneckPct: number,
+    scalingEff: number,
+    stepTimeOverride: number,
+  ): { totalHours: number; stepsPerEpoch: number; totalSteps: number; samplesPerSec: number; tokensPerSec: number } {
+    const gpu = GPU_SPECS[gpuKey];
+    if (!gpu) return { totalHours: 0, stepsPerEpoch: 0, totalSteps: 0, samplesPerSec: 0, tokensPerSec: 0 };
+
+    const stepsPerEpoch = Math.ceil(datasetSize / batchSize);
+    const totalSteps = stepsPerEpoch * epochs;
+
+    let stepTimeMs: number;
+    if (stepTimeOverride > 0) {
+      stepTimeMs = stepTimeOverride;
+    } else {
+      // Estimate: FLOPs per step = 6 * params * tokens_per_batch
+      // (6 = 2 fwd + 4 bwd, approx)
+      const tokensPerBatch = batchSize * seqLen;
+      const flopsPerStep = 6 * (modelParamsB * 1e9) * tokensPerBatch;
+      const tflops = mixedPrecision ? gpu.tflops_bf16 : gpu.tflops_fp32;
+      const effectiveTflops = tflops * numGpus * (scalingEff / 100) * 0.45; // ~45% MFU typical
+      const baseStepSec = flopsPerStep / (effectiveTflops * 1e12);
+      const gcOverhead = gradCheckpoint ? 1.33 : 1.0;
+      const dataOverhead = 1 + dataBottleneckPct / 100;
+      stepTimeMs = baseStepSec * gcOverhead * dataOverhead * 1000;
+    }
+
+    const totalSec = totalSteps * (stepTimeMs / 1000);
+    const totalHours = totalSec / 3600;
+    const samplesPerSec = datasetSize * epochs / totalSec;
+    const tokensPerSec = samplesPerSec * seqLen;
+
+    return { totalHours, stepsPerEpoch, totalSteps, samplesPerSec, tokensPerSec };
+  }
+
+  function calcCost(gpuKey: string, numGpus: number, totalHours: number, elecCostPerKwh: number): {
+    cloudCost: number;
+    electricCost: number;
+    costPerHour: number;
+    isOwn: boolean;
+  } {
+    const gpu = GPU_SPECS[gpuKey];
+    if (!gpu) return { cloudCost: 0, electricCost: 0, costPerHour: 0, isOwn: false };
+    const isOwn = !!gpu.isOwn;
+    const cloudCost = isOwn ? 0 : gpu.cloudRate * numGpus * totalHours;
+    const kwh = (gpu.tdp_w * numGpus * totalHours) / 1000;
+    const electricCost = kwh * elecCostPerKwh;
+    const costPerHour = isOwn ? electricCost / totalHours : gpu.cloudRate * numGpus;
+    return { cloudCost, electricCost, costPerHour, isOwn };
+  }
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
+  function renderStatCard(label: string, value: string, sub = '', highlight = false): string {
+    return `<div class="bg-bg-card border border-border rounded-lg p-3 text-center ${highlight ? 'border-primary/50' : ''}">
+      <div class="text-2xl font-bold ${highlight ? 'text-primary' : 'text-text'} mb-0.5">${value}</div>
+      <div class="text-xs font-medium text-text-muted">${label}</div>
+      ${sub ? `<div class="text-xs text-text-muted mt-0.5">${sub}</div>` : ''}
+    </div>`;
+  }
+
+  function calculate() {
+    const gpuKey = getSelect('gpu-select');
+    const numGpus = Math.max(1, getVal('num-gpus'));
+    const datasetSize = Math.max(1, getVal('dataset-size'));
+    const batchSize = Math.max(1, getVal('batch-size'));
+    const epochs = Math.max(1, getVal('epochs'));
+    const modelParamsB = Math.max(0.001, getVal('model-params-b'));
+    const seqLen = Math.max(1, getVal('seq-len'));
+    const gradCheckpoint = getBool('grad-checkpoint');
+    const mixedPrecision = getBool('mixed-precision');
+    const dataBottleneckPct = getVal('data-bottleneck');
+    const scalingEff = Math.max(50, Math.min(100, getVal('scaling-efficiency')));
+    const elecCostPerKwh = getVal('elec-cost');
+    const stepTimeOverride = getVal('step-time-override');
+
+    const { totalHours, stepsPerEpoch, totalSteps, samplesPerSec, tokensPerSec } = calcTrainingTime(
+      gpuKey, numGpus, datasetSize, batchSize, epochs, modelParamsB, seqLen,
+      gradCheckpoint, mixedPrecision, dataBottleneckPct, scalingEff, stepTimeOverride
+    );
+    const { cloudCost, electricCost, costPerHour, isOwn } = calcCost(gpuKey, numGpus, totalHours, elecCostPerKwh);
+    const totalCost = cloudCost + electricCost;
+    const costPerEpoch = epochs > 0 ? totalCost / epochs : 0;
+
+    // Main results
+    const mainEl = document.getElementById('main-results')!;
+    mainEl.innerHTML = [
+      renderStatCard('Training Time', fmtTime(totalHours), `${totalSteps.toLocaleString()} steps total`, true),
+      renderStatCard('Total Cost', fmtCost(totalCost), isOwn ? 'electricity only' : `${numGpus}× GPU cloud`),
+      renderStatCard('Cost per Epoch', fmtCost(costPerEpoch), `${epochs} epoch${epochs > 1 ? 's' : ''}`),
+      renderStatCard(isOwn ? 'Elec. Cost/hr' : 'Cloud Cost/hr', fmtCost(costPerHour), isOwn ? 'own GPU running cost' : 'per cluster-hour'),
+    ].join('');
+
+    // Throughput
+    const tpEl = document.getElementById('throughput-results')!;
+    tpEl.innerHTML = [
+      renderStatCard('Throughput', fmt(samplesPerSec, 1) + '/s', 'samples per second'),
+      renderStatCard('Token Throughput', fmt(tokensPerSec, 1) + '/s', 'tokens per second'),
+      renderStatCard('Steps/Epoch', stepsPerEpoch.toLocaleString(), `batch size ${batchSize.toLocaleString()}`),
+      renderStatCard('Electricity', fmtCost(electricCost), `${((GPU_SPECS[gpuKey]?.tdp_w ?? 0) * numGpus / 1000).toFixed(1)} kW draw`),
+    ].join('');
+
+    // Comparison table — use A100-80 as reference GPU
+    const refGpu = GPU_SPECS['a100-80'];
+    const refTflops = mixedPrecision ? refGpu.tflops_bf16 : refGpu.tflops_fp32;
+
+    const tableRows = ALL_GPU_KEYS.map(key => {
+      const g = GPU_SPECS[key];
+      const tflops = mixedPrecision ? g.tflops_bf16 : g.tflops_fp32;
+      const relativeSpeed = tflops / refTflops;
+      const { totalHours: th } = calcTrainingTime(
+        key, numGpus, datasetSize, batchSize, epochs, modelParamsB, seqLen,
+        gradCheckpoint, mixedPrecision, dataBottleneckPct, scalingEff, stepTimeOverride
+      );
+      const { cloudCost: cc, electricCost: ec, isOwn: own } = calcCost(key, numGpus, th, elecCostPerKwh);
+      const total = cc + ec;
+      const isCurrent = key === gpuKey;
+      const isOwn2 = !!g.isOwn;
+      const rateDisplay = isOwn2 ? `$${g.electricRate}/hr elec.` : `$${g.cloudRate}/hr`;
+      return `<tr class="${isCurrent ? 'bg-primary/5' : ''} border-b border-border last:border-0">
+        <td class="py-2.5 pr-4 text-sm">
+          <div class="font-medium flex items-center gap-1.5">
+            ${isCurrent ? '<span class="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>' : ''}
+            ${g.label}
+            ${isOwn2 ? '<span class="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">own</span>' : ''}
+          </div>
+          <div class="text-xs text-text-muted">${rateDisplay} · ${g.vram_gb}GB VRAM</div>
+        </td>
+        <td class="py-2.5 pr-4 text-right font-mono text-sm">${fmtTime(th)}</td>
+        <td class="py-2.5 pr-4 text-right font-mono text-sm">${fmtCost(cc || ec)}</td>
+        <td class="py-2.5 text-right font-mono text-sm font-semibold ${key === 'h100-80' ? 'text-green-500' : ''}">${fmtCost(total)}</td>
+      </tr>`;
+    }).join('');
+
+    const compEl = document.getElementById('comparison-table')!;
+    compEl.innerHTML = `<table class="w-full text-sm min-w-[480px]">
+      <thead><tr class="text-text-muted text-xs uppercase border-b border-border">
+        <th class="text-left pb-2 pr-4">GPU / Accelerator</th>
+        <th class="text-right pb-2 pr-4">Est. Time</th>
+        <th class="text-right pb-2 pr-4">${'Cloud / Elec.'}</th>
+        <th class="text-right pb-2">Total Cost</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>`;
+
+    // Break-even analysis
+    calcBreakEven();
+  }
+
+  function calcBreakEven() {
+    const buyKey = getSelect('be-gpu-buy');
+    const rentKey = getSelect('be-gpu-rent');
+    const amortYears = Math.max(1, getVal('amort-years'));
+    const elecCostPerKwh = getVal('elec-cost');
+
+    const buyGpu = GPU_SPECS[buyKey];
+    const rentGpu = GPU_SPECS[rentKey];
+    if (!buyGpu || !rentGpu) return;
+
+    const purchasePrice = buyKey === 'rtx4090' ? getVal('gpu-purchase-price') || buyGpu.purchasePrice : buyGpu.purchasePrice;
+    const totalHoursAvail = amortYears * 365 * 24;
+
+    // Monthly costs at different utilization %
+    const utilLevels = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+    const monthlyHours = (pct: number) => (pct / 100) * 24 * 30;
+
+    // Own: fixed (amortization) + variable (electricity)
+    const monthlyAmort = purchasePrice / (amortYears * 12);
+    const ownMonthlyCost = (pct: number) => {
+      const hrs = monthlyHours(pct);
+      const kwh = (buyGpu.tdp_w * hrs) / 1000;
+      return monthlyAmort + kwh * elecCostPerKwh;
+    };
+
+    // Rent: pay-per-use at cloud rate
+    const rentMonthlyCost = (pct: number) => rentGpu.cloudRate * monthlyHours(pct);
+
+    // Find break-even utilization
+    let beePct = 0;
+    for (let p = 1; p <= 100; p++) {
+      if (ownMonthlyCost(p) <= rentMonthlyCost(p)) {
+        beePct = p;
+        break;
+      }
+    }
+
+    const beeEl = document.getElementById('breakeven-results')!;
+    const atFifty = {
+      own: ownMonthlyCost(50),
+      rent: rentMonthlyCost(50),
+    };
+    const savings = (rentMonthlyCost(50) - ownMonthlyCost(50));
+
+    beeEl.innerHTML = `
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <div class="text-xs text-text-muted uppercase mb-1">Break-Even Utilization</div>
+        <div class="text-3xl font-bold ${beePct > 0 ? 'text-green-500' : 'text-red-400'} mb-1">
+          ${beePct > 0 ? beePct + '%' : 'Never'}
+        </div>
+        <div class="text-sm text-text-muted">
+          ${beePct > 0
+            ? `Own ${buyGpu.label} pays off vs renting ${rentGpu.label} at >${beePct}% utilization`
+            : `Renting ${rentGpu.label} is always cheaper at these settings`}
+        </div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <div class="text-xs text-text-muted uppercase mb-2">Monthly Cost @ 50% Utilization</div>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-text-muted">Own ${buyGpu.label}</span>
+            <span class="font-mono font-semibold">${fmtCost(atFifty.own)}/mo</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-text-muted">Rent ${rentGpu.label}</span>
+            <span class="font-mono font-semibold">${fmtCost(atFifty.rent)}/mo</span>
+          </div>
+          <div class="flex justify-between border-t border-border pt-2">
+            <span class="text-text-muted">Monthly savings (own)</span>
+            <span class="font-mono font-semibold ${savings > 0 ? 'text-green-500' : 'text-red-400'}">${savings > 0 ? '+' : ''}${fmtCost(savings)}/mo</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-text-muted">Payback period @ 50%</span>
+            <span class="font-mono font-semibold">${savings > 0 ? (purchasePrice / (savings * 12)).toFixed(1) + ' yrs' : 'N/A'}</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Chart: utilization bars
+    const chartEl = document.getElementById('breakeven-chart')!;
+    chartEl.innerHTML = '<div class="text-xs text-text-muted uppercase mb-2">Monthly cost by utilization</div>' +
+      utilLevels.map(pct => {
+        const oc = ownMonthlyCost(pct);
+        const rc = rentMonthlyCost(pct);
+        const max = Math.max(oc, rc, 1);
+        const ownPct = (oc / max) * 100;
+        const rentPct = (rc / max) * 100;
+        const ownWins = oc <= rc;
+        return `<div class="flex items-center gap-3 text-xs">
+          <span class="w-8 text-right text-text-muted">${pct}%</span>
+          <div class="flex-1 space-y-0.5">
+            <div class="flex items-center gap-1.5">
+              <div class="w-2 h-2 rounded-sm bg-blue-500 shrink-0"></div>
+              <div class="flex-1 h-2 bg-border rounded-full overflow-hidden">
+                <div class="h-full bg-blue-500 rounded-full transition-all" style="width:${ownPct.toFixed(1)}%"></div>
+              </div>
+              <span class="w-20 text-right font-mono ${ownWins ? 'text-green-500 font-semibold' : 'text-text-muted'}">${fmtCost(oc)}</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <div class="w-2 h-2 rounded-sm bg-orange-500 shrink-0"></div>
+              <div class="flex-1 h-2 bg-border rounded-full overflow-hidden">
+                <div class="h-full bg-orange-500 rounded-full transition-all" style="width:${rentPct.toFixed(1)}%"></div>
+              </div>
+              <span class="w-20 text-right font-mono ${!ownWins ? 'text-green-500 font-semibold' : 'text-text-muted'}">${fmtCost(rc)}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('') +
+      `<div class="flex items-center gap-4 mt-2 text-xs text-text-muted">
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-blue-500 inline-block"></span> Own (${buyGpu.label})</span>
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-orange-500 inline-block"></span> Rent (${rentGpu.label})</span>
+        <span>— green = lower cost</span>
+      </div>`;
+  }
+
+  // ─── Event Listeners ────────────────────────────────────────────────────────
+  function showHideOwnGpuFields() {
+    const key = getSelect('gpu-select');
+    const ownSection = document.getElementById('own-gpu-section')!;
+    if (GPU_SPECS[key]?.isOwn) {
+      ownSection.classList.remove('hidden');
+    } else {
+      ownSection.classList.add('hidden');
+    }
+  }
+
+  document.getElementById('gpu-select')!.addEventListener('change', () => {
+    showHideOwnGpuFields();
+    calculate();
+  });
+
+  const inputIds = [
+    'num-gpus', 'dataset-size', 'batch-size', 'epochs', 'model-params-b',
+    'seq-len', 'step-time-override', 'data-bottleneck', 'scaling-efficiency',
+    'elec-cost', 'gpu-purchase-price',
+  ];
+  inputIds.forEach(id => {
+    document.getElementById(id)?.addEventListener('input', calculate);
+  });
+
+  ['grad-checkpoint', 'mixed-precision'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', calculate);
+  });
+
+  ['be-gpu-buy', 'be-gpu-rent'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', calcBreakEven);
+  });
+  document.getElementById('amort-years')?.addEventListener('input', calcBreakEven);
+
+  // Initial render
+  showHideOwnGpuFields();
+  calculate();
+</script>
