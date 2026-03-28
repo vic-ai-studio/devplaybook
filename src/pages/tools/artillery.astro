@@ -1,0 +1,262 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const installExample = `# Install globally
+npm install -g artillery
+
+# Or add to a project as a dev dependency
+npm install --save-dev artillery
+
+# Verify installation
+artillery version
+
+# Run a quick smoke test against any URL (no config file needed)
+artillery quick --count 20 --num 10 https://example.com/api/health`;
+
+const yamlExample = `# load-test.yml — a complete Artillery scenario config
+config:
+  target: "https://api.example.com"
+  phases:
+    - duration: 60      # warm-up: 1 minute at 10 RPS
+      arrivalRate: 10
+      name: "Warm up"
+    - duration: 120     # ramp-up: 2 minutes, 10 → 50 RPS
+      arrivalRate: 10
+      rampTo: 50
+      name: "Ramp up"
+    - duration: 300     # sustained load: 5 minutes at 50 RPS
+      arrivalRate: 50
+      name: "Sustained load"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+
+scenarios:
+  - name: "Browse and create item"
+    weight: 7           # 70% of virtual users run this scenario
+    flow:
+      - get:
+          url: "/items"
+          expect:
+            - statusCode: 200
+      - think: 2        # simulate user reading for 2 seconds
+      - post:
+          url: "/items"
+          json:
+            name: "Test item {{ $randomString() }}"
+            price: "{{ $randomNumber(1, 100) }}"
+          expect:
+            - statusCode: 201
+
+  - name: "Health check"
+    weight: 3           # 30% of virtual users run this scenario
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200`;
+
+const cliRunExample = `# Run a test from a YAML config file
+artillery run load-test.yml
+
+# Run and save results to a JSON report file
+artillery run load-test.yml --output results.json
+
+# Generate an HTML report from saved results
+artillery report results.json
+
+# Run with an environment override (override config.target)
+artillery run load-test.yml --target https://staging.example.com
+
+# Run only a specific scenario by name
+artillery run load-test.yml --scenario "Browse and create item"
+
+# Run with extra variables passed from the command line
+artillery run load-test.yml --variables '{"userId":"abc123"}'`;
+
+const expectExample = `# artillery-expect plugin — add assertions to your scenarios
+# Install: npm install --save-dev @artillery/plugin-expect
+
+config:
+  target: "https://api.example.com"
+  plugins:
+    expect: {}           # enable the expect plugin
+  phases:
+    - duration: 30
+      arrivalRate: 5
+
+scenarios:
+  - name: "Login and get profile"
+    flow:
+      - post:
+          url: "/auth/login"
+          json:
+            email: "user@example.com"
+            password: "secret"
+          capture:
+            - json: "$.token"    # capture JWT from response body
+              as: token
+          expect:
+            - statusCode: 200
+            - hasProperty: "token"
+      - get:
+          url: "/users/me"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "email"`;
+
+const faq = [
+  {
+    question: "What is Artillery?",
+    answer: "Artillery is a modern, open-source performance and load testing framework. Tests are defined in YAML (or JavaScript) configuration files that describe target URLs, load phases (ramp-up, sustained, spike), and user scenarios with realistic think times, loops, and conditional logic. Artillery supports HTTP, WebSockets, Socket.io, gRPC, and Amazon Kinesis. It runs on Node.js, installs via npm, and integrates with CI/CD pipelines. Artillery Cloud (the commercial SaaS layer) adds results history, team dashboards, and distributed load generation."
+  },
+  {
+    question: "How does Artillery compare to k6?",
+    answer: "Both are modern load testing tools with strong CI/CD integration. k6 uses JavaScript test scripts (no YAML) and ships as a single compiled binary with no Node.js dependency, making it fast and portable. Artillery uses YAML for test configuration, which requires less code for common scenarios but is less flexible for complex logic. Artillery supports more protocols out of the box (WebSockets, Socket.io, gRPC). k6 has a strong extension ecosystem and excellent Grafana integration. Artillery Cloud and k6 Cloud both offer SaaS dashboards. k6 is often preferred for developer-centric workflows; Artillery is often preferred for teams that want YAML-driven, no-code test definitions."
+  },
+  {
+    question: "How do I write scenarios in YAML?",
+    answer: "Artillery scenarios are defined under the scenarios key in your YAML config. Each scenario has a name, an optional weight (probability of selection), and a flow array of steps. Steps can be HTTP actions (get, post, put, delete), WebSocket actions, think time pauses (think: N seconds), loops, conditionals, and variable captures. Use {{ $randomString() }}, {{ $randomNumber(min, max) }}, and {{ variableName }} for dynamic data. Multiple scenarios with different weights simulate realistic mixed traffic — for example, 70% browsing and 30% submitting forms."
+  },
+  {
+    question: "What protocols does Artillery support?",
+    answer: "Artillery natively supports HTTP/1.1 and HTTPS, WebSockets, Socket.io, and Amazon Kinesis. gRPC support is available via the @artillery/plugin-grpc plugin. The plugin ecosystem extends Artillery further — community plugins exist for MQTT, HLS video streaming, and custom protocols. For HTTP, Artillery handles GET, POST, PUT, PATCH, DELETE, and custom methods with arbitrary headers, request bodies, file uploads, and TLS certificate configuration."
+  },
+  {
+    question: "How do I add assertions to Artillery tests?",
+    answer: "Install the official @artillery/plugin-expect package and enable it with plugins: { expect: {} } in your config. Then add an expect block to any HTTP flow step. Supported assertions include statusCode (exact or range), contentType, hasProperty (checks a JSON response has a given key), matchesRegexp, equals, and custom JavaScript expressions. If an assertion fails, Artillery marks the virtual user's request as an error and increments the assertion failure counter in the results. This is useful for verifying API contracts during load tests, not just measuring throughput."
+  },
+  {
+    question: "Is Artillery open source?",
+    answer: "Yes. The Artillery core engine and CLI are open source under the MPL-2.0 license and the source is available on GitHub. The free version supports running tests locally or on your own infrastructure with all core features including HTTP/WebSocket/gRPC testing, YAML scenarios, and HTML reports. Artillery Cloud is the commercial SaaS product that adds distributed load generation (running tests from multiple geographic regions), results storage and history, team collaboration dashboards, and alerting. Most teams can accomplish full load testing workflows with the open-source version alone."
+  },
+];
+---
+
+<BaseLayout
+  title="Artillery — Modern Load Testing Framework for HTTP, WebSockets, and gRPC"
+  description="Artillery is a modern, open-source load and performance testing framework. Define scenarios in YAML, test HTTP, WebSockets, and gRPC, and integrate with CI/CD pipelines using built-in metrics and assertions."
+  tool="artillery, load testing, performance testing, yaml, http testing, websocket testing, ci-cd, artillery.io"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Artillery — Modern Load Testing Framework for HTTP, WebSockets, and gRPC",
+    "url": "https://devplaybook.cc/tools/artillery",
+    "description": "Artillery is an open-source load and performance testing framework. Write YAML scenarios to simulate realistic traffic across HTTP, WebSockets, gRPC, and more.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Artillery</h1>
+  <p class="text-text-muted mb-6">
+    Modern, open-source performance and load testing framework. Define realistic traffic scenarios
+    in YAML — ramp-up phases, think times, loops, and assertions — across HTTP, WebSockets, gRPC,
+    and Socket.io. Built for CI/CD integration from day one.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> YAML scenarios</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HTTP, WS, gRPC</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Ramp-up phases</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Built-in assertions</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CI/CD ready</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Open source</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Artillery?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Artillery is an open-source performance testing framework designed for modern cloud-native applications. Unlike tools that require writing code to define test logic, Artillery uses a YAML-based configuration format that lets you describe multi-phase load patterns and realistic user scenarios with minimal friction. A basic test can go from zero to running in under five minutes.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Artillery supports multiple protocols — HTTP/HTTPS, WebSockets, Socket.io, gRPC, and Amazon Kinesis — making it suitable for testing APIs, real-time applications, and event-driven services with the same toolchain. Tests integrate directly into GitHub Actions, GitLab CI, Jenkins, and any other CI/CD system that can run an npm script.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>YAML-first configuration</strong> — define targets, load phases, and user scenarios without writing test code for common cases</li>
+    <li><strong>Realistic traffic phases</strong> — warm-up, ramp-up, sustained load, and spike phases with configurable arrival rates</li>
+    <li><strong>Multi-protocol</strong> — HTTP/HTTPS, WebSockets, Socket.io, gRPC (plugin), and Amazon Kinesis</li>
+    <li><strong>Think time &amp; loops</strong> — simulate realistic user behaviour with pauses, loops, and conditional branching</li>
+    <li><strong>Built-in metrics</strong> — response time percentiles, error rates, RPS, and virtual user counts reported per phase</li>
+    <li><strong>Expect plugin</strong> — add assertions (status codes, JSON properties, regex) to fail tests on contract violations</li>
+    <li><strong>Variable capture</strong> — extract values from responses (e.g. auth tokens) and use them in subsequent requests</li>
+    <li><strong>CI/CD integration</strong> — exits with code 1 on threshold violations; works with GitHub Actions, GitLab, Jenkins</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={installExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Writing a YAML Scenario</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    An Artillery config file has two top-level sections: <code class="bg-bg-card px-1 rounded text-xs">config</code> (target URL, load phases, default headers) and <code class="bg-bg-card px-1 rounded text-xs">scenarios</code> (user flows with weighted traffic distribution). The example below defines a three-phase load test with a warm-up, ramp-up, and sustained load period.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={yamlExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Running Tests</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Use <code class="bg-bg-card px-1 rounded text-xs">artillery run</code> to execute a test and print a live summary to stdout. Save results with <code class="bg-bg-card px-1 rounded text-xs">--output</code> and generate an HTML report with <code class="bg-bg-card px-1 rounded text-xs">artillery report</code>.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={cliRunExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Assertions with the Expect Plugin</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    The <code class="bg-bg-card px-1 rounded text-xs">@artillery/plugin-expect</code> plugin adds assertion support directly inside YAML flow steps. Capture tokens from login responses and use them in subsequent authenticated requests — all within the same scenario.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={expectExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Artillery vs k6</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Artillery</th>
+          <th class="border border-border px-3 py-2 text-left">k6</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Test definition</td><td class="border border-border px-3 py-2 text-green-400">YAML (no code needed)</td><td class="border border-border px-3 py-2">JavaScript / TypeScript</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Protocol support</td><td class="border border-border px-3 py-2 text-green-400">HTTP, WS, Socket.io, gRPC, Kinesis</td><td class="border border-border px-3 py-2">HTTP, WebSockets, gRPC</td></tr>
+        <tr><td class="border border-border px-3 py-2">Runtime dependency</td><td class="border border-border px-3 py-2">Node.js required</td><td class="border border-border px-3 py-2 text-green-400">Single binary, no dependency</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Grafana integration</td><td class="border border-border px-3 py-2">Via plugin</td><td class="border border-border px-3 py-2 text-green-400">First-class (k6 → Grafana)</td></tr>
+        <tr><td class="border border-border px-3 py-2">Assertions / checks</td><td class="border border-border px-3 py-2 text-green-400">YAML expect plugin</td><td class="border border-border px-3 py-2">JS checks() API</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Cloud / distributed</td><td class="border border-border px-3 py-2">Artillery Cloud (paid)</td><td class="border border-border px-3 py-2">k6 Cloud (paid)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros and Cons</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✓ YAML-driven — non-engineers can write and modify tests</li>
+        <li>✓ Realistic scenarios with think time, loops, and weighted flows</li>
+        <li>✓ Multi-protocol: HTTP, WebSockets, Socket.io, gRPC, Kinesis</li>
+        <li>✓ First-class CI/CD integration with exit code 1 on failures</li>
+        <li>✓ Open source core — no SaaS required for most use cases</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✗ Requires Node.js — not a single portable binary like k6</li>
+        <li>✗ Complex scripting logic requires JavaScript extensions</li>
+        <li>✗ Distributed load generation requires Artillery Cloud (paid)</li>
+        <li>✗ YAML can become verbose for large multi-scenario test suites</li>
+        <li>✗ HTML reports are basic compared to Grafana k6 dashboards</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="artillery" relatedTags={['load-testing', 'performance', 'testing', 'ci-cd', 'yaml']} />
+</BaseLayout>

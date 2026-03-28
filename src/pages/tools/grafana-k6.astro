@@ -1,0 +1,305 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const loginExample = `# 1. Install k6 locally (required to run cloud tests)
+brew install k6          # macOS
+choco install k6         # Windows
+# or: docker pull grafana/k6
+
+# 2. Authenticate with Grafana k6 Cloud
+k6 cloud login --token <YOUR_API_TOKEN>
+
+# Or use environment variable (recommended for CI)
+export K6_CLOUD_TOKEN=<YOUR_API_TOKEN>
+
+# 3. Run a test on Grafana k6 Cloud (from local script)
+k6 cloud run script.js
+
+# 4. Run with a specific load zone
+k6 cloud run --zones amazon:us:us-east-1 script.js
+
+# 5. Check status / stream results
+k6 cloud run --show-logs script.js`;
+
+const cloudScriptExample = `// script.js — k6 script with cloud-specific options
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export const options = {
+  // Cloud execution config
+  ext: {
+    loadimpact: {
+      projectID: 3478234,
+      name:      'API Baseline — v2.1.0',
+      // Geo-distributed load zones with weight
+      distribution: {
+        'amazon:us:us-east-1':      { loadZone: 'amazon:us:us-east-1',      percent: 50 },
+        'amazon:eu:eu-west-1':      { loadZone: 'amazon:eu:eu-west-1',      percent: 30 },
+        'amazon:ap:ap-southeast-1': { loadZone: 'amazon:ap:ap-southeast-1', percent: 20 },
+      },
+    },
+  },
+
+  stages: [
+    { duration: '2m',  target: 100 },  // ramp up
+    { duration: '5m',  target: 100 },  // steady state
+    { duration: '2m',  target: 200 },  // spike
+    { duration: '1m',  target: 0   },  // ramp down
+  ],
+
+  thresholds: {
+    http_req_duration: ['p(95)<600', 'p(99)<1500'],
+    http_req_failed:   ['rate<0.005'],
+  },
+};
+
+export default function () {
+  const res = http.get('https://api.example.com/v2/products');
+
+  check(res, {
+    'status 200':      (r) => r.status === 200,
+    'response < 1s':   (r) => r.timings.duration < 1000,
+  });
+
+  sleep(1);
+}`;
+
+const ciExample = `# GitHub Actions — run load test on Grafana k6 Cloud
+name: Load Test (k6 Cloud)
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *'   # nightly at 02:00 UTC
+
+jobs:
+  cloud_load_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run k6 Cloud test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: tests/load/api.js
+          cloud: true
+          token: ${{ secrets.K6_CLOUD_TOKEN }}
+
+      # Alternative: install k6 and run directly
+      - name: Install k6
+        run: |
+          curl https://github.com/grafana/k6/releases/download/v0.51.0/k6-v0.51.0-linux-amd64.tar.gz -L | tar xvz
+          sudo cp k6-v0.51.0-linux-amd64/k6 /usr/local/bin
+
+      - name: Run cloud test
+        run: k6 cloud run tests/load/api.js
+        env:
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}`;
+
+const grafanaIntegrationExample = `# Stream k6 results to a self-hosted Grafana + InfluxDB stack
+# (alternative to fully-managed k6 Cloud)
+
+# Run k6 with InfluxDB output
+k6 run --out influxdb=http://localhost:8086/k6 script.js
+
+# Or stream to Prometheus remote write
+k6 run --out experimental-prometheus-rw script.js
+
+# docker-compose.yml — InfluxDB + Grafana for local dashboards
+version: '3.8'
+services:
+  influxdb:
+    image: influxdb:1.8
+    ports: ["8086:8086"]
+    environment:
+      INFLUXDB_DB: k6
+
+  grafana:
+    image: grafana/grafana:latest
+    ports: ["3000:3000"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning`;
+
+const faq = [
+  {
+    question: "What is Grafana k6 Cloud vs open-source k6?",
+    answer: "Open-source k6 is a CLI tool you install locally or in CI to run load tests from a single machine. Grafana k6 Cloud is a fully managed SaaS platform that runs your k6 scripts from Grafana's cloud infrastructure across multiple geographic load zones simultaneously. k6 Cloud adds a real-time metrics dashboard, historical test result storage, team collaboration, trend analysis, and native Grafana stack integration. You still write the same k6 JavaScript scripts; the cloud tier adds distribution, storage, and visualization on top."
+  },
+  {
+    question: "What are VUh (Virtual User Hours)?",
+    answer: "Virtual User Hours (VUh) is the billing unit for Grafana k6 Cloud. One VUh = one virtual user running for one hour. For example, running 100 VUs for 30 minutes consumes 50 VUh (100 × 0.5h). The free tier includes 50 VUh per month, which is enough for smoke tests and short performance checks. Paid plans start at higher VUh limits with additional features like geo-distributed load zones, longer test retention, and team seats."
+  },
+  {
+    question: "How do I integrate Grafana k6 Cloud with CI/CD?",
+    answer: "Grafana provides an official grafana/k6-action for GitHub Actions. Set your K6_CLOUD_TOKEN as a secret, then use the action with cloud: true. k6 Cloud tests exit with a non-zero code when thresholds are breached, so CI pipelines fail automatically. For GitLab CI, Jenkins, or other systems, install k6 in the runner and run k6 cloud run script.js with the K6_CLOUD_TOKEN environment variable set. Results and thresholds are enforced server-side, and you can view detailed reports in the Grafana k6 Cloud dashboard."
+  },
+  {
+    question: "What load zones are available on Grafana k6 Cloud?",
+    answer: "Grafana k6 Cloud supports geo-distributed load zones across AWS regions including US East (N. Virginia), US West (Oregon), EU West (Ireland), EU Central (Frankfurt), Asia Pacific (Singapore, Tokyo, Sydney), and South America (São Paulo). You specify zones in your script's ext.loadimpact.distribution config with percentage weights. This lets you simulate realistic global traffic patterns and identify region-specific latency issues without managing any infrastructure."
+  },
+  {
+    question: "Is there a free tier for Grafana k6 Cloud?",
+    answer: "Yes. Grafana k6 Cloud includes a free tier with 50 VUh per month — enough for routine smoke tests and short-duration performance checks. The free tier includes access to cloud load zones, the Grafana k6 dashboard, and basic result history. Paid plans (starting at the Grafana Cloud Pro tier) include higher VUh limits, longer result retention, advanced scheduling, more team seats, and priority support. You can also self-host k6 with InfluxDB and Grafana for unlimited local runs at no cost."
+  },
+  {
+    question: "How does Grafana k6 Cloud compare to Gatling Cloud or BlazeMeter?",
+    answer: "All three are managed load testing platforms, but k6 Cloud is unique in that tests are written in JavaScript/TypeScript (familiar to most developers) and the open-source runner is freely available and identical to the cloud runner. Gatling Cloud uses Scala/Java DSL with strong simulation modeling. BlazeMeter is JMeter-compatible. k6 Cloud's native integration with the broader Grafana observability stack (Loki for logs, Tempo for traces, Prometheus for metrics) is a major advantage for teams already using Grafana. BlazeMeter tends to have a richer UI for non-developers; k6 Cloud leans developer-first."
+  },
+];
+---
+
+<BaseLayout
+  title="Grafana k6 Cloud — Managed Load Testing Platform"
+  description="Grafana k6 Cloud runs k6 load tests from geo-distributed cloud infrastructure with real-time Grafana dashboards, result history, team collaboration, and native Grafana stack integration. Free tier available."
+  tool="grafana k6 cloud, load testing cloud, performance testing saas, k6 cloud, grafana load testing, vuh, cloud load zones"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Grafana k6 Cloud — Managed Load Testing Platform",
+    "url": "https://devplaybook.cc/tools/grafana-k6",
+    "description": "Grafana k6 Cloud is a managed platform for running k6 load tests from geo-distributed cloud infrastructure with real-time Grafana dashboards, result history, and team collaboration.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Grafana k6 Cloud</h1>
+  <p class="text-text-muted mb-6">
+    Managed load testing platform built on top of open-source k6. Run tests from
+    geo-distributed cloud load zones, stream results live into Grafana dashboards,
+    track trends over time, and integrate with the full Grafana observability stack —
+    no infrastructure to manage.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Geo-distributed load zones</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real-time Grafana dashboards</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Test result history &amp; trends</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CI/CD integration</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Free tier (50 VUh/month)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Native Grafana stack</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Grafana k6 Cloud?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Grafana k6 Cloud is the managed SaaS platform for <a href="/tools/k6" class="text-blue-400 hover:underline">k6</a>, the open-source load testing tool. While open-source k6 runs tests locally or in a single CI machine, k6 Cloud executes those same JavaScript/TypeScript scripts from Grafana's globally distributed cloud infrastructure — no servers to provision, no bandwidth limits to worry about.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    k6 Cloud adds real-time metric streaming into Grafana dashboards, persistent test result history for trend analysis, team collaboration features, and native integration with the Grafana observability stack (Loki, Tempo, Prometheus). Your existing k6 scripts run unchanged — you simply point them at the cloud with <code class="bg-bg-card px-1 rounded text-xs">k6 cloud run</code>.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Cloud execution</strong> — run tests from Grafana's managed infrastructure; no local machine required for load generation</li>
+    <li><strong>Geo-distributed load zones</strong> — US, EU, Asia Pacific, South America regions with per-zone percentage weights</li>
+    <li><strong>Real-time metrics</strong> — stream p50/p95/p99 response times, error rates, and VU counts live into Grafana</li>
+    <li><strong>Result history &amp; trends</strong> — compare runs over time to detect regressions before they reach production</li>
+    <li><strong>Native Grafana integration</strong> — link with Loki (logs), Tempo (traces), and Prometheus to correlate load test results with application observability</li>
+    <li><strong>Team collaboration</strong> — shared projects, access control, and annotations on test runs</li>
+    <li><strong>CI/CD gates</strong> — same threshold-based pass/fail as open-source k6; non-zero exit code on breach</li>
+    <li><strong>Free tier</strong> — 50 VUh/month; suitable for smoke tests and short load checks</li>
+    <li><strong>Scheduling</strong> — schedule tests to run automatically on a recurring basis (paid plans)</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Getting Started</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Install k6 locally, authenticate with your Grafana Cloud API token, then run your script with <code class="bg-bg-card px-1 rounded text-xs">k6 cloud run</code>. k6 uploads the script to Grafana's infrastructure and streams results back to your terminal and the cloud dashboard in real time.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={loginExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cloud Script with Geo-Distribution</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Add an <code class="bg-bg-card px-1 rounded text-xs">ext.loadimpact</code> block to your <code class="bg-bg-card px-1 rounded text-xs">options</code> to configure cloud-specific settings: project name, load zone distribution, and percentage weights per region.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={cloudScriptExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">CI/CD Integration</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Use the official <code class="bg-bg-card px-1 rounded text-xs">grafana/k6-action</code> for GitHub Actions with <code class="bg-bg-card px-1 rounded text-xs">cloud: true</code>. Store your API token as a repository secret (<code class="bg-bg-card px-1 rounded text-xs">K6_CLOUD_TOKEN</code>). The action fails the job automatically when thresholds are breached.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={ciExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Self-Hosted Alternative: Grafana + InfluxDB</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    If you prefer to self-host, k6 can stream metrics to a local InfluxDB instance and display them in a self-managed Grafana dashboard. This gives you unlimited local runs at no cost, at the expense of managing infrastructure and losing geo-distribution.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={grafanaIntegrationExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Available Load Zones</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Region</th>
+          <th class="border border-border px-3 py-2 text-left">Zone ID</th>
+          <th class="border border-border px-3 py-2 text-left">Provider</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">US East (N. Virginia)</td><td class="border border-border px-3 py-2 font-mono text-xs">amazon:us:us-east-1</td><td class="border border-border px-3 py-2">AWS</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">US West (Oregon)</td><td class="border border-border px-3 py-2 font-mono text-xs">amazon:us:us-west-2</td><td class="border border-border px-3 py-2">AWS</td></tr>
+        <tr><td class="border border-border px-3 py-2">EU West (Ireland)</td><td class="border border-border px-3 py-2 font-mono text-xs">amazon:eu:eu-west-1</td><td class="border border-border px-3 py-2">AWS</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">EU Central (Frankfurt)</td><td class="border border-border px-3 py-2 font-mono text-xs">amazon:eu:eu-central-1</td><td class="border border-border px-3 py-2">AWS</td></tr>
+        <tr><td class="border border-border px-3 py-2">Asia Pacific (Singapore)</td><td class="border border-border px-3 py-2 font-mono text-xs">amazon:ap:ap-southeast-1</td><td class="border border-border px-3 py-2">AWS</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Asia Pacific (Tokyo)</td><td class="border border-border px-3 py-2 font-mono text-xs">amazon:ap:ap-northeast-1</td><td class="border border-border px-3 py-2">AWS</td></tr>
+        <tr><td class="border border-border px-3 py-2">South America (São Paulo)</td><td class="border border-border px-3 py-2 font-mono text-xs">amazon:sa:sa-east-1</td><td class="border border-border px-3 py-2">AWS</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">k6 Cloud vs Competitors</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Grafana k6 Cloud</th>
+          <th class="border border-border px-3 py-2 text-left">Gatling Cloud</th>
+          <th class="border border-border px-3 py-2 text-left">BlazeMeter</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Test language</td><td class="border border-border px-3 py-2 text-green-400">JS / TypeScript</td><td class="border border-border px-3 py-2">Scala / Java / JS</td><td class="border border-border px-3 py-2">JMeter XML / GUI</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Open-source runner</td><td class="border border-border px-3 py-2 text-green-400">Yes (k6 OSS)</td><td class="border border-border px-3 py-2">Yes (Gatling OSS)</td><td class="border border-border px-3 py-2">Partial (JMeter)</td></tr>
+        <tr><td class="border border-border px-3 py-2">Grafana integration</td><td class="border border-border px-3 py-2 text-green-400">Native</td><td class="border border-border px-3 py-2">Via plugins</td><td class="border border-border px-3 py-2">Via plugins</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Free tier</td><td class="border border-border px-3 py-2 text-green-400">50 VUh/month</td><td class="border border-border px-3 py-2">Limited free plan</td><td class="border border-border px-3 py-2">Limited free plan</td></tr>
+        <tr><td class="border border-border px-3 py-2">CI/CD integration</td><td class="border border-border px-3 py-2 text-green-400">Excellent</td><td class="border border-border px-3 py-2">Good</td><td class="border border-border px-3 py-2">Good</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Developer experience</td><td class="border border-border px-3 py-2 text-green-400">Code-first</td><td class="border border-border px-3 py-2">Code-first</td><td class="border border-border px-3 py-2">GUI-first</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros and Cons</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✓ Same JS/TS scripts work locally and in cloud — no rewrite</li>
+        <li>✓ Native Grafana stack integration (Loki, Tempo, Prometheus)</li>
+        <li>✓ Geo-distributed load zones without managing servers</li>
+        <li>✓ Free tier covers smoke tests and short performance gates</li>
+        <li>✓ Real-time streaming and historical trend analysis</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✗ VUh billing model can be expensive for long or high-concurrency tests</li>
+        <li>✗ Requires a local k6 install to initiate cloud runs</li>
+        <li>✗ Advanced scheduling and longer retention require paid plan</li>
+        <li>✗ Less GUI-friendly than BlazeMeter for non-developer stakeholders</li>
+        <li>✗ Result storage limited on free tier</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="grafana-k6" relatedTags={['load-testing', 'performance', 'cloud', 'saas', 'grafana']} />
+</BaseLayout>

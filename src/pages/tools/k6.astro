@@ -1,0 +1,310 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const installExample = `# macOS (Homebrew)
+brew install k6
+
+# Windows (Chocolatey)
+choco install k6
+
+# Windows (winget)
+winget install k6 --source winget
+
+# Docker
+docker pull grafana/k6
+
+# Linux (Debian/Ubuntu)
+sudo gpg -k
+sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt-get update && sudo apt-get install k6
+
+# Verify installation
+k6 version`;
+
+const quickstartExample = `// script.js — a basic k6 load test
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+// Test configuration: ramp up, hold, ramp down
+export const options = {
+  stages: [
+    { duration: '30s', target: 20 },  // ramp up to 20 VUs over 30s
+    { duration: '1m',  target: 20 },  // hold at 20 VUs for 1 minute
+    { duration: '10s', target: 0  },  // ramp down to 0 VUs
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<500'],   // 95th percentile must be < 500ms
+    http_req_failed:   ['rate<0.01'],   // error rate must be < 1%
+  },
+};
+
+export default function () {
+  const res = http.get('https://test.k6.io');
+
+  check(res, {
+    'status is 200':          (r) => r.status === 200,
+    'response time < 500ms':  (r) => r.timings.duration < 500,
+  });
+
+  sleep(1); // think time between iterations
+}`;
+
+const advancedExample = `// Advanced: authenticated POST + JSON parsing + custom metrics
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import { Rate, Trend } from 'k6/metrics';
+
+const loginFailRate = new Rate('login_failures');
+const loginDuration = new Trend('login_duration_ms');
+
+export const options = {
+  vus: 50,
+  duration: '2m',
+  thresholds: {
+    login_failures:    ['rate<0.05'],
+    login_duration_ms: ['p(99)<1000'],
+    http_req_duration: ['p(95)<400', 'p(99)<800'],
+  },
+};
+
+export default function () {
+  const payload = JSON.stringify({ username: 'testuser', password: 'secret' });
+  const params  = { headers: { 'Content-Type': 'application/json' } };
+
+  const res = http.post('https://api.example.com/auth/login', payload, params);
+
+  const success = check(res, {
+    'login status 200': (r) => r.status === 200,
+    'has access_token':  (r) => JSON.parse(r.body).access_token !== undefined,
+  });
+
+  loginFailRate.add(!success);
+  loginDuration.add(res.timings.duration);
+
+  sleep(Math.random() * 2 + 1); // random think time 1-3s
+}`;
+
+const executorExample = `// Executor types for realistic load shapes
+export const options = {
+  scenarios: {
+    // Constant arrival rate — independent of response time
+    constant_load: {
+      executor: 'constant-arrival-rate',
+      rate:     100,         // 100 requests per second
+      duration: '1m',
+      preAllocatedVUs: 20,
+      maxVUs: 50,
+    },
+
+    // Ramping arrival rate — simulate traffic spikes
+    spike_test: {
+      executor: 'ramping-arrival-rate',
+      startRate: 10,
+      stages: [
+        { target: 500, duration: '30s' },  // spike to 500 rps
+        { target: 10,  duration: '30s' },  // recover
+      ],
+      preAllocatedVUs: 50,
+      maxVUs: 200,
+    },
+
+    // Per-VU iterations — each VU runs exactly N times
+    smoke_test: {
+      executor:    'per-vu-iterations',
+      vus:         5,
+      iterations:  10,
+      maxDuration: '1m',
+    },
+  },
+};`;
+
+const ciExample = `# GitHub Actions — run k6 as part of CI pipeline
+name: Load Test
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  k6_load_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run k6 load test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: tests/load/api.js
+        env:
+          BASE_URL: ${{ secrets.STAGING_URL }}
+
+      # Or run k6 directly
+      - name: Install k6
+        run: |
+          curl https://github.com/grafana/k6/releases/download/v0.51.0/k6-v0.51.0-linux-amd64.tar.gz -L | tar xvz
+          sudo cp k6-v0.51.0-linux-amd64/k6 /usr/local/bin
+
+      - name: Run tests
+        run: k6 run --out json=results.json tests/load/api.js`;
+
+const faq = [
+  {
+    question: "What is k6?",
+    answer: "k6 is an open-source, developer-centric load testing tool built by Grafana Labs. You write tests in JavaScript or TypeScript using a clean ES module API, but the runtime is Go — not Node.js — which means k6 is extremely efficient: a single machine can generate massive load with low resource overhead. k6 is designed for CI/CD pipelines and developer workflows, with a CLI-first interface and rich metrics output."
+  },
+  {
+    question: "How is k6 different from JMeter?",
+    answer: "JMeter uses a GUI-based XML configuration model and runs on the JVM, which makes it memory-intensive and harder to version-control. k6 tests are plain JavaScript files that live in your repo alongside application code, work seamlessly in CI/CD pipelines, and produce structured JSON or CSV output. k6 also starts up much faster and uses far less memory per virtual user. JMeter has a larger ecosystem of plugins and a long enterprise track record; k6 is preferred for modern developer-owned workflows."
+  },
+  {
+    question: "What are Virtual Users (VUs) in k6?",
+    answer: "A Virtual User (VU) represents a simulated user executing your test script in a continuous loop. Each VU runs independently and concurrently, maintaining its own cookies, headers, and connection state. You control the number of VUs over time using stages (gradual ramp-up) or executors (constant arrival rate, ramping arrival rate, per-VU iterations, etc.). VU count is the primary knob for controlling concurrency and load."
+  },
+  {
+    question: "How do thresholds work in k6?",
+    answer: "Thresholds are pass/fail criteria defined in the options object. Examples: http_req_duration: ['p(95)<500'] (95th percentile response time must be under 500ms) or http_req_failed: ['rate<0.01'] (error rate must be below 1%). If any threshold is breached, k6 exits with a non-zero exit code, which fails the CI job. Thresholds can be applied to built-in metrics (http_req_duration, http_req_failed, vus) or custom metrics you define with the k6/metrics API."
+  },
+  {
+    question: "Can k6 run in CI/CD pipelines?",
+    answer: "Yes — k6 is designed for CI/CD. It exits with code 0 on pass and non-zero when thresholds are breached, which maps directly to pipeline success/failure. Grafana provides an official k6-action for GitHub Actions. k6 can output results as JSON, CSV, or stream them to Grafana Cloud, InfluxDB, or Prometheus for dashboard visualization. A typical pattern is to run a smoke test on every push and a full load test nightly or before releases."
+  },
+  {
+    question: "What protocols does k6 support?",
+    answer: "k6 has built-in support for HTTP/1.1, HTTP/2, WebSockets, and gRPC. The xk6 extension system lets you build custom k6 binaries with community or private extensions that add support for Kafka, Redis, SQL databases, browser automation (via k6 browser, now bundled), and more. The k6 browser module uses the Chrome DevTools Protocol for real browser-based performance testing without needing a separate tool."
+  },
+];
+---
+
+<BaseLayout
+  title="k6 — Developer-Centric Load Testing Tool by Grafana Labs"
+  description="k6 is an open-source load testing tool where tests are written in JavaScript/TypeScript and run on a Go runtime. Supports HTTP, WebSockets, gRPC, thresholds, and seamless CI/CD integration."
+  tool="k6, load testing, performance testing, grafana k6, stress testing, api load test, http load testing, ci cd performance"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "k6 — Developer-Centric Load Testing Tool by Grafana Labs",
+    "url": "https://devplaybook.cc/tools/k6",
+    "description": "k6 is an open-source load testing tool with JavaScript/TypeScript test scripts, a Go runtime, built-in thresholds, and first-class CI/CD support.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">k6</h1>
+  <p class="text-text-muted mb-6">
+    Developer-centric load testing tool by Grafana Labs. Write tests in JavaScript or TypeScript,
+    run them on a blazing-fast Go runtime, define pass/fail thresholds, and integrate directly
+    into your CI/CD pipeline — no GUI required.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JS/TS test scripts</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Go runtime (fast &amp; efficient)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HTTP, WebSockets, gRPC</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pass/fail thresholds</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CI/CD native</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Grafana integration</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is k6?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    k6 (pronounced "kay-six") is an open-source load testing tool built by Grafana Labs and the community. Unlike older tools that require XML configuration or a GUI, k6 tests are plain JavaScript or TypeScript files that live in your repo. The runtime is written in Go, not Node.js — meaning k6 can push enormous load from a single machine with minimal memory overhead.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    k6 is opinionated about the developer experience: tests are code, results are structured, and pass/fail criteria (thresholds) are defined alongside the test logic. This makes k6 a natural fit for modern engineering teams that treat performance as part of the CI/CD pipeline rather than a one-off pre-production activity.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>JavaScript/TypeScript tests</strong> — familiar language, ES modules, IntelliSense support; tests version-controlled like application code</li>
+    <li><strong>Go runtime</strong> — not Node.js; extremely low memory per VU enables high concurrency on modest hardware</li>
+    <li><strong>Built-in protocols</strong> — HTTP/1.1, HTTP/2, WebSockets, and gRPC out of the box</li>
+    <li><strong>Virtual Users + executors</strong> — constant VUs, ramping VUs, constant arrival rate, ramping arrival rate, and more for realistic load shapes</li>
+    <li><strong>Thresholds</strong> — define SLO-based pass/fail criteria (e.g. <code class="bg-bg-card px-1 rounded text-xs">p(95)&lt;500</code>) that fail CI on breach</li>
+    <li><strong>Custom metrics</strong> — Counter, Gauge, Rate, Trend for domain-specific instrumentation</li>
+    <li><strong>xk6 extensions</strong> — build custom k6 binaries with Kafka, Redis, browser, SQL, and more</li>
+    <li><strong>Output integrations</strong> — stream metrics to Grafana Cloud, InfluxDB, Prometheus, Datadog, or JSON/CSV</li>
+    <li><strong>k6 browser</strong> — bundled Chrome DevTools Protocol module for real browser performance testing</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={installExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Start: Basic Load Test</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    A k6 script exports a default function (the "virtual user loop") and an <code class="bg-bg-card px-1 rounded text-xs">options</code> object for configuration. The example below ramps to 20 VUs, holds for 1 minute, then ramps down — and fails if the p95 response time exceeds 500ms.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={quickstartExample}></pre>
+  <p class="text-text-muted mb-4 text-sm">Run it with: <code class="bg-bg-card px-1 rounded text-xs">k6 run script.js</code></p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Advanced: Custom Metrics &amp; Authentication</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Use the <code class="bg-bg-card px-1 rounded text-xs">k6/metrics</code> API to track domain-specific values. Define a <code class="bg-bg-card px-1 rounded text-xs">Trend</code> for login duration and a <code class="bg-bg-card px-1 rounded text-xs">Rate</code> for login failures, then set thresholds on them.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={advancedExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Executor Types</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    k6 scenarios let you mix different executor types in a single test. Use <code class="bg-bg-card px-1 rounded text-xs">constant-arrival-rate</code> to model steady-state throughput independent of response time, or <code class="bg-bg-card px-1 rounded text-xs">ramping-arrival-rate</code> to simulate traffic spikes.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={executorExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">CI/CD Integration</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    k6 exits with a non-zero code when thresholds are breached, making it a drop-in CI gate. Grafana provides an official <code class="bg-bg-card px-1 rounded text-xs">grafana/k6-action</code> for GitHub Actions.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={ciExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">k6 vs JMeter vs Locust</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">k6</th>
+          <th class="border border-border px-3 py-2 text-left">JMeter</th>
+          <th class="border border-border px-3 py-2 text-left">Locust</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Test language</td><td class="border border-border px-3 py-2 text-green-400">JS / TypeScript</td><td class="border border-border px-3 py-2">XML / GUI</td><td class="border border-border px-3 py-2">Python</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Runtime</td><td class="border border-border px-3 py-2 text-green-400">Go (fast &amp; lean)</td><td class="border border-border px-3 py-2">JVM (heavy)</td><td class="border border-border px-3 py-2">Python (GIL limits)</td></tr>
+        <tr><td class="border border-border px-3 py-2">CI/CD fit</td><td class="border border-border px-3 py-2 text-green-400">Excellent</td><td class="border border-border px-3 py-2">Moderate</td><td class="border border-border px-3 py-2">Good</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">GUI</td><td class="border border-border px-3 py-2">CLI-first</td><td class="border border-border px-3 py-2 text-green-400">Rich GUI</td><td class="border border-border px-3 py-2">Web UI</td></tr>
+        <tr><td class="border border-border px-3 py-2">Cloud offering</td><td class="border border-border px-3 py-2 text-green-400">Grafana k6 Cloud</td><td class="border border-border px-3 py-2">BlazeMeter</td><td class="border border-border px-3 py-2">Locust.cloud</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Browser testing</td><td class="border border-border px-3 py-2 text-green-400">k6 browser (built-in)</td><td class="border border-border px-3 py-2">Via plugins</td><td class="border border-border px-3 py-2">No</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros and Cons</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✓ Tests are code — version-controlled, reviewable, reusable</li>
+        <li>✓ Extremely low memory per VU thanks to Go runtime</li>
+        <li>✓ First-class CI/CD support via exit codes and threshold gates</li>
+        <li>✓ Rich metrics output: JSON, CSV, Grafana, InfluxDB, Prometheus</li>
+        <li>✓ Active ecosystem with xk6 extensions and official Grafana support</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✗ No Node.js APIs — standard Node modules are unavailable in the runtime</li>
+        <li>✗ No built-in HTML report (requires k6 Cloud or external dashboards)</li>
+        <li>✗ Browser testing via k6 browser is newer and less mature</li>
+        <li>✗ Distributed testing requires k6 Cloud or manual orchestration</li>
+        <li>✗ Smaller plugin ecosystem than JMeter</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="k6" relatedTags={['load-testing', 'performance', 'testing', 'ci-cd', 'http']} />
+</BaseLayout>
