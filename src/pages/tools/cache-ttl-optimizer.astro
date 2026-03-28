@@ -1,0 +1,436 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is cache TTL and why does it matter?",
+    answer: "TTL (Time To Live) is the number of seconds a cached value is considered valid before the cache evicts or revalidates it. Too short a TTL means the cache is effectively bypassed and every request hits the database, killing performance. Too long a TTL means stale data is served to users — a product showing an old price, or a session that should have expired. Choosing the right TTL is a trade-off between freshness and performance."
+  },
+  {
+    question: "What is the difference between strict, moderate, and eventual consistency?",
+    answer: "Strict consistency means every read sees the latest write — typically required for financial balances, inventory counts, or anything users directly transact on. Moderate consistency tolerates a short window of staleness (seconds to minutes) — acceptable for dashboards, profiles, or recommendation data. Eventual consistency allows minutes to hours of lag — fine for static content, marketing pages, or cached aggregation reports."
+  },
+  {
+    question: "How does traffic level affect TTL recommendations?",
+    answer: "Under high traffic, a short TTL causes a stampede: when many requests hit the cache at the same moment the entry expires, they all miss simultaneously and pound the database. We recommend slightly longer TTLs under high traffic combined with stale-while-revalidate or jitter patterns to spread revalidation. Under low traffic, a shorter TTL is safe since simultaneous misses are unlikely."
+  },
+  {
+    question: "What is cache jitter and should I use it?",
+    answer: "Cache jitter (or TTL jitter) adds a small random delta to each item's expiry time. Instead of all cached user profiles expiring at exactly 5 minutes, they expire between 4.5 and 5.5 minutes. This prevents cache stampedes under high traffic. The config snippets include jitter where appropriate."
+  },
+  {
+    question: "Can I use these TTL values for CDN caching too?",
+    answer: "The recommendations focus on application-level caches (Redis, Memcached). For CDN caching you also need to consider the Cache-Control: s-maxage header and surrogate key invalidation. Generally CDN TTLs for dynamic content should be shorter or zero (with stale-while-revalidate for edge-side), while static assets can use very long TTLs with content-hash fingerprinting."
+  },
+  {
+    question: "What is stale-while-revalidate?",
+    answer: "stale-while-revalidate is a pattern where the cache immediately serves the expired (stale) value and simultaneously kicks off a background refresh. The user sees a fast response, and the next request already has a fresh value. Redis does not support this natively, but it is trivial to implement: if the TTL has expired, return the old value and asynchronously update. The config snippet includes a commented implementation hint."
+  },
+];
+---
+
+<BaseLayout
+  title="Cache TTL Optimizer — Get Optimal Redis & CDN TTL Values"
+  description="Get recommended cache TTL values for Redis and Memcached based on data type, update frequency, consistency requirements, and traffic level. Includes config snippets for Redis, Memcached, and CDN headers. Free, runs in your browser."
+  tool="cache TTL optimizer, Redis TTL calculator, Memcached TTL, cache expiry calculator, cache configuration generator, CDN cache headers, stale-while-revalidate"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Cache TTL Optimizer",
+    "url": "https://devplaybook.cc/tools/cache-ttl-optimizer",
+    "description": "Get optimal cache TTL recommendations for Redis and Memcached based on data type, update frequency, and consistency requirements. Includes ready-to-use config snippets.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Cache TTL Optimizer</h1>
+  <p class="text-text-muted mb-4">
+    Select your data type, update frequency, consistency requirement, and traffic level to get a recommended <strong>cache TTL</strong> with explanation, Redis/Memcached config snippets, and CDN header examples.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Data-type aware recommendations</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Redis + Memcached config</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CDN Cache-Control header</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Jitter &amp; stampede guidance</span>
+  </div>
+
+  <!-- Inputs -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-2" for="sel-data-type">Data Type</label>
+      <select id="sel-data-type" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+        <option value="user_profile">User Profile</option>
+        <option value="product_catalog">Product Catalog</option>
+        <option value="session">Session Data</option>
+        <option value="api_response">API Response</option>
+        <option value="static_content">Static Content</option>
+        <option value="search_results">Search Results</option>
+        <option value="realtime">Real-time Data</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2" for="sel-update-freq">Update Frequency</label>
+      <select id="sel-update-freq" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+        <option value="realtime">Real-time (sub-second)</option>
+        <option value="per_minute">Per Minute</option>
+        <option value="hourly">Hourly</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="rarely">Rarely / Never</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2" for="sel-consistency">Consistency Requirement</label>
+      <select id="sel-consistency" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+        <option value="strict">Strict — must always reflect latest write</option>
+        <option value="moderate" selected>Moderate — seconds of lag acceptable</option>
+        <option value="eventual">Eventual — minutes to hours lag acceptable</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2" for="sel-traffic">Traffic Level</label>
+      <select id="sel-traffic" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+        <option value="low">Low (&lt; 100 req/min)</option>
+        <option value="medium" selected>Medium (100–10k req/min)</option>
+        <option value="high">High (&gt; 10k req/min)</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="btn-optimize" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors mb-6">Get Recommendation</button>
+
+  <!-- Output -->
+  <div id="output-section" class="hidden space-y-4">
+    <!-- TTL badge -->
+    <div class="p-5 bg-bg-card border border-border rounded-xl flex flex-col sm:flex-row sm:items-center gap-4">
+      <div class="flex-1">
+        <div class="text-xs text-text-muted uppercase tracking-wide mb-1">Recommended TTL</div>
+        <div id="ttl-value" class="text-4xl font-bold font-mono text-primary"></div>
+        <div id="ttl-human" class="text-sm text-text-muted mt-1"></div>
+      </div>
+      <div id="ttl-range-box" class="flex flex-col gap-1 text-sm">
+        <div class="flex gap-2"><span class="text-text-muted w-16">Min safe:</span><span id="ttl-min" class="font-mono text-foreground"></span></div>
+        <div class="flex gap-2"><span class="text-text-muted w-16">Max safe:</span><span id="ttl-max" class="font-mono text-foreground"></span></div>
+        <div class="flex gap-2"><span class="text-text-muted w-16">Strategy:</span><span id="ttl-strategy" class="text-foreground"></span></div>
+      </div>
+    </div>
+
+    <!-- Explanation -->
+    <div class="p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+      <div class="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-2">Why this TTL?</div>
+      <p id="ttl-explanation" class="text-sm text-foreground leading-relaxed"></p>
+    </div>
+
+    <!-- Warning if any -->
+    <div id="ttl-warning" class="hidden p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+      <div class="text-xs font-semibold text-yellow-400 uppercase tracking-wide mb-2">⚠ Watch Out</div>
+      <p id="ttl-warning-text" class="text-sm text-yellow-300 leading-relaxed"></p>
+    </div>
+
+    <!-- Config tabs -->
+    <div>
+      <div class="flex gap-1 border-b border-border mb-0">
+        <button data-tab="redis" class="cfg-tab px-4 py-2 text-sm font-medium border-b-2 border-primary text-primary transition-colors">Redis</button>
+        <button data-tab="memcached" class="cfg-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">Memcached</button>
+        <button data-tab="cdn" class="cfg-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-muted hover:text-foreground transition-colors">CDN Header</button>
+      </div>
+
+      <div id="tab-redis" class="cfg-panel bg-bg-card border border-border border-t-0 rounded-b-xl overflow-hidden">
+        <div class="flex justify-end px-4 py-2 border-b border-border">
+          <button class="copy-cfg-btn px-3 py-1 text-xs bg-bg-card border border-border rounded hover:border-primary transition-colors" data-target="code-redis">Copy</button>
+        </div>
+        <pre id="code-redis" class="font-mono text-sm p-4 whitespace-pre overflow-x-auto text-green-300 leading-relaxed"></pre>
+      </div>
+      <div id="tab-memcached" class="cfg-panel hidden bg-bg-card border border-border border-t-0 rounded-b-xl overflow-hidden">
+        <div class="flex justify-end px-4 py-2 border-b border-border">
+          <button class="copy-cfg-btn px-3 py-1 text-xs bg-bg-card border border-border rounded hover:border-primary transition-colors" data-target="code-memcached">Copy</button>
+        </div>
+        <pre id="code-memcached" class="font-mono text-sm p-4 whitespace-pre overflow-x-auto text-blue-300 leading-relaxed"></pre>
+      </div>
+      <div id="tab-cdn" class="cfg-panel hidden bg-bg-card border border-border border-t-0 rounded-b-xl overflow-hidden">
+        <div class="flex justify-end px-4 py-2 border-b border-border">
+          <button class="copy-cfg-btn px-3 py-1 text-xs bg-bg-card border border-border rounded hover:border-primary transition-colors" data-target="code-cdn">Copy</button>
+        </div>
+        <pre id="code-cdn" class="font-mono text-sm p-4 whitespace-pre overflow-x-auto text-purple-300 leading-relaxed"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Cache TTL Optimizer" relatedTags={['database', 'performance', 'redis', 'caching', 'backend', 'api']} />
+</BaseLayout>
+
+<script>
+// ─── TTL matrix ───────────────────────────────────────────────────────────────
+interface TTLProfile {
+  ttl: number;       // seconds
+  min: number;
+  max: number;
+  strategy: string;
+  explanation: string;
+  warning?: string;
+}
+
+type DataType = 'user_profile' | 'product_catalog' | 'session' | 'api_response' | 'static_content' | 'search_results' | 'realtime';
+type Frequency = 'realtime' | 'per_minute' | 'hourly' | 'daily' | 'weekly' | 'rarely';
+type Consistency = 'strict' | 'moderate' | 'eventual';
+type Traffic = 'low' | 'medium' | 'high';
+
+function computeTTL(dt: DataType, freq: Frequency, cons: Consistency, traffic: Traffic): TTLProfile {
+  // Base TTL lookup by data type (seconds)
+  const base: Record<DataType, number> = {
+    user_profile:    300,
+    product_catalog: 600,
+    session:         1800,
+    api_response:    60,
+    static_content:  86400,
+    search_results:  120,
+    realtime:        5,
+  };
+
+  // Frequency multiplier
+  const freqMul: Record<Frequency, number> = {
+    realtime:   0.1,
+    per_minute: 0.3,
+    hourly:     1.0,
+    daily:      3.0,
+    weekly:     8.0,
+    rarely:     24.0,
+  };
+
+  // Consistency divisor
+  const consMul: Record<Consistency, number> = {
+    strict:   0.2,
+    moderate: 1.0,
+    eventual: 4.0,
+  };
+
+  // Traffic multiplier (longer TTL under high traffic to avoid stampede)
+  const traffMul: Record<Traffic, number> = {
+    low:    0.8,
+    medium: 1.0,
+    high:   1.4,
+  };
+
+  let ttl = Math.round(base[dt] * freqMul[freq] * consMul[cons] * traffMul[traffic]);
+
+  // Clamp extremes
+  if (cons === 'strict' && dt === 'realtime') ttl = 0;
+  if (cons === 'strict') ttl = Math.min(ttl, 30);
+  if (dt === 'static_content' && freq === 'rarely') ttl = Math.min(ttl, 2592000); // 30 days
+
+  const min = Math.round(ttl * 0.5);
+  const max = Math.round(ttl * 2.5);
+
+  const strategyMap: Record<Consistency, string> = {
+    strict: 'Cache-aside + immediate invalidation on write',
+    moderate: traffic === 'high' ? 'stale-while-revalidate' : 'Cache-aside',
+    eventual: 'Write-through or read-through',
+  };
+
+  const explanationParts: string[] = [];
+  explanationParts.push(`${capitalize(dt.replace('_', ' '))} data updated ${freqLabel(freq)} with ${cons} consistency under ${traffic} traffic.`);
+
+  if (cons === 'strict') {
+    explanationParts.push('Strict consistency requires short or zero TTL. Use write-through invalidation: delete the cache key immediately on every write so the next read always fetches from the database.');
+  } else if (cons === 'moderate') {
+    explanationParts.push(`A ${humanDuration(ttl)} TTL balances freshness with cache hit rate. Users may see data up to ${humanDuration(ttl)} stale, which is acceptable for this data type.`);
+  } else {
+    explanationParts.push(`Eventual consistency allows a longer ${humanDuration(ttl)} TTL. This maximises cache hit rate and reduces database load significantly.`);
+  }
+
+  if (traffic === 'high') {
+    explanationParts.push('Under high traffic, add ±10–15% random jitter to the TTL to avoid cache stampedes when many keys expire simultaneously.');
+  }
+
+  let warning: string | undefined;
+  if (ttl === 0) {
+    warning = 'TTL of 0 means no caching. Consider whether a very short TTL (1–5 seconds) with immediate invalidation on write would work — this provides basic protection against repeated identical requests.';
+  } else if (dt === 'session' && ttl > 3600) {
+    warning = 'Session TTLs above 1 hour should match your application\'s session timeout exactly. Mismatched TTLs can cause security issues — a session active in the cache after the user logs out.';
+  } else if (dt === 'realtime' && ttl > 10) {
+    warning = 'Real-time data with a TTL above 10 seconds may feel stale to users. Consider using WebSockets or Server-Sent Events for true real-time delivery rather than polling a cache.';
+  }
+
+  return {
+    ttl,
+    min,
+    max,
+    strategy: strategyMap[cons],
+    explanation: explanationParts.join(' '),
+    warning,
+  };
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function freqLabel(f: Frequency): string {
+  const m: Record<Frequency, string> = {
+    realtime: 'in real time',
+    per_minute: 'every minute',
+    hourly: 'hourly',
+    daily: 'daily',
+    weekly: 'weekly',
+    rarely: 'rarely or never',
+  };
+  return m[f];
+}
+
+function humanDuration(seconds: number): string {
+  if (seconds === 0) return '0 seconds';
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
+  return `${Math.round(seconds / 86400)}d`;
+}
+
+// ─── Config generators ────────────────────────────────────────────────────────
+function genRedis(dt: DataType, ttl: number, traffic: Traffic): string {
+  const key = `${dt}:{id}`;
+  const jitter = traffic === 'high' ? `\n# Add jitter: ttl + random.randint(-${Math.round(ttl * 0.1)}, ${Math.round(ttl * 0.1)})` : '';
+  const swr = traffic === 'high'
+    ? `\n# stale-while-revalidate pattern:\n# if time_remaining(key) < ${Math.round(ttl * 0.1)}:\n#     async_refresh(key)  # refresh in background\n#     return cached_value  # serve stale immediately`
+    : '';
+
+  return `# Redis (redis-py / ioredis)
+# TTL: ${ttl} seconds (${humanDuration(ttl)})
+
+# SET with EX (seconds)
+SET "${key}" "<json_value>" EX ${ttl}
+
+# Python (redis-py)
+r.setex("${key}", ${ttl}, json.dumps(value))${jitter}
+
+# Node.js (ioredis)
+await redis.setex("${key}", ${ttl}, JSON.stringify(value))${jitter}${swr}
+
+# GET with TTL check
+GET "${key}"
+TTL "${key}"  # returns -2 if missing, -1 if no expiry`;
+}
+
+function genMemcached(dt: DataType, ttl: number): string {
+  const key = `${dt}_id`;
+  return `# Memcached
+# TTL: ${ttl} seconds (${humanDuration(ttl)})
+# Note: Memcached TTL > 2592000 (30 days) is treated as a Unix timestamp
+
+# pylibmc / pymemcache (Python)
+mc.set("${key}", value, time=${ttl})
+result = mc.get("${key}")
+
+# Node.js (memjs)
+await client.set("${key}", JSON.stringify(value), { expires: ${ttl} })
+const { value } = await client.get("${key}")
+
+# PHP (Memcached extension)
+$mc->set("${key}", $value, ${ttl});
+$value = $mc->get("${key}");`;
+}
+
+function genCDN(dt: DataType, ttl: number, cons: Consistency): string {
+  const swr = cons !== 'strict' ? `, stale-while-revalidate=${Math.round(ttl * 0.5)}` : '';
+  const sne = cons === 'eventual' ? `, stale-if-error=${ttl * 5}` : '';
+  const priv = dt === 'session' || (cons === 'strict' && ttl < 30) ? 'private, ' : '';
+  const smaxage = dt === 'session' ? '' : `, s-maxage=${ttl}`;
+
+  return `# HTTP Cache-Control header
+Cache-Control: ${priv}max-age=${ttl}${smaxage}${swr}${sne}
+
+# nginx
+location ~* \\.${dt.replace('_','-')} {
+    add_header Cache-Control "${priv}max-age=${ttl}${smaxage}${swr}";
+    add_header Vary "Accept-Encoding, Accept";
+}
+
+# Cloudflare Page Rule / Cache Rule
+# Edge cache TTL: ${humanDuration(ttl)}
+# Browser cache TTL: ${humanDuration(Math.round(ttl / 2))}
+
+# Vercel (vercel.json)
+{
+  "headers": [{
+    "source": "/api/${dt.replace('_','-')}/(.*)",
+    "headers": [{ "key": "Cache-Control", "value": "${priv}max-age=${ttl}${smaxage}${swr}" }]
+  }]
+}`;
+}
+
+// ─── Active tab ───────────────────────────────────────────────────────────────
+let activeTab = 'redis';
+
+function switchTab(tab: string): void {
+  activeTab = tab;
+  document.querySelectorAll<HTMLElement>('.cfg-tab').forEach(t => {
+    const active = t.dataset.tab === tab;
+    t.classList.toggle('border-primary', active);
+    t.classList.toggle('text-primary', active);
+    t.classList.toggle('border-transparent', !active);
+    t.classList.toggle('text-text-muted', !active);
+  });
+  document.querySelectorAll('.cfg-panel').forEach(p => p.classList.add('hidden'));
+  document.getElementById(`tab-${tab}`)?.classList.remove('hidden');
+}
+
+document.querySelectorAll<HTMLElement>('.cfg-tab').forEach(t => {
+  t.addEventListener('click', () => switchTab(t.dataset.tab!));
+});
+
+document.querySelectorAll<HTMLElement>('.copy-cfg-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const el = document.getElementById(btn.dataset.target!);
+    if (!el) return;
+    navigator.clipboard.writeText(el.textContent || '').then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  });
+});
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+function val(id: string): string {
+  return (document.getElementById(id) as HTMLSelectElement).value;
+}
+
+document.getElementById('btn-optimize')?.addEventListener('click', () => {
+  const dt = val('sel-data-type') as DataType;
+  const freq = val('sel-update-freq') as Frequency;
+  const cons = val('sel-consistency') as Consistency;
+  const traffic = val('sel-traffic') as Traffic;
+
+  const profile = computeTTL(dt, freq, cons, traffic);
+
+  document.getElementById('ttl-value')!.textContent = profile.ttl === 0 ? 'No Cache' : `${profile.ttl}s`;
+  document.getElementById('ttl-human')!.textContent = profile.ttl === 0 ? 'Cache disabled — use invalidation on write' : `= ${humanDuration(profile.ttl)}`;
+  document.getElementById('ttl-min')!.textContent = profile.ttl === 0 ? 'n/a' : `${profile.min}s (${humanDuration(profile.min)})`;
+  document.getElementById('ttl-max')!.textContent = profile.ttl === 0 ? 'n/a' : `${profile.max}s (${humanDuration(profile.max)})`;
+  document.getElementById('ttl-strategy')!.textContent = profile.strategy;
+  document.getElementById('ttl-explanation')!.textContent = profile.explanation;
+
+  const warningBox = document.getElementById('ttl-warning')!;
+  if (profile.warning) {
+    document.getElementById('ttl-warning-text')!.textContent = profile.warning;
+    warningBox.classList.remove('hidden');
+  } else {
+    warningBox.classList.add('hidden');
+  }
+
+  document.getElementById('code-redis')!.textContent = genRedis(dt, profile.ttl, traffic);
+  document.getElementById('code-memcached')!.textContent = genMemcached(dt, profile.ttl);
+  document.getElementById('code-cdn')!.textContent = genCDN(dt, profile.ttl, cons);
+
+  document.getElementById('output-section')!.classList.remove('hidden');
+  switchTab(activeTab);
+  setTimeout(() => document.getElementById('output-section')!.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+});
+
+// Auto-run on load with defaults
+document.getElementById('btn-optimize')?.dispatchEvent(new Event('click'));
+</script>

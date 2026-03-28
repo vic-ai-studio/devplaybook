@@ -1,0 +1,470 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What SQL syntax does the ERD generator support?",
+    answer: "The tool parses standard SQL CREATE TABLE statements compatible with MySQL, PostgreSQL, and SQLite. It recognises PRIMARY KEY constraints (both inline and table-level), FOREIGN KEY ... REFERENCES clauses, column data types, and NOT NULL / DEFAULT modifiers. Both backtick (MySQL) and double-quote (PostgreSQL) identifier quoting are handled."
+  },
+  {
+    question: "How are relationships detected?",
+    answer: "The parser looks for two patterns: (1) a column definition ending with REFERENCES table(column), and (2) a table-level FOREIGN KEY (col) REFERENCES table(col) constraint. Both forms produce a relationship arrow in the diagram. If neither is present the tables are shown as independent entities."
+  },
+  {
+    question: "What do PK and FK mean in the diagram?",
+    answer: "PK marks the primary key column(s). FK marks columns that are foreign keys pointing to another table. The arrow after the FK annotation shows the target table and column, e.g. FK → orders(id)."
+  },
+  {
+    question: "Why does my SQL not parse correctly?",
+    answer: "The parser uses lightweight regex-based heuristics rather than a full SQL grammar, so very complex statements (WITH clauses, generated columns, multi-statement triggers) may not parse cleanly. Paste only the CREATE TABLE blocks, one per table, without surrounding procedure or transaction wrapper code."
+  },
+  {
+    question: "Does this tool send my schema to a server?",
+    answer: "No. All parsing and rendering runs entirely in your browser. Your schema text is never transmitted to any server."
+  },
+];
+---
+
+<BaseLayout
+  title="SQL ERD Generator — Text ERD from CREATE TABLE Statements"
+  description="Paste SQL CREATE TABLE statements and instantly generate a text-based ERD showing tables, columns, types, primary keys, and foreign key relationships. Runs 100% in your browser."
+  tool="SQL ERD generator, entity relationship diagram, CREATE TABLE parser, database schema visualizer, foreign key diagram, ASCII ERD, text ERD"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "SQL ERD Generator",
+    "url": "https://devplaybook.cc/tools/erd-generator",
+    "description": "Generate text-based Entity Relationship Diagrams from SQL CREATE TABLE statements. Detects primary keys, foreign keys, and relationships automatically.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">SQL ERD Generator</h1>
+  <p class="text-text-muted mb-4">
+    Paste your <code class="font-mono bg-surface px-1 rounded text-sm">CREATE TABLE</code> statements and get a structured text ERD with tables, columns, types, and relationship arrows. Detects <code class="font-mono bg-surface px-1 rounded text-sm">PRIMARY KEY</code> and <code class="font-mono bg-surface px-1 rounded text-sm">FOREIGN KEY … REFERENCES</code> automatically.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Detects PK / FK automatically</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Relationship arrows between tables</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> MySQL, PostgreSQL, SQLite syntax</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+  </div>
+
+  <div class="mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <label class="text-sm font-medium" for="sql-input">SQL CREATE TABLE Statements</label>
+      <div class="flex gap-2">
+        <button id="btn-load-example" class="px-3 py-1.5 bg-bg-card border border-border rounded-lg text-xs hover:border-primary transition-colors">Load Example</button>
+        <button id="btn-clear" class="px-3 py-1.5 bg-bg-card border border-border rounded-lg text-xs hover:border-primary transition-colors">Clear</button>
+      </div>
+    </div>
+    <textarea
+      id="sql-input"
+      class="w-full bg-bg-card border border-border rounded-xl p-4 font-mono text-sm focus:outline-none focus:border-primary resize-none"
+      rows="14"
+      placeholder="Paste your CREATE TABLE statements here…"
+      spellcheck="false"
+    ></textarea>
+  </div>
+
+  <button id="btn-generate" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors mb-6">Generate ERD</button>
+
+  <div id="error-box" class="hidden mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400"></div>
+
+  <div id="output-section" class="hidden">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Entity Relationship Diagram</h2>
+      <button id="btn-copy" class="px-3 py-1.5 bg-bg-card border border-border rounded-lg text-xs hover:border-primary transition-colors">Copy</button>
+    </div>
+
+    <!-- Relationship summary -->
+    <div id="rel-summary" class="mb-4 flex flex-wrap gap-2"></div>
+
+    <!-- Tables grid -->
+    <div id="tables-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6"></div>
+
+    <!-- Relationships list -->
+    <div id="rels-section" class="hidden mb-6">
+      <h3 class="text-sm font-semibold mb-3 text-text-muted uppercase tracking-wide">Relationships</h3>
+      <div id="rels-list" class="space-y-2"></div>
+    </div>
+
+    <!-- Raw text ERD -->
+    <div class="bg-bg-card border border-border rounded-xl overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-border">
+        <span class="text-xs text-text-muted font-mono">Text ERD (copyable)</span>
+        <button id="btn-copy-raw" class="px-2 py-1 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+      </div>
+      <pre id="erd-raw" class="font-mono text-sm p-4 whitespace-pre overflow-x-auto text-foreground leading-relaxed max-h-96 overflow-y-auto"></pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="SQL ERD Generator" relatedTags={['database', 'sql', 'postgresql', 'mysql', 'schema', 'data-modeling']} />
+</BaseLayout>
+
+<script>
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface Column {
+  name: string;
+  type: string;
+  notNull: boolean;
+  isPK: boolean;
+  isFK: boolean;
+  fkRef: string; // "table.column" or ""
+}
+
+interface Relationship {
+  fromTable: string;
+  fromCol: string;
+  toTable: string;
+  toCol: string;
+}
+
+interface Table {
+  name: string;
+  columns: Column[];
+}
+
+// ─── Parser ───────────────────────────────────────────────────────────────────
+function stripComments(sql: string): string {
+  return sql
+    .replace(/--[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
+function unquote(name: string): string {
+  return name.replace(/^[`"'\[]|[`"'\]]$/g, '').trim();
+}
+
+function parseSQL(sql: string): { tables: Table[]; relationships: Relationship[] } {
+  const clean = stripComments(sql);
+  const tables: Table[] = [];
+  const relationships: Relationship[] = [];
+
+  // Match each CREATE TABLE block
+  const tableRe = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([`"\[\w.]+)\s*\(([\s\S]*?)\)\s*;?/gi;
+  let tMatch: RegExpExecArray | null;
+
+  while ((tMatch = tableRe.exec(clean)) !== null) {
+    const rawName = unquote(tMatch[1].split('.').pop()!);
+    const body = tMatch[2];
+
+    const columns: Column[] = [];
+    // Collect inline PKs from PRIMARY KEY constraint lines
+    const tablePKs = new Set<string>();
+    const pkConstraintRe = /PRIMARY\s+KEY\s*\(([^)]+)\)/gi;
+    let pkMatch: RegExpExecArray | null;
+    while ((pkMatch = pkConstraintRe.exec(body)) !== null) {
+      pkMatch[1].split(',').forEach(c => tablePKs.add(unquote(c.trim())));
+    }
+
+    // Collect table-level FK constraints
+    const fkConstraintRe = /FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([`"\[\w.]+)\s*\(([^)]+)\)/gi;
+    let fkMatch: RegExpExecArray | null;
+    const tableFKs: Record<string, string> = {}; // colName -> "table.col"
+    while ((fkMatch = fkConstraintRe.exec(body)) !== null) {
+      const cols = fkMatch[1].split(',').map(c => unquote(c.trim()));
+      const refTable = unquote(fkMatch[2].split('.').pop()!);
+      const refCols = fkMatch[3].split(',').map(c => unquote(c.trim()));
+      cols.forEach((col, i) => {
+        tableFKs[col] = `${refTable}.${refCols[i] || refCols[0]}`;
+        relationships.push({ fromTable: rawName, fromCol: col, toTable: refTable, toCol: refCols[i] || refCols[0] });
+      });
+    }
+
+    // Parse column lines (skip constraint lines)
+    const lines = body.split('\n');
+    for (const rawLine of lines) {
+      const line = rawLine.trim().replace(/,$/, '').trim();
+      if (!line) continue;
+      // Skip constraint keywords
+      if (/^(PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|INDEX|KEY|CONSTRAINT|CHECK)/i.test(line)) continue;
+
+      // Match: [name] [type] [modifiers]
+      const colRe = /^([`"\[\w]+)\s+([\w()]+(?:\s*\(\s*\d+\s*(?:,\s*\d+\s*)?\))?(?:\s+(?:UNSIGNED|ZEROFILL))?)/i;
+      const colMatch = colRe.exec(line);
+      if (!colMatch) continue;
+
+      const colName = unquote(colMatch[1]);
+      const colType = colMatch[2].replace(/\s+/g, ' ').trim();
+
+      const notNull = /NOT\s+NULL/i.test(line);
+      const inlinePK = /PRIMARY\s+KEY/i.test(line);
+      if (inlinePK) tablePKs.add(colName);
+
+      // Inline REFERENCES
+      let fkRef = tableFKs[colName] || '';
+      const inlineFKRe = /REFERENCES\s+([`"\[\w.]+)\s*\(([^)]+)\)/i;
+      const inlineFKMatch = inlineFKRe.exec(line);
+      if (inlineFKMatch) {
+        const refTable = unquote(inlineFKMatch[1].split('.').pop()!);
+        const refCol = unquote(inlineFKMatch[2].trim());
+        fkRef = `${refTable}.${refCol}`;
+        if (!tableFKs[colName]) {
+          tableFKs[colName] = fkRef;
+          relationships.push({ fromTable: rawName, fromCol: colName, toTable: refTable, toCol: refCol });
+        }
+      }
+
+      columns.push({
+        name: colName,
+        type: colType,
+        notNull,
+        isPK: tablePKs.has(colName) || inlinePK,
+        isFK: !!fkRef,
+        fkRef,
+      });
+    }
+
+    // Re-apply table PKs (constraint defined after columns)
+    columns.forEach(col => {
+      if (tablePKs.has(col.name)) col.isPK = true;
+    });
+
+    if (columns.length > 0 || rawName) {
+      tables.push({ name: rawName, columns });
+    }
+  }
+
+  // Deduplicate relationships
+  const seen = new Set<string>();
+  const dedupedRels = relationships.filter(r => {
+    const key = `${r.fromTable}.${r.fromCol}->${r.toTable}.${r.toCol}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return { tables, relationships: dedupedRels };
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function buildRawERD(tables: Table[], relationships: Relationship[]): string {
+  const lines: string[] = [];
+
+  tables.forEach(table => {
+    const maxLen = Math.max(table.name.length, ...table.columns.map(c => {
+      const tag = c.isPK ? '[PK] ' : c.isFK ? '[FK] ' : '     ';
+      return (tag + c.name + '  ' + c.type).length;
+    }));
+    const width = Math.min(Math.max(maxLen + 4, 30), 60);
+    const line = '─'.repeat(width);
+
+    lines.push(`┌${line}┐`);
+    const titlePad = Math.floor((width - table.name.length) / 2);
+    lines.push(`│${' '.repeat(titlePad)}${table.name}${' '.repeat(width - titlePad - table.name.length)}│`);
+    lines.push(`├${line}┤`);
+
+    table.columns.forEach(col => {
+      const tag = col.isPK ? '[PK] ' : col.isFK ? '[FK] ' : '     ';
+      const typeStr = `  ${col.type}`;
+      const nameStr = tag + col.name;
+      const inner = nameStr + typeStr;
+      const padded = inner.length < width ? inner + ' '.repeat(width - inner.length) : inner.slice(0, width);
+      lines.push(`│${padded}│`);
+      if (col.isFK && col.fkRef) {
+        const arrow = `     └──▶ ${col.fkRef}`;
+        const ap = arrow.length < width ? arrow + ' '.repeat(width - arrow.length) : arrow.slice(0, width);
+        lines.push(`│${ap}│`);
+      }
+    });
+
+    lines.push(`└${line}┘`);
+    lines.push('');
+  });
+
+  if (relationships.length > 0) {
+    lines.push('── Relationships ──────────────────────────────────');
+    relationships.forEach(r => {
+      lines.push(`  ${r.fromTable}.${r.fromCol}  ──▶  ${r.toTable}.${r.toCol}`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
+function renderTables(tables: Table[]): void {
+  const grid = document.getElementById('tables-grid')!;
+  grid.innerHTML = '';
+
+  tables.forEach(table => {
+    const card = document.createElement('div');
+    card.className = 'bg-bg-card border border-border rounded-xl overflow-hidden';
+
+    const header = document.createElement('div');
+    header.className = 'px-4 py-2.5 bg-primary/10 border-b border-border flex items-center gap-2';
+    header.innerHTML = `<span class="text-primary font-mono font-semibold text-sm">${table.name}</span><span class="text-xs text-text-muted ml-auto">${table.columns.length} col${table.columns.length !== 1 ? 's' : ''}</span>`;
+    card.appendChild(header);
+
+    const colList = document.createElement('div');
+    colList.className = 'divide-y divide-border';
+
+    table.columns.forEach(col => {
+      const row = document.createElement('div');
+      row.className = 'px-4 py-2 flex items-start gap-2';
+
+      let badge = '';
+      if (col.isPK) badge = '<span class="flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">PK</span>';
+      else if (col.isFK) badge = '<span class="flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">FK</span>';
+      else badge = '<span class="flex-shrink-0 w-8"></span>';
+
+      const fkArrow = col.isFK && col.fkRef
+        ? `<span class="block text-xs text-text-muted font-mono mt-0.5">▶ ${col.fkRef}</span>`
+        : '';
+
+      row.innerHTML = `
+        ${badge}
+        <div class="min-w-0 flex-1">
+          <span class="font-mono text-sm text-foreground">${col.name}</span>
+          ${fkArrow}
+        </div>
+        <span class="font-mono text-xs text-text-muted flex-shrink-0">${col.type}${col.notNull ? ' !' : ''}</span>
+      `;
+      colList.appendChild(row);
+    });
+
+    card.appendChild(colList);
+    grid.appendChild(card);
+  });
+}
+
+function renderRelationships(relationships: Relationship[]): void {
+  const section = document.getElementById('rels-section')!;
+  const list = document.getElementById('rels-list')!;
+
+  if (relationships.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+  list.innerHTML = '';
+
+  relationships.forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'flex items-center gap-2 p-3 bg-bg-card border border-border rounded-lg text-sm font-mono';
+    item.innerHTML = `
+      <span class="text-primary">${r.fromTable}</span>
+      <span class="text-text-muted">.</span>
+      <span class="text-foreground">${r.fromCol}</span>
+      <span class="text-text-muted px-2">──▶</span>
+      <span class="text-green-400">${r.toTable}</span>
+      <span class="text-text-muted">.</span>
+      <span class="text-foreground">${r.toCol}</span>
+    `;
+    list.appendChild(item);
+  });
+}
+
+function renderSummary(tables: Table[], relationships: Relationship[]): void {
+  const summary = document.getElementById('rel-summary')!;
+  summary.innerHTML = `
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/30 text-xs text-primary">${tables.length} Table${tables.length !== 1 ? 's' : ''}</span>
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-xs text-blue-400">${tables.reduce((s,t) => s + t.columns.length, 0)} Columns</span>
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/30 text-xs text-green-400">${relationships.length} Relationship${relationships.length !== 1 ? 's' : ''}</span>
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-400">${tables.reduce((s,t) => s + t.columns.filter(c => c.isPK).length, 0)} Primary Key${tables.reduce((s,t) => s + t.columns.filter(c => c.isPK).length, 0) !== 1 ? 's' : ''}</span>
+  `;
+}
+
+// ─── Example ──────────────────────────────────────────────────────────────────
+const EXAMPLE_SQL = `CREATE TABLE users (
+  id          BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  email       VARCHAR(255)  NOT NULL,
+  username    VARCHAR(100)  NOT NULL,
+  created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  is_active   BOOLEAN       NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE orders (
+  id          BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id     BIGINT        NOT NULL REFERENCES users(id),
+  status      VARCHAR(50)   NOT NULL DEFAULT 'pending',
+  total_cents INT           NOT NULL,
+  created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE order_items (
+  id          BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  order_id    BIGINT        NOT NULL,
+  product_id  BIGINT        NOT NULL,
+  quantity    INT           NOT NULL DEFAULT 1,
+  unit_price  INT           NOT NULL,
+  FOREIGN KEY (order_id)   REFERENCES orders(id),
+  FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+CREATE TABLE products (
+  id          BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sku         VARCHAR(100)  NOT NULL,
+  name        VARCHAR(255)  NOT NULL,
+  price_cents INT           NOT NULL,
+  stock       INT           NOT NULL DEFAULT 0
+);`;
+
+// ─── Event Wiring ─────────────────────────────────────────────────────────────
+document.getElementById('btn-load-example')?.addEventListener('click', () => {
+  (document.getElementById('sql-input') as HTMLTextAreaElement).value = EXAMPLE_SQL;
+});
+
+document.getElementById('btn-clear')?.addEventListener('click', () => {
+  (document.getElementById('sql-input') as HTMLTextAreaElement).value = '';
+  document.getElementById('output-section')!.classList.add('hidden');
+  document.getElementById('error-box')!.classList.add('hidden');
+});
+
+document.getElementById('btn-generate')?.addEventListener('click', () => {
+  const sql = (document.getElementById('sql-input') as HTMLTextAreaElement).value.trim();
+  const errorBox = document.getElementById('error-box')!;
+  const outputSection = document.getElementById('output-section')!;
+
+  errorBox.classList.add('hidden');
+  outputSection.classList.add('hidden');
+
+  if (!sql) {
+    errorBox.textContent = 'Please paste at least one CREATE TABLE statement.';
+    errorBox.classList.remove('hidden');
+    return;
+  }
+
+  const { tables, relationships } = parseSQL(sql);
+
+  if (tables.length === 0) {
+    errorBox.textContent = 'No CREATE TABLE statements found. Make sure each statement ends with a semicolon and contains at least one column.';
+    errorBox.classList.remove('hidden');
+    return;
+  }
+
+  renderSummary(tables, relationships);
+  renderTables(tables);
+  renderRelationships(relationships);
+
+  const raw = buildRawERD(tables, relationships);
+  document.getElementById('erd-raw')!.textContent = raw;
+
+  outputSection.classList.remove('hidden');
+  setTimeout(() => outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+});
+
+function copyText(text: string, btn: HTMLButtonElement): void {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+
+document.getElementById('btn-copy')?.addEventListener('click', (e) => {
+  const raw = document.getElementById('erd-raw')!.textContent || '';
+  copyText(raw, e.currentTarget as HTMLButtonElement);
+});
+
+document.getElementById('btn-copy-raw')?.addEventListener('click', (e) => {
+  const raw = document.getElementById('erd-raw')!.textContent || '';
+  copyText(raw, e.currentTarget as HTMLButtonElement);
+});
+</script>

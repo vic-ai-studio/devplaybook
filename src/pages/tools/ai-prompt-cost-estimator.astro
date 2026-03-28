@@ -1,0 +1,224 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How are API costs calculated?", answer: "LLM APIs charge separately for input tokens (your prompt + context) and output tokens (the model's response). Costs are priced per 1 million tokens. For example, GPT-4o at $5/1M input means 1,000 tokens costs $0.005. Total cost = (input_tokens / 1M × input_price) + (output_tokens / 1M × output_price)." },
+  { question: "Why is output more expensive than input?", answer: "Output tokens require the model to generate each token auto-regressively — a compute-intensive process. Input tokens are processed in parallel via attention mechanisms. Generating output is typically 3–5× more compute-intensive per token, which is reflected in the pricing." },
+  { question: "How do I estimate token count?", answer: "A rough rule: 1 token ≈ 0.75 words in English, or about 4 characters. For exact counts, use the tokenizer tool for the specific model (e.g., OpenAI's tiktoken for GPT models). Our estimator uses the 0.75 words/token approximation for quick calculations." },
+  { question: "What is a 'bulk estimate'?", answer: "The bulk section calculates monthly costs assuming a fixed number of identical API calls per day. It's useful for planning production API budgets — for example, estimating the cost of a chatbot that handles 10,000 conversations per day, each with a 500-token prompt and 300-token response." },
+  { question: "Are these prices current?", answer: "Prices shown reflect Q1 2025 rates and may change. Always verify current pricing at platform.openai.com/pricing, anthropic.com/pricing, and ai.google.dev/pricing. Prices frequently drop as competition increases." },
+];
+
+const models = [
+  { name: 'GPT-4o', provider: 'OpenAI', inputM: 5.00, outputM: 15.00, tier: 'frontier' },
+  { name: 'GPT-4o mini', provider: 'OpenAI', inputM: 0.15, outputM: 0.60, tier: 'budget' },
+  { name: 'o1', provider: 'OpenAI', inputM: 15.00, outputM: 60.00, tier: 'reasoning' },
+  { name: 'o1 mini', provider: 'OpenAI', inputM: 3.00, outputM: 12.00, tier: 'reasoning' },
+  { name: 'Claude 3.5 Sonnet', provider: 'Anthropic', inputM: 3.00, outputM: 15.00, tier: 'frontier' },
+  { name: 'Claude 3.5 Haiku', provider: 'Anthropic', inputM: 0.80, outputM: 4.00, tier: 'budget' },
+  { name: 'Claude 3 Opus', provider: 'Anthropic', inputM: 15.00, outputM: 75.00, tier: 'frontier' },
+  { name: 'Gemini 1.5 Pro', provider: 'Google', inputM: 3.50, outputM: 10.50, tier: 'frontier' },
+  { name: 'Gemini 1.5 Flash', provider: 'Google', inputM: 0.075, outputM: 0.30, tier: 'budget' },
+  { name: 'Gemini 2.0 Flash', provider: 'Google', inputM: 0.10, outputM: 0.40, tier: 'budget' },
+];
+---
+
+<BaseLayout
+  title="AI Prompt Cost Estimator — GPT-4o, Claude, Gemini API Pricing"
+  description="Estimate OpenAI, Anthropic, and Google AI API costs. Paste your prompt, set output length, and instantly compare prices across GPT-4o, Claude 3.5, Gemini, and more. Includes bulk monthly cost projections."
+  tool="AI Prompt Cost Estimator, GPT-4o API Cost, Claude API Pricing, LLM Cost Calculator, AI API Budget Estimator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Prompt Cost Estimator</h1>
+  <p class="text-text-muted mb-4">Paste your prompt, set expected output length, and instantly compare API costs across all major models. Plan your monthly budget with bulk estimates.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 10 models compared</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Per-call + monthly bulk estimate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs in your browser</span>
+  </div>
+
+  <!-- Input panel -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-medium">Prompt Text</label>
+        <button id="load-example" class="text-xs text-primary hover:underline">Load example</button>
+      </div>
+      <textarea id="prompt-input" rows="8"
+        placeholder="Paste your system prompt + user message here..."
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary resize-y font-mono"
+      ></textarea>
+      <p id="input-token-count" class="text-xs text-text-muted mt-1">0 tokens (0 words)</p>
+    </div>
+
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Expected Output Length</label>
+        <div class="flex gap-2 flex-wrap mb-2">
+          <button class="output-preset text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-tokens="100">Short (100 tok)</button>
+          <button class="output-preset text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-tokens="300">Medium (300 tok)</button>
+          <button class="output-preset active text-xs px-3 py-1.5 rounded-full border border-primary text-primary bg-primary/10 transition-all" data-tokens="600">Long (600 tok)</button>
+          <button class="output-preset text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-tokens="1500">Very Long (1.5K)</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="output-tokens" type="number" min="1" max="100000" value="600"
+            class="w-32 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <span class="text-sm text-text-muted">output tokens</span>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-4">
+        <h3 class="text-sm font-medium mb-3">Bulk Estimate</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Requests / day</label>
+            <input id="requests-per-day" type="number" min="1" value="1000"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Days / month</label>
+            <input id="days-per-month" type="number" min="1" max="31" value="30"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results table -->
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm min-w-[640px]">
+      <thead>
+        <tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-3 pr-4 font-medium">Model</th>
+          <th class="text-left pb-3 pr-4 font-medium">Provider</th>
+          <th class="text-right pb-3 pr-4 font-medium">Input /1M</th>
+          <th class="text-right pb-3 pr-4 font-medium">Output /1M</th>
+          <th class="text-right pb-3 pr-4 font-medium">Cost / Call</th>
+          <th class="text-right pb-3 pr-4 font-medium">Monthly</th>
+          <th class="text-left pb-3 font-medium">Bar</th>
+        </tr>
+      </thead>
+      <tbody id="cost-table" class="divide-y divide-border">
+        {models.map(m => (
+          <tr class="cost-row hover:bg-bg-card/50 transition-colors"
+              data-input={m.inputM} data-output={m.outputM} data-name={m.name} data-tier={m.tier}>
+            <td class="py-3 pr-4 font-semibold">{m.name}</td>
+            <td class="py-3 pr-4 text-text-muted">{m.provider}</td>
+            <td class="py-3 pr-4 text-right tabular-nums">${m.inputM.toFixed(m.inputM < 1 ? 3 : 2)}</td>
+            <td class="py-3 pr-4 text-right tabular-nums">${m.outputM.toFixed(m.outputM < 1 ? 3 : 2)}</td>
+            <td class="py-3 pr-4 text-right tabular-nums font-medium cost-per-call">—</td>
+            <td class="py-3 pr-4 text-right tabular-nums cost-monthly">—</td>
+            <td class="py-3">
+              <div class="w-24 bg-bg-card border border-border rounded-full h-2">
+                <div class="cost-bar h-full bg-primary/50 rounded-full" style="width:0%"></div>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-text-muted -mt-4 mb-8">Prices as of Q1 2025. Verify at each provider's pricing page. Input token count uses 0.75 tokens/word approximation.</p>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Prompt Cost Estimator" relatedTags={['ai', 'llm', 'openai', 'claude', 'gemini', 'api', 'cost', 'pricing']} />
+</BaseLayout>
+
+<script>
+  const EXAMPLE_PROMPT = `You are a helpful assistant that summarizes technical documentation.
+
+User: Please summarize the following API documentation section and highlight the key endpoints, authentication methods, and rate limits. Focus on practical usage for backend developers.
+
+[Documentation content would go here - this is a typical production prompt for a RAG-based documentation assistant]`;
+
+  const promptInput = document.getElementById('prompt-input') as HTMLTextAreaElement;
+  const outputTokensInput = document.getElementById('output-tokens') as HTMLInputElement;
+  const requestsPerDayInput = document.getElementById('requests-per-day') as HTMLInputElement;
+  const daysPerMonthInput = document.getElementById('days-per-month') as HTMLInputElement;
+  const inputTokenCount = document.getElementById('input-token-count')!;
+
+  function estimateTokens(text: string): number {
+    const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+    return Math.ceil(words / 0.75);
+  }
+
+  function formatCost(cost: number): string {
+    if (cost === 0) return '$0.000';
+    if (cost < 0.001) return `$${cost.toFixed(6)}`;
+    if (cost < 0.01) return `$${cost.toFixed(4)}`;
+    if (cost < 1) return `$${cost.toFixed(4)}`;
+    if (cost < 1000) return `$${cost.toFixed(2)}`;
+    return `$${cost.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  }
+
+  function calculate() {
+    const text = promptInput.value;
+    const inputTokens = estimateTokens(text) || 0;
+    const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+    inputTokenCount.textContent = `${inputTokens.toLocaleString()} tokens (~${words.toLocaleString()} words)`;
+
+    const outputTokens = parseInt(outputTokensInput.value) || 0;
+    const reqPerDay = parseInt(requestsPerDayInput.value) || 1;
+    const daysPerMonth = parseInt(daysPerMonthInput.value) || 30;
+    const monthlyRequests = reqPerDay * daysPerMonth;
+
+    const rows = document.querySelectorAll('.cost-row');
+    const costs: number[] = [];
+
+    rows.forEach(row => {
+      const inputRate = parseFloat(row.getAttribute('data-input') || '0');
+      const outputRate = parseFloat(row.getAttribute('data-output') || '0');
+      const costPerCall = (inputTokens / 1e6 * inputRate) + (outputTokens / 1e6 * outputRate);
+      costs.push(costPerCall);
+    });
+
+    const maxCost = Math.max(...costs, 0.000001);
+
+    rows.forEach((row, i) => {
+      const costPerCall = costs[i];
+      const costMonthly = costPerCall * monthlyRequests;
+      const pct = (costPerCall / maxCost) * 100;
+
+      const callEl = row.querySelector('.cost-per-call')!;
+      const monthlyEl = row.querySelector('.cost-monthly')!;
+      const barEl = row.querySelector('.cost-bar') as HTMLElement;
+
+      callEl.textContent = formatCost(costPerCall);
+      monthlyEl.textContent = formatCost(costMonthly);
+      if (barEl) barEl.style.width = `${pct}%`;
+
+      // Highlight cheapest
+      callEl.className = `py-3 pr-4 text-right tabular-nums font-medium cost-per-call ${i === costs.indexOf(Math.min(...costs)) ? 'text-green-500' : ''}`;
+    });
+  }
+
+  promptInput.addEventListener('input', calculate);
+  outputTokensInput.addEventListener('input', calculate);
+  requestsPerDayInput.addEventListener('input', calculate);
+  daysPerMonthInput.addEventListener('input', calculate);
+
+  document.querySelectorAll('.output-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tokens = btn.getAttribute('data-tokens')!;
+      outputTokensInput.value = tokens;
+      document.querySelectorAll('.output-preset').forEach(b => {
+        b.classList.remove('active', 'border-primary', 'text-primary', 'bg-primary/10');
+        b.classList.add('border-border', 'text-text-muted');
+      });
+      btn.classList.add('active', 'border-primary', 'text-primary', 'bg-primary/10');
+      btn.classList.remove('border-border', 'text-text-muted');
+      calculate();
+    });
+  });
+
+  document.getElementById('load-example')!.addEventListener('click', () => {
+    promptInput.value = EXAMPLE_PROMPT;
+    calculate();
+  });
+
+  calculate();
+</script>
