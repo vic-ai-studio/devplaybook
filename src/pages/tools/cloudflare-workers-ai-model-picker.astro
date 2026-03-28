@@ -1,0 +1,262 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Cloudflare Workers AI?", answer: "Cloudflare Workers AI is a serverless AI inference service that runs machine learning models on Cloudflare's global edge network. You can call AI models directly from Cloudflare Workers, Pages Functions, or via the REST API — with no GPU setup, no model downloads, and ultra-low latency since models run close to your users." },
+  { question: "How much does Cloudflare Workers AI cost?", answer: "Workers AI has a free tier: 10,000 neurons per day for most models. Beyond the free tier, you pay per neuron (a unit of compute). Pricing varies by model — larger models consume more neurons per token. Check the Cloudflare dashboard for current pricing. The free tier is generous enough for prototyping and low-traffic apps." },
+  { question: "What types of models are available on Workers AI?", answer: "Workers AI offers: text generation (LLMs like Llama, Mistral, Gemma, Qwen), text embeddings (for vector search / RAG), image generation (Stable Diffusion), image classification, speech-to-text (Whisper), translation (M2M100), and more. New models are added regularly." },
+  { question: "How do I use Workers AI in a Cloudflare Worker?", answer: "Add the AI binding in wrangler.toml: [ai] binding = 'AI'. Then in your Worker: const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', { prompt: 'Hello' }). The binding handles authentication, model loading, and billing automatically." },
+  { question: "What is the Cloudflare AI Gateway?", answer: "AI Gateway is a layer in front of AI providers (including Workers AI, OpenAI, Anthropic, etc.) that adds caching, rate limiting, analytics, and cost tracking. Route your AI requests through AI Gateway to get observability, reduce costs with response caching, and protect against overuse." },
+  { question: "Can I use Workers AI from outside Cloudflare Workers?", answer: "Yes. Workers AI has a REST API compatible with the OpenAI API format. You can call it from any HTTP client using your Cloudflare account ID and API token. This is useful for testing models or integrating with non-Workers environments." },
+];
+---
+
+<BaseLayout
+  title="Cloudflare Workers AI Model Picker — Compare and Pick AI Models"
+  description="Compare Cloudflare Workers AI models by type, size, and use case. Filter by text/image/speech/embedding, click a model to get the Workers AI binding code snippet. Free tool."
+  tool="Cloudflare Workers AI models, Workers AI model comparison, Cloudflare AI binding code, Llama Cloudflare, Workers AI text generation, edge AI inference"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Cloudflare Workers AI Model Picker",
+    "url": "https://devplaybook.cc/tools/cloudflare-workers-ai-model-picker",
+    "description": "Compare and pick Cloudflare Workers AI models. Filter by type, view specs, and get the Workers binding code snippet instantly.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Cloudflare Workers AI Model Picker</h1>
+  <p class="text-text-muted mb-4">Browse and compare all Cloudflare Workers AI models. Filter by type, compare context windows and capabilities — then click any model to get the ready-to-use <strong>Workers binding code</strong>.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Text, Image, Speech, Embedding models</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Ready-to-use code snippets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+  </div>
+
+  <div class="space-y-4">
+    <!-- Filter bar -->
+    <div class="flex flex-col sm:flex-row gap-3">
+      <input id="cf-search" type="text" placeholder="Search models..."
+        class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+      <select id="cf-type-filter" class="bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        <option value="">All Types</option>
+        <option value="text">Text Generation</option>
+        <option value="embedding">Embedding</option>
+        <option value="image">Image Generation</option>
+        <option value="speech">Speech / Audio</option>
+        <option value="translation">Translation</option>
+        <option value="vision">Vision</option>
+      </select>
+    </div>
+
+    <!-- Models table -->
+    <div class="bg-surface border border-border rounded-xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-background">
+              <th class="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Model ID</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Type</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Size</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Context</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Best For</th>
+            </tr>
+          </thead>
+          <tbody id="cf-models-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <p id="cf-no-results" class="text-center text-text-muted text-sm py-4 hidden">No models match your filter.</p>
+
+    <!-- Code snippet panel -->
+    <div id="cf-snippet-panel" class="bg-surface border border-border rounded-xl p-5 hidden">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-medium">Code Snippet — <span id="cf-snippet-model-name" class="font-mono text-accent"></span></h2>
+        <button id="cf-copy-snippet" class="text-xs bg-background border border-border hover:bg-accent/20 px-3 py-1 rounded-lg transition-colors">Copy</button>
+      </div>
+      <pre id="cf-snippet-code" class="bg-background border border-border rounded-lg px-4 py-3 text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed"></pre>
+      <p class="text-xs text-text-muted mt-2">Add to <code class="bg-background px-1 rounded">wrangler.toml</code>: <code class="bg-background px-1 rounded">[ai]</code> / <code class="bg-background px-1 rounded">binding = "AI"</code></p>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Cloudflare Workers AI Model Picker" relatedTags={['cloudflare', 'ai', 'llm', 'serverless', 'edge-computing']} />
+</BaseLayout>
+
+<script>
+(function() {
+  var MODELS = [
+    { id: '@cf/meta/llama-3.1-8b-instruct', type: 'text', size: '8B', context: '128K', bestFor: 'Fast chat, instruction following, summarization', inputKey: 'messages', stream: true },
+    { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', type: 'text', size: '70B', context: '128K', bestFor: 'High-quality reasoning, complex instructions', inputKey: 'messages', stream: true },
+    { id: '@cf/mistral/mistral-7b-instruct-v0.1', type: 'text', size: '7B', context: '8K', bestFor: 'General chat, code, balanced performance', inputKey: 'messages', stream: true },
+    { id: '@cf/google/gemma-3-12b-it', type: 'text', size: '12B', context: '32K', bestFor: 'Multilingual, instruction tuned, Google quality', inputKey: 'messages', stream: true },
+    { id: '@hf/nousresearch/hermes-2-pro-mistral-7b', type: 'text', size: '7B', context: '8K', bestFor: 'Function calling, structured JSON output', inputKey: 'messages', stream: true },
+    { id: '@cf/qwen/qwen1.5-7b-chat-awq', type: 'text', size: '7B', context: '32K', bestFor: 'Chinese + English, multilingual tasks', inputKey: 'messages', stream: true },
+    { id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-7b', type: 'text', size: '7B', context: '32K', bestFor: 'Reasoning, math, step-by-step thinking', inputKey: 'messages', stream: true },
+    { id: '@cf/microsoft/phi-2', type: 'text', size: '2.7B', context: '2K', bestFor: 'Lightweight tasks, code, low-latency inference', inputKey: 'prompt', stream: false },
+    { id: '@cf/tiiuae/falcon-7b-instruct', type: 'text', size: '7B', context: '2K', bestFor: 'General chat, summarization, classification', inputKey: 'prompt', stream: false },
+    { id: '@cf/openai/whisper', type: 'speech', size: 'Large', context: '30s audio', bestFor: 'Speech-to-text transcription, multilingual ASR', inputKey: 'audio', stream: false },
+    { id: '@cf/openai/whisper-tiny-en', type: 'speech', size: 'Tiny', context: '30s audio', bestFor: 'Fast English speech-to-text, low latency', inputKey: 'audio', stream: false },
+    { id: '@cf/baai/bge-base-en-v1.5', type: 'embedding', size: '109M', context: '512 tokens', bestFor: 'Semantic search, RAG, vector similarity', inputKey: 'text', stream: false },
+    { id: '@cf/baai/bge-large-en-v1.5', type: 'embedding', size: '335M', context: '512 tokens', bestFor: 'High-quality embeddings, production RAG', inputKey: 'text', stream: false },
+    { id: '@cf/baai/bge-small-en-v1.5', type: 'embedding', size: '33M', context: '512 tokens', bestFor: 'Fast lightweight embeddings, high throughput', inputKey: 'text', stream: false },
+    { id: '@cf/facebook/m2m100-1.2b', type: 'translation', size: '1.2B', context: 'n/a', bestFor: 'Text translation between 100+ languages', inputKey: 'text', stream: false },
+    { id: '@cf/stabilityai/stable-diffusion-xl-base-1.0', type: 'image', size: 'Large', context: 'n/a', bestFor: 'High-quality image generation from text', inputKey: 'prompt', stream: false },
+    { id: '@cf/lykon/dreamshaper-8-lcm', type: 'image', size: 'Medium', context: 'n/a', bestFor: 'Fast artistic image generation, stylized output', inputKey: 'prompt', stream: false },
+    { id: '@cf/microsoft/resnet-50', type: 'vision', size: '25M', context: 'n/a', bestFor: 'Image classification, object recognition', inputKey: 'image', stream: false },
+  ];
+
+  function el(id) { return document.getElementById(id); }
+
+  function getTypeColor(type) {
+    var map = { text: 'text-blue-400', embedding: 'text-purple-400', image: 'text-green-400', speech: 'text-yellow-400', translation: 'text-orange-400', vision: 'text-cyan-400' };
+    return map[type] || 'text-text-muted';
+  }
+
+  function getTypeLabel(type) {
+    var map = { text: 'Text Gen', embedding: 'Embedding', image: 'Image Gen', speech: 'Speech', translation: 'Translation', vision: 'Vision' };
+    return map[type] || type;
+  }
+
+  function generateSnippet(m) {
+    var lines = [];
+    lines.push("// wrangler.toml");
+    lines.push("// [ai]");
+    lines.push("// binding = \"AI\"");
+    lines.push("");
+    lines.push("export default {");
+    lines.push("  async fetch(request, env) {");
+
+    if (m.type === 'text' && m.inputKey === 'messages') {
+      lines.push("    const response = await env.AI.run(");
+      lines.push("      '" + m.id + "',");
+      lines.push("      {");
+      lines.push("        messages: [");
+      lines.push("          { role: 'system', content: 'You are a helpful assistant.' },");
+      lines.push("          { role: 'user', content: 'What is the capital of France?' },");
+      lines.push("        ],");
+      if (m.stream) {
+        lines.push("        stream: false, // set true for streaming");
+      }
+      lines.push("      }");
+      lines.push("    );");
+      lines.push("    return Response.json(response);");
+    } else if (m.type === 'text') {
+      lines.push("    const response = await env.AI.run(");
+      lines.push("      '" + m.id + "',");
+      lines.push("      { prompt: 'What is the capital of France?' }");
+      lines.push("    );");
+      lines.push("    return Response.json(response);");
+    } else if (m.type === 'embedding') {
+      lines.push("    const response = await env.AI.run(");
+      lines.push("      '" + m.id + "',");
+      lines.push("      { text: ['Hello world', 'Cloudflare Workers AI'] }");
+      lines.push("    );");
+      lines.push("    // response.data: Array<Float32Array> — one vector per input");
+      lines.push("    return Response.json(response);");
+    } else if (m.type === 'speech') {
+      lines.push("    // Read audio file as ArrayBuffer");
+      lines.push("    const audioBuffer = await request.arrayBuffer();");
+      lines.push("    const response = await env.AI.run(");
+      lines.push("      '" + m.id + "',");
+      lines.push("      { audio: [...new Uint8Array(audioBuffer)] }");
+      lines.push("    );");
+      lines.push("    // response.text: transcribed string");
+      lines.push("    return Response.json(response);");
+    } else if (m.type === 'translation') {
+      lines.push("    const response = await env.AI.run(");
+      lines.push("      '" + m.id + "',");
+      lines.push("      {");
+      lines.push("        text: 'Hello, how are you?',");
+      lines.push("        source_lang: 'en',");
+      lines.push("        target_lang: 'fr',");
+      lines.push("      }");
+      lines.push("    );");
+      lines.push("    return Response.json(response);");
+    } else if (m.type === 'image') {
+      lines.push("    const response = await env.AI.run(");
+      lines.push("      '" + m.id + "',");
+      lines.push("      { prompt: 'A futuristic city at sunset, digital art' }");
+      lines.push("    );");
+      lines.push("    // response is a ReadableStream of PNG image bytes");
+      lines.push("    return new Response(response, { headers: { 'content-type': 'image/png' } });");
+    } else if (m.type === 'vision') {
+      lines.push("    const imgBuffer = await request.arrayBuffer();");
+      lines.push("    const response = await env.AI.run(");
+      lines.push("      '" + m.id + "',");
+      lines.push("      { image: [...new Uint8Array(imgBuffer)] }");
+      lines.push("    );");
+      lines.push("    // response.label: top classification label");
+      lines.push("    return Response.json(response);");
+    }
+
+    lines.push("  },");
+    lines.push("};");
+    return lines.join('\n');
+  }
+
+  function renderTable() {
+    var search = (el('cf-search') as HTMLInputElement).value.toLowerCase();
+    var typeFilter = (el('cf-type-filter') as HTMLSelectElement).value;
+
+    var filtered = MODELS.filter(function(m) {
+      var matchSearch = !search || m.id.toLowerCase().includes(search) || m.bestFor.toLowerCase().includes(search);
+      var matchType = !typeFilter || m.type === typeFilter;
+      return matchSearch && matchType;
+    });
+
+    var tbody = el('cf-models-body');
+    var noResults = el('cf-no-results');
+    tbody.innerHTML = '';
+
+    if (filtered.length === 0) {
+      noResults.classList.remove('hidden');
+      return;
+    }
+    noResults.classList.add('hidden');
+
+    filtered.forEach(function(m) {
+      var tr = document.createElement('tr');
+      tr.className = 'border-b border-border hover:bg-background/50 transition-colors cursor-pointer';
+      tr.innerHTML = '<td class="px-4 py-3 font-mono text-xs text-accent">' + m.id + '</td>'
+        + '<td class="px-4 py-3"><span class="text-xs ' + getTypeColor(m.type) + '">' + getTypeLabel(m.type) + '</span></td>'
+        + '<td class="px-4 py-3 text-xs text-text-muted">' + m.size + '</td>'
+        + '<td class="px-4 py-3 text-xs text-text-muted">' + m.context + '</td>'
+        + '<td class="px-4 py-3 text-xs">' + m.bestFor + '</td>';
+      tr.addEventListener('click', function() {
+        showSnippet(m);
+        document.getElementById('cf-snippet-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function showSnippet(m) {
+    var panel = el('cf-snippet-panel');
+    panel.classList.remove('hidden');
+    el('cf-snippet-model-name').textContent = m.id;
+    el('cf-snippet-code').textContent = generateSnippet(m);
+  }
+
+  el('cf-search').addEventListener('input', renderTable);
+  el('cf-type-filter').addEventListener('change', renderTable);
+
+  el('cf-copy-snippet').addEventListener('click', function() {
+    var text = el('cf-snippet-code').textContent;
+    navigator.clipboard.writeText(text).then(function() {
+      var btn = el('cf-copy-snippet');
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+    });
+  });
+
+  renderTable();
+  // Show first model snippet by default
+  showSnippet(MODELS[0]);
+})();
+</script>

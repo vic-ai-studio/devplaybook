@@ -130,6 +130,38 @@ devplaybook/
 
 ---
 
+## CI/CD & Deployment
+
+### GitHub Actions Workflows
+
+Two workflows are included in `.github/workflows/`:
+
+| Workflow | File | Trigger |
+|---|---|---|
+| Build validation | `ci.yml` | Push to `main`, all PRs |
+| Auto-deploy | `auto-deploy.yml` | Push to `main` only |
+
+**`ci.yml`** runs on every PR and push:
+- Astro type check (`astro check`)
+- Full production build
+- Broken internal link scan
+- Posts build size summary (pages, JS/CSS bundle sizes) as a PR comment
+
+**`auto-deploy.yml`** deploys to Cloudflare Pages after a successful push to `main`.
+
+### Required GitHub Secrets (VIC: add these in your repo settings)
+
+Go to **GitHub repo → Settings → Secrets and variables → Actions** and add:
+
+| Secret | Where to find it |
+|---|---|
+| `CF_API_TOKEN` | Cloudflare Dashboard → My Profile → API Tokens → Create Token → "Edit Cloudflare Workers" template |
+| `CF_ACCOUNT_ID` | Cloudflare Dashboard → right sidebar on the Overview page |
+
+The auto-deploy workflow will fail until these secrets are set. CI build validation works without them.
+
+---
+
 ## Contributing
 
 PRs welcome! To add a new tool:

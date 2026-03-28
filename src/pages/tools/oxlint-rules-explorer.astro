@@ -1,0 +1,219 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is oxlint?", answer: "oxlint is a JavaScript and TypeScript linter written in Rust, developed as part of the oxc (Oxidation Compiler) project. It runs 50-100x faster than ESLint due to Rust's parallel processing and zero-cost abstractions. It covers a subset of the most impactful ESLint rules and is designed to complement (not immediately replace) ESLint." },
+  { question: "How does oxlint compare to ESLint?", answer: "oxlint is much faster but currently covers fewer rules than ESLint. ESLint has a rich plugin ecosystem (eslint-plugin-react, @typescript-eslint, etc.) that oxlint does not yet fully replicate. The recommended approach is to run oxlint first (for speed) and ESLint after (for plugin rules). Over time, oxlint will absorb more rules." },
+  { question: "What is the oxlint config file format?", answer: "oxlint uses an .oxlintrc.json file (or oxlint key in package.json). The format is similar to ESLint's flat config: an object with a 'rules' key mapping rule names to 'error', 'warn', or 'off'. You can also add 'plugins', 'env', and 'globals' settings." },
+  { question: "How fast is oxlint compared to ESLint?", answer: "On large codebases, oxlint typically lints 50-100x faster than ESLint. For a 500K-line codebase, ESLint might take 60 seconds; oxlint finishes in under 1 second. This makes it ideal as a fast pre-commit check or CI gate before the full ESLint run." },
+  { question: "Can I use oxlint with TypeScript?", answer: "Yes. oxlint supports TypeScript out of the box with no additional configuration. Run oxlint on .ts and .tsx files directly. TypeScript-specific rules (no-explicit-any, etc.) are included in the core rule set." },
+  { question: "How do I run oxlint?", answer: "Install with: npm install oxlint. Run on a directory: npx oxlint src/. Use --fix to auto-fix fixable rules. Use --config .oxlintrc.json to specify a custom config file. You can also run it via the VSCode extension for inline diagnostics." },
+];
+---
+
+<BaseLayout
+  title="oxlint Rules Explorer — Search and Configure oxlint Rules"
+  description="Free oxlint rules explorer. Search, filter and configure oxlint rules (the 50-100x faster Rust ESLint alternative). Get a ready-to-use .oxlintrc.json config. Runs in your browser."
+  tool="oxlint rules, oxlint config generator, oxlint vs ESLint, oxc linter, Rust ESLint alternative, .oxlintrc.json builder"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "oxlint Rules Explorer",
+    "url": "https://devplaybook.cc/tools/oxlint-rules-explorer",
+    "description": "Explore and configure oxlint rules. Search by name or category, set severity, and generate a .oxlintrc.json config.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">oxlint Rules Explorer</h1>
+  <p class="text-text-muted mb-4">Search, filter and configure rules for oxlint — the Rust-powered ESLint alternative that is 50-100x faster. Toggle severity for each rule and generate your <code class="bg-surface px-1 rounded text-sm">.oxlintrc.json</code>.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 50-100x faster than ESLint</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> TypeScript support built-in</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Generates .oxlintrc.json</span>
+  </div>
+
+  <div class="space-y-4">
+    <!-- Search + filter -->
+    <div class="flex flex-col sm:flex-row gap-3">
+      <input id="ox-search" type="text" placeholder="Search rules..."
+        class="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+      <select id="ox-category-filter" class="bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        <option value="">All Categories</option>
+        <option value="correctness">correctness</option>
+        <option value="style">style</option>
+        <option value="suspicious">suspicious</option>
+        <option value="pedantic">pedantic</option>
+        <option value="perf">perf</option>
+        <option value="typescript">typescript</option>
+      </select>
+      <select id="ox-severity-filter" class="bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        <option value="">All Severities</option>
+        <option value="error">error</option>
+        <option value="warn">warn</option>
+        <option value="off">off</option>
+      </select>
+    </div>
+
+    <!-- Rules table -->
+    <div class="bg-surface border border-border rounded-xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-background">
+              <th class="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Rule</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Category</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Severity</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Auto-fix</th>
+            </tr>
+          </thead>
+          <tbody id="ox-rules-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <p id="ox-no-results" class="text-center text-text-muted text-sm py-4 hidden">No rules match your filters.</p>
+
+    <!-- Generated config -->
+    <div class="bg-surface border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <label class="text-sm font-medium">.oxlintrc.json</label>
+        <div class="flex gap-2">
+          <button id="ox-reset" class="text-xs bg-background border border-border hover:bg-accent/20 px-3 py-1 rounded-lg transition-colors">Reset All</button>
+          <button id="ox-copy" class="text-xs bg-background border border-border hover:bg-accent/20 px-3 py-1 rounded-lg transition-colors">Copy</button>
+        </div>
+      </div>
+      <pre id="ox-config-output" class="bg-background border border-border rounded-lg px-4 py-3 text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed min-h-[120px]"></pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="oxlint Rules Explorer" relatedTags={['linting', 'javascript', 'typescript', 'code-quality', 'developer-tools']} />
+</BaseLayout>
+
+<script>
+(function() {
+  var RULES = [
+    { name: 'no-unused-vars', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Disallow unused variables' },
+    { name: 'no-undef', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Disallow undeclared variables' },
+    { name: 'no-console', category: 'suspicious', defaultSeverity: 'warn', fixable: false, description: 'Disallow console statements' },
+    { name: 'eqeqeq', category: 'correctness', defaultSeverity: 'error', fixable: true, description: 'Require === and !==' },
+    { name: 'no-debugger', category: 'correctness', defaultSeverity: 'error', fixable: true, description: 'Disallow debugger statements' },
+    { name: 'prefer-const', category: 'style', defaultSeverity: 'warn', fixable: true, description: 'Prefer const for non-reassigned variables' },
+    { name: 'no-var', category: 'style', defaultSeverity: 'warn', fixable: true, description: 'Disallow var declarations' },
+    { name: 'no-empty', category: 'correctness', defaultSeverity: 'warn', fixable: false, description: 'Disallow empty block statements' },
+    { name: 'no-duplicate-case', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Disallow duplicate case labels' },
+    { name: 'no-unreachable', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Disallow unreachable code' },
+    { name: 'no-constant-condition', category: 'correctness', defaultSeverity: 'warn', fixable: false, description: 'Disallow constant expressions in conditions' },
+    { name: 'no-fallthrough', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Disallow fallthrough in switch statements' },
+    { name: 'arrow-body-style', category: 'style', defaultSeverity: 'off', fixable: true, description: 'Enforce arrow function body style' },
+    { name: 'object-shorthand', category: 'style', defaultSeverity: 'warn', fixable: true, description: 'Enforce shorthand in object literals' },
+    { name: 'no-array-constructor', category: 'correctness', defaultSeverity: 'warn', fixable: true, description: 'Disallow Array constructor' },
+    { name: 'no-new-wrappers', category: 'suspicious', defaultSeverity: 'error', fixable: false, description: 'Disallow new String/Number/Boolean' },
+    { name: 'radix', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Enforce radix in parseInt' },
+    { name: 'no-throw-literal', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Disallow throwing literals' },
+    { name: 'use-isnan', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Require isNaN() instead of NaN comparisons' },
+    { name: 'valid-typeof', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Enforce valid typeof string comparisons' },
+    { name: 'no-loss-of-precision', category: 'correctness', defaultSeverity: 'error', fixable: false, description: 'Disallow precision loss in numeric literals' },
+    { name: 'no-prototype-builtins', category: 'suspicious', defaultSeverity: 'warn', fixable: false, description: 'Disallow prototype builtins directly' },
+    { name: 'prefer-rest-params', category: 'style', defaultSeverity: 'warn', fixable: false, description: 'Prefer rest parameters over arguments' },
+    { name: 'prefer-spread', category: 'style', defaultSeverity: 'warn', fixable: true, description: 'Prefer spread over .apply()' },
+  ];
+
+  var severities = {};
+  RULES.forEach(function(r) { severities[r.name] = r.defaultSeverity; });
+
+  function el(id) { return document.getElementById(id); }
+
+  function getCategoryColor(cat) {
+    var map = { correctness: 'text-red-400', style: 'text-blue-400', suspicious: 'text-yellow-400', pedantic: 'text-purple-400', perf: 'text-green-400', typescript: 'text-cyan-400' };
+    return map[cat] || 'text-text-muted';
+  }
+
+  function renderTable() {
+    var search = (el('ox-search') as HTMLInputElement).value.toLowerCase();
+    var catFilter = (el('ox-category-filter') as HTMLSelectElement).value;
+    var sevFilter = (el('ox-severity-filter') as HTMLSelectElement).value;
+
+    var filtered = RULES.filter(function(r) {
+      var matchSearch = !search || r.name.toLowerCase().includes(search) || r.description.toLowerCase().includes(search);
+      var matchCat = !catFilter || r.category === catFilter;
+      var matchSev = !sevFilter || severities[r.name] === sevFilter;
+      return matchSearch && matchCat && matchSev;
+    });
+
+    var tbody = el('ox-rules-body');
+    var noResults = el('ox-no-results');
+    tbody.innerHTML = '';
+
+    if (filtered.length === 0) {
+      noResults.classList.remove('hidden');
+      return;
+    }
+    noResults.classList.add('hidden');
+
+    filtered.forEach(function(r) {
+      var tr = document.createElement('tr');
+      tr.className = 'border-b border-border hover:bg-background/50 transition-colors';
+      var sev = severities[r.name];
+      var sevColor = sev === 'error' ? 'text-red-400' : sev === 'warn' ? 'text-yellow-400' : 'text-text-muted';
+
+      tr.innerHTML = '<td class="px-4 py-3 font-mono text-xs"><span class="font-semibold">' + r.name + '</span><br><span class="text-text-muted text-xs font-sans">' + r.description + '</span></td>'
+        + '<td class="px-4 py-3"><span class="text-xs ' + getCategoryColor(r.category) + '">' + r.category + '</span></td>'
+        + '<td class="px-4 py-3">'
+        + '<select class="severity-sel bg-background border border-border rounded px-2 py-1 text-xs ' + sevColor + ' focus:outline-none focus:border-accent" data-rule="' + r.name + '">'
+        + '<option value="error"' + (sev === 'error' ? ' selected' : '') + '>error</option>'
+        + '<option value="warn"' + (sev === 'warn' ? ' selected' : '') + '>warn</option>'
+        + '<option value="off"' + (sev === 'off' ? ' selected' : '') + '>off</option>'
+        + '</select></td>'
+        + '<td class="px-4 py-3"><span class="text-xs ' + (r.fixable ? 'text-green-400' : 'text-text-muted') + '">' + (r.fixable ? 'Yes' : '—') + '</span></td>';
+
+      var sel = tr.querySelector('.severity-sel');
+      sel.addEventListener('change', function(e) {
+        var target = e.target as HTMLSelectElement;
+        severities[target.dataset.rule] = target.value;
+        renderConfig();
+        renderTable();
+      });
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderConfig() {
+    var rules = {};
+    RULES.forEach(function(r) {
+      rules[r.name] = severities[r.name];
+    });
+    var config = { '$schema': 'https://raw.githubusercontent.com/oxc-project/oxc/main/crates/oxc_linter/schema/oxlintrc.json', rules: rules };
+    el('ox-config-output').textContent = JSON.stringify(config, null, 2);
+  }
+
+  el('ox-search').addEventListener('input', renderTable);
+  el('ox-category-filter').addEventListener('change', renderTable);
+  el('ox-severity-filter').addEventListener('change', renderTable);
+
+  el('ox-reset').addEventListener('click', function() {
+    RULES.forEach(function(r) { severities[r.name] = r.defaultSeverity; });
+    renderTable();
+    renderConfig();
+  });
+
+  el('ox-copy').addEventListener('click', function() {
+    var text = el('ox-config-output').textContent;
+    navigator.clipboard.writeText(text).then(function() {
+      var btn = el('ox-copy');
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+    });
+  });
+
+  renderTable();
+  renderConfig();
+})();
+</script>

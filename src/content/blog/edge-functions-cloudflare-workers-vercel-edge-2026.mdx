@@ -1,0 +1,379 @@
+---
+title: "Edge Functions in 2026: Cloudflare Workers vs Vercel Edge vs AWS Lambda@Edge"
+description: "A comprehensive comparison of edge runtime platforms in 2026. Cloudflare Workers, Vercel Edge Functions, AWS Lambda@Edge, and more — benchmarks, pricing, use cases, and when not to use edge."
+pubDate: 2026-03-28
+tags: ["Edge Functions", "Cloudflare Workers", "Vercel", "AWS", "Serverless", "Performance", "2026"]
+slug: "edge-functions-cloudflare-workers-vercel-edge-2026"
+---
+
+Edge functions have matured from a clever performance optimization into mainstream infrastructure. In 2026, every major cloud platform has an edge compute offering — but they're not all the same. This guide breaks down the real differences, with benchmarks and honest advice on when edge is the right tool.
+
+## What Are Edge Functions?
+
+Traditional serverless functions run in a single region (us-east-1, for example). Every user in Singapore hits that US server, adding 200ms+ of latency.
+
+Edge functions run in dozens of locations worldwide, executing in the datacenter closest to each user. For a user in Tokyo, code runs in Tokyo. For someone in Frankfurt, it runs in Frankfurt.
+
+The architectural difference is significant:
+
+| Approach | Where Code Runs | Cold Start | Global Latency |
+|---|---|---|---|
+| Traditional server | Single region | N/A | 50-300ms+ |
+| Lambda/Cloud Functions | Single region | 100-3000ms | 50-300ms+ |
+| Edge Functions | ~300 locations | 0-5ms | 5-50ms |
+
+The tradeoff: edge runtimes are constrained. No filesystem access, limited CPU time, restricted APIs, and smaller memory limits.
+
+## Cloudflare Workers
+
+Cloudflare Workers runs on V8 isolates — the same JavaScript engine as Chrome, but without a browser. This means near-zero cold starts because Workers spin up in microseconds, not milliseconds.
+
+### Key Features in 2026
+
+**Runtime:**
+- V8 isolates (not Node.js — a key distinction)
+- Full WinterCG compliance
+- 128MB memory limit, 10ms-30ms CPU per request (Standard plan)
+- Support for WASM, Python, Rust via WASM
+
+**Storage:**
+- **KV**: Eventually consistent key-value storage, great for config/flags
+- **Durable Objects**: Strongly consistent, single-threaded actors — perfect for rate limiting, real-time collaboration, game state
+- **R2**: S3-compatible object storage with zero egress fees
+- **D1**: SQLite at the edge — full SQL queries from your Worker
+
+**AI:**
+- Workers AI: Run inference directly in Workers (Llama, Mistral, Whisper, etc.)
+- Vectorize: Vector database for semantic search
+
+```javascript
+// cloudflare/worker.ts
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    // A/B testing with KV
+    const variant = await env.KV.get(`ab:${url.pathname}`);
+
+    // Geo-routing
+    const country = request.cf?.country;
+    if (country === 'CN') {
+      return Response.redirect('https://cn.example.com' + url.pathname);
+    }
+
+    // Response transformation
+    const response = await fetch(request);
+    const modified = new HTMLRewriter()
+      .on('title', {
+        element(el) {
+          el.setInnerContent(`${variant === 'B' ? 'New: ' : ''}${el.getAttribute('title') || ''}`);
+        }
+      })
+      .transform(response);
+
+    return modified;
+  }
+} satisfies ExportedHandler<Env>;
+```
+
+**Pricing (2026):**
+- Free: 100,000 requests/day
+- Standard: $5/month + $0.30/million requests
+- Durable Objects: $0.15/million requests + storage costs
+
+### Wrangler CLI
+
+```bash
+npm create cloudflare@latest my-worker
+cd my-worker
+wrangler dev           # Local dev with remote KV/DO
+wrangler deploy        # Deploy to 300+ locations
+wrangler tail          # Stream live logs
+```
+
+## Vercel Edge Functions
+
+Vercel Edge Functions are tightly integrated with Next.js, making them the natural choice for Next.js applications. They run on the same V8 isolate infrastructure as Cloudflare Workers.
+
+### Edge Middleware
+
+The most common use case in Next.js is middleware for auth, redirects, and request modification:
+
+```typescript
+// middleware.ts (runs at the edge automatically)
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  const token = request.cookies.get('auth-token')?.value;
+
+  // Auth check without hitting origin
+  if (!token && request.nextUrl.pathname.startsWith('/dashboard')) {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  // Geo-personalization
+  const country = request.geo?.country;
+  const response = NextResponse.next();
+  response.headers.set('x-user-country', country || 'unknown');
+
+  return response;
+}
+
+export const config = {
+  matcher: ['/dashboard/:path*', '/api/:path*'],
+};
+```
+
+### Edge Route Handlers
+
+```typescript
+// app/api/hello/route.ts
+import { type NextRequest } from 'next/server';
+
+export const runtime = 'edge'; // opt-in to edge runtime
+
+export async function GET(request: NextRequest) {
+  const geo = {
+    city: request.geo?.city,
+    country: request.geo?.country,
+  };
+
+  return Response.json({ geo, timestamp: Date.now() });
+}
+```
+
+### Limitations
+
+Vercel Edge has stricter constraints than Cloudflare Workers:
+- No native `node:` module access (no `fs`, `crypto` module, etc.)
+- 4MB response size limit
+- 25MB memory limit (vs 128MB in Workers)
+- No persistent connections (no WebSockets in middleware)
+- Tied to Vercel's platform — no portable deployment
+
+**Pricing:**
+- Free tier: 500,000 edge middleware invocations/month
+- Pro: Unlimited on most plans
+- Edge Function compute: included in standard Vercel pricing
+
+## AWS Lambda@Edge and CloudFront Functions
+
+AWS has two edge compute offerings with very different characteristics.
+
+### CloudFront Functions
+
+Extremely lightweight — designed for request/response manipulation only:
+- Sub-millisecond execution
+- 10KB code size limit
+- 2MB memory
+- No network access, no external calls
+- Ideal for: URL rewrites, header manipulation, A/B testing
+
+```javascript
+// cloudfront-function.js
+function handler(event) {
+  const request = event.request;
+  const uri = request.uri;
+
+  // URL normalization
+  if (uri.endsWith('/')) {
+    request.uri = uri + 'index.html';
+  } else if (!uri.includes('.')) {
+    request.uri = uri + '/index.html';
+  }
+
+  return request;
+}
+```
+
+### Lambda@Edge
+
+Full Lambda functions deployed to CloudFront POPs. More powerful but slower to start:
+- Node.js 18/20 runtime (not V8 isolates)
+- 128MB-10GB memory
+- 5 seconds (viewer) / 30 seconds (origin) timeout
+- Can make network calls
+- Cold starts of 100-500ms are common
+
+Lambda@Edge is best for: complex auth, response body transformation, custom origin selection.
+
+### AWS Pricing Complexity
+
+AWS pricing for edge compute is notoriously complex:
+- CloudFront Functions: $0.10/million invocations
+- Lambda@Edge: $0.60/million requests + $0.00005001/GB-second
+- Plus CloudFront data transfer costs
+
+For most use cases, Cloudflare or Vercel are significantly cheaper.
+
+## Alternative Platforms
+
+### Deno Deploy
+
+Deno's edge runtime runs Deno (not Node.js) globally:
+- Excellent TypeScript support out of the box
+- WinterCG compliant
+- Simpler pricing than AWS
+- Best if you're already using Deno
+
+```typescript
+// deno_deploy.ts
+Deno.serve(async (req) => {
+  const url = new URL(req.url);
+
+  if (url.pathname === '/api/time') {
+    return new Response(JSON.stringify({
+      time: new Date().toISOString(),
+      region: Deno.env.get('DENO_REGION'),
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  return new Response('Not Found', { status: 404 });
+});
+```
+
+### Fastly Compute
+
+Fastly Compute uses WebAssembly, supporting Rust, Go, and JavaScript. Preferred in enterprise/CDN-heavy workloads where Fastly is already the CDN.
+
+## WinterCG Compliance
+
+WinterCG (Web-interoperable Runtimes Community Group) defines a standard subset of Web APIs that should work across all edge runtimes. In 2026, all major platforms comply:
+
+| API | CF Workers | Vercel Edge | Deno Deploy | Lambda@Edge |
+|---|---|---|---|---|
+| `fetch` | ✅ | ✅ | ✅ | ✅ |
+| `Request/Response` | ✅ | ✅ | ✅ | ✅ |
+| `URL/URLSearchParams` | ✅ | ✅ | ✅ | ✅ |
+| `crypto.subtle` | ✅ | ✅ | ✅ | ✅ |
+| `ReadableStream` | ✅ | ✅ | ✅ | ✅ |
+| `TextEncoder` | ✅ | ✅ | ✅ | ✅ |
+| `WebSocket` | ✅ | ❌ | ✅ | ❌ |
+| Node.js compat | Partial | Partial | Partial | Full |
+
+## Real-World Use Cases
+
+### A/B Testing Without Origin Hits
+
+```javascript
+// Cloudflare Worker
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // Assign variant based on user cookie or random
+    const existingVariant = request.headers.get('Cookie')
+      ?.match(/ab_variant=([AB])/)?.[1];
+
+    const variant = existingVariant || (Math.random() < 0.5 ? 'A' : 'B');
+
+    // Serve different content per variant
+    const targetUrl = variant === 'B'
+      ? url.href.replace(url.hostname, 'beta.' + url.hostname)
+      : url.href;
+
+    const response = await fetch(targetUrl);
+    const newResponse = new Response(response.body, response);
+
+    if (!existingVariant) {
+      newResponse.headers.set('Set-Cookie', `ab_variant=${variant}; Path=/; Max-Age=86400`);
+    }
+
+    return newResponse;
+  }
+};
+```
+
+### Authentication at the Edge
+
+```typescript
+// Verify JWT at the edge — no origin request needed
+import { jwtVerify } from 'jose'; // Works in edge runtimes
+
+export async function verifyAuthEdge(token: string, publicKey: CryptoKey) {
+  try {
+    const { payload } = await jwtVerify(token, publicKey);
+    return { valid: true, userId: payload.sub };
+  } catch {
+    return { valid: false, userId: null };
+  }
+}
+```
+
+### Geo-Based Routing
+
+```javascript
+// Route users to nearest data center
+export default {
+  async fetch(request) {
+    const country = request.cf?.country;
+    const continent = request.cf?.continent;
+
+    const origins = {
+      NA: 'https://us.api.example.com',
+      EU: 'https://eu.api.example.com',
+      AS: 'https://ap.api.example.com',
+    };
+
+    const origin = origins[continent] || origins.NA;
+
+    // Proxy to closest origin
+    const url = new URL(request.url);
+    url.hostname = new URL(origin).hostname;
+
+    return fetch(new Request(url, request));
+  }
+};
+```
+
+## Cold Start Benchmarks (2026)
+
+| Platform | p50 Cold Start | p99 Cold Start | Notes |
+|---|---|---|---|
+| Cloudflare Workers | <1ms | 2ms | V8 isolates, no container spin-up |
+| Vercel Edge | <1ms | 3ms | V8 isolates |
+| Deno Deploy | 2ms | 8ms | Deno isolates |
+| Lambda@Edge | 100ms | 500ms | Full Node.js process |
+| CloudFront Functions | <1ms | <1ms | Extremely limited runtime |
+
+## Pricing Comparison (Typical Workload)
+
+For 10 million edge requests/month, 1ms average CPU:
+
+| Platform | Monthly Cost | Notes |
+|---|---|---|
+| Cloudflare Workers | ~$8 | $5 base + compute |
+| Vercel Edge | $0 (Pro plan) | Included in Vercel Pro |
+| AWS Lambda@Edge | ~$12 | Plus data transfer |
+| Deno Deploy | ~$5 | Simple req-based pricing |
+
+## When NOT to Use Edge Functions
+
+Edge functions are not a silver bullet. Avoid them when:
+
+1. **You need a database connection** — most databases don't support edge connections well. Neon (serverless Postgres) and PlanetScale (MySQL) are exceptions.
+
+2. **Your logic is compute-heavy** — edge CPUs are limited. Long-running computations will timeout.
+
+3. **You need Node.js-specific modules** — if your code depends on `fs`, `child_process`, or native modules, edge won't work.
+
+4. **Your users are all in one region** — if 95% of users are in one country, a regional server is simpler and cheaper.
+
+5. **You need large responses** — many edge platforms cap response sizes at 4-25MB.
+
+6. **Debugging is critical** — edge function debugging tooling is significantly worse than traditional Lambda/server debugging.
+
+## Choosing a Platform
+
+| If you're using... | Best choice |
+|---|---|
+| Next.js on Vercel | Vercel Edge Middleware |
+| Any framework, need full power | Cloudflare Workers |
+| Heavy AWS investment | Lambda@Edge + CloudFront Functions |
+| Deno-based project | Deno Deploy |
+| Enterprise CDN/security focus | Fastly Compute |
+
+Edge functions have earned their place in the modern stack. When you need global low-latency, personalization, or auth without origin overhead, they're the right tool. Just understand the constraints before committing.
