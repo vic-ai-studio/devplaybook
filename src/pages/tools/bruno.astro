@@ -4,139 +4,231 @@ import ToolPageCta from '../../components/ToolPageCta.astro';
 import FaqSection from '../../components/FaqSection.astro';
 import AdUnit from '../../components/AdUnit.astro';
 
-const bruExample = `# get-users.bru
+const installExample = `# Install the Bruno CLI globally (for CI/scripting)
+npm install -g @usebruno/cli
+
+# Run a collection from the CLI
+bru run --env production
+
+# Run a specific folder of requests
+bru run requests/users --env staging
+
+# Run with environment variables and output JUnit XML (for CI)
+bru run --env ci --reporter junit --output results.xml
+
+# Download the GUI app (macOS / Windows / Linux)
+# https://www.usebruno.com/downloads`;
+
+const bruFileExample = `# requests/users/get-user.bru
 meta {
-  name: Get Users
+  name: Get User by ID
   type: http
   seq: 1
 }
 
 get {
-  url: {{baseUrl}}/users
+  url: {{baseUrl}}/api/users/{{userId}}
   body: none
   auth: bearer
 }
 
+headers {
+  Accept: application/json
+  X-Request-ID: {{$randomUuid}}
+}
+
 auth:bearer {
   token: {{authToken}}
 }
 
-headers {
-  Accept: application/json
+assert {
+  res.status: eq 200
+  res.body.id: eq {{userId}}
+  res.body.email: isDefined
 }`;
 
-const bruPostExample = `# create-user.bru
+const postRequestExample = `# requests/auth/login.bru
 meta {
-  name: Create User
+  name: Login
   type: http
-  seq: 2
+  seq: 1
 }
 
 post {
-  url: {{baseUrl}}/users
+  url: {{baseUrl}}/api/auth/login
   body: json
-  auth: bearer
+  auth: none
 }
 
-auth:bearer {
-  token: {{authToken}}
+headers {
+  Content-Type: application/json
 }
 
 body:json {
   {
-    "name": "Jane Doe",
-    "email": "jane@example.com",
-    "role": "developer"
+    "email": "{{userEmail}}",
+    "password": "{{userPassword}}"
   }
 }
 
+script:post-response {
+  // Save the token for subsequent requests
+  const token = res.getBody().token;
+  bru.setVar("authToken", token);
+}
+
 assert {
-  res.status: eq 201
-  res.body.id: isDefined
+  res.status: eq 200
+  res.body.token: isDefined
 }`;
 
+const envExample = `# environments/staging.bru
+vars {
+  baseUrl: https://staging.api.example.com
+  userId: 42
+  userEmail: test@example.com
+}
+
+vars:secret [
+  userPassword,
+  authToken
+]
+
+# environments/production.bru
+vars {
+  baseUrl: https://api.example.com
+  userId: 42
+  userEmail: prod-test@example.com
+}
+
+vars:secret [
+  userPassword,
+  authToken
+]`;
+
+const scriptExample = `// script:pre-request - runs before the HTTP request is sent
+const timestamp = new Date().toISOString();
+bru.setVar("requestTime", timestamp);
+
+// Access environment variables
+const baseUrl = bru.getEnvVar("baseUrl");
+console.log("Sending request to:", baseUrl);
+
+// script:post-response - runs after the response arrives
+if (res.getStatus() === 401) {
+  bru.setVar("authToken", "");
+  console.warn("Token expired - clear and re-authenticate");
+}
+
+// Assertions in scripts (alternative to the assert block)
+expect(res.getStatus()).to.equal(200);
+expect(res.getBody()).to.have.property("id");`;
+
 const faq = [
-  { question: "How does Bruno compare to Postman?", answer: "Bruno stores collections as plain text .bru files on your local filesystem, making them version-controllable with Git just like source code. Postman stores collections in its cloud and requires an account. Bruno is completely offline-first — there is no sync, no cloud, no telemetry, and no subscription required. Postman's free tier now has limits on collection runs, team members, and API calls. Bruno is 100% free and open-source under the MIT license. The trade-off is that Bruno lacks Postman's cloud features like monitors, mock servers, and the Postman API." },
-  { question: "How does Bruno compare to Insomnia?", answer: "Insomnia shifted to a cloud-storage model in 2023, requiring an account and storing data on Kong's servers by default. This change caused controversy in the community and was a primary reason Bruno gained rapid adoption. Bruno never sends your request data to any server — everything lives on your local disk in the Bru format. Insomnia has since added a local vault option, but Bruno is still the preferred choice for teams that want full Git-based collection sharing without any cloud dependency." },
-  { question: "What is the Bru file format?", answer: "Bru is a custom plain-text domain-specific language (DSL) designed by Bruno for describing HTTP requests. Each .bru file represents one request and contains sections like meta, get/post/put/delete, headers, body, auth, params, vars, assert, and script. Bru files are human-readable, easy to diff, and can be reviewed in any text editor or code review tool. The entire collection is a folder of .bru files plus an optional environments/ folder. The bruno.json file at the root defines collection-level metadata." },
-  { question: "Does Bruno have a CLI for CI/CD pipelines?", answer: "Yes. Bruno CLI (bru) lets you run collections from the command line: npm install -g @usebruno/cli. Run a collection with bru run --env production. You can filter specific folders with bru run folder/. The CLI outputs results in a human-readable format or JSON, integrates with GitHub Actions, GitLab CI, and Jenkins, and exits with a non-zero code on test failures. This makes it straightforward to run API tests in CI without any browser or GUI." },
-  { question: "How do teams collaborate with Bruno?", answer: "Bruno collections are plain folders on disk. To share a collection, add it to your Git repository — the same repository as your API code. Every team member clones the repo and has the full collection locally. Changes to requests appear as normal file diffs in pull requests. Secret values (API keys, tokens) are kept out of the .bru files by using environment variables stored in a .env file that is excluded from Git via .gitignore. Bruno reads these env files automatically at runtime." },
-  { question: "What platforms does Bruno support?", answer: "Bruno has native desktop apps for macOS (arm64 and x86_64), Windows (x64), and Linux (AppImage, deb, rpm). There is no web version — Bruno is intentionally a desktop-only, offline-first tool. The Bruno CLI runs on any platform with Node.js. Bruno does not require creating an account, does not collect telemetry, and does not require internet access to operate." },
+  {
+    question: "What is Bruno?",
+    answer: "Bruno is an open-source, offline-first API client for testing REST, GraphQL, and other HTTP-based APIs. It is designed as a direct alternative to Postman and Insomnia, with one key difference: every collection is stored as plain text files using Bruno's own Bru format on your local filesystem. There is no cloud sync, no account required, and no subscription - your API collections live alongside your source code in Git."
+  },
+  {
+    question: "How does Bruno differ from Postman?",
+    answer: "The biggest difference is that Bruno stores collections as plain text .bru files on disk, making them fully version-controllable with Git. Postman stores collections in its cloud by default and requires an account. Bruno has no cloud sync, no telemetry, no pricing tiers that gate features, and is open source under the MIT license. Postman has a more mature GUI, a larger ecosystem of published collections, and built-in cloud collaboration. If Git-native workflows and offline-first operation matter to you, Bruno is the better choice."
+  },
+  {
+    question: "What is the Bru file format?",
+    answer: "Bru is a simple, human-readable plain text format developed specifically for Bruno. Each .bru file represents one HTTP request and contains the method, URL, headers, body, authentication, pre/post-request scripts, and assertions - all in a clearly structured, diff-friendly format. Because .bru files are plain text, they can be reviewed in pull requests, searched with grep, and edited in any text editor without needing the Bruno GUI."
+  },
+  {
+    question: "Can Bruno run in CI/CD pipelines?",
+    answer: "Yes. Bruno ships a CLI tool (@usebruno/cli, installed via npm) that lets you run collections headlessly in any CI environment - GitHub Actions, GitLab CI, Jenkins, and others. You can target a specific environment file, output results as JUnit XML or JSON, and fail the build on assertion errors. This makes Bruno a complete API testing solution from local development through automated CI."
+  },
+  {
+    question: "Is Bruno open source?",
+    answer: "Yes. Bruno is fully open source under the MIT license. The source code is available on GitHub at github.com/usebruno/bruno. The core GUI application, the CLI runner, and the Bru language parser are all open source. There is no paid tier or proprietary cloud component - the entire tool is free to use, self-host, and contribute to."
+  },
+  {
+    question: "Can I import existing Postman or Insomnia collections into Bruno?",
+    answer: "Yes. Bruno supports importing collections exported from Postman (v2.1 JSON format) and Insomnia. After importing, Bruno converts each request into the .bru plain text format so you can immediately commit them to Git. Environment variables and authentication configs are also migrated. Some advanced Postman features may require manual adjustment after import."
+  },
 ];
 ---
 
 <BaseLayout
-  title="Bruno — Open-Source API Client, Git-Friendly Postman Alternative"
-  description="Bruno is an offline-first, open-source API client that stores collections as plain .bru files for Git version control. No account, no cloud, no telemetry. Free alternative to Postman and Insomnia."
-  tool="Bruno API client, Bruno vs Postman, Bruno vs Insomnia, Bru file format, open source API client, offline API testing, Git-friendly API collections"
+  title="Bruno - Offline Git-Friendly API Client (Postman Alternative)"
+  description="Bruno is an open-source, offline-first API client that stores collections as plain text Bru files. No cloud sync, no account required - commit your API requests directly to Git."
+  tool="bruno, api client, postman alternative, insomnia alternative, bru lang, offline api testing, git api collections, http client"
   faq={faq}
 >
   <script type="application/ld+json" set:html={JSON.stringify({
     "@context": "https://schema.org",
     "@type": "WebPage",
-    "name": "Bruno — Open-Source API Client, Git-Friendly Postman Alternative",
+    "name": "Bruno - Offline Git-Friendly API Client (Postman Alternative)",
     "url": "https://devplaybook.cc/tools/bruno",
-    "description": "Bruno is an offline-first, open-source API client that stores collections as plain .bru files for Git version control. No account, no cloud, no telemetry.",
+    "description": "Bruno is an open-source, offline-first API client that stores collections as plain text Bru files. No cloud sync, no account required - commit your API requests directly to Git.",
   })} />
 
-  <h1 class="text-3xl font-bold mb-2">Bruno — Open-Source API Client</h1>
+  <h1 class="text-3xl font-bold mb-2">Bruno</h1>
   <p class="text-text-muted mb-6">
-    <strong>Bruno</strong> is a free, offline-first API client that stores collections as plain <code class="font-mono bg-surface px-1 rounded text-sm">.bru</code> files on disk — making them fully version-controllable with Git. No account required, no cloud sync, no telemetry. A fast-growing open-source alternative to Postman and Insomnia.
+    Open-source, offline-first API client that stores collections as plain text files alongside your source code.
+    No cloud sync, no account, no subscription - commit your requests to Git and review them in pull requests like any other code.
   </p>
 
   <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Offline-first, no account needed</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Git-friendly Bru file format</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> REST, GraphQL, gRPC support</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CLI for CI/CD pipelines</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> MIT licensed, open source</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> Offline-first</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> Git-native (plain text Bru files)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> No account required</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> Built-in scripting</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> CLI for CI/CD</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> MIT open source</span>
   </div>
 
   <h2 class="text-xl font-semibold mt-8 mb-3">What is Bruno?</h2>
   <p class="text-text-muted mb-4 leading-relaxed">
-    Bruno is an open-source desktop API client built to address the frustrations developers have with Postman's move to the cloud and Insomnia's account-required model. Its defining feature is the <strong>Bru language</strong> — a plain-text DSL where each HTTP request is a <code class="font-mono bg-surface px-1 rounded text-sm">.bru</code> file stored in a regular folder. This means your entire API collection lives in your project repository alongside your source code, reviewed in pull requests, branched and merged like any other file.
+    Bruno is an open-source API client built for developers who want their HTTP collections to live where their code lives - in a Git repository. While tools like Postman store collections in the cloud and require an account to collaborate, Bruno takes the opposite approach: every request is a plain text <code class="bg-bg-card px-1 rounded text-xs">.bru</code> file you can read, edit, diff, and commit without ever opening the GUI.
   </p>
   <p class="text-text-muted mb-4 leading-relaxed">
-    Bruno was created by Anoop M D and the open-source community and has gained rapid adoption since 2023. It supports REST, GraphQL, gRPC, and WebSocket protocols, includes a scripting engine for pre/post-request scripts and test assertions, and ships with a CLI for running collections in CI pipelines.
+    Bruno supports REST, GraphQL, and other HTTP APIs. It includes environments and variables, pre/post-request JavaScript scripting, assertions, authentication (bearer, basic, API key, OAuth 2.0), and a CLI runner for CI pipelines. The GUI app is available for macOS, Windows, and Linux. The project is fully open source under the MIT license with no paid tier or proprietary cloud component.
   </p>
 
   <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
   <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
-    <li><strong>Offline-first</strong> — works without internet; no login, no cloud, no account</li>
-    <li><strong>Bru format</strong> — human-readable plain-text files, one request per file, fully diffable</li>
-    <li><strong>Git collaboration</strong> — commit collections to your repo; team reviews via PRs</li>
-    <li><strong>Environments</strong> — manage base URLs and variables per environment; secrets via <code class="font-mono bg-surface px-1 rounded text-xs">.env</code> files</li>
-    <li><strong>Scripting</strong> — pre-request and post-request scripts in JavaScript with access to <code class="font-mono bg-surface px-1 rounded text-xs">bru</code> and <code class="font-mono bg-surface px-1 rounded text-xs">res</code> objects</li>
-    <li><strong>Assertions</strong> — inline test assertions in <code class="font-mono bg-surface px-1 rounded text-xs">assert</code> blocks for contract testing</li>
-    <li><strong>Auth support</strong> — Bearer token, Basic Auth, API Key, OAuth 2.0, AWS Sig v4</li>
-    <li><strong>Bruno CLI</strong> — run collections headlessly via <code class="font-mono bg-surface px-1 rounded text-xs">bru run</code> in CI/CD</li>
-    <li><strong>GraphQL</strong> — first-class GraphQL query support with schema introspection</li>
-    <li><strong>Import</strong> — import from Postman collections, OpenAPI 3.x, and Insomnia</li>
+    <li><strong>Offline-first</strong> - works without an internet connection; no cloud sync, no telemetry, no account required</li>
+    <li><strong>Git-native storage</strong> - collections are plain text .bru files; diff them, review them in PRs, search with grep</li>
+    <li><strong>Bru language</strong> - human-readable format for requests: method, URL, headers, body, scripts, and assertions in one file</li>
+    <li><strong>Environments &amp; variables</strong> - switch between dev/staging/production configs; secrets kept out of version control</li>
+    <li><strong>JavaScript scripting</strong> - run pre/post-request scripts to set variables, chain requests, or validate complex responses</li>
+    <li><strong>Assertions</strong> - declare expected status codes, body properties, and header values directly in the .bru file</li>
+    <li><strong>Import from Postman/Insomnia</strong> - migrate existing collections with a single import action</li>
+    <li><strong>CLI runner</strong> - run collections headlessly with <code class="bg-bg-card px-1 rounded text-xs">bru run</code> in any CI environment</li>
   </ul>
 
   <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
-  <div class="bg-bg-card border border-border rounded-xl p-4 mb-4">
-    <p class="text-xs text-text-muted uppercase font-semibold mb-2">macOS (Homebrew)</p>
-    <pre class="text-sm font-mono text-text">brew install bruno</pre>
-  </div>
-  <div class="bg-bg-card border border-border rounded-xl p-4 mb-4">
-    <p class="text-xs text-text-muted uppercase font-semibold mb-2">Windows / Linux</p>
-    <pre class="text-sm font-mono text-text">Download from usebruno.com/downloads</pre>
-  </div>
-  <div class="bg-bg-card border border-border rounded-xl p-4 mb-6">
-    <p class="text-xs text-text-muted uppercase font-semibold mb-2">Bruno CLI (for CI/CD)</p>
-    <pre class="text-sm font-mono text-text">npm install -g @usebruno/cli
-bru run --env production</pre>
-  </div>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={installExample}></pre>
 
-  <h2 class="text-xl font-semibold mt-8 mb-3">Bru File Examples</h2>
-  <p class="text-text-muted mb-3">A GET request with Bearer auth:</p>
-  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={bruExample}></pre>
+  <h2 class="text-xl font-semibold mt-8 mb-3">GET Request with Assertions</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Each request is a standalone <code class="bg-bg-card px-1 rounded text-xs">.bru</code> file. The <code class="bg-bg-card px-1 rounded text-xs">assert</code> block lets you declare expected response values inline - no separate test file needed.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={bruFileExample}></pre>
 
-  <p class="text-text-muted mb-3">A POST request with JSON body and assertions:</p>
-  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={bruPostExample}></pre>
+  <h2 class="text-xl font-semibold mt-8 mb-3">POST Request with Post-Response Script</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Scripts run after a response arrives and can read the body, set variables, and chain into subsequent requests. Here a login request saves its returned token for use in later requests.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={postRequestExample}></pre>
 
-  <h2 class="text-xl font-semibold mt-8 mb-3">Bruno vs Postman vs Insomnia</h2>
+  <h2 class="text-xl font-semibold mt-8 mb-3">Environments</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Environment files define variables per target. Secret variable names are declared but their values are stored outside Git - Bruno keeps sensitive data out of your repository automatically.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={envExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Scripting API</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Bruno's scripting layer exposes <code class="bg-bg-card px-1 rounded text-xs">bru</code> helpers for reading and writing variables, environment values, and request/response data. Use the Chai-style <code class="bg-bg-card px-1 rounded text-xs">expect</code> API for programmatic assertions.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={scriptExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Bruno vs Postman</h2>
   <div class="overflow-x-auto mb-6">
     <table class="w-full text-sm border-collapse">
       <thead>
@@ -144,92 +236,45 @@ bru run --env production</pre>
           <th class="border border-border px-3 py-2 text-left">Feature</th>
           <th class="border border-border px-3 py-2 text-left">Bruno</th>
           <th class="border border-border px-3 py-2 text-left">Postman</th>
-          <th class="border border-border px-3 py-2 text-left">Insomnia</th>
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td class="border border-border px-3 py-2">Account required</td>
-          <td class="border border-border px-3 py-2 text-green-400">No</td>
-          <td class="border border-border px-3 py-2 text-red-400">Yes</td>
-          <td class="border border-border px-3 py-2 text-yellow-400">Optional (local vault)</td>
-        </tr>
-        <tr class="bg-bg-card/30">
-          <td class="border border-border px-3 py-2">Collection storage</td>
-          <td class="border border-border px-3 py-2">Local files (.bru)</td>
-          <td class="border border-border px-3 py-2">Postman Cloud</td>
-          <td class="border border-border px-3 py-2">Cloud or local</td>
-        </tr>
-        <tr>
-          <td class="border border-border px-3 py-2">Git-friendly</td>
-          <td class="border border-border px-3 py-2 text-green-400">Yes (plain text)</td>
-          <td class="border border-border px-3 py-2 text-yellow-400">Export only</td>
-          <td class="border border-border px-3 py-2 text-yellow-400">Export only</td>
-        </tr>
-        <tr class="bg-bg-card/30">
-          <td class="border border-border px-3 py-2">Telemetry</td>
-          <td class="border border-border px-3 py-2 text-green-400">None</td>
-          <td class="border border-border px-3 py-2">Yes</td>
-          <td class="border border-border px-3 py-2">Yes</td>
-        </tr>
-        <tr>
-          <td class="border border-border px-3 py-2">Price</td>
-          <td class="border border-border px-3 py-2 text-green-400">Free (MIT)</td>
-          <td class="border border-border px-3 py-2">Free tier / paid plans</td>
-          <td class="border border-border px-3 py-2">Free / paid</td>
-        </tr>
-        <tr class="bg-bg-card/30">
-          <td class="border border-border px-3 py-2">CLI for CI/CD</td>
-          <td class="border border-border px-3 py-2 text-green-400">Yes (bru run)</td>
-          <td class="border border-border px-3 py-2">Yes (newman)</td>
-          <td class="border border-border px-3 py-2">Yes (inso)</td>
-        </tr>
-        <tr>
-          <td class="border border-border px-3 py-2">GraphQL support</td>
-          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
-          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
-          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
-        </tr>
+        <tr><td class="border border-border px-3 py-2">Collection storage</td><td class="border border-border px-3 py-2 text-green-400">Plain text files on disk</td><td class="border border-border px-3 py-2">Cloud (proprietary JSON export)</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Git integration</td><td class="border border-border px-3 py-2 text-green-400">Native - commit .bru files</td><td class="border border-border px-3 py-2">Requires export/import</td></tr>
+        <tr><td class="border border-border px-3 py-2">Account required</td><td class="border border-border px-3 py-2 text-green-400">No</td><td class="border border-border px-3 py-2">Yes</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Open source</td><td class="border border-border px-3 py-2 text-green-400">Yes (MIT)</td><td class="border border-border px-3 py-2">No</td></tr>
+        <tr><td class="border border-border px-3 py-2">CI/CD runner</td><td class="border border-border px-3 py-2 text-green-400">Yes (bru CLI, free)</td><td class="border border-border px-3 py-2">Paid (Newman / Postman Cloud)</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Published collection ecosystem</td><td class="border border-border px-3 py-2">Growing</td><td class="border border-border px-3 py-2 text-green-400">Large (Public API Network)</td></tr>
       </tbody>
     </table>
   </div>
-
-  <h2 class="text-xl font-semibold mt-8 mb-3">Use Cases</h2>
-  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
-    <li>Testing REST APIs during development without leaving your local environment</li>
-    <li>Storing API collections alongside source code in Git for team sharing</li>
-    <li>Running regression tests against API endpoints in CI/CD pipelines with Bruno CLI</li>
-    <li>Exploring GraphQL schemas with built-in introspection and query builder</li>
-    <li>Migrating away from Postman or Insomnia to a privacy-respecting, offline client</li>
-    <li>Documenting API workflows as version-controlled, reviewable .bru files</li>
-  </ul>
 
   <h2 class="text-xl font-semibold mt-8 mb-3">Pros and Cons</h2>
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
     <div class="bg-bg-card border border-border rounded-xl p-4">
       <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
       <ul class="text-text-muted text-sm space-y-1">
-        <li>✓ Fully offline — no account, no telemetry, no cloud dependency</li>
-        <li>✓ Plain-text .bru files are naturally version-controlled with Git</li>
-        <li>✓ Fast and lightweight desktop app (Electron-based)</li>
-        <li>✓ CLI enables CI/CD integration without GUI overhead</li>
-        <li>✓ MIT-licensed — fully open source with active community</li>
-        <li>✓ Import from Postman/Insomnia for easy migration</li>
+        <li>&#10003; Collections stored as plain text - fully version-controllable</li>
+        <li>&#10003; No cloud account, no telemetry, no subscription</li>
+        <li>&#10003; Works offline without any setup</li>
+        <li>&#10003; MIT open source - no vendor lock-in</li>
+        <li>&#10003; Free CLI runner for CI/CD pipelines</li>
+        <li>&#10003; Secrets never written to disk or committed to Git</li>
       </ul>
     </div>
     <div class="bg-bg-card border border-border rounded-xl p-4">
       <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
       <ul class="text-text-muted text-sm space-y-1">
-        <li>✗ No cloud-hosted monitors or scheduled runs (unlike Postman)</li>
-        <li>✗ No built-in mock server (Postman offers one)</li>
-        <li>✗ Smaller ecosystem of integrations vs Postman</li>
-        <li>✗ Desktop-only — no web interface for quick access</li>
-        <li>✗ Bru format requires some learning if migrating from other tools</li>
+        <li>&#10007; Smaller ecosystem than Postman (fewer published collections)</li>
+        <li>&#10007; GUI is less mature than Postman's (fewer advanced UI features)</li>
+        <li>&#10007; No built-in team cloud sharing (Git repo is the collaboration layer)</li>
+        <li>&#10007; Mock server support is limited compared to Postman</li>
+        <li>&#10007; Fewer integrations with monitoring/alerting platforms</li>
       </ul>
     </div>
   </div>
 
   <AdUnit slot="auto" format="auto" label="Advertisement" />
   <FaqSection faq={faq} />
-  <ToolPageCta currentTool="Bruno API Client" relatedTags={['api', 'rest', 'graphql', 'http', 'testing', 'postman', 'developer-tools']} />
+  <ToolPageCta currentTool="bruno" relatedTags={['api', 'http-client', 'rest', 'testing', 'git']} />
 </BaseLayout>
