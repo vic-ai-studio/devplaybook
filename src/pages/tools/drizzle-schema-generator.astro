@@ -1,0 +1,297 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AffiliateSection from '../../components/AffiliateSection.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Drizzle ORM and why use it?", answer: "Drizzle ORM is a TypeScript-first ORM for Node.js that gives you SQL-like syntax in TypeScript. Unlike Prisma, Drizzle generates no runtime client — it compiles your schema to raw SQL queries at build time. This means zero magic, full type safety, and excellent performance. It supports PostgreSQL, MySQL, and SQLite with a unified API." },
+  { question: "What does pgTable do in Drizzle?", answer: "pgTable() is the core function for defining a PostgreSQL table in Drizzle ORM. You pass the table name as the first argument and a column definition object as the second. Each column is typed using helpers like text(), integer(), boolean(), timestamp(), etc. from drizzle-orm/pg-core. The result is a typed table object you use in queries." },
+  { question: "What is $inferSelect and when do I use it?", answer: "$inferSelect is a TypeScript utility type provided by Drizzle that infers the TypeScript type of a row returned from a SELECT query on your table. Use it to type function parameters, API responses, or state variables without manually writing an interface. There is also $inferInsert for insert row types (which respects optional/default columns)." },
+  { question: "How do I use the generated schema in my project?", answer: "Copy the generated schema into a file like schema.ts in your project. Import drizzle-orm/pg-core at the top. Then import your table in query files and use it with a Drizzle db instance: db.select().from(yourTable). Drizzle reads the column types and builds fully typed SQL — autocomplete works in VSCode and TypeScript will catch type mismatches at compile time." },
+];
+---
+
+<BaseLayout
+  title="Drizzle Schema Generator — Generate Drizzle ORM Schema from Table Definition"
+  description="Generate Drizzle ORM pgTable schema from your table definitions. Add columns with types, nullable, primary key, and defaults. Get TypeScript-ready code with $inferSelect type."
+  tool="Drizzle ORM schema generator, pgTable generator, Drizzle TypeScript schema, drizzle-orm/pg-core, ORM schema builder"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Drizzle Schema Generator",
+    "url": "https://devplaybook.cc/tools/drizzle-schema-generator",
+    "description": "Generate Drizzle ORM pgTable schema from table definitions with TypeScript types using $inferSelect.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Drizzle Schema Generator</h1>
+  <p class="text-text-muted mb-4">
+    Define your table name and columns to generate a Drizzle ORM <code class="font-mono text-primary">pgTable</code> schema for PostgreSQL.
+    Choose column types, set nullable/primary key flags, and add defaults. Outputs both the table definition and the inferred TypeScript type.
+    Runs entirely in your browser — nothing is sent to a server.
+  </p>
+  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> drizzle-orm/pg-core output</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> $inferSelect TypeScript type</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Nullable, PK, and default support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+  </div>
+
+  <!-- Table name -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
+    <label class="font-semibold text-sm block mb-2" for="table-name">Table Name</label>
+    <input id="table-name" type="text" value="users"
+      class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+      placeholder="e.g. users" />
+  </div>
+
+  <!-- Columns -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
+    <div class="flex items-center justify-between mb-4">
+      <span class="font-semibold text-sm">Columns</span>
+      <button id="add-column" class="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary/80 transition-colors">+ Add Column</button>
+    </div>
+    <div id="columns-list" class="flex flex-col gap-3">
+      <!-- Columns rendered by JS -->
+    </div>
+  </div>
+
+  <!-- Generate -->
+  <div class="flex gap-3 mb-6">
+    <button id="generate-btn" class="bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
+      Generate Schema
+    </button>
+    <button id="load-example" class="text-sm text-primary hover:underline">Load example</button>
+    <button id="clear-btn" class="text-sm text-text-muted hover:text-red-400 transition-colors">Clear</button>
+  </div>
+
+  <!-- Output -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-8">
+    <div class="flex items-center justify-between mb-3">
+      <span class="font-semibold text-sm">Generated Schema</span>
+      <button id="copy-btn" class="text-xs text-primary hover:underline hidden">Copy</button>
+    </div>
+    <div id="gen-error" class="hidden mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400"></div>
+    <textarea id="schema-output" rows="18" readonly
+      placeholder="Schema output will appear here..."
+      class="w-full bg-bg border border-border rounded-lg px-3 py-3 text-sm font-mono resize-y text-text-muted focus:outline-none"></textarea>
+  </div>
+
+  <!-- Reference -->
+  <div class="bg-bg-card border border-border rounded-xl p-6 mb-8">
+    <h2 class="font-bold text-sm uppercase tracking-wide text-text-muted mb-4">Drizzle Column Type Reference</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="text-left py-2 pr-4 text-text-muted font-medium">Type</th>
+            <th class="text-left py-2 pr-4 text-text-muted font-medium">Drizzle Helper</th>
+            <th class="text-left py-2 text-text-muted font-medium">TypeScript Type</th>
+          </tr>
+        </thead>
+        <tbody class="font-mono text-xs text-text-muted">
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">text</td><td class="pr-4">text('col')</td><td>string</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">varchar</td><td class="pr-4">varchar('col', &#123; length: 255 &#125;)</td><td>string</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">integer</td><td class="pr-4">integer('col')</td><td>number</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">bigint</td><td class="pr-4">bigint('col', &#123; mode: 'number' &#125;)</td><td>number</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">boolean</td><td class="pr-4">boolean('col')</td><td>boolean</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">timestamp</td><td class="pr-4">timestamp('col')</td><td>Date</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">json</td><td class="pr-4">json('col')</td><td>unknown</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">uuid</td><td class="pr-4">uuid('col')</td><td>string</td></tr>
+          <tr><td class="py-2 pr-4 font-sans text-text">serial</td><td class="pr-4">serial('col')</td><td>number</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <AffiliateSection />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Drizzle Schema Generator" relatedTags={['drizzle', 'orm', 'typescript', 'postgresql', 'database', 'schema']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var columns = [];
+  var nextId = 1;
+
+  var TYPES = ['text', 'varchar', 'integer', 'bigint', 'boolean', 'timestamp', 'json', 'uuid', 'serial'];
+
+  function makeColumn(name, type, nullable, pk, defaultVal) {
+    return { id: nextId++, name: name || '', type: type || 'text', nullable: nullable !== false, pk: !!pk, defaultVal: defaultVal || '' };
+  }
+
+  function renderColumns() {
+    var list = document.getElementById('columns-list');
+    if (!columns.length) {
+      list.innerHTML = '<p class="text-sm text-text-muted text-center py-4">No columns yet. Click "Add Column" to start.</p>';
+      return;
+    }
+    list.innerHTML = columns.map(function (col) {
+      var typeOptions = TYPES.map(function (t) {
+        return '<option value="' + t + '"' + (col.type === t ? ' selected' : '') + '>' + t + '</option>';
+      }).join('');
+      return '<div class="flex flex-wrap items-center gap-2 p-3 bg-bg border border-border rounded-lg" data-id="' + col.id + '">' +
+        '<input type="text" placeholder="column_name" value="' + col.name + '" data-field="name"' +
+        '  class="flex-1 min-w-[120px] bg-bg-card border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/40" />' +
+        '<select data-field="type" class="bg-bg-card border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40">' + typeOptions + '</select>' +
+        '<label class="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer"><input type="checkbox" data-field="nullable"' + (col.nullable ? ' checked' : '') + ' class="accent-primary" /> Nullable</label>' +
+        '<label class="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer"><input type="checkbox" data-field="pk"' + (col.pk ? ' checked' : '') + ' class="accent-primary" /> PK</label>' +
+        '<input type="text" placeholder="default (optional)" value="' + col.defaultVal + '" data-field="defaultVal"' +
+        '  class="w-32 bg-bg-card border border-border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/40" />' +
+        '<button data-action="remove" class="text-xs text-red-400 hover:text-red-300 transition-colors ml-auto">Remove</button>' +
+        '</div>';
+    }).join('');
+
+    // Bind events
+    list.querySelectorAll('[data-id]').forEach(function (row) {
+      var id = parseInt(row.getAttribute('data-id'), 10);
+      var col = columns.find(function (c) { return c.id === id; });
+      row.querySelectorAll('[data-field]').forEach(function (el) {
+        var field = el.getAttribute('data-field');
+        el.addEventListener('input', function () {
+          if (el.type === 'checkbox') col[field] = el.checked;
+          else col[field] = el.value;
+        });
+        el.addEventListener('change', function () {
+          if (el.type === 'checkbox') col[field] = el.checked;
+          else col[field] = el.value;
+        });
+      });
+      var removeBtn = row.querySelector('[data-action="remove"]');
+      if (removeBtn) removeBtn.addEventListener('click', function () {
+        columns = columns.filter(function (c) { return c.id !== id; });
+        renderColumns();
+      });
+    });
+  }
+
+  function drizzleHelper(col) {
+    var name = col.name || 'column';
+    switch (col.type) {
+      case 'varchar': return 'varchar(\'' + name + '\', { length: 255 })';
+      case 'bigint': return 'bigint(\'' + name + '\', { mode: \'number\' })';
+      default: return col.type + '(\'' + name + '\')';
+    }
+  }
+
+  function generateSchema() {
+    var tableName = (document.getElementById('table-name').value || 'my_table').trim();
+    var exportName = tableName.replace(/[^a-zA-Z0-9_]/g, '_').replace(/_([a-z])/g, function (_, c) { return c.toUpperCase(); });
+    if (!exportName) exportName = 'myTable';
+
+    if (!columns.length) return null;
+
+    var imports = new Set(['pgTable']);
+    columns.forEach(function (col) {
+      switch (col.type) {
+        case 'text': imports.add('text'); break;
+        case 'varchar': imports.add('varchar'); break;
+        case 'integer': imports.add('integer'); break;
+        case 'bigint': imports.add('bigint'); break;
+        case 'boolean': imports.add('boolean'); break;
+        case 'timestamp': imports.add('timestamp'); break;
+        case 'json': imports.add('json'); break;
+        case 'uuid': imports.add('uuid'); break;
+        case 'serial': imports.add('serial'); break;
+      }
+    });
+
+    var importLine = 'import { ' + Array.from(imports).sort().join(', ') + " } from 'drizzle-orm/pg-core';";
+
+    var colLines = columns.map(function (col) {
+      var colName = (col.name || 'column').replace(/[^a-zA-Z0-9_]/g, '_');
+      var chain = '  ' + colName + ': ' + drizzleHelper(col);
+      if (col.pk) chain += '.primaryKey()';
+      if (!col.nullable && col.type !== 'serial') chain += '.notNull()';
+      if (col.defaultVal) {
+        var dv = col.defaultVal.trim();
+        var isStr = col.type === 'text' || col.type === 'varchar' || col.type === 'uuid';
+        if (isStr && !dv.startsWith("'") && !dv.startsWith('"') && dv !== 'now()' && !dv.startsWith('sql`')) {
+          chain += '.default(\'' + dv + '\')';
+        } else if (dv === 'now()' || col.type === 'timestamp') {
+          chain += '.defaultNow()';
+        } else {
+          chain += '.default(' + dv + ')';
+        }
+      }
+      return chain + ',';
+    });
+
+    var tableCode = 'export const ' + exportName + ' = pgTable(\'' + tableName + '\', {\n' + colLines.join('\n') + '\n});';
+    var typeCode = 'export type ' + exportName.charAt(0).toUpperCase() + exportName.slice(1) + ' = typeof ' + exportName + '.$inferSelect;';
+    var insertTypeCode = 'export type New' + exportName.charAt(0).toUpperCase() + exportName.slice(1) + ' = typeof ' + exportName + '.$inferInsert;';
+
+    return [importLine, '', tableCode, '', typeCode, insertTypeCode].join('\n');
+  }
+
+  document.getElementById('add-column').addEventListener('click', function () {
+    columns.push(makeColumn('', 'text', true, false, ''));
+    renderColumns();
+  });
+
+  document.getElementById('load-example').addEventListener('click', function () {
+    document.getElementById('table-name').value = 'users';
+    columns = [
+      makeColumn('id', 'serial', false, true, ''),
+      makeColumn('email', 'varchar', false, false, ''),
+      makeColumn('name', 'text', true, false, ''),
+      makeColumn('is_active', 'boolean', false, false, 'true'),
+      makeColumn('created_at', 'timestamp', false, false, 'now()'),
+    ];
+    renderColumns();
+  });
+
+  document.getElementById('clear-btn').addEventListener('click', function () {
+    document.getElementById('table-name').value = 'users';
+    columns = [];
+    renderColumns();
+    document.getElementById('schema-output').value = '';
+    document.getElementById('gen-error').classList.add('hidden');
+    document.getElementById('copy-btn').classList.add('hidden');
+  });
+
+  document.getElementById('generate-btn').addEventListener('click', function () {
+    var errEl = document.getElementById('gen-error');
+    var outEl = document.getElementById('schema-output');
+    var copyBtn = document.getElementById('copy-btn');
+    errEl.classList.add('hidden');
+    outEl.value = '';
+    copyBtn.classList.add('hidden');
+
+    if (!columns.length) {
+      errEl.textContent = 'Add at least one column before generating.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    var hasEmpty = columns.some(function (c) { return !c.name.trim(); });
+    if (hasEmpty) {
+      errEl.textContent = 'All columns must have a name.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    var result = generateSchema();
+    if (result) {
+      outEl.value = result;
+      copyBtn.classList.remove('hidden');
+    }
+  });
+
+  document.getElementById('copy-btn').addEventListener('click', function () {
+    var val = document.getElementById('schema-output').value;
+    if (val) navigator.clipboard && navigator.clipboard.writeText(val);
+    this.textContent = 'Copied!';
+    var btn = this;
+    setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+  });
+
+  // Initialize with one empty column
+  columns.push(makeColumn('id', 'serial', false, true, ''));
+  renderColumns();
+})();
+</script>

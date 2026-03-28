@@ -1,0 +1,550 @@
+---
+title: "WebGPU for Web Developers 2026: GPU Computing in the Browser"
+description: "A comprehensive guide to WebGPU — the modern GPU API for the web. Covers adapters, devices, pipelines, WGSL shaders, compute shaders, and real-world use cases like AI inference and particle systems."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["webgpu", "webgl", "gpu", "graphics", "wgsl", "shaders", "performance", "javascript", "typescript", "browser"]
+readingTime: "12 min read"
+---
+
+WebGPU is the most significant graphics API to hit the web in a decade. It gives JavaScript developers direct, low-overhead access to the GPU — for both rendering and general-purpose compute. If you've wrestled with WebGL's OpenGL-era quirks, WebGPU is the clean-slate replacement you've been waiting for.
+
+Shipped in Chrome 113, partially in Firefox and Safari, and available behind flags in Node.js via `@gpuweb/webgpu`, this is the time to learn it.
+
+---
+
+## Why WebGPU, Not WebGL?
+
+WebGL launched in 2011 as a JavaScript binding to OpenGL ES 2.0 — an API designed for dedicated GPU hardware in the early 2000s. It works, but its age shows:
+
+- **Global state machine**: everything mutates global context, making debugging painful
+- **No compute shaders**: WebGL 2 added transform feedback, but true GPGPU was never first-class
+- **Driver translation overhead**: on modern systems, WebGL calls get translated through multiple layers before hitting the hardware
+- **Single-threaded by design**: no multi-threaded rendering
+
+WebGPU is built on modern GPU APIs: Vulkan (Linux/Android), Metal (macOS/iOS), and Direct3D 12 (Windows). The browser translates a single WebGPU call to the right native API. You get:
+
+- **Explicit resource management**: you control when and how resources are uploaded
+- **First-class compute shaders**: GPGPU is built in, not bolted on
+- **Multithreading**: you can record command buffers on workers
+- **Predictable performance**: no hidden state, no implicit flushes
+
+### Performance Comparison
+
+| Feature | WebGL 2 | WebGPU |
+|---|---|---|
+| Draw calls / frame | ~1,000-5,000 | ~50,000+ |
+| Compute shaders | No | Yes |
+| Multi-threaded | No | Yes (workers) |
+| Memory control | Limited | Full control |
+| API vintage | OpenGL ES 3.0 (2012) | Vulkan/Metal/DX12 (2015+) |
+
+---
+
+## Setting Up WebGPU in TypeScript
+
+Install the type definitions:
+
+```bash
+npm install @webgpu/types
+```
+
+Add to your `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "types": ["@webgpu/types"]
+  }
+}
+```
+
+### Check Browser Support
+
+```typescript
+async function initWebGPU(): Promise<{ device: GPUDevice; context: GPUCanvasContext }> {
+  if (!navigator.gpu) {
+    throw new Error("WebGPU not supported in this browser.");
+  }
+
+  // 1. Request adapter — represents the physical GPU
+  const adapter = await navigator.gpu.requestAdapter({
+    powerPreference: "high-performance", // or "low-power"
+  });
+
+  if (!adapter) {
+    throw new Error("No GPU adapter found.");
+  }
+
+  // 2. Request device — your logical connection to the GPU
+  const device = await adapter.requestDevice({
+    requiredFeatures: ["texture-compression-bc"], // optional features
+    requiredLimits: {
+      maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+    },
+  });
+
+  // 3. Configure the canvas
+  const canvas = document.querySelector<HTMLCanvasElement>("#canvas")!;
+  const context = canvas.getContext("webgpu")!;
+
+  context.configure({
+    device,
+    format: navigator.gpu.getPreferredCanvasFormat(), // bgra8unorm or rgba8unorm
+    alphaMode: "premultiplied",
+  });
+
+  return { device, context };
+}
+```
+
+The pattern is always: `navigator.gpu` → `requestAdapter()` → `requestDevice()` → configure canvas context.
+
+---
+
+## Core Concepts
+
+### Adapters and Devices
+
+- **GPUAdapter**: represents a physical GPU (or a software fallback). You inspect capabilities here.
+- **GPUDevice**: your logical handle to the GPU. You create all resources from it.
+- **GPUQueue**: a queue for submitting work to the GPU. Each device has a default queue.
+
+Think of the adapter as the hardware spec sheet; the device as your SDK instance.
+
+### Buffers and Textures
+
+```typescript
+// Create a vertex buffer
+const vertexBuffer = device.createBuffer({
+  size: vertices.byteLength,
+  usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+});
+
+// Upload data to the buffer
+device.queue.writeBuffer(vertexBuffer, 0, vertices);
+
+// Create a texture
+const texture = device.createTexture({
+  size: [512, 512, 1],
+  format: "rgba8unorm",
+  usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+});
+```
+
+Every resource declares its `usage` upfront. This lets the driver optimize memory layout — no guessing.
+
+### Bind Groups
+
+Bind groups are how you connect resources (buffers, textures, samplers) to shader slots:
+
+```typescript
+const bindGroupLayout = device.createBindGroupLayout({
+  entries: [
+    { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+    { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+    { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+  ],
+});
+
+const bindGroup = device.createBindGroup({
+  layout: bindGroupLayout,
+  entries: [
+    { binding: 0, resource: { buffer: uniformBuffer } },
+    { binding: 1, resource: texture.createView() },
+    { binding: 2, resource: sampler },
+  ],
+});
+```
+
+---
+
+## Writing WGSL Shaders
+
+WGSL (WebGPU Shading Language) is WebGPU's native shader language. It replaces GLSL. The syntax is Rust-flavored.
+
+### Vertex + Fragment Shader
+
+```wgsl
+// Vertex shader
+struct VertexInput {
+  @location(0) position: vec3f,
+  @location(1) uv: vec2f,
+};
+
+struct VertexOutput {
+  @builtin(position) clip_position: vec4f,
+  @location(0) uv: vec2f,
+};
+
+@group(0) @binding(0) var<uniform> transform: mat4x4f;
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+  var out: VertexOutput;
+  out.clip_position = transform * vec4f(in.position, 1.0);
+  out.uv = in.uv;
+  return out;
+}
+
+// Fragment shader
+@group(0) @binding(1) var t_diffuse: texture_2d<f32>;
+@group(0) @binding(2) var s_diffuse: sampler;
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+  return textureSample(t_diffuse, s_diffuse, in.uv);
+}
+```
+
+Key differences from GLSL:
+- `@location(n)` instead of `layout(location = n)`
+- `@builtin(position)` instead of `gl_Position`
+- `vec3f` instead of `vec3` (explicit `f32` precision)
+- `var<uniform>` declares the address space
+- Separate `@vertex` and `@fragment` entry points in one file is fine
+
+---
+
+## Rendering a Triangle
+
+Here's a minimal complete render pipeline:
+
+```typescript
+async function renderTriangle(device: GPUDevice, context: GPUCanvasContext) {
+  const shaderModule = device.createShaderModule({
+    code: `
+      @vertex
+      fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
+        var positions = array<vec2f, 3>(
+          vec2f(0.0, 0.5),
+          vec2f(-0.5, -0.5),
+          vec2f(0.5, -0.5),
+        );
+        return vec4f(positions[index], 0.0, 1.0);
+      }
+
+      @fragment
+      fn fs_main() -> @location(0) vec4f {
+        return vec4f(0.2, 0.6, 1.0, 1.0); // bright blue
+      }
+    `,
+  });
+
+  const pipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module: shaderModule,
+      entryPoint: "vs_main",
+    },
+    fragment: {
+      module: shaderModule,
+      entryPoint: "fs_main",
+      targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }],
+    },
+    primitive: { topology: "triangle-list" },
+  });
+
+  // Record commands
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      loadOp: "clear",
+      clearValue: { r: 0.05, g: 0.05, b: 0.05, a: 1.0 },
+      storeOp: "store",
+    }],
+  });
+
+  pass.setPipeline(pipeline);
+  pass.draw(3); // 3 vertices, no index buffer
+  pass.end();
+
+  // Submit to GPU
+  device.queue.submit([encoder.finish()]);
+}
+```
+
+The `CommandEncoder` records draw calls into a `CommandBuffer`, which you submit to the queue. The GPU processes the buffer asynchronously.
+
+---
+
+## Compute Shaders: GPGPU in the Browser
+
+This is where WebGPU truly surpasses WebGL. Compute shaders run arbitrary work on the GPU — no render pipeline required.
+
+### Example: Parallel Array Multiplication
+
+```wgsl
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output: array<f32>;
+
+@compute @workgroup_size(64)
+fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i < arrayLength(&input)) {
+    output[i] = input[i] * 2.0;
+  }
+}
+```
+
+```typescript
+async function computeMultiply(device: GPUDevice, data: Float32Array): Promise<Float32Array> {
+  const inputBuffer = device.createBuffer({
+    size: data.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  const outputBuffer = device.createBuffer({
+    size: data.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+
+  // Staging buffer to read results back to CPU
+  const stagingBuffer = device.createBuffer({
+    size: data.byteLength,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+
+  device.queue.writeBuffer(inputBuffer, 0, data);
+
+  const pipeline = device.createComputePipeline({
+    layout: "auto",
+    compute: { module: shaderModule, entryPoint: "cs_main" },
+  });
+
+  const bindGroup = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: inputBuffer } },
+      { binding: 1, resource: { buffer: outputBuffer } },
+    ],
+  });
+
+  const encoder = device.createCommandEncoder();
+  const computePass = encoder.beginComputePass();
+  computePass.setPipeline(pipeline);
+  computePass.setBindGroup(0, bindGroup);
+  computePass.dispatchWorkgroups(Math.ceil(data.length / 64));
+  computePass.end();
+
+  // Copy output to staging buffer for CPU readback
+  encoder.copyBufferToBuffer(outputBuffer, 0, stagingBuffer, 0, data.byteLength);
+  device.queue.submit([encoder.finish()]);
+
+  // Map staging buffer and read
+  await stagingBuffer.mapAsync(GPUMapMode.READ);
+  const result = new Float32Array(stagingBuffer.getMappedRange().slice(0));
+  stagingBuffer.unmap();
+
+  return result;
+}
+```
+
+`@workgroup_size(64)` means each workgroup has 64 threads. `dispatchWorkgroups(N)` launches `N` workgroups. Total threads = `N * 64`.
+
+---
+
+## Real-World Use Cases
+
+### AI Inference in the Browser
+
+Projects like `transformers.js` and `mediapipe` are starting to use WebGPU as a compute backend. Running a small language model or image classifier entirely in the browser — no server roundtrip — is now possible.
+
+```typescript
+// WebGPU backend for @xenova/transformers
+import { pipeline, env } from "@xenova/transformers";
+env.backends.onnx.wasm.numThreads = 1;
+
+// Force WebGPU if available
+const classifier = await pipeline("text-classification", "Xenova/bert-base-uncased-mnli", {
+  device: "webgpu", // falls back to CPU if unavailable
+});
+
+const result = await classifier("This is a great movie!");
+// [{ label: "POSITIVE", score: 0.9998 }]
+```
+
+### Particle Systems
+
+```wgsl
+struct Particle {
+  position: vec2f,
+  velocity: vec2f,
+  life: f32,
+}
+
+@group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
+
+@compute @workgroup_size(256)
+fn update_particles(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  var p = particles[i];
+
+  p.velocity.y -= 0.001; // gravity
+  p.position += p.velocity;
+  p.life -= 0.005;
+
+  if (p.life <= 0.0) {
+    // Reset particle
+    p.position = vec2f(0.0, 0.0);
+    p.velocity = vec2f(rand(f32(i)) * 0.02 - 0.01, rand(f32(i) * 1.3) * 0.03);
+    p.life = 1.0;
+  }
+
+  particles[i] = p;
+}
+```
+
+Running 1 million particles entirely on GPU at 60fps is achievable with WebGPU compute shaders.
+
+### Image Processing
+
+GPU-accelerated convolutions, blur filters, and tone mapping run orders of magnitude faster than CPU-side Canvas API operations:
+
+```wgsl
+@compute @workgroup_size(8, 8)
+fn gaussian_blur(
+  @builtin(global_invocation_id) gid: vec3u,
+) {
+  let coord = vec2i(gid.xy);
+  var color = vec4f(0.0);
+
+  // 5x5 Gaussian kernel
+  let kernel = array<f32, 5>(0.0625, 0.25, 0.375, 0.25, 0.0625);
+
+  for (var dx = -2; dx <= 2; dx++) {
+    for (var dy = -2; dy <= 2; dy++) {
+      let sample = textureLoad(input_texture, coord + vec2i(dx, dy), 0);
+      color += sample * kernel[dx + 2] * kernel[dy + 2];
+    }
+  }
+
+  textureStore(output_texture, coord, color);
+}
+```
+
+---
+
+## Browser Support Matrix (2026)
+
+| Browser | WebGPU Status | Notes |
+|---|---|---|
+| Chrome 113+ | ✅ Stable | All platforms |
+| Edge 113+ | ✅ Stable | Chromium-based |
+| Firefox 122+ | ⚠️ Partial | Behind `dom.webgpu.enabled` flag, Vulkan only |
+| Safari 17.4+ | ⚠️ Partial | macOS/iOS, Metal backend |
+| Node.js | ✅ Via `@gpuweb/webgpu` | Dawn-based native addon |
+
+Always include a WebGL fallback for production apps:
+
+```typescript
+async function getGraphicsContext() {
+  if (navigator.gpu) {
+    try {
+      return await initWebGPU();
+    } catch {
+      console.warn("WebGPU init failed, falling back to WebGL");
+    }
+  }
+  return initWebGL(); // your WebGL fallback
+}
+```
+
+---
+
+## Getting Started with @webgpu/types in TypeScript
+
+The `@webgpu/types` package provides full TypeScript definitions. As of 2026, Chrome's `lib.dom.d.ts` still doesn't include WebGPU types by default (though this is in progress).
+
+```bash
+npm install -D @webgpu/types
+```
+
+`tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types"]
+  }
+}
+```
+
+Or reference directly:
+
+```typescript
+/// <reference types="@webgpu/types" />
+```
+
+Key types to know:
+
+| Type | Purpose |
+|---|---|
+| `GPUAdapter` | Physical GPU interface |
+| `GPUDevice` | Logical device, creates all resources |
+| `GPUBuffer` | GPU-side memory buffer |
+| `GPUTexture` / `GPUTextureView` | Image data on GPU |
+| `GPURenderPipeline` | Vertex + fragment shader combo |
+| `GPUComputePipeline` | Compute shader pipeline |
+| `GPUCommandEncoder` | Records commands before submission |
+| `GPUBindGroup` | Connects resources to shader slots |
+| `GPURenderPassEncoder` | Records rendering commands |
+| `GPUComputePassEncoder` | Records compute commands |
+
+---
+
+## Performance Tips
+
+**1. Pre-compile pipelines at startup.** `createRenderPipeline()` and `createComputePipeline()` are expensive. Never call them in your render loop.
+
+**2. Use pipeline caching.** Store compiled pipelines in a `Map` keyed by shader hash.
+
+**3. Batch command submission.** Record multiple passes in one encoder, submit once. Each `queue.submit()` has overhead.
+
+**4. Prefer `writeBuffer` over `mapAsync` for uploads.** `writeBuffer` is asynchronous internally and doesn't block the CPU.
+
+**5. Use storage buffers over uniform buffers for large data.** Uniform buffers have a 64KB limit on some devices.
+
+**6. Minimize GPU-CPU readbacks.** `mapAsync` stalls the pipeline. Structure algorithms to stay GPU-resident as long as possible.
+
+---
+
+## WebGPU vs WebGL: When to Use Which
+
+Choose WebGPU when:
+- You need compute shaders (ML inference, physics, image processing)
+- You're building a high-performance 3D engine with 10,000+ draw calls
+- You need predictable, low-latency frame timing
+- You're targeting Chrome/Edge with a WebGL fallback
+
+Stick with WebGL when:
+- You need broad browser support today (Safari < 17.4, Firefox without flags)
+- You're using Three.js, Babylon.js, or another library that abstracts the graphics API (Three.js has a WebGPU backend, but WebGL is still the stable default)
+- Your team knows WebGL and the project doesn't require compute
+
+---
+
+## Summary
+
+WebGPU is a generational leap over WebGL:
+
+- **Modern API design**: explicit resource management, no global state
+- **Compute shaders**: real GPGPU, not workarounds
+- **Better performance**: lower overhead, higher draw call limits
+- **WGSL**: clean shader language built for the web
+
+The API surface is larger than WebGL, but the mental model is cleaner. Once you understand adapters → devices → pipelines → bind groups → command encoders, the rest follows logically.
+
+Start with the triangle, move to compute, and you'll be running GPU-accelerated ML models in the browser faster than you think.
+
+---
+
+## Resources
+
+- [WebGPU Spec](https://www.w3.org/TR/webgpu/) — W3C specification
+- [Your First WebGPU App](https://codelabs.developers.google.com/your-first-webgpu-app) — Google Codelab
+- [WebGPU Fundamentals](https://webgpufundamentals.org/) — Comprehensive tutorial series
+- [WGSL Spec](https://www.w3.org/TR/WGSL/) — Language reference
+- [@webgpu/types](https://www.npmjs.com/package/@webgpu/types) — TypeScript definitions

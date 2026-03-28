@@ -1,0 +1,433 @@
+---
+title: "Better Auth vs Lucia Auth vs NextAuth.js v5: Self-Hosted Auth in 2026"
+description: "A comprehensive comparison of the top self-hosted authentication libraries for 2026—Better Auth, Lucia Auth v3, and NextAuth.js v5 (Auth.js)—covering setup, features, database support, and when to use each over managed solutions."
+pubDate: 2026-03-28
+tags: ["Authentication", "Better Auth", "Lucia Auth", "NextAuth", "TypeScript", "Security", "Next.js"]
+slug: "better-auth-vs-lucia-auth-vs-nextauth-v5-2026"
+---
+
+The authentication landscape has never been more interesting for developers who want to own their stack. Auth0 and Clerk are great products, but at scale they become expensive fast—and for many teams, GDPR or SOC2 requirements make keeping user data in-house non-negotiable. In 2026, three self-hosted libraries have emerged as the clear leaders: **Better Auth**, **Lucia Auth v3**, and **NextAuth.js v5** (now officially called Auth.js).
+
+This guide compares them honestly so you can pick the right tool for your project.
+
+## Why Developers Are Moving to Self-Hosted Auth
+
+Before diving into the comparison, it helps to understand the forcing functions driving this trend:
+
+**Cost at scale.** Clerk charges per monthly active user. At 10,000 MAUs, you're paying ~$250/month. At 100,000 MAUs, that's $2,500/month. Self-hosting your auth eliminates this overhead.
+
+**Compliance and data residency.** GDPR requires knowing exactly where user data lives. HIPAA requires audit trails. Many enterprise contracts forbid sending PII to third-party services. Self-hosted auth gives you complete control.
+
+**Vendor lock-in.** Auth providers change pricing, deprecate features, or get acquired. When your auth is in a third-party SaaS, migrating off is painful. Self-hosted auth means your session tokens, user tables, and flows are yours.
+
+**Customization.** Managed auth solutions impose their UI and flows. Self-hosted libraries let you build any UX you want—custom MFA flows, unique session handling, domain-specific token claims.
+
+---
+
+## Better Auth: TypeScript-First, Plugin-Powered
+
+Better Auth launched in 2024 and has become the fastest-growing auth library in the ecosystem. Its core philosophy: ship a solid foundation and let plugins extend it.
+
+### Key Features
+
+- **TypeScript-first**: Client and server types are generated from your config—no `as any` hacks required
+- **Framework-agnostic**: Works with Next.js, Nuxt, SvelteKit, Astro, Express, Hono, and more
+- **Plugin system**: OAuth, 2FA, magic links, passkeys, organizations, admin UI—all optional plugins
+- **Built-in rate limiting** and CSRF protection out of the box
+
+### Setup Example
+
+```typescript
+// auth.ts
+import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { twoFactor, magicLink, organization } from "better-auth/plugins";
+import { db } from "./db";
+
+export const auth = betterAuth({
+  database: drizzleAdapter(db, {
+    provider: "pg",
+  }),
+  emailAndPassword: {
+    enabled: true,
+  },
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+  },
+  plugins: [
+    twoFactor(),
+    magicLink({
+      sendMagicLink: async ({ email, token, url }) => {
+        await sendEmail({ to: email, subject: "Sign in", url });
+      },
+    }),
+    organization(),
+  ],
+});
+```
+
+The client is fully typed based on your config:
+
+```typescript
+// auth-client.ts
+import { createAuthClient } from "better-auth/react";
+import { twoFactorClient, magicLinkClient, organizationClient } from "better-auth/client/plugins";
+
+export const authClient = createAuthClient({
+  plugins: [twoFactorClient(), magicLinkClient(), organizationClient()],
+});
+
+// Usage in a component
+const { data: session } = authClient.useSession();
+await authClient.signIn.email({ email, password });
+await authClient.twoFactor.sendOtp();
+```
+
+### Database Support
+
+Better Auth has official adapters for:
+- **Drizzle ORM** (PostgreSQL, MySQL, SQLite)
+- **Prisma** (all supported databases)
+- **Kysely** (type-safe query builder)
+- **MongoDB** via Mongoose
+
+You can also write a custom adapter for any database.
+
+### Best For
+
+Better Auth is the right choice if you need **a full-featured, production-ready auth system without piecing things together**. The plugin ecosystem is mature enough to handle complex requirements (organizations, multi-tenancy, passkeys), and TypeScript inference is genuinely excellent. It's also the easiest to get up and running in under an hour.
+
+---
+
+## Lucia Auth v3: Lightweight, Low-Level, Composable
+
+Lucia takes a different philosophy from Better Auth. It doesn't give you a batteries-included solution—it gives you low-level primitives for building auth yourself. If Better Auth is a car, Lucia is a well-engineered engine.
+
+### Key Features
+
+- **Minimal by design**: Lucia handles sessions; you handle everything else
+- **No magic**: All behavior is explicit in your code
+- **Framework-agnostic**: No framework assumptions baked in
+- **Any database**: Adapters for PostgreSQL, MySQL, SQLite, MongoDB, Redis (for sessions)
+- **Small bundle**: The core is ~10KB
+
+### Setup Example
+
+Lucia v3 separates session management from user management. You own the user creation flow:
+
+```typescript
+// auth.ts
+import { Lucia } from "lucia";
+import { DrizzlePostgreSQLAdapter } from "@lucia-auth/adapter-drizzle";
+import { db } from "./db";
+import { sessions, users } from "./schema";
+
+const adapter = new DrizzlePostgreSQLAdapter(db, sessions, users);
+
+export const lucia = new Lucia(adapter, {
+  sessionCookie: {
+    attributes: {
+      secure: process.env.NODE_ENV === "production",
+    },
+  },
+  getUserAttributes: (attributes) => {
+    return {
+      email: attributes.email,
+      emailVerified: attributes.email_verified,
+    };
+  },
+});
+
+// Declare module augmentation for TypeScript
+declare module "lucia" {
+  interface Register {
+    Lucia: typeof lucia;
+    DatabaseUserAttributes: {
+      email: string;
+      email_verified: boolean;
+    };
+  }
+}
+```
+
+Creating a user and session is explicit:
+
+```typescript
+// In your sign-up route handler
+import { generateId } from "lucia";
+import { hash } from "@node-rs/argon2";
+
+const passwordHash = await hash(password, {
+  memoryCost: 19456,
+  timeCost: 2,
+  outputLen: 32,
+  parallelism: 1,
+});
+
+const userId = generateId(15);
+
+await db.insert(users).values({
+  id: userId,
+  email,
+  passwordHash,
+});
+
+const session = await lucia.createSession(userId, {});
+const sessionCookie = lucia.createSessionCookie(session.id);
+
+// Set cookie in your framework's response
+cookies().set(sessionCookie.name, sessionCookie.value, sessionCookie.attributes);
+```
+
+### OAuth with Lucia
+
+Lucia doesn't include OAuth support directly—you use **Arctic**, a companion library from the same author:
+
+```typescript
+import { GitHub } from "arctic";
+
+const github = new GitHub(
+  process.env.GITHUB_CLIENT_ID!,
+  process.env.GITHUB_CLIENT_SECRET!
+);
+
+// Generate auth URL
+const state = generateState();
+const url = await github.createAuthorizationURL(state, { scopes: ["user:email"] });
+
+// In the callback, exchange for tokens
+const tokens = await github.validateAuthorizationCode(code);
+const githubUser = await fetch("https://api.github.com/user", {
+  headers: { Authorization: `Bearer ${tokens.accessToken}` },
+}).then((r) => r.json());
+```
+
+The explicitness is both Lucia's strength and weakness. You fully understand what's happening, but you write more code.
+
+### Database Support
+
+Lucia has adapters for:
+- **Drizzle** (PostgreSQL, MySQL, SQLite)
+- **Prisma** (all databases)
+- **Mongoose** (MongoDB)
+- **Unstorage** (for edge runtimes with Redis, KV, etc.)
+
+### Best For
+
+Lucia is the right choice if you want **complete control and full understanding of your auth system**. It's popular in security-conscious teams and developers building unusual auth flows where the assumptions in other libraries would be in the way. The trade-off is that you write significantly more code and are responsible for more of the security surface area.
+
+---
+
+## NextAuth.js v5 (Auth.js): The Next.js Standard
+
+NextAuth.js v5 rebranded to Auth.js to signal its move to framework-agnostic support, but in practice it remains most polished for Next.js. Version 5 was a significant rewrite addressing long-standing pain points from v4.
+
+### Key Changes in v5
+
+- **New config structure**: `auth.ts` instead of `pages/api/auth/[...nextauth].ts`
+- **Edge runtime support**: Sessions work in middleware without Node.js APIs
+- **Better TypeScript types**: Augmentation is cleaner
+- **Database sessions by default** (v4 defaulted to JWTs)
+- **`auth()` helper** replaces `getServerSession()` boilerplate
+
+### Setup Example
+
+```typescript
+// auth.ts (at project root)
+import NextAuth from "next-auth";
+import GitHub from "next-auth/providers/github";
+import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
+import { DrizzleAdapter } from "@auth/drizzle-adapter";
+import { db } from "@/db";
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  adapter: DrizzleAdapter(db),
+  providers: [
+    GitHub,
+    Google,
+    Credentials({
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const user = await getUserByEmail(credentials.email as string);
+        if (!user) return null;
+
+        const isValid = await verifyPassword(
+          credentials.password as string,
+          user.passwordHash
+        );
+        return isValid ? user : null;
+      },
+    }),
+  ],
+  callbacks: {
+    session({ session, user }) {
+      session.user.id = user.id;
+      return session;
+    },
+  },
+});
+```
+
+Route handler setup is now a single file:
+
+```typescript
+// app/api/auth/[...nextauth]/route.ts
+import { handlers } from "@/auth";
+export const { GET, POST } = handlers;
+```
+
+Using auth in Server Components and middleware:
+
+```typescript
+// In any Server Component
+import { auth } from "@/auth";
+
+export default async function Dashboard() {
+  const session = await auth();
+  if (!session) redirect("/login");
+
+  return <div>Welcome, {session.user.name}</div>;
+}
+
+// middleware.ts
+export { auth as middleware } from "@/auth";
+export const config = { matcher: ["/dashboard/:path*"] };
+```
+
+### Database Support
+
+Auth.js has official adapters for:
+- **Drizzle** (`@auth/drizzle-adapter`)
+- **Prisma** (`@auth/prisma-adapter`)
+- **MongoDB** (Mongoose via `@auth/mongodb-adapter`)
+- **TypeORM** (`@auth/typeorm-adapter`)
+- **Supabase**, **PlanetScale**, and many others via community adapters
+
+### Best For
+
+NextAuth.js v5 is the right choice if you're building a **Next.js application and want maximum ecosystem compatibility**. The providers list is massive (50+ OAuth providers), the documentation is excellent, and most Next.js developers already know it. It's also the best choice for rapid prototyping—you can have OAuth login working in 15 minutes.
+
+---
+
+## Feature Comparison Matrix
+
+| Feature | Better Auth | Lucia Auth v3 | NextAuth.js v5 |
+|---------|-------------|----------------|-----------------|
+| TypeScript support | ★★★★★ | ★★★★★ | ★★★★☆ |
+| Framework agnostic | ★★★★★ | ★★★★★ | ★★★☆☆ |
+| OAuth providers | ★★★★☆ | Via Arctic | ★★★★★ |
+| Email/password | Built-in | Manual | Via Credentials |
+| Magic links | Plugin | Manual | Via custom Email provider |
+| Two-factor auth | Plugin | Manual | Via custom flow |
+| Passkeys/WebAuthn | Plugin | Manual | Via plugin |
+| Organizations/multi-tenant | Plugin | Manual | Manual |
+| Session management | Automatic | Core feature | Automatic |
+| Database adapters | Drizzle, Prisma, Kysely | Drizzle, Prisma | Drizzle, Prisma, TypeORM, +many |
+| Edge runtime | ★★★★☆ | ★★★★★ | ★★★★★ |
+| Bundle size | Medium | Small | Medium |
+| Documentation | Good | Excellent | Excellent |
+| Community size | Growing fast | Large | Largest |
+
+---
+
+## Setup Complexity Comparison
+
+Here's how long it takes to get each library to a working "sign in with GitHub + email/password" flow:
+
+**Better Auth**: ~45 minutes
+- Install package + plugins, run CLI to generate schema, add route handler, configure providers, add client. Most complexity is handled by the framework.
+
+**Lucia Auth**: ~2-3 hours
+- Install Lucia + Arctic, write schema manually, build sign-up/sign-in handlers from scratch, implement OAuth callback logic, wire up sessions. High learning curve but full understanding.
+
+**NextAuth.js v5**: ~20 minutes for OAuth, ~1 hour adding email/password
+- Add providers array, set env vars, mount route handler. Credentials provider requires writing the password validation manually. The fastest for pure OAuth apps.
+
+---
+
+## Performance and Bundle Size
+
+For most web apps, auth library performance is not a bottleneck—database queries dominate. That said:
+
+| Library | Server bundle addition | Session validation overhead |
+|---------|----------------------|---------------------------|
+| Better Auth | ~85KB | ~0.3ms (cached) |
+| Lucia Auth | ~12KB core | ~0.1ms (cached) |
+| NextAuth.js v5 | ~120KB | ~0.4ms (cached) |
+
+If you're on an edge runtime where cold starts matter, Lucia's minimal footprint is a genuine advantage.
+
+---
+
+## Self-Hosted vs Managed: When Each Makes Sense
+
+**Choose self-hosted (any of the above) when:**
+- MAU count makes managed auth expensive (typically 5,000+ MAUs)
+- You have data residency or compliance requirements (GDPR, HIPAA, SOC2)
+- You need auth flows that managed providers don't support
+- You want to avoid third-party SaaS dependencies in your critical path
+
+**Choose Auth0/Clerk/Stytch when:**
+- You're building an MVP and time-to-market is paramount
+- Your team has no security experience—managed providers handle best practices automatically
+- You need enterprise SSO (SAML, SCIM) quickly—these are complex to implement yourself
+- Budget is not a constraint and you want zero operational overhead
+
+---
+
+## Which One Should You Pick?
+
+**Pick Better Auth if:**
+- You want a complete, production-ready solution with minimal glue code
+- You need organizations, multi-tenancy, or passkeys without building them from scratch
+- TypeScript inference and developer experience matter to you
+- You're using any framework (not just Next.js)
+
+**Pick Lucia Auth if:**
+- You want full control and no magic
+- Your auth requirements are unusual enough that other libraries' assumptions get in the way
+- You're comfortable writing more code in exchange for deep understanding
+- Security audits require understanding exactly what's happening at every layer
+
+**Pick NextAuth.js v5 if:**
+- You're building a Next.js application
+- You need 50+ OAuth providers with minimal configuration
+- Your team already knows NextAuth from previous projects
+- You want the largest community and most third-party integrations
+
+---
+
+## Migration Path
+
+If you're on NextAuth.js v4 and considering an upgrade:
+
+- **To v5**: Follow the official migration guide—it's a significant rewrite but well-documented
+- **To Better Auth**: There's a community migration tool. The conceptual model is similar (providers, adapters, callbacks) so the mental shift is small
+- **To Lucia**: This is a bottom-up rewrite. Only worth it if you're unhappy with the abstraction level of your current setup
+
+---
+
+## Summary
+
+All three libraries are solid choices for self-hosted auth in 2026. The decision really comes down to how much you want the library to handle versus how much you want to control:
+
+- **Maximum automation with full features** → Better Auth
+- **Maximum control with minimal magic** → Lucia Auth
+- **Maximum ecosystem and Next.js integration** → NextAuth.js v5
+
+Whichever you choose, you're in good company—and you're keeping your users' data on your own infrastructure, which is increasingly the right call.
+
+---
+
+*Want to explore more auth patterns? Check out the [Developer Playbook tools collection](https://devplaybook.cc/tools) for JWT decoders, password strength testers, and other security utilities.*

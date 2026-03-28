@@ -1,0 +1,215 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AffiliateSection from '../../components/AffiliateSection.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is SHA-256 and why is it used for file checksums?", answer: "SHA-256 (Secure Hash Algorithm 256-bit) is a cryptographic hash function that produces a fixed 64-character hexadecimal digest from any input. It is used for file checksums because even a single-bit change in the input produces a completely different output — making it ideal for verifying file integrity. If the SHA-256 hash of a downloaded file matches the one published by the author, you can be confident the file has not been tampered with or corrupted in transit." },
+  { question: "Why is MD5 deprecated and why should I use SHA-256 instead?", answer: "MD5 was broken in 2004 when researchers demonstrated collision attacks — meaning two different inputs can produce the same MD5 hash. This makes MD5 unsuitable for security-sensitive uses like verifying software downloads or signing certificates. SHA-256 belongs to the SHA-2 family and has no known practical collision vulnerabilities. For integrity verification of files, always prefer SHA-256 (or SHA-512). MD5 may still appear in legacy systems or non-security contexts like cache keys, but should never be used for trust verification." },
+  { question: "How does the SubtleCrypto Web API compute SHA-256 in the browser?", answer: "The Web Crypto API (window.crypto.subtle) is a browser-native cryptography interface. To compute SHA-256, you call crypto.subtle.digest('SHA-256', data) where data is an ArrayBuffer. This returns a Promise that resolves to an ArrayBuffer containing the raw hash bytes. You then convert those bytes to a hex string using a Uint8Array and Array.from(). The entire operation runs inside the browser — no data ever leaves your device. This tool uses that exact approach with async/await for clarity." },
+  { question: "Can I use this to verify a downloaded file's integrity?", answer: "Yes. Download your file, then either paste its text content into the textarea or upload it using the file picker. The tool will compute its SHA-256 hash. Compare that hash to the checksum published by the software author (often listed as a .sha256 file or on the release page). If the hashes match exactly (case-insensitive), the file is intact. If they differ by even one character, the file may have been corrupted or modified and should not be trusted." },
+];
+---
+
+<BaseLayout
+  title="SHA-256 File Checksum Calculator — Free Online SHA256 Hash"
+  description="Compute SHA-256 checksums in your browser. Paste text or upload a file to get the SHA-256 hex digest instantly. Explains why SHA-256 beats MD5. Free, no upload, uses SubtleCrypto Web API."
+  tool="SHA-256 checksum, SHA256 hash generator, file checksum calculator, SubtleCrypto, MD5 vs SHA256"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "SHA-256 File Checksum Calculator",
+    "url": "https://devplaybook.cc/tools/sha256-file-checksum",
+    "description": "Compute SHA-256 checksums of text or file content entirely in your browser using the SubtleCrypto Web API. No server upload required.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">SHA-256 File Checksum Calculator</h1>
+  <p class="text-text-muted mb-4">
+    Compute the SHA-256 hash of any text or file directly in your browser using the native SubtleCrypto Web API.
+    Nothing is uploaded to a server. Use it to verify file integrity, check downloads, or compare content.
+  </p>
+  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Paste text or upload a file</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Uses SubtleCrypto Web API</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SHA-256 (MD5 is deprecated)</span>
+  </div>
+
+  <!-- Input area -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <span class="font-semibold text-sm">Input — Paste Text or Upload a File</span>
+      <button id="sha-clear" class="text-xs text-text-muted hover:text-red-400 transition-colors">Clear</button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-2 mb-4">
+      <button id="tab-text" class="px-4 py-1.5 rounded-lg text-sm font-medium bg-primary text-white transition-colors">Paste Text</button>
+      <button id="tab-file" class="px-4 py-1.5 rounded-lg text-sm font-medium bg-bg border border-border text-text-muted hover:text-text transition-colors">Upload File</button>
+    </div>
+
+    <!-- Text panel -->
+    <div id="panel-text">
+      <textarea id="sha-input" rows="8"
+        placeholder="Paste text content here to compute its SHA-256 hash..."
+        class="w-full bg-bg border border-border rounded-lg px-3 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"></textarea>
+    </div>
+
+    <!-- File panel -->
+    <div id="panel-file" class="hidden">
+      <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 transition-colors bg-bg">
+        <span class="text-text-muted text-sm mb-1">Click to select a file, or drag and drop</span>
+        <span id="file-name" class="text-xs text-text-muted">No file chosen</span>
+        <input type="file" id="sha-file" class="hidden" />
+      </label>
+    </div>
+  </div>
+
+  <div class="flex gap-3 mb-6">
+    <button id="sha-compute" class="bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
+      Compute SHA-256
+    </button>
+  </div>
+
+  <!-- Result -->
+  <div id="sha-result-block" class="hidden bg-bg-card border border-border rounded-xl p-5 mb-8">
+    <div class="flex items-center justify-between mb-3">
+      <span class="font-semibold text-sm">SHA-256 Hash</span>
+      <button id="sha-copy" class="text-xs text-primary hover:underline">Copy</button>
+    </div>
+    <div id="sha-error" class="hidden mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400"></div>
+    <div id="sha-output"
+      class="w-full bg-bg border border-border rounded-lg px-3 py-3 text-sm font-mono text-green-400 break-all"></div>
+    <p class="text-xs text-text-muted mt-3">64 hex characters · 256 bits · SHA-2 family</p>
+  </div>
+
+  <!-- Why SHA-256 not MD5 -->
+  <div class="bg-bg-card border border-border rounded-xl p-6 mb-8">
+    <h2 class="font-bold text-sm uppercase tracking-wide text-text-muted mb-4">SHA-256 vs MD5 — Quick Reference</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="text-left py-2 pr-4 text-text-muted font-medium">Property</th>
+            <th class="text-left py-2 pr-4 text-text-muted font-medium">MD5</th>
+            <th class="text-left py-2 text-text-muted font-medium">SHA-256</th>
+          </tr>
+        </thead>
+        <tbody class="text-xs text-text-muted">
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">Output size</td><td class="pr-4 font-mono">128 bits (32 hex)</td><td class="font-mono">256 bits (64 hex)</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">Collision resistance</td><td class="pr-4 text-red-400">Broken (2004)</td><td class="text-green-400">No known attacks</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">Security use</td><td class="pr-4 text-red-400">Deprecated</td><td class="text-green-400">Recommended</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-sans text-text">Speed</td><td class="pr-4">Very fast</td><td>Fast</td></tr>
+          <tr><td class="py-2 pr-4 font-sans text-text">Common uses</td><td class="pr-4">Legacy, cache keys</td><td>File integrity, TLS, code signing</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <AffiliateSection />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="SHA-256 File Checksum Calculator" relatedTags={['security', 'hash', 'crypto', 'files', 'devtools']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  // Tab switching
+  var tabText = document.getElementById('tab-text');
+  var tabFile = document.getElementById('tab-file');
+  var panelText = document.getElementById('panel-text');
+  var panelFile = document.getElementById('panel-file');
+
+  tabText.addEventListener('click', function () {
+    tabText.classList.add('bg-primary', 'text-white');
+    tabText.classList.remove('bg-bg', 'border', 'border-border', 'text-text-muted');
+    tabFile.classList.remove('bg-primary', 'text-white');
+    tabFile.classList.add('bg-bg', 'border', 'border-border', 'text-text-muted');
+    panelText.classList.remove('hidden');
+    panelFile.classList.add('hidden');
+  });
+
+  tabFile.addEventListener('click', function () {
+    tabFile.classList.add('bg-primary', 'text-white');
+    tabFile.classList.remove('bg-bg', 'border', 'border-border', 'text-text-muted');
+    tabText.classList.remove('bg-primary', 'text-white');
+    tabText.classList.add('bg-bg', 'border', 'border-border', 'text-text-muted');
+    panelFile.classList.remove('hidden');
+    panelText.classList.add('hidden');
+  });
+
+  // File picker label
+  document.getElementById('sha-file').addEventListener('change', function () {
+    var name = this.files && this.files[0] ? this.files[0].name : 'No file chosen';
+    document.getElementById('file-name').textContent = name;
+  });
+
+  // Clear
+  document.getElementById('sha-clear').addEventListener('click', function () {
+    document.getElementById('sha-input').value = '';
+    document.getElementById('sha-file').value = '';
+    document.getElementById('file-name').textContent = 'No file chosen';
+    document.getElementById('sha-result-block').classList.add('hidden');
+    document.getElementById('sha-output').textContent = '';
+    document.getElementById('sha-error').classList.add('hidden');
+  });
+
+  // Compute SHA-256
+  document.getElementById('sha-compute').addEventListener('click', async function () {
+    var resultBlock = document.getElementById('sha-result-block');
+    var outputEl = document.getElementById('sha-output');
+    var errorEl = document.getElementById('sha-error');
+
+    errorEl.classList.add('hidden');
+    outputEl.textContent = '';
+    resultBlock.classList.remove('hidden');
+
+    try {
+      var isFileMode = !panelFile.classList.contains('hidden');
+      var buffer;
+
+      if (isFileMode) {
+        var file = document.getElementById('sha-file').files[0];
+        if (!file) {
+          errorEl.textContent = 'Please select a file first.';
+          errorEl.classList.remove('hidden');
+          return;
+        }
+        buffer = await file.arrayBuffer();
+      } else {
+        var text = document.getElementById('sha-input').value;
+        if (!text.trim()) {
+          errorEl.textContent = 'Please paste some text first.';
+          errorEl.classList.remove('hidden');
+          return;
+        }
+        var encoder = new TextEncoder();
+        buffer = encoder.encode(text).buffer;
+      }
+
+      var hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+      var hashArray = Array.from(new Uint8Array(hashBuffer));
+      var hexHash = hashArray.map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+      outputEl.textContent = hexHash;
+    } catch (e) {
+      errorEl.textContent = 'Error computing hash: ' + (e.message || String(e));
+      errorEl.classList.remove('hidden');
+      outputEl.textContent = '';
+    }
+  });
+
+  // Copy
+  document.getElementById('sha-copy').addEventListener('click', function () {
+    var val = document.getElementById('sha-output').textContent;
+    if (val && navigator.clipboard) navigator.clipboard.writeText(val);
+    this.textContent = 'Copied!';
+    var btn = this;
+    setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+  });
+})();
+</script>

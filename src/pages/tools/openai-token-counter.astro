@@ -1,0 +1,236 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AffiliateSection from '../../components/AffiliateSection.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How does this token counter estimate tokens?", answer: "This tool uses the standard approximation of 1 token ≈ 4 characters for English text. This closely matches the tiktoken tokenizer used by OpenAI for GPT-3.5 and GPT-4 models. For non-English text or code, actual token counts may differ — code tends to use more tokens per character and some languages use fewer characters per token." },
+  { question: "What is GPT-4o's context window size?", answer: "GPT-4o supports a 128,000-token context window, which is roughly equivalent to about 300 pages of text. This massive context window allows you to feed entire codebases, long documents, or extended conversations into a single API call. The output limit is 4,096 tokens by default (extendable to 16,384 in some tiers)." },
+  { question: "Why do tokens matter for GPT API costs?", answer: "OpenAI charges per token — both input (prompt) tokens and output (completion) tokens count toward your bill. A longer prompt consumes more input tokens, which directly increases cost. Understanding token counts before making API calls helps you optimize prompts, stay within context limits, and control spending. For example, GPT-4o costs $5 per 1M input tokens as of 2024." },
+  { question: "Does this tool send my text to any server?", answer: "No. All token counting happens entirely in your browser using JavaScript. Your text never leaves your device. This makes it safe to paste sensitive content like API keys, private documents, or proprietary code when estimating token counts." },
+];
+---
+
+<BaseLayout
+  title="OpenAI Token Counter — Count Tokens for GPT-4o, GPT-4, GPT-3.5"
+  description="Count tokens for OpenAI GPT-4o, GPT-4, and GPT-3.5-turbo in your browser. See context window usage percentages instantly. Free, no signup, runs locally."
+  tool="OpenAI token counter, GPT-4o token count, tiktoken approximation, GPT context window, count tokens online"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "OpenAI Token Counter",
+    "url": "https://devplaybook.cc/tools/openai-token-counter",
+    "description": "Count tokens for OpenAI GPT-4o, GPT-4, and GPT-3.5-turbo. See context window usage percentages in real time. Runs entirely in your browser.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">OpenAI Token Counter</h1>
+  <p class="text-text-muted mb-4">
+    Estimate token counts for GPT-4o, GPT-4, and GPT-3.5-turbo using the standard 1 token ≈ 4 characters approximation.
+    See how much of each model's context window your prompt fills. Runs 100% in your browser — no data leaves your device.
+  </p>
+  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real-time counting as you type</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Context window % usage</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GPT-4o / GPT-4 / GPT-3.5</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 100% private, runs in browser</span>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <label class="font-semibold text-sm" for="token-input">Your Prompt / Text</label>
+      <div class="flex gap-3">
+        <button id="token-example" class="text-xs text-primary hover:underline">Load example</button>
+        <button id="token-clear" class="text-xs text-text-muted hover:text-red-400">Clear</button>
+      </div>
+    </div>
+    <textarea id="token-input" rows="10"
+      placeholder="Paste your prompt, system message, or any text here to count tokens..."
+      class="w-full bg-bg border border-border rounded-lg px-3 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"></textarea>
+    <div class="flex items-center justify-between mt-2 text-xs text-text-muted">
+      <span id="char-count">0 characters</span>
+      <span id="token-estimate" class="font-semibold text-primary">~0 tokens</span>
+    </div>
+  </div>
+
+  <!-- Model results -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8" id="model-cards">
+    <!-- GPT-4o -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-1">
+        <span class="font-semibold text-sm">GPT-4o</span>
+        <span class="text-xs bg-green-500/10 text-green-400 px-2 py-0.5 rounded-full">128k ctx</span>
+      </div>
+      <div class="text-2xl font-bold mb-1" id="gpt4o-tokens">0</div>
+      <div class="text-xs text-text-muted mb-3">tokens used</div>
+      <div class="w-full bg-bg rounded-full h-2 overflow-hidden">
+        <div id="gpt4o-bar" class="h-2 rounded-full bg-green-500 transition-all duration-300" style="width:0%"></div>
+      </div>
+      <div class="text-xs text-text-muted mt-1.5" id="gpt4o-pct">0% of 128,000 tokens</div>
+    </div>
+
+    <!-- GPT-4 (8k) -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-1">
+        <span class="font-semibold text-sm">GPT-4</span>
+        <span class="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full">8k ctx</span>
+      </div>
+      <div class="text-2xl font-bold mb-1" id="gpt4-tokens">0</div>
+      <div class="text-xs text-text-muted mb-3">tokens used</div>
+      <div class="w-full bg-bg rounded-full h-2 overflow-hidden">
+        <div id="gpt4-bar" class="h-2 rounded-full bg-blue-500 transition-all duration-300" style="width:0%"></div>
+      </div>
+      <div class="text-xs text-text-muted mt-1.5" id="gpt4-pct">0% of 8,192 tokens</div>
+    </div>
+
+    <!-- GPT-4 (32k) -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-1">
+        <span class="font-semibold text-sm">GPT-4 (32k)</span>
+        <span class="text-xs bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded-full">32k ctx</span>
+      </div>
+      <div class="text-2xl font-bold mb-1" id="gpt432k-tokens">0</div>
+      <div class="text-xs text-text-muted mb-3">tokens used</div>
+      <div class="w-full bg-bg rounded-full h-2 overflow-hidden">
+        <div id="gpt432k-bar" class="h-2 rounded-full bg-purple-500 transition-all duration-300" style="width:0%"></div>
+      </div>
+      <div class="text-xs text-text-muted mt-1.5" id="gpt432k-pct">0% of 32,768 tokens</div>
+    </div>
+
+    <!-- GPT-3.5-turbo (16k) -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-1">
+        <span class="font-semibold text-sm">GPT-3.5-turbo</span>
+        <span class="text-xs bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded-full">16k ctx</span>
+      </div>
+      <div class="text-2xl font-bold mb-1" id="gpt35-tokens">0</div>
+      <div class="text-xs text-text-muted mb-3">tokens used</div>
+      <div class="w-full bg-bg rounded-full h-2 overflow-hidden">
+        <div id="gpt35-bar" class="h-2 rounded-full bg-yellow-500 transition-all duration-300" style="width:0%"></div>
+      </div>
+      <div class="text-xs text-text-muted mt-1.5" id="gpt35-pct">0% of 16,385 tokens</div>
+    </div>
+
+    <!-- Fit summary card -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 sm:col-span-2">
+      <div class="font-semibold text-sm mb-3">Context Window Fit Summary</div>
+      <div id="fit-summary" class="text-sm text-text-muted">Enter text above to see which models can fit your prompt.</div>
+    </div>
+  </div>
+
+  <!-- Reference table -->
+  <div class="bg-bg-card border border-border rounded-xl p-6 mb-8">
+    <h2 class="font-bold text-sm uppercase tracking-wide text-text-muted mb-4">OpenAI Model Context Window Reference</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="text-left py-2 pr-4 text-text-muted font-medium">Model</th>
+            <th class="text-left py-2 pr-4 text-text-muted font-medium">Context Window</th>
+            <th class="text-left py-2 pr-4 text-text-muted font-medium">Max Output</th>
+            <th class="text-left py-2 text-text-muted font-medium">Est. Pages</th>
+          </tr>
+        </thead>
+        <tbody class="text-xs text-text-muted">
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 text-text font-medium">GPT-4o</td><td class="pr-4">128,000 tokens</td><td class="pr-4">16,384 tokens</td><td>~300 pages</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 text-text font-medium">GPT-4</td><td class="pr-4">8,192 tokens</td><td class="pr-4">4,096 tokens</td><td>~19 pages</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 text-text font-medium">GPT-4 (32k)</td><td class="pr-4">32,768 tokens</td><td class="pr-4">4,096 tokens</td><td>~77 pages</td></tr>
+          <tr><td class="py-2 pr-4 text-text font-medium">GPT-3.5-turbo</td><td class="pr-4">16,385 tokens</td><td class="pr-4">4,096 tokens</td><td>~38 pages</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <AffiliateSection />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="OpenAI Token Counter" relatedTags={['openai', 'gpt', 'tokens', 'llm', 'api']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var MODELS = [
+    { id: 'gpt4o',   label: 'GPT-4o',          ctx: 128000, color: 'green' },
+    { id: 'gpt4',    label: 'GPT-4',            ctx: 8192,   color: 'blue' },
+    { id: 'gpt432k', label: 'GPT-4 (32k)',      ctx: 32768,  color: 'purple' },
+    { id: 'gpt35',   label: 'GPT-3.5-turbo',   ctx: 16385,  color: 'yellow' },
+  ];
+
+  function estimateTokens(text) {
+    if (!text) return 0;
+    return Math.ceil(text.length / 4);
+  }
+
+  function formatNumber(n) {
+    return n.toLocaleString();
+  }
+
+  function update() {
+    var text = document.getElementById('token-input').value;
+    var chars = text.length;
+    var tokens = estimateTokens(text);
+
+    document.getElementById('char-count').textContent = formatNumber(chars) + ' characters';
+    document.getElementById('token-estimate').textContent = '~' + formatNumber(tokens) + ' tokens';
+
+    var fits = [];
+    var doesntFit = [];
+
+    MODELS.forEach(function (m) {
+      var pct = tokens > 0 ? Math.min((tokens / m.ctx) * 100, 100) : 0;
+      var pctDisplay = pct < 0.1 && tokens > 0 ? '<0.1' : pct.toFixed(1);
+      var barWidth = Math.min(pct, 100).toFixed(2);
+      var warningColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : ('bg-' + m.color + '-500');
+
+      document.getElementById(m.id + '-tokens').textContent = formatNumber(tokens);
+      document.getElementById(m.id + '-bar').style.width = barWidth + '%';
+      document.getElementById(m.id + '-bar').className = 'h-2 rounded-full transition-all duration-300 ' + warningColor;
+      document.getElementById(m.id + '-pct').textContent = pctDisplay + '% of ' + formatNumber(m.ctx) + ' tokens';
+
+      if (tokens <= m.ctx) {
+        fits.push(m.label + ' (' + pctDisplay + '%)');
+      } else {
+        doesntFit.push(m.label);
+      }
+    });
+
+    var summaryEl = document.getElementById('fit-summary');
+    if (tokens === 0) {
+      summaryEl.textContent = 'Enter text above to see which models can fit your prompt.';
+      summaryEl.className = 'text-sm text-text-muted';
+    } else {
+      var html = '';
+      if (fits.length) {
+        html += '<span class="text-green-400">✓ Fits: </span>' + fits.join(', ') + '.';
+      }
+      if (doesntFit.length) {
+        if (html) html += ' ';
+        html += '<span class="text-red-400">✗ Exceeds: </span>' + doesntFit.join(', ') + '.';
+      }
+      summaryEl.innerHTML = html;
+      summaryEl.className = 'text-sm';
+    }
+  }
+
+  var EXAMPLE = 'You are a senior software engineer reviewing a pull request. Analyze the following code changes for potential bugs, security vulnerabilities, performance issues, and maintainability concerns. Provide specific, actionable feedback for each issue found. Format your response with the issue type, severity (critical/major/minor), file and line reference, description, and suggested fix.\n\nCode diff:\n```\n- function processUser(data) {\n-   const query = "SELECT * FROM users WHERE id=" + data.id;\n-   db.execute(query);\n+ async function processUser(data) {\n+   const query = "SELECT * FROM users WHERE id = ?";\n+   await db.execute(query, [data.id]);\n+ }\n```';
+
+  document.getElementById('token-example').addEventListener('click', function () {
+    document.getElementById('token-input').value = EXAMPLE;
+    update();
+  });
+
+  document.getElementById('token-clear').addEventListener('click', function () {
+    document.getElementById('token-input').value = '';
+    update();
+  });
+
+  document.getElementById('token-input').addEventListener('input', update);
+
+  update();
+})();
+</script>

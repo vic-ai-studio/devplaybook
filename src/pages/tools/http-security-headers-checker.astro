@@ -1,0 +1,281 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AffiliateSection from '../../components/AffiliateSection.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are HTTP security headers and why do they matter?", answer: "HTTP security headers are response headers sent by a web server that instruct the browser on how to behave when handling the site's content. They form a crucial second layer of defense on top of application-level security. For example, Content-Security-Policy prevents cross-site scripting (XSS) by whitelisting allowed content sources; Strict-Transport-Security forces HTTPS; X-Frame-Options prevents clickjacking. Missing these headers leaves your application vulnerable even if your code itself has no bugs." },
+  { question: "How do I get the HTTP response headers for my site?", answer: "You can retrieve headers in several ways: (1) Open DevTools in Chrome/Firefox, go to the Network tab, reload the page, click the main document request, and look at the Response Headers section. (2) Use curl: run `curl -I https://yourdomain.com` in your terminal — the -I flag fetches only headers. (3) Use online tools like securityheaders.com to scan a live URL. Once you have the raw headers, paste them into this tool to get an instant checklist." },
+  { question: "What is Content-Security-Policy and how strict should it be?", answer: "Content-Security-Policy (CSP) is the most powerful security header. It tells the browser which sources are allowed to load scripts, styles, images, fonts, and other resources. A strict CSP like `default-src 'self'` blocks all external resources. In practice you need to allow your CDN, analytics, fonts, etc. Start with `Content-Security-Policy-Report-Only` to collect violations without blocking, then tighten the policy. Avoid `unsafe-inline` and `unsafe-eval` as they undermine most of CSP's protection." },
+  { question: "Is X-XSS-Protection still relevant?", answer: "X-XSS-Protection was a header supported by older Internet Explorer and Chrome browsers that enabled a built-in XSS auditor. Chrome removed it in v78 (2019) and most modern browsers ignore it. Security experts now recommend setting it to `0` (disabled) to avoid edge-case bugs in older browsers, and instead relying entirely on a strong Content-Security-Policy for XSS protection. This tool flags X-XSS-Protection as deprecated so you know it provides no real protection in modern browsers." },
+];
+---
+
+<BaseLayout
+  title="HTTP Security Headers Checker — Analyze Response Security Headers"
+  description="Paste raw HTTP response headers and get an instant visual checklist showing which security headers are present or missing. Covers CSP, HSTS, X-Frame-Options, CORS, and more. Free, runs in browser."
+  tool="HTTP security headers checker, response headers analyzer, CSP checker, HSTS validator, X-Frame-Options, security headers missing"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "HTTP Security Headers Checker",
+    "url": "https://devplaybook.cc/tools/http-security-headers-checker",
+    "description": "Analyze HTTP response headers for security best practices. Visual checklist showing present and missing security headers with explanations.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">HTTP Security Headers Checker</h1>
+  <p class="text-text-muted mb-4">
+    Paste raw HTTP response headers and get an instant visual checklist of which security headers are present or missing.
+    Each result explains what the header does and why it matters. Runs entirely in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 8 security headers checked</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Shows header value if present</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Explains missing headers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Flags deprecated headers</span>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <label class="font-semibold text-sm" for="headers-input">Paste Raw HTTP Response Headers</label>
+      <div class="flex gap-3">
+        <button id="headers-example" class="text-xs text-primary hover:underline">Load example</button>
+        <button id="headers-clear" class="text-xs text-text-muted hover:text-red-400 transition-colors">Clear</button>
+      </div>
+    </div>
+    <textarea id="headers-input" rows="10"
+      placeholder="Content-Type: text/html; charset=utf-8&#10;Strict-Transport-Security: max-age=31536000; includeSubDomains&#10;X-Frame-Options: DENY&#10;Content-Security-Policy: default-src 'self'&#10;..."
+      class="w-full bg-bg border border-border rounded-lg px-3 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"></textarea>
+    <p class="text-xs text-text-muted mt-2">Tip: get headers via <code class="bg-bg px-1 rounded">curl -I https://yourdomain.com</code> or DevTools → Network → Response Headers</p>
+  </div>
+
+  <div class="flex gap-3 mb-8">
+    <button id="headers-check" class="bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
+      Check Security Headers
+    </button>
+  </div>
+
+  <!-- Results -->
+  <div id="headers-results" class="hidden mb-8">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-bold text-lg">Results</h2>
+      <div id="headers-score" class="text-sm font-semibold px-3 py-1 rounded-full"></div>
+    </div>
+    <div id="headers-checklist" class="flex flex-col gap-3"></div>
+  </div>
+
+  <!-- Reference table -->
+  <div class="bg-bg-card border border-border rounded-xl p-6 mb-8">
+    <h2 class="font-bold text-sm uppercase tracking-wide text-text-muted mb-4">Security Headers Quick Reference</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="text-left py-2 pr-4 text-text-muted font-medium">Header</th>
+            <th class="text-left py-2 text-text-muted font-medium">Protects Against</th>
+          </tr>
+        </thead>
+        <tbody class="text-xs text-text-muted">
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-text">Content-Security-Policy</td><td>XSS, data injection, mixed content</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-text">Strict-Transport-Security</td><td>SSL stripping, protocol downgrade</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-text">X-Frame-Options</td><td>Clickjacking</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-text">X-Content-Type-Options</td><td>MIME sniffing attacks</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-text">Referrer-Policy</td><td>Referrer data leakage</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-text">Permissions-Policy</td><td>Feature/API abuse (camera, mic, etc.)</td></tr>
+          <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-text">Cache-Control</td><td>Sensitive data cached by proxy/browser</td></tr>
+          <tr><td class="py-2 pr-4 font-mono text-text">X-XSS-Protection</td><td>Legacy IE/Chrome XSS filter (deprecated)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <AffiliateSection />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="HTTP Security Headers Checker" relatedTags={['security', 'http', 'headers', 'csp', 'devops']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var HEADERS = [
+    {
+      name: 'Content-Security-Policy',
+      key: 'content-security-policy',
+      importance: 'critical',
+      deprecated: false,
+      description: 'Prevents XSS and data injection attacks by specifying which content sources the browser is allowed to load.',
+      missing: 'Without CSP, the browser will execute any inline script or load resources from any origin — leaving your site open to XSS attacks.',
+    },
+    {
+      name: 'Strict-Transport-Security',
+      key: 'strict-transport-security',
+      importance: 'critical',
+      deprecated: false,
+      description: 'Instructs browsers to only connect via HTTPS and remember this for the specified max-age period.',
+      missing: 'Without HSTS, attackers can perform SSL-stripping attacks to downgrade connections to plain HTTP.',
+    },
+    {
+      name: 'X-Frame-Options',
+      key: 'x-frame-options',
+      importance: 'high',
+      deprecated: false,
+      description: 'Controls whether your page can be embedded in an iframe. DENY or SAMEORIGIN prevents clickjacking.',
+      missing: 'Without this header, attackers can embed your page in an invisible iframe and trick users into clicking hidden elements (clickjacking).',
+    },
+    {
+      name: 'X-Content-Type-Options',
+      key: 'x-content-type-options',
+      importance: 'high',
+      deprecated: false,
+      description: 'Set to "nosniff" to prevent browsers from MIME-sniffing a response away from the declared content-type.',
+      missing: 'Without this header, browsers may interpret files as a different MIME type, which can lead to XSS via specially crafted uploads.',
+    },
+    {
+      name: 'Referrer-Policy',
+      key: 'referrer-policy',
+      importance: 'medium',
+      deprecated: false,
+      description: 'Controls how much referrer information is sent with requests. "no-referrer" or "strict-origin-when-cross-origin" are recommended.',
+      missing: 'Without this header, the full URL (including query strings with tokens) may be leaked to third-party sites via the Referer header.',
+    },
+    {
+      name: 'Permissions-Policy',
+      key: 'permissions-policy',
+      importance: 'medium',
+      deprecated: false,
+      description: 'Restricts which browser features (camera, microphone, geolocation, etc.) the page and iframes are allowed to use.',
+      missing: 'Without Permissions-Policy, embedded third-party scripts or iframes may request access to powerful browser APIs like the camera or microphone.',
+    },
+    {
+      name: 'Cache-Control',
+      key: 'cache-control',
+      importance: 'medium',
+      deprecated: false,
+      description: 'Controls how responses are cached. For sensitive pages use "no-store" to prevent caching of private data.',
+      missing: 'Without Cache-Control, proxies and browsers may cache sensitive pages, potentially exposing private data to other users on shared devices.',
+    },
+    {
+      name: 'X-XSS-Protection',
+      key: 'x-xss-protection',
+      importance: 'low',
+      deprecated: true,
+      description: 'Legacy XSS filter for old IE/Chrome. Modern browsers ignore it. Recommended value is "0" (disabled) to avoid edge-case bugs.',
+      missing: 'Not present. This header is deprecated and ignored by modern browsers. Rely on Content-Security-Policy for XSS protection instead.',
+    },
+  ];
+
+  var EXAMPLE = [
+    'HTTP/2 200',
+    'content-type: text/html; charset=utf-8',
+    'strict-transport-security: max-age=31536000; includeSubDomains; preload',
+    'x-frame-options: DENY',
+    'x-content-type-options: nosniff',
+    'referrer-policy: strict-origin-when-cross-origin',
+    'cache-control: no-store, max-age=0',
+  ].join('\n');
+
+  document.getElementById('headers-example').addEventListener('click', function () {
+    document.getElementById('headers-input').value = EXAMPLE;
+  });
+
+  document.getElementById('headers-clear').addEventListener('click', function () {
+    document.getElementById('headers-input').value = '';
+    document.getElementById('headers-results').classList.add('hidden');
+    document.getElementById('headers-checklist').innerHTML = '';
+  });
+
+  document.getElementById('headers-check').addEventListener('click', function () {
+    var raw = document.getElementById('headers-input').value;
+    if (!raw.trim()) return;
+
+    // Parse headers into a map (lowercase key -> value)
+    var parsed = {};
+    raw.split('\n').forEach(function (line) {
+      var idx = line.indexOf(':');
+      if (idx === -1) return;
+      var key = line.substring(0, idx).trim().toLowerCase();
+      var val = line.substring(idx + 1).trim();
+      parsed[key] = val;
+    });
+
+    var checklistEl = document.getElementById('headers-checklist');
+    checklistEl.innerHTML = '';
+
+    var present = 0;
+    var total = HEADERS.filter(function (h) { return !h.deprecated; }).length;
+
+    HEADERS.forEach(function (header) {
+      var value = parsed[header.key];
+      var isPresent = value !== undefined;
+      if (isPresent && !header.deprecated) present++;
+
+      var card = document.createElement('div');
+      card.className = 'bg-bg-card border rounded-xl p-4 ' + (
+        header.deprecated
+          ? 'border-yellow-500/30'
+          : isPresent
+            ? 'border-green-500/30'
+            : 'border-red-500/30'
+      );
+
+      var badge = header.deprecated
+        ? '<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">Deprecated</span>'
+        : isPresent
+          ? '<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-400">Present</span>'
+          : '<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">Missing</span>';
+
+      var icon = header.deprecated
+        ? '<span class="text-yellow-400 text-lg mr-2">⚠</span>'
+        : isPresent
+          ? '<span class="text-green-400 text-lg mr-2">✓</span>'
+          : '<span class="text-red-400 text-lg mr-2">✗</span>';
+
+      var valueHtml = isPresent
+        ? '<div class="mt-2 px-3 py-2 bg-bg rounded-lg text-xs font-mono text-text-muted break-all">' + escapeHtml(value) + '</div>'
+        : '';
+
+      var noteHtml = isPresent
+        ? '<p class="text-xs text-text-muted mt-2">' + escapeHtml(header.description) + '</p>'
+        : '<p class="text-xs text-text-muted mt-2">' + escapeHtml(header.missing) + '</p>';
+
+      card.innerHTML = '<div class="flex items-start justify-between gap-2">'
+        + '<div class="flex items-start">'
+        + icon
+        + '<span class="font-mono text-sm font-medium text-text">' + escapeHtml(header.name) + '</span>'
+        + '</div>'
+        + badge
+        + '</div>'
+        + valueHtml
+        + noteHtml;
+
+      checklistEl.appendChild(card);
+    });
+
+    // Score
+    var scoreEl = document.getElementById('headers-score');
+    var pct = Math.round((present / total) * 100);
+    scoreEl.textContent = present + '/' + total + ' headers present (' + pct + '%)';
+    scoreEl.className = 'text-sm font-semibold px-3 py-1 rounded-full ' + (
+      pct >= 80 ? 'bg-green-500/10 text-green-400' :
+      pct >= 50 ? 'bg-yellow-500/10 text-yellow-400' :
+      'bg-red-500/10 text-red-400'
+    );
+
+    document.getElementById('headers-results').classList.remove('hidden');
+  });
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+})();
+</script>

@@ -1,0 +1,565 @@
+---
+title: "React Three Fiber Complete Guide 2026: 3D in React"
+description: "The complete guide to React Three Fiber (R3F) in 2026. Build 3D scenes with declarative React syntax, animate with useFrame, add physics with Rapier, and deploy to Vercel — all without leaving the React ecosystem."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["react-three-fiber", "three.js", "3d", "webgl", "react", "typescript", "animation", "physics", "next.js", "vercel"]
+readingTime: "13 min read"
+---
+
+Three.js is powerful, but its imperative API doesn't play well with React's component model. You're manually tracking scene references, managing lifecycle in `useEffect`, and fighting reconciliation bugs. React Three Fiber (R3F) solves this: it's a React renderer for Three.js that lets you describe 3D scenes declaratively, just like you describe UI.
+
+The result: all the power of Three.js, with the developer experience of React.
+
+---
+
+## Why React Three Fiber?
+
+Raw Three.js:
+
+```javascript
+const scene = new THREE.Scene();
+const geometry = new THREE.BoxGeometry(1, 1, 1);
+const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+const cube = new THREE.Mesh(geometry, material);
+scene.add(cube);
+
+// You also manage: renderer, camera, lights, resize handlers, animation loop...
+```
+
+React Three Fiber:
+
+```tsx
+<Canvas>
+  <ambientLight />
+  <mesh>
+    <boxGeometry />
+    <meshStandardMaterial color="green" />
+  </mesh>
+</Canvas>
+```
+
+R3F maps React components to Three.js constructors. `<boxGeometry />` calls `new THREE.BoxGeometry()`. Props become constructor arguments or `.set()` calls. The library handles the renderer, animation loop, and resize — you focus on the scene.
+
+---
+
+## Setting Up R3F with Vite and TypeScript
+
+```bash
+npm create vite@latest my-3d-app -- --template react-ts
+cd my-3d-app
+npm install three @react-three/fiber @react-three/drei
+npm install -D @types/three
+```
+
+Replace `src/App.tsx`:
+
+```tsx
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+
+function Box() {
+  return (
+    <mesh>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshStandardMaterial color="royalblue" />
+    </mesh>
+  );
+}
+
+export default function App() {
+  return (
+    <div style={{ width: "100vw", height: "100vh" }}>
+      <Canvas camera={{ position: [3, 3, 3] }}>
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[5, 5, 5]} />
+        <Box />
+        <OrbitControls />
+      </Canvas>
+    </div>
+  );
+}
+```
+
+Run `npm run dev` and you have a 3D box with orbit controls.
+
+---
+
+## Core Concepts
+
+### The Canvas
+
+`<Canvas>` sets up the Three.js renderer, scene, and camera. Everything inside is part of the 3D scene.
+
+```tsx
+<Canvas
+  camera={{ fov: 75, position: [0, 0, 5] }}
+  gl={{ antialias: true, alpha: false }}
+  shadows
+  dpr={[1, 2]} // device pixel ratio clamped between 1 and 2
+  style={{ background: "#1a1a2e" }}
+>
+  {/* scene contents */}
+</Canvas>
+```
+
+### Meshes: Geometry + Material
+
+Every visible object is a `<mesh>` combining geometry and material:
+
+```tsx
+// Standard mesh
+<mesh position={[1, 0, 0]} rotation={[0, Math.PI / 4, 0]} scale={1.5}>
+  <sphereGeometry args={[0.5, 32, 32]} />
+  <meshStandardMaterial color="#ff6b6b" roughness={0.3} metalness={0.8} />
+</mesh>
+```
+
+The `args` prop maps to constructor arguments. `new THREE.SphereGeometry(0.5, 32, 32)` becomes `<sphereGeometry args={[0.5, 32, 32]} />`.
+
+### The `attach` Prop
+
+When a component isn't automatically placed in the scene graph, use `attach` to specify the parent property:
+
+```tsx
+<mesh>
+  <bufferGeometry attach="geometry">
+    <bufferAttribute
+      attach="attributes-position"
+      args={[positions, 3]}
+    />
+  </bufferGeometry>
+  <meshBasicMaterial attach="material" />
+</mesh>
+```
+
+---
+
+## Animations with `useFrame`
+
+`useFrame` is the R3F animation hook. It runs every frame inside the render loop:
+
+```tsx
+import { useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import type { Mesh } from "three";
+
+function RotatingBox() {
+  const meshRef = useRef<Mesh>(null!);
+
+  useFrame((state, delta) => {
+    // delta = time since last frame in seconds
+    meshRef.current.rotation.x += delta * 0.5;
+    meshRef.current.rotation.y += delta * 0.8;
+
+    // state.clock.elapsedTime — total time elapsed
+    // state.camera — the scene camera
+    // state.pointer — normalized mouse position [-1, 1]
+  });
+
+  return (
+    <mesh ref={meshRef}>
+      <boxGeometry />
+      <meshNormalMaterial />
+    </mesh>
+  );
+}
+```
+
+`useFrame` only works inside a `<Canvas>`. It receives the R3F state object and a delta timestamp.
+
+### Spring Physics with `@react-spring/three`
+
+For smooth, physically-based animations:
+
+```bash
+npm install @react-spring/three
+```
+
+```tsx
+import { useSpring, animated } from "@react-spring/three";
+
+function SpringBox({ hovered }: { hovered: boolean }) {
+  const { scale } = useSpring({
+    scale: hovered ? 1.5 : 1,
+    config: { mass: 1, tension: 280, friction: 20 },
+  });
+
+  return (
+    <animated.mesh scale={scale}>
+      <boxGeometry />
+      <meshStandardMaterial color={hovered ? "hotpink" : "royalblue"} />
+    </animated.mesh>
+  );
+}
+```
+
+---
+
+## Using @react-three/drei
+
+Drei ("three" in German) is R3F's utility library — a collection of useful abstractions:
+
+```bash
+npm install @react-three/drei
+```
+
+### OrbitControls
+
+```tsx
+import { OrbitControls } from "@react-three/drei";
+
+// Inside Canvas:
+<OrbitControls
+  enableZoom
+  enablePan
+  minDistance={2}
+  maxDistance={20}
+  maxPolarAngle={Math.PI / 2} // limit vertical rotation
+/>
+```
+
+### Environment Maps
+
+```tsx
+import { Environment } from "@react-three/drei";
+
+<Environment preset="sunset" background />
+// presets: sunset, dawn, night, warehouse, forest, apartment, studio, city, park, lobby
+```
+
+### 3D Text
+
+```tsx
+import { Text } from "@react-three/drei";
+
+<Text
+  position={[0, 2, 0]}
+  color="white"
+  fontSize={0.5}
+  font="/fonts/Inter-Bold.woff"
+>
+  Hello, WebGL!
+</Text>
+```
+
+### Loading Models (GLTF)
+
+```tsx
+import { useGLTF } from "@react-three/drei";
+
+function Model({ url }: { url: string }) {
+  const { scene } = useGLTF(url);
+  return <primitive object={scene} />;
+}
+
+// Preload for faster initial render
+useGLTF.preload("/models/robot.glb");
+```
+
+### Suspense + Loader
+
+```tsx
+import { Suspense } from "react";
+import { Html, useProgress } from "@react-three/drei";
+
+function Loader() {
+  const { progress } = useProgress();
+  return <Html center>{Math.round(progress)}% loaded</Html>;
+}
+
+<Canvas>
+  <Suspense fallback={<Loader />}>
+    <Model url="/models/robot.glb" />
+  </Suspense>
+</Canvas>
+```
+
+---
+
+## Physics with @react-three/rapier
+
+Rapier is the recommended physics engine for R3F (replaces cannon.js):
+
+```bash
+npm install @react-three/rapier
+```
+
+```tsx
+import { Physics, RigidBody, CuboidCollider } from "@react-three/rapier";
+
+function PhysicsScene() {
+  return (
+    <Physics gravity={[0, -9.81, 0]}>
+      {/* Static floor */}
+      <RigidBody type="fixed">
+        <mesh position={[0, -2, 0]}>
+          <boxGeometry args={[10, 0.5, 10]} />
+          <meshStandardMaterial color="#4a4a6a" />
+        </mesh>
+      </RigidBody>
+
+      {/* Dynamic cube — falls and bounces */}
+      <RigidBody position={[0, 5, 0]} restitution={0.7}>
+        <mesh>
+          <boxGeometry />
+          <meshStandardMaterial color="tomato" />
+        </mesh>
+      </RigidBody>
+
+      {/* Dynamic sphere */}
+      <RigidBody position={[1, 8, 0]} colliders="ball">
+        <mesh>
+          <sphereGeometry args={[0.5, 32, 32]} />
+          <meshStandardMaterial color="gold" />
+        </mesh>
+      </RigidBody>
+    </Physics>
+  );
+}
+```
+
+### Applying Forces
+
+```tsx
+import { useRef } from "react";
+import { RigidBody, RapierRigidBody } from "@react-three/rapier";
+
+function Cannon() {
+  const ballRef = useRef<RapierRigidBody>(null!);
+
+  const fire = () => {
+    ballRef.current.applyImpulse({ x: 0, y: 5, z: -10 }, true);
+  };
+
+  return (
+    <>
+      <RigidBody ref={ballRef} position={[0, 2, 5]} colliders="ball">
+        <mesh>
+          <sphereGeometry args={[0.3]} />
+          <meshStandardMaterial color="gray" metalness={0.9} />
+        </mesh>
+      </RigidBody>
+      {/* Trigger fire() from UI outside Canvas using a shared store */}
+    </>
+  );
+}
+```
+
+---
+
+## Post-Processing with @react-three/postprocessing
+
+```bash
+npm install @react-three/postprocessing postprocessing
+```
+
+```tsx
+import { EffectComposer, Bloom, ChromaticAberration, Vignette } from "@react-three/postprocessing";
+import { BlendFunction } from "postprocessing";
+
+// Inside Canvas:
+<EffectComposer>
+  <Bloom
+    intensity={1.5}
+    luminanceThreshold={0.9}
+    luminanceSmoothing={0.025}
+    mipmapBlur
+  />
+  <ChromaticAberration
+    blendFunction={BlendFunction.NORMAL}
+    offset={[0.002, 0.002]}
+  />
+  <Vignette eskil={false} offset={0.1} darkness={1.1} />
+</EffectComposer>
+```
+
+Effects stack in render order. Bloom adds glow to bright areas, chromatic aberration adds lens fringing, vignette darkens edges.
+
+---
+
+## Performance Optimization
+
+### Instancing for Many Objects
+
+Never render 1,000 separate `<mesh>` components. Use `<instancedMesh>`:
+
+```tsx
+import { useRef, useEffect } from "react";
+import { InstancedMesh, Object3D, MathUtils } from "three";
+
+const COUNT = 10_000;
+const dummy = new Object3D();
+
+function Particles() {
+  const meshRef = useRef<InstancedMesh>(null!);
+
+  useEffect(() => {
+    for (let i = 0; i < COUNT; i++) {
+      dummy.position.set(
+        MathUtils.randFloatSpread(20),
+        MathUtils.randFloatSpread(20),
+        MathUtils.randFloatSpread(20),
+      );
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(i, dummy.matrix);
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  }, []);
+
+  return (
+    <instancedMesh ref={meshRef} args={[undefined, undefined, COUNT]}>
+      <sphereGeometry args={[0.05, 8, 8]} />
+      <meshStandardMaterial color="white" />
+    </instancedMesh>
+  );
+}
+```
+
+### LOD (Level of Detail)
+
+```tsx
+import { Lod } from "@react-three/drei";
+
+<Lod distances={[0, 20, 50]}>
+  <mesh>
+    <sphereGeometry args={[1, 64, 64]} />  {/* High poly: 0-20 units */}
+    <meshStandardMaterial />
+  </mesh>
+  <mesh>
+    <sphereGeometry args={[1, 16, 16]} />  {/* Mid poly: 20-50 units */}
+    <meshStandardMaterial />
+  </mesh>
+  <mesh>
+    <sphereGeometry args={[1, 6, 6]} />   {/* Low poly: 50+ units */}
+    <meshStandardMaterial />
+  </mesh>
+</Lod>
+```
+
+### Suspense and Lazy Loading
+
+Every asset (textures, GLTF) should be loaded through React Suspense:
+
+```tsx
+import { Suspense } from "react";
+import { useTexture } from "@react-three/drei";
+
+function Planet() {
+  const [colorMap, normalMap] = useTexture([
+    "/textures/earth-color.jpg",
+    "/textures/earth-normal.jpg",
+  ]);
+
+  return (
+    <mesh>
+      <sphereGeometry args={[2, 64, 64]} />
+      <meshStandardMaterial map={colorMap} normalMap={normalMap} />
+    </mesh>
+  );
+}
+
+// Wrap in Suspense at Canvas level
+<Canvas>
+  <Suspense fallback={null}>
+    <Planet />
+  </Suspense>
+</Canvas>
+```
+
+---
+
+## Integration with Next.js
+
+Three.js requires a browser — it uses WebGL, `window`, and `document`. Server-side rendering will fail. Always dynamic import with `{ ssr: false }`:
+
+```tsx
+// app/page.tsx
+import dynamic from "next/dynamic";
+
+const Scene = dynamic(() => import("@/components/Scene"), { ssr: false });
+
+export default function Page() {
+  return (
+    <main style={{ width: "100vw", height: "100vh" }}>
+      <Scene />
+    </main>
+  );
+}
+```
+
+```tsx
+// components/Scene.tsx
+"use client";
+import { Canvas } from "@react-three/fiber";
+// ... your scene
+```
+
+### Common Next.js + R3F Pitfalls
+
+- Don't import R3F in Server Components — always `"use client"` or dynamic import
+- The `Canvas` fills its parent container; make sure the parent has explicit dimensions
+- Fonts for `<Text>` must be served from `/public/` in Next.js
+
+---
+
+## Deploying to Vercel
+
+R3F projects are just static React/Next.js apps — Vercel handles them out of the box.
+
+```bash
+npm install -g vercel
+vercel
+```
+
+For performance on Vercel:
+
+1. **Preload heavy assets**: put GLB/GLTF files in `/public/` and use `useGLTF.preload()` at the top level
+2. **Enable Vercel CDN**: static assets are automatically edge-cached
+3. **Limit bundle size**: use dynamic imports for large libraries like `@react-three/postprocessing`
+
+```tsx
+// Lazy-load expensive effects
+const EffectComposer = dynamic(
+  () => import("@react-three/postprocessing").then((mod) => mod.EffectComposer),
+  { ssr: false }
+);
+```
+
+---
+
+## Quick-Start Cheatsheet
+
+| Task | Code |
+|---|---|
+| Rotate on frame | `useFrame((_, delta) => { ref.current.rotation.y += delta })` |
+| Respond to click | `<mesh onClick={(e) => console.log(e.point)}>` |
+| Pointer hover | `<mesh onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>` |
+| Load texture | `const map = useTexture('/tex.jpg')` |
+| Load GLTF | `const { scene } = useGLTF('/model.glb')` |
+| Add orbit controls | `<OrbitControls />` (from drei) |
+| Screen space UI | `<Html center>...</Html>` (from drei) |
+| Add physics | `<Physics><RigidBody>...</RigidBody></Physics>` |
+
+---
+
+## Summary
+
+React Three Fiber removes the impedance mismatch between Three.js and React. You get:
+
+- **Declarative 3D**: describe what to render, not how to manage it
+- **React devtools**: inspect the scene tree like any React component
+- **Ecosystem**: drei for helpers, rapier for physics, postprocessing for effects
+- **Performance tools**: instancedMesh, LOD, Suspense — all work naturally
+
+For most 3D web projects in 2026, R3F is the right default. Three.js directly only makes sense for highly specific performance scenarios or non-React stacks.
+
+---
+
+## Resources
+
+- [React Three Fiber Docs](https://docs.pmnd.rs/react-three-fiber)
+- [Drei Docs](https://drei.pmnd.rs/)
+- [react-three/rapier](https://rapier.rs/docs/user_guides/javascript/getting_started_js)
+- [Three.js Fundamentals](https://threejsfundamentals.org/) — deep understanding of the underlying API
+- [R3F Examples](https://codesandbox.io/examples/package/@react-three/fiber) — CodeSandbox playground

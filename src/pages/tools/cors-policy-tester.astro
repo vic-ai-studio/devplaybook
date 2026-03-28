@@ -1,0 +1,419 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AffiliateSection from '../../components/AffiliateSection.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is CORS and why does the browser enforce it?", answer: "CORS (Cross-Origin Resource Sharing) is a browser security mechanism that restricts how web pages can request resources from a different origin (domain, protocol, or port) than the one that served the page. The browser enforces this to protect users — without CORS, a malicious page could silently make requests to your bank or email using your existing session cookies. CORS headers on the server tell the browser which cross-origin requests are safe to allow. Note: CORS is enforced by the browser only; it does not protect your server from direct requests (e.g., from curl or server-to-server calls)." },
+  { question: "What is a CORS preflight request?", answer: "A preflight request is an automatic OPTIONS request the browser sends before a 'non-simple' cross-origin request. Simple requests are GET/POST with only basic headers (Content-Type: text/plain, etc.). Any request with custom headers, Content-Type: application/json, or methods like PUT/DELETE/PATCH triggers a preflight. The browser sends OPTIONS to the target URL asking if the actual request is permitted. The server must respond with the correct Access-Control-Allow-* headers. If the preflight fails, the browser never sends the actual request." },
+  { question: "Can I use Access-Control-Allow-Origin: * with credentials?", answer: "No. This is one of the most common CORS mistakes. If Access-Control-Allow-Credentials is set to 'true', the browser requires Access-Control-Allow-Origin to be an explicit origin (not the wildcard *). Using * with credentials=true causes the browser to block the request. You must echo back the specific requesting origin in Access-Control-Allow-Origin. Also, the requesting code must explicitly set credentials: 'include' in the fetch call. This pairing requirement exists to prevent credential-bearing requests from being inadvertently allowed to any origin." },
+  { question: "What does Access-Control-Max-Age do?", answer: "Access-Control-Max-Age tells the browser how many seconds to cache the result of a preflight OPTIONS request. During this time, the browser will skip sending another OPTIONS request for the same URL+method+headers combination and allow the actual request directly. A value of 86400 (24 hours) is common for production. Without this header, the browser uses a short default (typically 5 seconds in Chrome), which means a preflight is sent for every unique cross-origin request, adding latency. Setting a long max-age reduces this overhead significantly for high-frequency API calls." },
+];
+---
+
+<BaseLayout
+  title="CORS Policy Tester — Test CORS Configuration Visually"
+  description="Test your CORS configuration visually. Enter Origin and CORS response headers to see if the request would be allowed. Simulates preflight OPTIONS response and shows color-coded analysis. Free, runs in browser."
+  tool="CORS tester, CORS policy checker, Access-Control-Allow-Origin tester, preflight CORS simulator, CORS configuration visualizer"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "CORS Policy Tester",
+    "url": "https://devplaybook.cc/tools/cors-policy-tester",
+    "description": "Visually test and debug CORS configurations. Enter your CORS headers and requesting origin to see if cross-origin requests would be allowed or blocked.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">CORS Policy Tester</h1>
+  <p class="text-text-muted mb-4">
+    Visually test your CORS configuration without writing any code. Fill in the requesting origin and your server's
+    CORS response headers to see whether the browser would allow or block the request — and why.
+    Also generates the equivalent preflight OPTIONS response.
+  </p>
+  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Color-coded allow/block result</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Preflight OPTIONS simulation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Wildcard + credentials check</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in your browser</span>
+  </div>
+
+  <!-- Form -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
+    <div class="flex items-center justify-between mb-4">
+      <span class="font-semibold text-sm">CORS Configuration</span>
+      <div class="flex gap-3">
+        <button id="cors-example" class="text-xs text-primary hover:underline">Load example</button>
+        <button id="cors-clear" class="text-xs text-text-muted hover:text-red-400 transition-colors">Clear</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Left: request side -->
+      <div class="flex flex-col gap-3">
+        <div>
+          <label class="text-xs font-medium text-text-muted mb-1 block">Requesting Origin <span class="text-red-400">*</span></label>
+          <input id="cors-origin" type="text" placeholder="https://app.example.com"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <p class="text-xs text-text-muted mt-1">The origin making the cross-origin request (from browser)</p>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-text-muted mb-1 block">Request Method</label>
+          <select id="cors-method"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="GET">GET</option>
+            <option value="POST" selected>POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-text-muted mb-1 block">Request Headers (comma-separated)</label>
+          <input id="cors-req-headers" type="text" placeholder="Content-Type, Authorization, X-Custom"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+      </div>
+
+      <!-- Right: server response headers -->
+      <div class="flex flex-col gap-3">
+        <div>
+          <label class="text-xs font-medium text-text-muted mb-1 block">Access-Control-Allow-Origin</label>
+          <input id="acao" type="text" placeholder="* or https://app.example.com"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+        <div>
+          <label class="text-xs font-medium text-text-muted mb-1 block">Access-Control-Allow-Methods</label>
+          <input id="acam" type="text" placeholder="GET, POST, PUT, DELETE"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+        <div>
+          <label class="text-xs font-medium text-text-muted mb-1 block">Access-Control-Allow-Headers</label>
+          <input id="acah" type="text" placeholder="Content-Type, Authorization"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-medium text-text-muted mb-1 block">Allow-Credentials</label>
+            <select id="acac"
+              class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+              <option value="">(not set)</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-text-muted mb-1 block">Max-Age (seconds)</label>
+            <input id="acma" type="text" placeholder="86400"
+              class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex gap-3 mb-8">
+    <button id="cors-test" class="bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
+      Test CORS Policy
+    </button>
+  </div>
+
+  <!-- Results -->
+  <div id="cors-results" class="hidden mb-8">
+    <!-- Verdict -->
+    <div id="cors-verdict" class="rounded-xl p-5 mb-5 border"></div>
+
+    <!-- Per-header analysis -->
+    <h2 class="font-bold text-base mb-3">Header Analysis</h2>
+    <div id="cors-analysis" class="flex flex-col gap-3 mb-6"></div>
+
+    <!-- Preflight simulation -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-sm">Preflight OPTIONS Response (simulated)</h2>
+        <button id="cors-copy-preflight" class="text-xs text-primary hover:underline">Copy</button>
+      </div>
+      <pre id="cors-preflight" class="text-xs font-mono text-text-muted bg-bg border border-border rounded-lg px-3 py-3 overflow-x-auto whitespace-pre-wrap"></pre>
+    </div>
+  </div>
+
+  <!-- Diagram -->
+  <div class="bg-bg-card border border-border rounded-xl p-6 mb-8">
+    <h2 class="font-bold text-sm uppercase tracking-wide text-text-muted mb-4">CORS Request Flow</h2>
+    <div class="flex flex-col gap-2 text-sm text-text-muted">
+      <div class="flex items-center gap-3">
+        <span class="bg-bg border border-border rounded px-2 py-1 font-mono text-xs text-text min-w-20 text-center">Browser</span>
+        <span class="text-primary">→ OPTIONS preflight →</span>
+        <span class="bg-bg border border-border rounded px-2 py-1 font-mono text-xs text-text min-w-20 text-center">Server</span>
+      </div>
+      <div class="flex items-center gap-3 ml-2 text-xs">
+        <span class="text-text-muted">Checks: Origin, Method, Headers allowed?</span>
+      </div>
+      <div class="flex items-center gap-3 mt-1">
+        <span class="bg-bg border border-border rounded px-2 py-1 font-mono text-xs text-text min-w-20 text-center">Browser</span>
+        <span class="text-green-400">← 200 + CORS headers ←</span>
+        <span class="bg-bg border border-border rounded px-2 py-1 font-mono text-xs text-text min-w-20 text-center">Server</span>
+      </div>
+      <div class="flex items-center gap-3 mt-1">
+        <span class="bg-bg border border-border rounded px-2 py-1 font-mono text-xs text-text min-w-20 text-center">Browser</span>
+        <span class="text-primary">→ Actual request →</span>
+        <span class="bg-bg border border-border rounded px-2 py-1 font-mono text-xs text-text min-w-20 text-center">Server</span>
+      </div>
+      <div class="mt-2 text-xs">Simple requests (GET/POST with basic headers) skip the preflight step.</div>
+    </div>
+  </div>
+
+  <AffiliateSection />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="CORS Policy Tester" relatedTags={['cors', 'security', 'http', 'api', 'devtools']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var EXAMPLE = {
+    origin: 'https://app.example.com',
+    method: 'POST',
+    reqHeaders: 'Content-Type, Authorization',
+    acao: 'https://app.example.com',
+    acam: 'GET, POST, PUT, DELETE, OPTIONS',
+    acah: 'Content-Type, Authorization',
+    acac: 'true',
+    acma: '86400',
+  };
+
+  document.getElementById('cors-example').addEventListener('click', function () {
+    document.getElementById('cors-origin').value = EXAMPLE.origin;
+    document.getElementById('cors-method').value = EXAMPLE.method;
+    document.getElementById('cors-req-headers').value = EXAMPLE.reqHeaders;
+    document.getElementById('acao').value = EXAMPLE.acao;
+    document.getElementById('acam').value = EXAMPLE.acam;
+    document.getElementById('acah').value = EXAMPLE.acah;
+    document.getElementById('acac').value = EXAMPLE.acac;
+    document.getElementById('acma').value = EXAMPLE.acma;
+  });
+
+  document.getElementById('cors-clear').addEventListener('click', function () {
+    ['cors-origin', 'cors-req-headers', 'acao', 'acam', 'acah', 'acma'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('cors-method').value = 'POST';
+    document.getElementById('acac').value = '';
+    document.getElementById('cors-results').classList.add('hidden');
+  });
+
+  document.getElementById('cors-test').addEventListener('click', function () {
+    var origin = document.getElementById('cors-origin').value.trim();
+    var method = document.getElementById('cors-method').value;
+    var reqHeaders = document.getElementById('cors-req-headers').value.trim();
+    var acao = document.getElementById('acao').value.trim();
+    var acam = document.getElementById('acam').value.trim();
+    var acah = document.getElementById('acah').value.trim();
+    var acac = document.getElementById('acac').value.trim();
+    var acma = document.getElementById('acma').value.trim();
+
+    if (!origin) {
+      alert('Please enter a requesting origin.');
+      return;
+    }
+
+    var issues = [];
+    var checks = [];
+
+    // --- Origin check ---
+    var originAllowed = false;
+    var originNote = '';
+    if (!acao) {
+      originNote = 'Access-Control-Allow-Origin is not set — browser will block all cross-origin requests.';
+    } else if (acao === '*') {
+      if (acac === 'true') {
+        originNote = 'Wildcard (*) cannot be used with Access-Control-Allow-Credentials: true — browser will block.';
+        issues.push('wildcard-with-credentials');
+      } else {
+        originAllowed = true;
+        originNote = 'Wildcard (*) allows any origin (without credentials).';
+      }
+    } else if (acao.toLowerCase() === origin.toLowerCase()) {
+      originAllowed = true;
+      originNote = 'Origin matches exactly — allowed.';
+    } else {
+      originNote = 'Server allows "' + acao + '" but request comes from "' + origin + '" — mismatch, browser will block.';
+    }
+    checks.push({
+      header: 'Access-Control-Allow-Origin',
+      value: acao || '(not set)',
+      ok: originAllowed,
+      note: originNote,
+    });
+
+    // --- Method check ---
+    var methodAllowed = false;
+    var methodNote = '';
+    var simpleMethods = ['GET', 'POST', 'HEAD'];
+    if (!acam) {
+      if (simpleMethods.indexOf(method) !== -1) {
+        methodAllowed = true;
+        methodNote = method + ' is a simple method and does not require explicit listing in Allow-Methods for basic requests.';
+      } else {
+        methodNote = 'Access-Control-Allow-Methods is not set. Non-simple method ' + method + ' will be blocked in preflight.';
+      }
+    } else {
+      var allowedMethods = acam.split(',').map(function (m) { return m.trim().toUpperCase(); });
+      if (allowedMethods.indexOf(method.toUpperCase()) !== -1 || allowedMethods.indexOf('*') !== -1) {
+        methodAllowed = true;
+        methodNote = method + ' is listed in Access-Control-Allow-Methods — allowed.';
+      } else {
+        methodNote = method + ' is NOT listed in Access-Control-Allow-Methods (' + acam + ') — preflight will fail.';
+      }
+    }
+    checks.push({
+      header: 'Access-Control-Allow-Methods',
+      value: acam || '(not set)',
+      ok: methodAllowed,
+      note: methodNote,
+    });
+
+    // --- Headers check ---
+    var headersAllowed = true;
+    var headersNote = '';
+    var simpleHeaders = ['accept', 'accept-language', 'content-language', 'content-type'];
+    if (reqHeaders) {
+      var requested = reqHeaders.split(',').map(function (h) { return h.trim().toLowerCase(); });
+      var nonSimple = requested.filter(function (h) {
+        if (simpleHeaders.indexOf(h) !== -1) return false;
+        if (h === 'content-type') return false;
+        return true;
+      });
+      if (nonSimple.length > 0 && !acah) {
+        headersAllowed = false;
+        headersNote = 'Non-simple headers [' + nonSimple.join(', ') + '] are requested but Access-Control-Allow-Headers is not set — preflight will block them.';
+      } else if (nonSimple.length > 0 && acah) {
+        var allowed = acah.split(',').map(function (h) { return h.trim().toLowerCase(); });
+        var blocked = nonSimple.filter(function (h) { return allowed.indexOf(h) === -1 && allowed.indexOf('*') === -1; });
+        if (blocked.length > 0) {
+          headersAllowed = false;
+          headersNote = 'Headers [' + blocked.join(', ') + '] are not listed in Access-Control-Allow-Headers — preflight will fail.';
+        } else {
+          headersNote = 'All requested headers are covered by Access-Control-Allow-Headers — allowed.';
+        }
+      } else {
+        headersNote = 'Only simple headers requested — no header restrictions apply.';
+      }
+    } else {
+      headersNote = 'No custom request headers specified.';
+    }
+    checks.push({
+      header: 'Access-Control-Allow-Headers',
+      value: acah || '(not set)',
+      ok: headersAllowed,
+      note: headersNote,
+    });
+
+    // --- Credentials check ---
+    var credNote = '';
+    var credOk = true;
+    if (acac === 'true') {
+      if (acao === '*') {
+        credOk = false;
+        credNote = 'Allow-Credentials: true requires a specific origin, not wildcard (*). This combination is invalid.';
+      } else {
+        credNote = 'Credentials allowed. The fetch request must include credentials: "include" to send cookies.';
+      }
+    } else if (acac === 'false') {
+      credNote = 'Credentials explicitly disallowed.';
+    } else {
+      credNote = 'Not set — credentials are not included by default.';
+    }
+    checks.push({
+      header: 'Access-Control-Allow-Credentials',
+      value: acac || '(not set)',
+      ok: credOk,
+      note: credNote,
+    });
+
+    // --- Max-Age ---
+    var maxAgeNote = '';
+    if (acma) {
+      var secs = parseInt(acma, 10);
+      maxAgeNote = 'Preflight result cached for ' + secs + ' seconds (' + Math.round(secs / 3600 * 10) / 10 + ' hours). Reduces OPTIONS overhead.';
+    } else {
+      maxAgeNote = 'Not set — browser uses its default cache duration (typically ~5 seconds in Chrome), causing frequent preflight requests.';
+    }
+    checks.push({
+      header: 'Access-Control-Max-Age',
+      value: acma || '(not set)',
+      ok: !!acma,
+      note: maxAgeNote,
+    });
+
+    // Overall verdict
+    var overallOk = originAllowed && methodAllowed && headersAllowed && credOk && issues.indexOf('wildcard-with-credentials') === -1;
+
+    // Render verdict
+    var verdictEl = document.getElementById('cors-verdict');
+    verdictEl.className = 'rounded-xl p-5 mb-5 border ' + (overallOk ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5');
+    verdictEl.innerHTML = '<div class="flex items-center gap-3">'
+      + '<span class="text-2xl">' + (overallOk ? '✓' : '✗') + '</span>'
+      + '<div>'
+      + '<div class="font-bold text-lg ' + (overallOk ? 'text-green-400' : 'text-red-400') + '">'
+      + (overallOk ? 'CORS Request Would Be ALLOWED' : 'CORS Request Would Be BLOCKED')
+      + '</div>'
+      + '<div class="text-sm text-text-muted mt-0.5">'
+      + (overallOk
+        ? 'The browser would allow cross-origin requests from ' + escapeHtml(origin) + ' to this server.'
+        : 'The browser would block this cross-origin request. See the issues highlighted below.')
+      + '</div>'
+      + '</div>'
+      + '</div>';
+
+    // Render analysis
+    var analysisEl = document.getElementById('cors-analysis');
+    analysisEl.innerHTML = '';
+    checks.forEach(function (c) {
+      var card = document.createElement('div');
+      card.className = 'bg-bg-card border rounded-xl p-4 ' + (c.ok ? 'border-green-500/30' : 'border-red-500/30');
+      card.innerHTML = '<div class="flex items-start justify-between gap-2 mb-2">'
+        + '<span class="font-mono text-sm font-medium text-text">' + escapeHtml(c.header) + '</span>'
+        + '<span class="text-xs font-medium px-2 py-0.5 rounded-full ' + (c.ok ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400') + '">'
+        + (c.ok ? 'OK' : 'Issue')
+        + '</span>'
+        + '</div>'
+        + '<div class="px-3 py-1.5 bg-bg rounded-lg text-xs font-mono text-text-muted mb-2 break-all">' + escapeHtml(c.value) + '</div>'
+        + '<p class="text-xs text-text-muted">' + escapeHtml(c.note) + '</p>';
+      analysisEl.appendChild(card);
+    });
+
+    // Build preflight response
+    var preflightLines = ['HTTP/1.1 200 OK'];
+    if (acao) preflightLines.push('Access-Control-Allow-Origin: ' + acao);
+    if (acam) preflightLines.push('Access-Control-Allow-Methods: ' + acam);
+    if (acah) preflightLines.push('Access-Control-Allow-Headers: ' + acah);
+    if (acac) preflightLines.push('Access-Control-Allow-Credentials: ' + acac);
+    if (acma) preflightLines.push('Access-Control-Max-Age: ' + acma);
+    preflightLines.push('Content-Length: 0');
+    preflightLines.push('Vary: Origin');
+    document.getElementById('cors-preflight').textContent = preflightLines.join('\n');
+
+    document.getElementById('cors-results').classList.remove('hidden');
+  });
+
+  document.getElementById('cors-copy-preflight').addEventListener('click', function () {
+    var val = document.getElementById('cors-preflight').textContent;
+    if (val && navigator.clipboard) navigator.clipboard.writeText(val);
+    this.textContent = 'Copied!';
+    var btn = this;
+    setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+  });
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+})();
+</script>
