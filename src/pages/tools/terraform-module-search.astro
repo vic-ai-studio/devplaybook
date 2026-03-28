@@ -1,0 +1,1509 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is a Terraform module and why should I use one?",
+    answer: "A Terraform module is a reusable package of Terraform configuration that encapsulates a set of resources with a defined interface (input variables and outputs). Instead of writing hundreds of lines of HCL to configure an EKS cluster from scratch, you call a community-maintained module and pass a handful of variables. Modules enforce best practices, reduce copy-paste drift across environments, and make your root configuration readable. The Terraform Registry at registry.terraform.io hosts thousands of free, open-source modules — the most popular ones have been downloaded hundreds of millions of times and are maintained by cloud vendors or large community contributors."
+  },
+  {
+    question: "How does Terraform module versioning work?",
+    answer: "Module versions follow Semantic Versioning (semver: MAJOR.MINOR.PATCH). In your module block you set a version constraint using operators like = (exact), ~> (pessimistic constraint — allows only patch/minor bumps), >= / <= (range), or != (exclude). The ~> operator is the most common: version = \"~> 5.0\" means >= 5.0.0, < 6.0.0. Always pin to at least a minor version in production — never omit the version constraint, or Terraform will use the latest at plan time, which can cause unexpected drift. Run terraform init -upgrade to pull the latest version matching your constraint."
+  },
+  {
+    question: "What does the 'Verified' badge on the Terraform Registry mean?",
+    answer: "A verified badge (blue checkmark) on the Terraform Registry means the module is published and maintained by the official technology partner or cloud vendor — for example, terraform-aws-modules/vpc/aws is maintained by the terraform-aws-modules GitHub organization, whose members include HashiCorp employees and recognized AWS community contributors. Verified modules are expected to follow registry quality standards, include documentation, test coverage, and regular updates. Non-verified community modules can still be excellent, but always check the last update date, open issues, and download count before adopting one in production."
+  },
+  {
+    question: "Should I use a monorepo or separate repos for Terraform modules?",
+    answer: "Both patterns are widely used, and the right choice depends on team size and release cadence. A monorepo (all modules in one repo, versioned together) is simpler to set up, easier to make cross-module changes atomically, and well-suited for small-to-medium teams. Separate module repos (one repo per module, each with its own semantic version tag) give consumers explicit version pinning, independent changelogs, and the ability to adopt upgrades module by module — preferred by large platform teams. A practical middle ground is a modules monorepo with subdirectory-based versioning using tools like terraform-docs, terratest, and release-please to automate versioning per subdirectory."
+  },
+  {
+    question: "How do I test a Terraform module before using it in production?",
+    answer: "There are three common testing strategies. (1) terraform validate: built-in, checks HCL syntax and configuration consistency — fast but shallow. (2) Terratest: a Go testing library from Gruntwork that deploys real infrastructure, runs assertions, and destroys it — thorough but slow and costly. (3) terraform test (native, added in Terraform 1.6): runs .tftest.hcl files that spin up mock or real resources and assert outputs — the recommended approach for 2024+ projects. For modules you pull from the registry, check the /tests directory in the GitHub repo to see what the maintainer tests, and always run terraform plan against a non-production workspace before applying."
+  }
+];
+---
+
+<BaseLayout
+  title="Terraform Registry Module Finder — Browse Popular Terraform Modules"
+  description="Browse and search 30+ popular Terraform modules for AWS, GCP, Azure, Kubernetes, and more. Filter by provider, search by keyword, view usage HCL snippets, and copy module source lines instantly."
+  tool="terraform module search, terraform registry modules, terraform aws modules, terraform eks module, terraform vpc module, terraform rds module, iac modules"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Terraform Registry Module Finder",
+    "url": "https://devplaybook.cc/tools/terraform-module-search",
+    "description": "Browse popular Terraform modules for AWS, GCP, Azure, and Kubernetes. View usage snippets and copy module source lines.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Terraform Registry Module Finder</h1>
+  <p class="text-text-muted mb-4">Browse 30+ popular Terraform modules for AWS, GCP, Azure, Kubernetes, and more. Search by keyword, filter by provider, view HCL usage examples, and copy the module source line with one click.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 30+ curated popular modules</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Filter by AWS / GCP / Azure / Generic</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HCL usage snippets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy module source line</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> No API calls — fully offline</span>
+  </div>
+
+  <!-- Search + Filter Bar -->
+  <div class="flex flex-wrap items-center gap-3 mb-4">
+    <div class="relative flex-1 min-w-48">
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+      </svg>
+      <input
+        id="search-input"
+        type="text"
+        placeholder="Search modules… (vpc, eks, rds, gke…)"
+        class="w-full pl-9 pr-4 py-2 bg-bg-card border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
+      />
+    </div>
+    <div id="provider-filters" class="flex flex-wrap gap-2">
+      <button class="filter-btn active text-xs px-3 py-1.5 rounded-lg border border-primary bg-primary/10 text-primary transition-colors" data-provider="all">All</button>
+      <button class="filter-btn text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary transition-colors" data-provider="aws">
+        <span class="text-orange-400 mr-1">▲</span>AWS
+      </button>
+      <button class="filter-btn text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary transition-colors" data-provider="gcp">
+        <span class="text-blue-400 mr-1">◆</span>GCP
+      </button>
+      <button class="filter-btn text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary transition-colors" data-provider="azure">
+        <span class="text-sky-400 mr-1">■</span>Azure
+      </button>
+      <button class="filter-btn text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary transition-colors" data-provider="generic">
+        <span class="text-purple-400 mr-1">●</span>Generic
+      </button>
+    </div>
+    <span id="result-count" class="text-xs text-text-muted ml-auto"></span>
+  </div>
+
+  <!-- Module Grid -->
+  <div id="module-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-6"></div>
+
+  <!-- Empty state -->
+  <div id="empty-state" class="hidden text-center py-16 text-text-muted">
+    <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 0 1 5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+    </svg>
+    <p class="text-sm">No modules match your search.</p>
+    <p class="text-xs mt-1">Try a different keyword or provider filter.</p>
+  </div>
+
+  <!-- Module Detail Modal -->
+  <div id="module-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
+    <div class="bg-bg-card border border-border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div class="flex items-start justify-between p-5 border-b border-border sticky top-0 bg-bg-card z-10">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span id="modal-provider-badge" class="text-xs px-2 py-0.5 rounded-full font-medium"></span>
+            <span id="modal-verified" class="hidden items-center gap-1 text-xs text-blue-400 font-medium">
+              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              Verified
+            </span>
+          </div>
+          <h2 id="modal-title" class="text-base font-semibold"></h2>
+          <p id="modal-source" class="text-xs text-text-muted font-mono mt-0.5"></p>
+        </div>
+        <button id="modal-close" class="p-1.5 hover:bg-bg-card rounded-lg transition-colors text-text-muted hover:text-text ml-4 flex-shrink-0" aria-label="Close">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-5">
+        <p id="modal-description" class="text-sm text-text-muted"></p>
+
+        <!-- Stats row -->
+        <div class="flex flex-wrap gap-4 text-xs">
+          <div class="flex flex-col gap-0.5">
+            <span class="text-text-muted">Latest version</span>
+            <span id="modal-version" class="font-mono font-semibold text-primary"></span>
+          </div>
+          <div class="flex flex-col gap-0.5">
+            <span class="text-text-muted">Weekly downloads</span>
+            <span id="modal-downloads" class="font-semibold"></span>
+          </div>
+          <div class="flex flex-col gap-0.5">
+            <span class="text-text-muted">Registry URL</span>
+            <a id="modal-registry-link" href="#" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline truncate max-w-xs"></a>
+          </div>
+        </div>
+
+        <!-- Copy module source -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-medium text-text-muted uppercase tracking-wide">Module Source Line</span>
+            <button id="modal-copy-source" class="text-xs px-3 py-1 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium">Copy</button>
+          </div>
+          <pre id="modal-source-block" class="bg-bg border border-border rounded-lg p-3 text-xs font-mono text-green-400 overflow-x-auto whitespace-pre"></pre>
+        </div>
+
+        <!-- Usage snippet -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-medium text-text-muted uppercase tracking-wide">Usage Example</span>
+            <button id="modal-copy-hcl" class="text-xs px-3 py-1 bg-bg-card border border-border rounded-lg hover:border-primary transition-colors">Copy HCL</button>
+          </div>
+          <pre id="modal-hcl" class="bg-bg border border-border rounded-lg p-3 text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed"></pre>
+        </div>
+
+        <!-- Required variables -->
+        <div>
+          <span class="text-xs font-medium text-text-muted uppercase tracking-wide block mb-2">Required Variables</span>
+          <div id="modal-required-vars" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <!-- Outputs -->
+        <div>
+          <span class="text-xs font-medium text-text-muted uppercase tracking-wide block mb-2">Key Outputs</span>
+          <div id="modal-outputs" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Terraform Registry Module Finder" relatedTags={['terraform', 'hcl', 'infrastructure', 'devops', 'iac', 'aws', 'kubernetes']} />
+</BaseLayout>
+
+<script>
+// ─── Module Data ──────────────────────────────────────────────────────────────
+interface TFModule {
+  id: string;
+  name: string;
+  namespace: string;
+  provider: 'aws' | 'gcp' | 'azure' | 'generic';
+  category: string;
+  source: string;
+  version: string;
+  verified: boolean;
+  weeklyDownloads: string;
+  description: string;
+  hcl: string;
+  requiredVars: string[];
+  outputs: string[];
+}
+
+const MODULES: TFModule[] = [
+  // ── AWS ──────────────────────────────────────────────────────────────────
+  {
+    id: 'aws-vpc',
+    name: 'VPC',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Networking',
+    source: 'terraform-aws-modules/vpc/aws',
+    version: '5.8.1',
+    verified: true,
+    weeklyDownloads: '1.2M',
+    description: 'Creates a fully-featured AWS VPC with public/private subnets, NAT gateways, route tables, and internet gateway. The most-downloaded Terraform module on the registry.',
+    hcl: `module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 5.8"
+
+  name = "my-vpc"
+  cidr = "10.0.0.0/16"
+
+  azs             = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+
+  enable_nat_gateway = true
+  single_nat_gateway = true
+
+  tags = {
+    Environment = "production"
+    Terraform   = "true"
+  }
+}`,
+    requiredVars: ['name', 'cidr', 'azs'],
+    outputs: ['vpc_id', 'private_subnets', 'public_subnets', 'nat_public_ips'],
+  },
+  {
+    id: 'aws-eks',
+    name: 'EKS',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Compute',
+    source: 'terraform-aws-modules/eks/aws',
+    version: '20.24.3',
+    verified: true,
+    weeklyDownloads: '620K',
+    description: 'Deploys an Amazon EKS cluster with managed node groups, IRSA, add-ons, and cluster access entries. Supports both AL2 and Bottlerocket AMIs.',
+    hcl: `module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "~> 20.24"
+
+  cluster_name    = "my-cluster"
+  cluster_version = "1.31"
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+
+  cluster_endpoint_public_access = true
+
+  eks_managed_node_groups = {
+    general = {
+      instance_types = ["m6i.large"]
+      min_size       = 2
+      max_size       = 6
+      desired_size   = 3
+    }
+  }
+
+  tags = {
+    Environment = "production"
+    Terraform   = "true"
+  }
+}`,
+    requiredVars: ['cluster_name', 'cluster_version', 'vpc_id', 'subnet_ids'],
+    outputs: ['cluster_endpoint', 'cluster_certificate_authority_data', 'cluster_name', 'oidc_provider_arn'],
+  },
+  {
+    id: 'aws-rds',
+    name: 'RDS',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Database',
+    source: 'terraform-aws-modules/rds/aws',
+    version: '6.10.0',
+    verified: true,
+    weeklyDownloads: '480K',
+    description: 'Provisions an AWS RDS instance (MySQL, PostgreSQL, MariaDB, Oracle, MSSQL) with subnet groups, parameter groups, option groups, and CloudWatch alarms.',
+    hcl: `module "db" {
+  source  = "terraform-aws-modules/rds/aws"
+  version = "~> 6.10"
+
+  identifier = "my-postgres-db"
+
+  engine            = "postgres"
+  engine_version    = "16"
+  instance_class    = "db.t4g.large"
+  allocated_storage = 20
+
+  db_name  = "myapp"
+  username = "dbadmin"
+  port     = "5432"
+
+  vpc_security_group_ids = [module.security_group.security_group_id]
+  subnet_ids             = module.vpc.private_subnets
+
+  deletion_protection = true
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['identifier', 'engine', 'instance_class', 'db_name', 'username'],
+    outputs: ['db_instance_endpoint', 'db_instance_arn', 'db_instance_name'],
+  },
+  {
+    id: 'aws-s3-bucket',
+    name: 'S3 Bucket',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Storage',
+    source: 'terraform-aws-modules/s3-bucket/aws',
+    version: '4.2.2',
+    verified: true,
+    weeklyDownloads: '720K',
+    description: 'Creates an S3 bucket with configurable versioning, encryption, lifecycle rules, access controls, CORS, and bucket policies. Handles all common S3 configurations.',
+    hcl: `module "s3_bucket" {
+  source  = "terraform-aws-modules/s3-bucket/aws"
+  version = "~> 4.2"
+
+  bucket = "my-unique-bucket-name"
+
+  versioning = {
+    enabled = true
+  }
+
+  server_side_encryption_configuration = {
+    rule = {
+      apply_server_side_encryption_by_default = {
+        sse_algorithm = "AES256"
+      }
+    }
+  }
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['bucket'],
+    outputs: ['s3_bucket_id', 's3_bucket_arn', 's3_bucket_bucket_domain_name'],
+  },
+  {
+    id: 'aws-iam',
+    name: 'IAM',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Security',
+    source: 'terraform-aws-modules/iam/aws',
+    version: '5.48.0',
+    verified: true,
+    weeklyDownloads: '390K',
+    description: 'Collection of submodules for AWS IAM: assumable roles, groups with users, policies, EKS role for service accounts (IRSA), read-only policies, and instance profiles.',
+    hcl: `module "iam_assumable_role" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role"
+  version = "~> 5.48"
+
+  trusted_role_arns = [
+    "arn:aws:iam::123456789012:root",
+  ]
+
+  create_role       = true
+  role_name         = "my-app-role"
+  role_requires_mfa = false
+
+  custom_role_policy_arns = [
+    "arn:aws:iam::aws:policy/ReadOnlyAccess",
+  ]
+}`,
+    requiredVars: ['trusted_role_arns', 'role_name'],
+    outputs: ['iam_role_arn', 'iam_role_name', 'iam_role_path'],
+  },
+  {
+    id: 'aws-lambda',
+    name: 'Lambda',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Compute',
+    source: 'terraform-aws-modules/lambda/aws',
+    version: '7.20.1',
+    verified: true,
+    weeklyDownloads: '380K',
+    description: 'Deploys AWS Lambda functions with IAM roles, event source mappings, aliases, VPC configuration, layers, and automatic packaging of local source code.',
+    hcl: `module "lambda_function" {
+  source  = "terraform-aws-modules/lambda/aws"
+  version = "~> 7.20"
+
+  function_name = "my-lambda"
+  description   = "My Lambda function"
+  handler       = "index.lambda_handler"
+  runtime       = "python3.12"
+
+  source_path = "./src"
+
+  environment_variables = {
+    APP_ENV = "production"
+  }
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['function_name', 'handler', 'runtime'],
+    outputs: ['lambda_function_arn', 'lambda_function_name', 'lambda_function_invoke_arn'],
+  },
+  {
+    id: 'aws-alb',
+    name: 'ALB',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Networking',
+    source: 'terraform-aws-modules/alb/aws',
+    version: '9.12.0',
+    verified: true,
+    weeklyDownloads: '310K',
+    description: 'Creates an Application Load Balancer (or NLB) with listeners, target groups, listener rules, and associated security groups. Supports HTTP/HTTPS and WebSocket.',
+    hcl: `module "alb" {
+  source  = "terraform-aws-modules/alb/aws"
+  version = "~> 9.12"
+
+  name    = "my-alb"
+  vpc_id  = module.vpc.vpc_id
+  subnets = module.vpc.public_subnets
+
+  security_groups = [module.alb_sg.security_group_id]
+
+  listeners = {
+    https = {
+      port            = 443
+      protocol        = "HTTPS"
+      certificate_arn = aws_acm_certificate.this.arn
+      forward = {
+        target_group_key = "app"
+      }
+    }
+  }
+
+  target_groups = {
+    app = {
+      name_prefix       = "app-"
+      protocol          = "HTTP"
+      port              = 8080
+      target_type       = "ip"
+    }
+  }
+}`,
+    requiredVars: ['name', 'vpc_id', 'subnets'],
+    outputs: ['lb_arn', 'lb_dns_name', 'target_groups'],
+  },
+  {
+    id: 'aws-asg',
+    name: 'Auto Scaling Group',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Compute',
+    source: 'terraform-aws-modules/autoscaling/aws',
+    version: '8.1.0',
+    verified: true,
+    weeklyDownloads: '270K',
+    description: 'Creates an EC2 Auto Scaling Group with launch template, mixed instances policy, scaling policies, lifecycle hooks, and warm pool support.',
+    hcl: `module "asg" {
+  source  = "terraform-aws-modules/autoscaling/aws"
+  version = "~> 8.1"
+
+  name = "my-asg"
+
+  vpc_zone_identifier = module.vpc.private_subnets
+  target_group_arns   = module.alb.target_groups.*.arn
+  health_check_type   = "ELB"
+
+  min_size         = 2
+  max_size         = 10
+  desired_capacity = 4
+
+  image_id      = data.aws_ami.amazon_linux.id
+  instance_type = "t3.medium"
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['name', 'vpc_zone_identifier', 'image_id', 'instance_type'],
+    outputs: ['autoscaling_group_id', 'autoscaling_group_arn', 'launch_template_id'],
+  },
+  {
+    id: 'aws-security-group',
+    name: 'Security Group',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Security',
+    source: 'terraform-aws-modules/security-group/aws',
+    version: '5.3.0',
+    verified: true,
+    weeklyDownloads: '890K',
+    description: 'Creates AWS Security Groups with computed ingress/egress rules. Includes predefined rules for common services (HTTP, HTTPS, SSH, PostgreSQL, Redis, etc.).',
+    hcl: `module "web_sg" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 5.3"
+
+  name        = "web-server-sg"
+  description = "Security group for web servers"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress_cidr_blocks = ["0.0.0.0/0"]
+  ingress_rules       = ["https-443-tcp", "http-80-tcp"]
+
+  egress_rules = ["all-all"]
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['name', 'vpc_id'],
+    outputs: ['security_group_id', 'security_group_arn', 'security_group_name'],
+  },
+  {
+    id: 'aws-acm',
+    name: 'ACM Certificate',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Security',
+    source: 'terraform-aws-modules/acm/aws',
+    version: '5.1.1',
+    verified: true,
+    weeklyDownloads: '220K',
+    description: 'Requests and validates AWS ACM certificates via DNS validation, with automatic Route53 record creation and certificate renewal support.',
+    hcl: `module "acm" {
+  source  = "terraform-aws-modules/acm/aws"
+  version = "~> 5.1"
+
+  domain_name = "example.com"
+  zone_id     = data.aws_route53_zone.this.id
+
+  subject_alternative_names = [
+    "*.example.com",
+    "app.example.com",
+  ]
+
+  wait_for_validation = true
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['domain_name', 'zone_id'],
+    outputs: ['acm_certificate_arn', 'acm_certificate_status', 'distinct_domain_names'],
+  },
+
+  // ── GCP ──────────────────────────────────────────────────────────────────
+  {
+    id: 'gcp-gke',
+    name: 'GKE (Google Kubernetes Engine)',
+    namespace: 'terraform-google-modules',
+    provider: 'gcp',
+    category: 'Compute',
+    source: 'terraform-google-modules/kubernetes-engine/google',
+    version: '35.0.1',
+    verified: true,
+    weeklyDownloads: '180K',
+    description: 'Deploys a GKE cluster with node pools, workload identity, VPC-native networking, and optional private cluster configuration. Official Google module.',
+    hcl: `module "gke" {
+  source  = "terraform-google-modules/kubernetes-engine/google"
+  version = "~> 35.0"
+
+  project_id = var.project_id
+  name       = "my-gke-cluster"
+  region     = "us-central1"
+
+  network    = module.gcp_network.network_name
+  subnetwork = module.gcp_network.subnets_names[0]
+
+  ip_range_pods     = "pods"
+  ip_range_services = "services"
+
+  node_pools = [
+    {
+      name         = "default-pool"
+      machine_type = "e2-standard-4"
+      min_count    = 1
+      max_count    = 10
+      disk_size_gb = 100
+    }
+  ]
+}`,
+    requiredVars: ['project_id', 'name', 'region', 'network', 'subnetwork'],
+    outputs: ['cluster_id', 'endpoint', 'ca_certificate', 'service_account'],
+  },
+  {
+    id: 'gcp-vpc',
+    name: 'VPC Network',
+    namespace: 'terraform-google-modules',
+    provider: 'gcp',
+    category: 'Networking',
+    source: 'terraform-google-modules/network/google',
+    version: '9.3.0',
+    verified: true,
+    weeklyDownloads: '150K',
+    description: 'Creates a Google Cloud VPC network with subnets, secondary ranges, firewall rules, Cloud NAT, and VPC peering. Official Google-maintained module.',
+    hcl: `module "gcp_network" {
+  source  = "terraform-google-modules/network/google"
+  version = "~> 9.3"
+
+  project_id   = var.project_id
+  network_name = "my-vpc"
+
+  subnets = [
+    {
+      subnet_name   = "private-subnet"
+      subnet_ip     = "10.10.0.0/24"
+      subnet_region = "us-central1"
+    },
+  ]
+
+  secondary_ranges = {
+    private-subnet = [
+      { range_name = "pods",     ip_cidr_range = "192.168.0.0/18" },
+      { range_name = "services", ip_cidr_range = "192.168.64.0/22" },
+    ]
+  }
+}`,
+    requiredVars: ['project_id', 'network_name', 'subnets'],
+    outputs: ['network_id', 'network_name', 'subnets_ids', 'subnets_names'],
+  },
+  {
+    id: 'gcp-cloud-sql',
+    name: 'Cloud SQL',
+    namespace: 'terraform-google-modules',
+    provider: 'gcp',
+    category: 'Database',
+    source: 'terraform-google-modules/sql-db/google',
+    version: '21.0.0',
+    verified: true,
+    weeklyDownloads: '95K',
+    description: 'Provisions Google Cloud SQL instances (MySQL, PostgreSQL, MSSQL) with replicas, backups, authorized networks, and private IP configuration.',
+    hcl: `module "postgres" {
+  source  = "terraform-google-modules/sql-db/google//modules/postgresql"
+  version = "~> 21.0"
+
+  name             = "my-postgres"
+  project_id       = var.project_id
+  database_version = "POSTGRES_16"
+  region           = "us-central1"
+
+  tier = "db-g1-small"
+
+  backup_configuration = {
+    enabled            = true
+    start_time         = "23:00"
+    retained_backups   = 7
+  }
+
+  additional_databases = [
+    { name    = "myapp"
+      charset = "UTF8" }
+  ]
+}`,
+    requiredVars: ['name', 'project_id', 'database_version', 'region'],
+    outputs: ['instance_name', 'public_ip_address', 'private_ip_address', 'connection_name'],
+  },
+  {
+    id: 'gcp-cloud-storage',
+    name: 'Cloud Storage',
+    namespace: 'terraform-google-modules',
+    provider: 'gcp',
+    category: 'Storage',
+    source: 'terraform-google-modules/cloud-storage/google',
+    version: '6.1.0',
+    verified: true,
+    weeklyDownloads: '110K',
+    description: 'Creates one or more Google Cloud Storage buckets with IAM bindings, lifecycle rules, versioning, CORS, logging, and retention policies.',
+    hcl: `module "gcs_buckets" {
+  source  = "terraform-google-modules/cloud-storage/google"
+  version = "~> 6.1"
+
+  project_id = var.project_id
+  prefix     = "my-project"
+  names      = ["raw", "processed"]
+  location   = "US"
+
+  set_admin_roles = true
+  admins          = ["group:admins@example.com"]
+
+  versioning = {
+    raw = true
+  }
+
+  lifecycle_rules = [{
+    action    = { type = "Delete" }
+    condition = { age = 365 }
+  }]
+}`,
+    requiredVars: ['project_id', 'names'],
+    outputs: ['bucket_names', 'bucket_urls', 'buckets_map'],
+  },
+
+  // ── Azure ─────────────────────────────────────────────────────────────────
+  {
+    id: 'azure-aks',
+    name: 'AKS (Azure Kubernetes Service)',
+    namespace: 'Azure',
+    provider: 'azure',
+    category: 'Compute',
+    source: 'Azure/aks/azurerm',
+    version: '9.4.1',
+    verified: true,
+    weeklyDownloads: '95K',
+    description: 'Deploys an Azure AKS cluster with system and user node pools, managed identity, Azure Monitor integration, and optional Windows node pools.',
+    hcl: `module "aks" {
+  source  = "Azure/aks/azurerm"
+  version = "~> 9.4"
+
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+
+  cluster_name   = "my-aks"
+  dns_prefix     = "my-aks"
+  kubernetes_version = "1.31"
+
+  default_node_pool = {
+    name       = "system"
+    vm_size    = "Standard_D4s_v3"
+    node_count = 3
+  }
+
+  identity = {
+    type = "SystemAssigned"
+  }
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['resource_group_name', 'location', 'cluster_name'],
+    outputs: ['cluster_id', 'kube_config', 'cluster_fqdn', 'node_resource_group'],
+  },
+  {
+    id: 'azure-vnet',
+    name: 'Virtual Network',
+    namespace: 'Azure',
+    provider: 'azure',
+    category: 'Networking',
+    source: 'Azure/vnet/azurerm',
+    version: '4.1.0',
+    verified: true,
+    weeklyDownloads: '75K',
+    description: 'Creates an Azure Virtual Network with subnets, network security groups, route tables, service endpoints, and optional DDoS protection plan.',
+    hcl: `module "vnet" {
+  source  = "Azure/vnet/azurerm"
+  version = "~> 4.1"
+
+  resource_group_name = azurerm_resource_group.this.name
+  vnet_location       = azurerm_resource_group.this.location
+
+  vnet_name       = "my-vnet"
+  address_space   = ["10.0.0.0/16"]
+  subnet_prefixes = ["10.0.1.0/24", "10.0.2.0/24"]
+  subnet_names    = ["aks", "data"]
+
+  subnet_service_endpoints = {
+    aks  = ["Microsoft.Storage"]
+    data = ["Microsoft.Sql", "Microsoft.Storage"]
+  }
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['resource_group_name', 'vnet_name', 'address_space'],
+    outputs: ['vnet_id', 'vnet_name', 'vnet_subnets', 'vnet_address_space'],
+  },
+  {
+    id: 'azure-app-service',
+    name: 'App Service',
+    namespace: 'Azure',
+    provider: 'azure',
+    category: 'Compute',
+    source: 'Azure/app-service/azurerm',
+    version: '1.2.0',
+    verified: false,
+    weeklyDownloads: '42K',
+    description: 'Provisions Azure App Service (Web App) with service plan, deployment slots, application settings, connection strings, and optional custom domain with SSL.',
+    hcl: `module "app_service" {
+  source  = "Azure/app-service/azurerm"
+  version = "~> 1.2"
+
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+
+  name       = "my-web-app"
+  os_type    = "Linux"
+  sku_name   = "B2"
+
+  site_config = {
+    application_stack = {
+      node_version = "20-lts"
+    }
+  }
+
+  app_settings = {
+    NODE_ENV = "production"
+  }
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['resource_group_name', 'location', 'name'],
+    outputs: ['app_service_name', 'app_service_default_hostname', 'app_service_id'],
+  },
+
+  // ── Generic ───────────────────────────────────────────────────────────────
+  {
+    id: 'k8s-helm',
+    name: 'Helm Release',
+    namespace: 'terraform-helm',
+    provider: 'generic',
+    category: 'Kubernetes',
+    source: 'hashicorp/helm/kubernetes',
+    version: '2.17.0',
+    verified: true,
+    weeklyDownloads: '340K',
+    description: 'Manages Helm chart releases in Kubernetes clusters via Terraform. Supports value overrides, namespaces, atomic installs, and lifecycle management.',
+    hcl: `resource "helm_release" "nginx_ingress" {
+  name       = "nginx-ingress"
+  repository = "https://kubernetes.github.io/ingress-nginx"
+  chart      = "ingress-nginx"
+  version    = "4.11.3"
+  namespace  = "ingress-nginx"
+
+  create_namespace = true
+
+  set {
+    name  = "controller.replicaCount"
+    value = "2"
+  }
+
+  set {
+    name  = "controller.service.type"
+    value = "LoadBalancer"
+  }
+}`,
+    requiredVars: ['name', 'chart'],
+    outputs: ['status', 'metadata'],
+  },
+  {
+    id: 'k8s-manifest',
+    name: 'Kubernetes Manifests',
+    namespace: 'gavinbunney',
+    provider: 'generic',
+    category: 'Kubernetes',
+    source: 'gavinbunney/kubectl/kubernetes',
+    version: '1.19.0',
+    verified: false,
+    weeklyDownloads: '95K',
+    description: 'Applies raw Kubernetes YAML manifests from files or inline HCL using kubectl provider. Useful for CRDs and resources not supported natively by the Kubernetes Terraform provider.',
+    hcl: `data "kubectl_file_documents" "manifests" {
+  content = file("./manifests/app.yaml")
+}
+
+resource "kubectl_manifest" "app" {
+  for_each  = data.kubectl_file_documents.manifests.manifests
+  yaml_body = each.value
+
+  wait          = true
+  server_side_apply = true
+}`,
+    requiredVars: ['yaml_body'],
+    outputs: ['uid', 'live_manifest_incluster'],
+  },
+  {
+    id: 'vault-secrets',
+    name: 'Vault Secrets',
+    namespace: 'hashicorp',
+    provider: 'generic',
+    category: 'Security',
+    source: 'hashicorp/vault/generic',
+    version: '4.5.0',
+    verified: true,
+    weeklyDownloads: '120K',
+    description: 'Manages HashiCorp Vault resources including generic secrets, KV v2 secrets, policies, auth backends, PKI certificates, and dynamic credentials.',
+    hcl: `resource "vault_kv_secret_v2" "app_secrets" {
+  mount               = vault_mount.kv.path
+  name                = "my-app/production"
+  cas                 = 1
+  delete_all_versions = true
+
+  data_json = jsonencode({
+    db_password = var.db_password
+    api_key     = var.api_key
+  })
+}
+
+resource "vault_policy" "app_policy" {
+  name = "my-app-policy"
+
+  policy = <<EOT
+path "secret/data/my-app/*" {
+  capabilities = ["read"]
+}
+EOT
+}`,
+    requiredVars: ['mount', 'name', 'data_json'],
+    outputs: ['path', 'data', 'metadata'],
+  },
+  {
+    id: 'k8s-cert-manager',
+    name: 'cert-manager',
+    namespace: 'terraform-helm',
+    provider: 'generic',
+    category: 'Kubernetes',
+    source: 'terraform-helm/cert-manager/kubernetes',
+    version: '0.1.2',
+    verified: false,
+    weeklyDownloads: '28K',
+    description: 'Installs cert-manager in Kubernetes via Helm, configures ClusterIssuers for Let\'s Encrypt (staging and production), and manages TLS certificate lifecycles.',
+    hcl: `module "cert_manager" {
+  source  = "terraform-helm/cert-manager/kubernetes"
+  version = "~> 0.1"
+
+  namespace_name   = "cert-manager"
+  chart_version    = "v1.16.2"
+
+  lets_encrypt_email   = "admin@example.com"
+  lets_encrypt_server  = "https://acme-v02.api.letsencrypt.org/directory"
+}`,
+    requiredVars: ['lets_encrypt_email'],
+    outputs: ['helm_release_status'],
+  },
+  {
+    id: 'aws-cloudfront',
+    name: 'CloudFront',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Networking',
+    source: 'terraform-aws-modules/cloudfront/aws',
+    version: '3.4.1',
+    verified: true,
+    weeklyDownloads: '195K',
+    description: 'Creates an AWS CloudFront distribution with origins, cache behaviors, WAF integration, access logging, custom error pages, and signed URL support.',
+    hcl: `module "cdn" {
+  source  = "terraform-aws-modules/cloudfront/aws"
+  version = "~> 3.4"
+
+  aliases = ["cdn.example.com"]
+
+  comment             = "My CDN"
+  enabled             = true
+  is_ipv6_enabled     = true
+  price_class         = "PriceClass_100"
+  retain_on_delete    = false
+  wait_for_deployment = false
+
+  create_origin_access_identity = true
+  origin_access_identities = {
+    s3 = "My CloudFront can access"
+  }
+
+  origin = {
+    s3 = {
+      domain_name = module.s3_bucket.s3_bucket_bucket_regional_domain_name
+      s3_origin_config = {
+        origin_access_identity = "s3"
+      }
+    }
+  }
+
+  default_cache_behavior = {
+    target_origin_id       = "s3"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    query_string           = true
+  }
+
+  viewer_certificate = {
+    acm_certificate_arn = module.acm.acm_certificate_arn
+    ssl_support_method  = "sni-only"
+  }
+}`,
+    requiredVars: ['origin'],
+    outputs: ['cloudfront_distribution_id', 'cloudfront_distribution_domain_name', 'cloudfront_distribution_arn'],
+  },
+  {
+    id: 'aws-elasticache',
+    name: 'ElastiCache (Redis)',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Database',
+    source: 'terraform-aws-modules/elasticache/aws',
+    version: '1.4.1',
+    verified: true,
+    weeklyDownloads: '88K',
+    description: 'Creates AWS ElastiCache clusters for Redis or Memcached with replication groups, auto-failover, encryption at rest/in-transit, and subnet groups.',
+    hcl: `module "redis" {
+  source  = "terraform-aws-modules/elasticache/aws"
+  version = "~> 1.4"
+
+  cluster_id               = "my-redis"
+  create_replication_group = true
+
+  engine_version = "7.1"
+  node_type      = "cache.t4g.small"
+
+  num_cache_clusters = 2
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+
+  security_group_rules = {
+    ingress_vpc = {
+      description = "VPC traffic"
+      cidr_ipv4   = module.vpc.vpc_cidr_block
+    }
+  }
+
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
+}`,
+    requiredVars: ['cluster_id', 'vpc_id', 'subnet_ids'],
+    outputs: ['replication_group_id', 'replication_group_primary_endpoint_address', 'cluster_address'],
+  },
+  {
+    id: 'aws-ecs',
+    name: 'ECS (Fargate)',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Compute',
+    source: 'terraform-aws-modules/ecs/aws',
+    version: '5.12.0',
+    verified: true,
+    weeklyDownloads: '160K',
+    description: 'Creates an AWS ECS cluster with Fargate capacity providers, cluster capacity provider strategies, and optional EC2 Auto Scaling capacity providers.',
+    hcl: `module "ecs" {
+  source  = "terraform-aws-modules/ecs/aws"
+  version = "~> 5.12"
+
+  cluster_name = "my-ecs"
+
+  fargate_capacity_providers = {
+    FARGATE = {
+      default_capacity_provider_strategy = {
+        weight = 50
+        base   = 20
+      }
+    }
+    FARGATE_SPOT = {
+      default_capacity_provider_strategy = {
+        weight = 50
+      }
+    }
+  }
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['cluster_name'],
+    outputs: ['cluster_id', 'cluster_arn', 'cluster_name'],
+  },
+  {
+    id: 'aws-kms',
+    name: 'KMS Key',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Security',
+    source: 'terraform-aws-modules/kms/aws',
+    version: '3.1.1',
+    verified: true,
+    weeklyDownloads: '205K',
+    description: 'Creates AWS KMS Customer Managed Keys (CMKs) with aliases, key policies, grants, and rotation schedules. Commonly used to encrypt S3, RDS, EBS, and Secrets Manager.',
+    hcl: `module "kms" {
+  source  = "terraform-aws-modules/kms/aws"
+  version = "~> 3.1"
+
+  description = "EKS Secret Encryption Key"
+  key_usage   = "ENCRYPT_DECRYPT"
+
+  aliases                 = ["eks/my-cluster"]
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+
+  key_administrators = [
+    "arn:aws:iam::123456789012:role/admin-role",
+  ]
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['description'],
+    outputs: ['key_arn', 'key_id', 'aliases'],
+  },
+  {
+    id: 'aws-route53',
+    name: 'Route53',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Networking',
+    source: 'terraform-aws-modules/route53/aws',
+    version: '4.1.0',
+    verified: true,
+    weeklyDownloads: '145K',
+    description: 'Manages AWS Route53 hosted zones and DNS records with support for aliases, geolocation routing, latency routing, failover, and health checks.',
+    hcl: `module "zones" {
+  source  = "terraform-aws-modules/route53/aws//modules/zones"
+  version = "~> 4.1"
+
+  zones = {
+    "example.com" = {
+      comment = "example.com (prod)"
+      tags    = { env = "production" }
+    }
+  }
+}
+
+module "records" {
+  source  = "terraform-aws-modules/route53/aws//modules/records"
+  version = "~> 4.1"
+
+  zone_name = keys(module.zones.route53_zone_zone_id)[0]
+
+  records = [
+    {
+      name    = "api"
+      type    = "A"
+      alias   = {
+        name    = module.alb.lb_dns_name
+        zone_id = module.alb.lb_zone_id
+      }
+    },
+  ]
+
+  depends_on = [module.zones]
+}`,
+    requiredVars: ['zones'],
+    outputs: ['route53_zone_id', 'route53_zone_zone_id', 'route53_zone_name_servers'],
+  },
+  {
+    id: 'gcp-iam',
+    name: 'IAM (GCP)',
+    namespace: 'terraform-google-modules',
+    provider: 'gcp',
+    category: 'Security',
+    source: 'terraform-google-modules/iam/google',
+    version: '8.0.0',
+    verified: true,
+    weeklyDownloads: '130K',
+    description: 'Manages Google Cloud IAM policy bindings at project, folder, or organization level. Supports authoritative and additive modes, service accounts, and workload identity.',
+    hcl: `module "project_iam_bindings" {
+  source  = "terraform-google-modules/iam/google//modules/projects_iam"
+  version = "~> 8.0"
+
+  projects = [var.project_id]
+  mode     = "additive"
+
+  bindings = {
+    "roles/storage.objectViewer" = [
+      "serviceAccount:my-app@${var.project_id}.iam.gserviceaccount.com",
+    ]
+    "roles/cloudsql.client" = [
+      "serviceAccount:my-app@${var.project_id}.iam.gserviceaccount.com",
+    ]
+  }
+}`,
+    requiredVars: ['projects', 'bindings'],
+    outputs: ['projects', 'roles', 'members'],
+  },
+  {
+    id: 'k8s-external-secrets',
+    name: 'External Secrets Operator',
+    namespace: 'external-secrets',
+    provider: 'generic',
+    category: 'Kubernetes',
+    source: 'external-secrets/external-secrets/kubernetes',
+    version: '0.10.7',
+    verified: false,
+    weeklyDownloads: '55K',
+    description: 'Installs External Secrets Operator in Kubernetes via Helm. Syncs secrets from AWS Secrets Manager, GCP Secret Manager, HashiCorp Vault, and other backends into Kubernetes Secrets.',
+    hcl: `resource "helm_release" "external_secrets" {
+  name             = "external-secrets"
+  repository       = "https://charts.external-secrets.io"
+  chart            = "external-secrets"
+  version          = "0.10.7"
+  namespace        = "external-secrets"
+  create_namespace = true
+
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
+
+  set {
+    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = module.iam_assumable_role.iam_role_arn
+  }
+}`,
+    requiredVars: ['name', 'repository', 'chart'],
+    outputs: ['status', 'metadata'],
+  },
+  {
+    id: 'aws-sns',
+    name: 'SNS Topic',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Messaging',
+    source: 'terraform-aws-modules/sns/aws',
+    version: '6.1.0',
+    verified: true,
+    weeklyDownloads: '98K',
+    description: 'Creates AWS SNS topics (standard or FIFO) with subscriptions, topic policies, data protection policies, and delivery status logging.',
+    hcl: `module "sns_topic" {
+  source  = "terraform-aws-modules/sns/aws"
+  version = "~> 6.1"
+
+  name            = "my-topic"
+  use_name_prefix = true
+
+  subscriptions = {
+    sqs = {
+      protocol = "sqs"
+      endpoint = module.sqs.queue_arn
+    }
+  }
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['name'],
+    outputs: ['topic_arn', 'topic_name', 'subscriptions'],
+  },
+  {
+    id: 'aws-sqs',
+    name: 'SQS Queue',
+    namespace: 'terraform-aws-modules',
+    provider: 'aws',
+    category: 'Messaging',
+    source: 'terraform-aws-modules/sqs/aws',
+    version: '4.2.1',
+    verified: true,
+    weeklyDownloads: '115K',
+    description: 'Creates AWS SQS queues (standard or FIFO) with dead-letter queues, queue policies, encryption, visibility timeout, and redrive policies.',
+    hcl: `module "sqs" {
+  source  = "terraform-aws-modules/sqs/aws"
+  version = "~> 4.2"
+
+  name = "my-queue"
+
+  create_dlq        = true
+  visibility_timeout_seconds = 30
+
+  dlq_message_retention_seconds = 86400
+
+  tags = {
+    Environment = "production"
+  }
+}`,
+    requiredVars: ['name'],
+    outputs: ['queue_id', 'queue_arn', 'queue_url', 'dead_letter_queue_arn'],
+  },
+];
+
+// ─── Provider colours ─────────────────────────────────────────────────────────
+const PROVIDER_META: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  aws:     { label: 'AWS',     color: 'text-orange-400', bg: 'bg-orange-400/10',  icon: '▲' },
+  gcp:     { label: 'GCP',     color: 'text-blue-400',   bg: 'bg-blue-400/10',    icon: '◆' },
+  azure:   { label: 'Azure',   color: 'text-sky-400',    bg: 'bg-sky-400/10',     icon: '■' },
+  generic: { label: 'Generic', color: 'text-purple-400', bg: 'bg-purple-400/10',  icon: '●' },
+};
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let activeProvider = 'all';
+let searchQuery    = '';
+
+// ─── Render helpers ───────────────────────────────────────────────────────────
+function escapeHtml(str: string) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatDownloads(dl: string) {
+  return `<span class="font-semibold text-text">${dl}</span><span class="text-text-muted">/wk</span>`;
+}
+
+function renderCard(m: TFModule) {
+  const pm = PROVIDER_META[m.provider];
+  return `
+    <div
+      class="module-card bg-bg-card border border-border rounded-xl p-4 flex flex-col gap-3 hover:border-primary/60 transition-colors cursor-pointer"
+      data-id="${m.id}"
+      role="button"
+      tabindex="0"
+      aria-label="View details for ${escapeHtml(m.name)}"
+    >
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs px-2 py-0.5 rounded-full font-medium ${pm.color} ${pm.bg}">
+            ${pm.icon} ${pm.label}
+          </span>
+          <span class="text-xs text-text-muted border border-border rounded-full px-2 py-0.5">${escapeHtml(m.category)}</span>
+        </div>
+        ${m.verified ? `
+          <span class="flex items-center gap-1 text-xs text-blue-400 flex-shrink-0" title="Verified by provider">
+            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Verified
+          </span>` : ''}
+      </div>
+
+      <div>
+        <h3 class="font-semibold text-sm leading-snug">${escapeHtml(m.name)}</h3>
+        <p class="text-xs text-text-muted font-mono mt-0.5 truncate" title="${escapeHtml(m.source)}">${escapeHtml(m.source)}</p>
+      </div>
+
+      <p class="text-xs text-text-muted line-clamp-2 leading-relaxed flex-1">${escapeHtml(m.description)}</p>
+
+      <div class="flex items-center justify-between pt-1 border-t border-border mt-auto">
+        <span class="text-xs font-mono text-primary">${escapeHtml(m.version)}</span>
+        <span class="text-xs">${formatDownloads(m.weeklyDownloads)}</span>
+        <button
+          class="copy-source-btn text-xs px-2.5 py-1 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors font-medium"
+          data-id="${m.id}"
+          title="Copy module source line"
+        >Copy source</button>
+      </div>
+    </div>
+  `;
+}
+
+function getFilteredModules() {
+  const q = searchQuery.toLowerCase().trim();
+  return MODULES.filter(m => {
+    const providerMatch = activeProvider === 'all' || m.provider === activeProvider;
+    if (!providerMatch) return false;
+    if (!q) return true;
+    return (
+      m.name.toLowerCase().includes(q) ||
+      m.source.toLowerCase().includes(q) ||
+      m.category.toLowerCase().includes(q) ||
+      m.description.toLowerCase().includes(q) ||
+      m.provider.toLowerCase().includes(q)
+    );
+  });
+}
+
+function renderGrid() {
+  const grid   = document.getElementById('module-grid')!;
+  const empty  = document.getElementById('empty-state')!;
+  const count  = document.getElementById('result-count')!;
+  const mods   = getFilteredModules();
+
+  count.textContent = `${mods.length} module${mods.length !== 1 ? 's' : ''}`;
+
+  if (mods.length === 0) {
+    grid.innerHTML = '';
+    empty.classList.remove('hidden');
+  } else {
+    empty.classList.add('hidden');
+    grid.innerHTML = mods.map(renderCard).join('');
+    // Re-attach card events after re-render
+    attachCardEvents();
+  }
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function openModal(id: string) {
+  const m = MODULES.find(x => x.id === id);
+  if (!m) return;
+  const pm = PROVIDER_META[m.provider];
+  const modal = document.getElementById('module-modal')!;
+
+  const badge = document.getElementById('modal-provider-badge')!;
+  badge.textContent = `${pm.icon} ${pm.label}`;
+  badge.className = `text-xs px-2 py-0.5 rounded-full font-medium ${pm.color} ${pm.bg}`;
+
+  const verifiedEl = document.getElementById('modal-verified')!;
+  if (m.verified) {
+    verifiedEl.classList.remove('hidden');
+    verifiedEl.classList.add('flex');
+  } else {
+    verifiedEl.classList.add('hidden');
+    verifiedEl.classList.remove('flex');
+  }
+
+  (document.getElementById('modal-title')! as HTMLElement).textContent = m.name;
+  (document.getElementById('modal-source')! as HTMLElement).textContent = m.source;
+  (document.getElementById('modal-description')! as HTMLElement).textContent = m.description;
+  (document.getElementById('modal-version')! as HTMLElement).textContent = `v${m.version}`;
+  (document.getElementById('modal-downloads')! as HTMLElement).textContent = `${m.weeklyDownloads}`;
+
+  const regLink = document.getElementById('modal-registry-link') as HTMLAnchorElement;
+  const regUrl = `https://registry.terraform.io/modules/${m.source}`;
+  regLink.href    = regUrl;
+  regLink.textContent = regUrl.replace('https://', '');
+
+  const sourceLine = `module "${m.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}" {\n  source  = "${m.source}"\n  version = "~> ${m.version.split('.').slice(0,2).join('.')}"\n}`;
+  (document.getElementById('modal-source-block')! as HTMLElement).textContent = sourceLine;
+
+  (document.getElementById('modal-hcl')! as HTMLElement).textContent = m.hcl;
+
+  const reqVarsEl = document.getElementById('modal-required-vars')!;
+  reqVarsEl.innerHTML = m.requiredVars.map(v =>
+    `<span class="text-xs font-mono px-2 py-0.5 bg-amber-400/10 text-amber-400 rounded border border-amber-400/20">${escapeHtml(v)}</span>`
+  ).join('');
+
+  const outputsEl = document.getElementById('modal-outputs')!;
+  outputsEl.innerHTML = m.outputs.map(o =>
+    `<span class="text-xs font-mono px-2 py-0.5 bg-green-400/10 text-green-400 rounded border border-green-400/20">${escapeHtml(o)}</span>`
+  ).join('');
+
+  modal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+
+  // Copy source button
+  document.getElementById('modal-copy-source')!.onclick = () => {
+    navigator.clipboard.writeText(sourceLine).then(() => {
+      const btn = document.getElementById('modal-copy-source')!;
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    });
+  };
+
+  // Copy HCL button
+  document.getElementById('modal-copy-hcl')!.onclick = () => {
+    navigator.clipboard.writeText(m.hcl).then(() => {
+      const btn = document.getElementById('modal-copy-hcl')!;
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    });
+  };
+}
+
+function closeModal() {
+  document.getElementById('module-modal')!.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+// ─── Event attachment ─────────────────────────────────────────────────────────
+function attachCardEvents() {
+  document.querySelectorAll<HTMLElement>('.module-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      const tgt = e.target as HTMLElement;
+      if (tgt.classList.contains('copy-source-btn') || tgt.closest('.copy-source-btn')) return;
+      openModal(card.dataset.id!);
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') openModal(card.dataset.id!);
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>('.copy-source-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const m = MODULES.find(x => x.id === btn.dataset.id!);
+      if (!m) return;
+      const line = `source  = "${m.source}"\nversion = "~> ${m.version.split('.').slice(0,2).join('.')}"`;
+      navigator.clipboard.writeText(line).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
+    });
+  });
+}
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Initial render
+  renderGrid();
+
+  // Search
+  document.getElementById('search-input')!.addEventListener('input', (e) => {
+    searchQuery = (e.target as HTMLInputElement).value;
+    renderGrid();
+  });
+
+  // Provider filter buttons
+  document.querySelectorAll<HTMLButtonElement>('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeProvider = btn.dataset.provider!;
+      document.querySelectorAll<HTMLButtonElement>('.filter-btn').forEach(b => {
+        b.classList.remove('active', 'border-primary', 'bg-primary/10', 'text-primary');
+        b.classList.add('border-border');
+      });
+      btn.classList.add('active', 'border-primary', 'bg-primary/10', 'text-primary');
+      btn.classList.remove('border-border');
+      renderGrid();
+    });
+  });
+
+  // Modal close
+  document.getElementById('modal-close')!.addEventListener('click', closeModal);
+  document.getElementById('module-modal')!.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('module-modal')) closeModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+  });
+});
+</script>

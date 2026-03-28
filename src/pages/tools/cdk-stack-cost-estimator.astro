@@ -1,0 +1,838 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "How accurate are CDK stack cost estimates?",
+    answer: "CDK stack cost estimates are approximations based on public AWS list prices. Actual costs depend on your specific usage patterns, data transfer between services, free tier eligibility, and any existing Reserved Instances or Savings Plans. For production planning, always validate against the AWS Pricing Calculator (calculator.aws) and enable AWS Cost Explorer after deployment to track real spending. This tool uses simplified pricing models — for example, EC2 pricing omits EBS volume costs, and RDS excludes I/O charges for Multi-AZ failover operations."
+  },
+  {
+    question: "What CDK cost optimization strategies have the most impact?",
+    answer: "The highest-impact CDK optimizations are: (1) Reserved Instances or Savings Plans for EC2/RDS — save 30–70% on predictable workloads; (2) Right-sizing instances — many teams over-provision by 2–4× at launch; (3) S3 Intelligent-Tiering for infrequently accessed data; (4) Lambda vs. always-on EC2 for event-driven workloads — Lambda at low invocations is dramatically cheaper; (5) Use CloudFront to cache S3/ALB responses and reduce origin load; (6) DynamoDB on-demand pricing for unpredictable traffic, provisioned for steady loads. Enable AWS Trusted Advisor and Cost Anomaly Detection to catch unexpected spending automatically."
+  },
+  {
+    question: "When does Multi-AZ RDS make financial sense?",
+    answer: "Multi-AZ RDS roughly doubles your instance and storage costs but provides automatic failover (typically < 60 seconds) and synchronous replication to a standby in a different Availability Zone. It makes sense when: (1) downtime cost exceeds the Multi-AZ premium — calculate this as (hourly revenue × expected failure hours × failure probability); (2) your SLA requires 99.95%+ availability; (3) you have compliance requirements for data durability. For dev/staging environments, single-AZ is almost always sufficient. Consider Aurora instead of Multi-AZ RDS for production — Aurora offers Multi-AZ by default with better performance at similar cost."
+  },
+  {
+    question: "How do Reserved Instances reduce CDK stack costs?",
+    answer: "Reserved Instances (RIs) and Compute Savings Plans commit you to a specific instance type/region (RIs) or compute spend (Savings Plans) in exchange for 30–72% discounts versus On-Demand. 1-year No Upfront RIs save ~30–40%; 3-year All Upfront save 50–70%. For CDK stacks, identify your baseline compute (EC2 instances that run 24/7, RDS instances, Fargate tasks) and apply RIs to those. Use Convertible RIs for flexibility to change instance families as your CDK stack evolves. Spot Instances (not modeled here) offer 70–90% savings for fault-tolerant, interruptible workloads like batch processing or CI/CD runners."
+  },
+  {
+    question: "What's the cost difference between ECS Fargate and EC2 for CDK stacks?",
+    answer: "ECS Fargate charges per vCPU-hour ($0.04048) and per GB-hour ($0.004445) with no idle infrastructure. EC2 charges for the entire instance whether it's 10% or 100% utilized. Fargate wins for: bursty workloads with high peak-to-average ratios, small services that don't fill a full EC2 instance, or teams that want to eliminate EC2 patching/management overhead. EC2 wins for: steady-state high-utilization workloads (>70% CPU), workloads needing GPU, large containers that efficiently fill an instance, and cost-sensitive production at scale with Reserved Instances. A common pattern: Fargate Spot for dev/staging (70% savings), Fargate On-Demand for small prod services, EC2 + Savings Plans for large production fleets."
+  },
+];
+---
+
+<BaseLayout
+  title="AWS CDK Stack Cost Estimator — EC2, RDS, Lambda, Fargate, S3 Monthly Cost Calculator"
+  description="Estimate your AWS CDK stack monthly costs. Add EC2, RDS, S3, Lambda, ECS Fargate, CloudFront, DynamoDB, SQS, SNS, and ALB services. Get a full cost breakdown with pie chart, environment multipliers, and export."
+  tool="AWS CDK cost estimator, AWS stack cost calculator, EC2 monthly cost, RDS pricing calculator, Lambda cost estimator, Fargate cost, CloudFront pricing, DynamoDB cost"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AWS CDK Stack Cost Estimator</h1>
+  <p class="text-text-muted mb-4">Add AWS services to your CDK stack and get an instant monthly cost estimate. Toggle between environments, view cost breakdown, and export a summary report.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 10 AWS services</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dev / Staging / Prod multipliers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost breakdown chart</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Monthly &amp; annual toggle</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Export cost summary</span>
+  </div>
+
+  <!-- Controls bar -->
+  <div class="flex flex-wrap items-center gap-3 mb-6">
+    <!-- Environment -->
+    <div class="flex items-center gap-1 bg-bg-card border border-border rounded-lg p-1">
+      <button class="env-btn active text-xs px-3 py-1.5 rounded-md bg-primary text-white font-medium transition-all" data-env="dev" data-mult="1">Dev (1×)</button>
+      <button class="env-btn text-xs px-3 py-1.5 rounded-md text-text-muted hover:text-text transition-all" data-env="staging" data-mult="1">Staging (1×)</button>
+      <button class="env-btn text-xs px-3 py-1.5 rounded-md text-text-muted hover:text-text transition-all" data-env="prod" data-mult="1.5">Prod (1.5×)</button>
+      <button class="env-btn text-xs px-3 py-1.5 rounded-md text-text-muted hover:text-text transition-all" data-env="custom" data-mult="custom">Custom</button>
+    </div>
+    <div id="custom-mult-wrap" class="hidden flex items-center gap-2">
+      <label class="text-xs text-text-muted">Multiplier:</label>
+      <input id="custom-mult" type="number" min="0.1" max="10" step="0.1" value="1.5"
+        class="w-20 bg-bg-card border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary" />
+    </div>
+    <!-- Period toggle -->
+    <div class="ml-auto flex items-center gap-1 bg-bg-card border border-border rounded-lg p-1">
+      <button id="period-monthly" class="period-btn active text-xs px-3 py-1.5 rounded-md bg-primary text-white font-medium transition-all">Monthly</button>
+      <button id="period-annual" class="period-btn text-xs px-3 py-1.5 rounded-md text-text-muted hover:text-text transition-all">Annual</button>
+    </div>
+    <button id="export-btn" class="text-xs px-3 py-1.5 bg-bg-card border border-border rounded-lg hover:border-primary hover:text-primary transition-all">Export Summary</button>
+  </div>
+
+  <!-- Running total -->
+  <div class="bg-bg-card border border-primary/30 rounded-xl p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <p class="text-xs text-text-muted mb-0.5">Estimated Total</p>
+      <p id="total-display" class="text-3xl font-bold text-primary">$0.00</p>
+      <p id="period-label" class="text-xs text-text-muted mt-0.5">per month</p>
+    </div>
+    <div id="multiplier-badge" class="text-xs px-3 py-1.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 rounded-full hidden">
+      Prod HA multiplier: 1.5×
+    </div>
+    <div class="text-right">
+      <p class="text-xs text-text-muted mb-0.5">Services added</p>
+      <p id="service-count" class="text-2xl font-semibold">0</p>
+    </div>
+  </div>
+
+  <!-- Two-column layout: service adder + breakdown -->
+  <div class="grid grid-cols-1 xl:grid-cols-5 gap-6 mb-8">
+
+    <!-- Left: service selector + form -->
+    <div class="xl:col-span-3 space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-4">
+        <h2 class="text-sm font-semibold mb-3">Add AWS Service</h2>
+        <div class="flex gap-2 flex-wrap mb-4">
+          <button class="svc-tab active text-xs px-3 py-1.5 rounded-full border border-primary text-primary bg-primary/10 transition-all" data-svc="ec2">EC2</button>
+          <button class="svc-tab text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-svc="rds">RDS</button>
+          <button class="svc-tab text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-svc="s3">S3</button>
+          <button class="svc-tab text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-svc="lambda">Lambda</button>
+          <button class="svc-tab text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-svc="fargate">Fargate</button>
+          <button class="svc-tab text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-svc="cloudfront">CloudFront</button>
+          <button class="svc-tab text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-svc="dynamodb">DynamoDB</button>
+          <button class="svc-tab text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-svc="sqs">SQS</button>
+          <button class="svc-tab text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-svc="sns">SNS</button>
+          <button class="svc-tab text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-svc="alb">ALB</button>
+        </div>
+
+        <!-- EC2 form -->
+        <div id="form-ec2" class="svc-form space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Instance Type</label>
+              <select id="ec2-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+                <option value="0.0116">t3.micro ($0.0116/hr)</option>
+                <option value="0.0232">t3.small ($0.0232/hr)</option>
+                <option value="0.0464" selected>t3.medium ($0.0464/hr)</option>
+                <option value="0.0928">t3.large ($0.0928/hr)</option>
+                <option value="0.1856">t3.xlarge ($0.1856/hr)</option>
+                <option value="0.3712">t3.2xlarge ($0.3712/hr)</option>
+                <option value="0.096">m5.large ($0.096/hr)</option>
+                <option value="0.192">m5.xlarge ($0.192/hr)</option>
+                <option value="0.384">m5.2xlarge ($0.384/hr)</option>
+                <option value="0.768">m5.4xlarge ($0.768/hr)</option>
+                <option value="0.085">c5.large ($0.085/hr)</option>
+                <option value="0.17">c5.xlarge ($0.170/hr)</option>
+                <option value="0.34">c5.2xlarge ($0.340/hr)</option>
+                <option value="0.126">r5.large ($0.126/hr)</option>
+                <option value="0.252">r5.xlarge ($0.252/hr)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Hours / Month</label>
+              <input id="ec2-hours" type="number" min="1" max="744" value="744"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Instance Count</label>
+            <input id="ec2-count" type="number" min="1" value="1"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+          <p id="ec2-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <!-- RDS form -->
+        <div id="form-rds" class="svc-form hidden space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Instance Type</label>
+              <select id="rds-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+                <option value="0.017">db.t3.micro ($0.017/hr)</option>
+                <option value="0.034">db.t3.small ($0.034/hr)</option>
+                <option value="0.068" selected>db.t3.medium ($0.068/hr)</option>
+                <option value="0.136">db.t3.large ($0.136/hr)</option>
+                <option value="0.192">db.m5.large ($0.192/hr)</option>
+                <option value="0.384">db.m5.xlarge ($0.384/hr)</option>
+                <option value="0.768">db.m5.2xlarge ($0.768/hr)</option>
+                <option value="0.240">db.r5.large ($0.240/hr)</option>
+                <option value="0.480">db.r5.xlarge ($0.480/hr)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Storage (GB)</label>
+              <input id="rds-storage" type="number" min="20" value="100"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="rds-multiaz" type="checkbox" class="w-4 h-4 rounded border-border accent-primary" />
+              <span class="text-sm">Multi-AZ (2×)</span>
+            </label>
+            <span class="text-xs text-text-muted">Storage: $0.115/GB/month</span>
+          </div>
+          <p id="rds-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <!-- S3 form -->
+        <div id="form-s3" class="svc-form hidden space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Storage (GB)</label>
+              <input id="s3-storage" type="number" min="0" value="500"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">GET Requests (thousands/month)</label>
+              <input id="s3-requests" type="number" min="0" value="1000"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <p class="text-xs text-text-muted">Storage: $0.023/GB · GET: $0.0004/1K · PUT: $0.005/1K</p>
+          <p id="s3-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <!-- Lambda form -->
+        <div id="form-lambda" class="svc-form hidden space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Invocations / month (millions)</label>
+              <input id="lambda-invocations" type="number" min="0" step="0.1" value="10"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Avg Duration (ms)</label>
+              <input id="lambda-duration" type="number" min="1" value="200"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Memory (MB)</label>
+            <select id="lambda-memory" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+              <option value="128">128 MB</option>
+              <option value="256">256 MB</option>
+              <option value="512" selected>512 MB</option>
+              <option value="1024">1 GB</option>
+              <option value="2048">2 GB</option>
+              <option value="3008">3 GB</option>
+            </select>
+          </div>
+          <p class="text-xs text-text-muted">1M requests free/month · $0.20/1M after · $0.0000166667/GB-sec compute</p>
+          <p id="lambda-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <!-- Fargate form -->
+        <div id="form-fargate" class="svc-form hidden space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">vCPU per task</label>
+              <select id="fargate-vcpu" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+                <option value="0.25">0.25 vCPU</option>
+                <option value="0.5">0.5 vCPU</option>
+                <option value="1" selected>1 vCPU</option>
+                <option value="2">2 vCPU</option>
+                <option value="4">4 vCPU</option>
+                <option value="8">8 vCPU</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Memory (GB) per task</label>
+              <select id="fargate-mem" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+                <option value="0.5">0.5 GB</option>
+                <option value="1">1 GB</option>
+                <option value="2" selected>2 GB</option>
+                <option value="4">4 GB</option>
+                <option value="8">8 GB</option>
+                <option value="16">16 GB</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Task Count</label>
+              <input id="fargate-count" type="number" min="1" value="2"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Hours / Month</label>
+              <input id="fargate-hours" type="number" min="1" max="744" value="744"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <p class="text-xs text-text-muted">vCPU: $0.04048/hr · Memory: $0.004445/GB/hr</p>
+          <p id="fargate-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <!-- CloudFront form -->
+        <div id="form-cloudfront" class="svc-form hidden space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Data Transfer Out (GB/month)</label>
+              <input id="cf-transfer" type="number" min="0" value="1000"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">HTTP Requests (millions/month)</label>
+              <input id="cf-requests" type="number" min="0" step="0.1" value="10"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <p class="text-xs text-text-muted">First 10 TB/month: $0.085/GB · HTTPS req: $0.01/10K · 1 TB + 10M req free/month</p>
+          <p id="cf-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <!-- DynamoDB form -->
+        <div id="form-dynamodb" class="svc-form hidden space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Read Capacity Units (RCU)</label>
+              <input id="ddb-rcu" type="number" min="1" value="100"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Write Capacity Units (WCU)</label>
+              <input id="ddb-wcu" type="number" min="1" value="25"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Storage (GB)</label>
+            <input id="ddb-storage" type="number" min="0" value="10"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+          <p class="text-xs text-text-muted">RCU: $0.00013/hr · WCU: $0.00065/hr · Storage: $0.25/GB/month (25 GB free)</p>
+          <p id="ddb-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <!-- SQS form -->
+        <div id="form-sqs" class="svc-form hidden space-y-3">
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Requests / month (millions)</label>
+            <input id="sqs-requests" type="number" min="0" step="1" value="50"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+          <p class="text-xs text-text-muted">Standard queue: first 1M free/month, then $0.40/million requests</p>
+          <p id="sqs-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <!-- SNS form -->
+        <div id="form-sns" class="svc-form hidden space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Notifications / month (millions)</label>
+              <input id="sns-notifications" type="number" min="0" step="0.1" value="5"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Type</label>
+              <select id="sns-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+                <option value="0.0000005">HTTP/HTTPS ($0.50/M)</option>
+                <option value="0.000002" selected>Email ($2.00/M)</option>
+                <option value="0.00001">SMS US ($10.00/M)</option>
+                <option value="0.000001">SQS ($1.00/M)</option>
+                <option value="0.00000575">Lambda ($5.75/M)</option>
+              </select>
+            </div>
+          </div>
+          <p class="text-xs text-text-muted">First 1M notifications free/month</p>
+          <p id="sns-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <!-- ALB form -->
+        <div id="form-alb" class="svc-form hidden space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Hours / Month</label>
+              <input id="alb-hours" type="number" min="1" max="744" value="744"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">LCU / Hour (avg)</label>
+              <input id="alb-lcu" type="number" min="0" step="0.1" value="5"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <p class="text-xs text-text-muted">ALB: $0.008/hr + $0.008/LCU/hr. 1 LCU ≈ 25 new connections/sec or 3000 active</p>
+          <p id="alb-preview" class="text-xs text-text-muted"></p>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-border">
+          <button id="add-service-btn" class="w-full py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+            + Add to Stack
+          </button>
+        </div>
+      </div>
+
+      <!-- Stack items list -->
+      <div id="stack-list-wrap" class="hidden">
+        <h2 class="text-sm font-semibold mb-2">Your Stack</h2>
+        <div id="stack-list" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <!-- Right: breakdown chart + table -->
+    <div class="xl:col-span-2 space-y-4">
+      <div id="breakdown-wrap" class="bg-bg-card border border-border rounded-xl p-4 hidden">
+        <h2 class="text-sm font-semibold mb-3">Cost Breakdown</h2>
+        <div id="chart-bars" class="space-y-2 mb-4"></div>
+        <div id="breakdown-table" class="text-xs space-y-1 border-t border-border pt-3 mt-3"></div>
+      </div>
+      <div id="empty-breakdown" class="bg-bg-card border border-border rounded-xl p-6 text-center text-text-muted text-sm">
+        <p class="text-2xl mb-2 opacity-40">☁️</p>
+        <p>Add services to see your cost breakdown</p>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit />
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AWS CDK Stack Cost Estimator" relatedTags={['aws', 'cdk', 'cloud', 'cost', 'ec2', 'lambda', 'fargate', 'devops', 'infrastructure']} />
+</BaseLayout>
+
+<script>
+  // ─── Pricing helpers ───────────────────────────────────────────────────────
+
+  const SERVICE_COLORS: Record<string, string> = {
+    ec2: '#FF9900', rds: '#527FFF', s3: '#3F8624', lambda: '#FF9900',
+    fargate: '#00A9CE', cloudfront: '#8C4FFF', dynamodb: '#4053D6',
+    sqs: '#FF4F8B', sns: '#E7157B', alb: '#E25444',
+  };
+  const SERVICE_LABELS: Record<string, string> = {
+    ec2: 'EC2', rds: 'RDS', s3: 'S3', lambda: 'Lambda',
+    fargate: 'ECS Fargate', cloudfront: 'CloudFront', dynamodb: 'DynamoDB',
+    sqs: 'SQS', sns: 'SNS', alb: 'ALB',
+  };
+
+  function calcEC2(): number {
+    const rate = parseFloat((document.getElementById('ec2-type') as HTMLSelectElement).value);
+    const hours = parseFloat((document.getElementById('ec2-hours') as HTMLInputElement).value) || 744;
+    const count = parseInt((document.getElementById('ec2-count') as HTMLInputElement).value) || 1;
+    return rate * hours * count;
+  }
+  function calcRDS(): number {
+    const rate = parseFloat((document.getElementById('rds-type') as HTMLSelectElement).value);
+    const storage = parseFloat((document.getElementById('rds-storage') as HTMLInputElement).value) || 0;
+    const multiAZ = (document.getElementById('rds-multiaz') as HTMLInputElement).checked;
+    const instanceCost = rate * 744 * (multiAZ ? 2 : 1);
+    const storageCost = storage * 0.115;
+    return instanceCost + storageCost;
+  }
+  function calcS3(): number {
+    const storage = parseFloat((document.getElementById('s3-storage') as HTMLInputElement).value) || 0;
+    const reqs = parseFloat((document.getElementById('s3-requests') as HTMLInputElement).value) || 0; // thousands
+    return storage * 0.023 + reqs * 0.0004;
+  }
+  function calcLambda(): number {
+    const invocationsM = parseFloat((document.getElementById('lambda-invocations') as HTMLInputElement).value) || 0;
+    const durationMs = parseFloat((document.getElementById('lambda-duration') as HTMLInputElement).value) || 0;
+    const memMB = parseInt((document.getElementById('lambda-memory') as HTMLSelectElement).value) || 512;
+    // Free tier: 1M invocations, 400K GB-sec
+    const billableInvM = Math.max(0, invocationsM - 1);
+    const requestCost = billableInvM * 0.20;
+    const gbSec = invocationsM * 1e6 * (durationMs / 1000) * (memMB / 1024);
+    const billableGbSec = Math.max(0, gbSec - 400000);
+    const computeCost = billableGbSec * 0.0000166667;
+    return requestCost + computeCost;
+  }
+  function calcFargate(): number {
+    const vcpu = parseFloat((document.getElementById('fargate-vcpu') as HTMLSelectElement).value);
+    const mem = parseFloat((document.getElementById('fargate-mem') as HTMLSelectElement).value);
+    const count = parseInt((document.getElementById('fargate-count') as HTMLInputElement).value) || 1;
+    const hours = parseFloat((document.getElementById('fargate-hours') as HTMLInputElement).value) || 744;
+    return (vcpu * 0.04048 + mem * 0.004445) * count * hours;
+  }
+  function calcCloudFront(): number {
+    const transferGB = parseFloat((document.getElementById('cf-transfer') as HTMLInputElement).value) || 0;
+    const reqsM = parseFloat((document.getElementById('cf-requests') as HTMLInputElement).value) || 0;
+    // Free: 1 TB data, 10M requests
+    const billableGB = Math.max(0, transferGB - 1024);
+    const billableReqsM = Math.max(0, reqsM - 10);
+    return billableGB * 0.085 + billableReqsM * 1e6 / 10000 * 0.01;
+  }
+  function calcDynamoDB(): number {
+    const rcu = parseInt((document.getElementById('ddb-rcu') as HTMLInputElement).value) || 0;
+    const wcu = parseInt((document.getElementById('ddb-wcu') as HTMLInputElement).value) || 0;
+    const storage = parseFloat((document.getElementById('ddb-storage') as HTMLInputElement).value) || 0;
+    const billableStorage = Math.max(0, storage - 25);
+    return rcu * 0.00013 * 744 + wcu * 0.00065 * 744 + billableStorage * 0.25;
+  }
+  function calcSQS(): number {
+    const reqsM = parseFloat((document.getElementById('sqs-requests') as HTMLInputElement).value) || 0;
+    const billableM = Math.max(0, reqsM - 1);
+    return billableM * 0.40;
+  }
+  function calcSNS(): number {
+    const notifM = parseFloat((document.getElementById('sns-notifications') as HTMLInputElement).value) || 0;
+    const rate = parseFloat((document.getElementById('sns-type') as HTMLSelectElement).value);
+    const billableM = Math.max(0, notifM * 1e6 - 1e6);
+    return billableM * rate;
+  }
+  function calcALB(): number {
+    const hours = parseFloat((document.getElementById('alb-hours') as HTMLInputElement).value) || 744;
+    const lcu = parseFloat((document.getElementById('alb-lcu') as HTMLInputElement).value) || 0;
+    return hours * 0.008 + hours * lcu * 0.008;
+  }
+
+  const CALCULATORS: Record<string, () => number> = {
+    ec2: calcEC2, rds: calcRDS, s3: calcS3, lambda: calcLambda,
+    fargate: calcFargate, cloudfront: calcCloudFront, dynamodb: calcDynamoDB,
+    sqs: calcSQS, sns: calcSNS, alb: calcALB,
+  };
+
+  // ─── State ─────────────────────────────────────────────────────────────────
+
+  interface StackItem {
+    id: string;
+    svc: string;
+    label: string;
+    cost: number; // monthly, pre-multiplier
+    detail: string;
+  }
+
+  let stackItems: StackItem[] = [];
+  let envMultiplier = 1;
+  let period: 'monthly' | 'annual' = 'monthly';
+  let currentSvc = 'ec2';
+
+  // ─── DOM helpers ───────────────────────────────────────────────────────────
+
+  function fmt(n: number) {
+    if (n < 0.01) return `$${n.toFixed(4)}`;
+    if (n < 100) return `$${n.toFixed(2)}`;
+    return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  function updatePreviews() {
+    // EC2
+    try {
+      const c = calcEC2();
+      const rate = parseFloat((document.getElementById('ec2-type') as HTMLSelectElement).value);
+      const h = parseFloat((document.getElementById('ec2-hours') as HTMLInputElement).value) || 744;
+      const n = parseInt((document.getElementById('ec2-count') as HTMLInputElement).value) || 1;
+      document.getElementById('ec2-preview')!.textContent = `${n} × ${h}h × $${rate}/hr = ${fmt(c)}/mo`;
+    } catch {}
+    // RDS
+    try {
+      document.getElementById('rds-preview')!.textContent = `Estimated: ${fmt(calcRDS())}/mo`;
+    } catch {}
+    // S3
+    try {
+      const s = parseFloat((document.getElementById('s3-storage') as HTMLInputElement).value) || 0;
+      const r = parseFloat((document.getElementById('s3-requests') as HTMLInputElement).value) || 0;
+      document.getElementById('s3-preview')!.textContent = `${s} GB × $0.023 + ${r}K req = ${fmt(calcS3())}/mo`;
+    } catch {}
+    // Lambda
+    try {
+      document.getElementById('lambda-preview')!.textContent = `Estimated: ${fmt(calcLambda())}/mo (free tier applied)`;
+    } catch {}
+    // Fargate
+    try {
+      document.getElementById('fargate-preview')!.textContent = `Estimated: ${fmt(calcFargate())}/mo`;
+    } catch {}
+    // CloudFront
+    try {
+      document.getElementById('cf-preview')!.textContent = `Estimated: ${fmt(calcCloudFront())}/mo (1TB + 10M req free)`;
+    } catch {}
+    // DynamoDB
+    try {
+      document.getElementById('ddb-preview')!.textContent = `Estimated: ${fmt(calcDynamoDB())}/mo (25 GB free)`;
+    } catch {}
+    // SQS
+    try {
+      document.getElementById('sqs-preview')!.textContent = `Estimated: ${fmt(calcSQS())}/mo (1M req free)`;
+    } catch {}
+    // SNS
+    try {
+      document.getElementById('sns-preview')!.textContent = `Estimated: ${fmt(calcSNS())}/mo (1M notif free)`;
+    } catch {}
+    // ALB
+    try {
+      document.getElementById('alb-preview')!.textContent = `Estimated: ${fmt(calcALB())}/mo`;
+    } catch {}
+  }
+
+  function getDetailString(svc: string): string {
+    try {
+      switch (svc) {
+        case 'ec2': {
+          const type = (document.getElementById('ec2-type') as HTMLSelectElement);
+          const h = (document.getElementById('ec2-hours') as HTMLInputElement).value;
+          const n = (document.getElementById('ec2-count') as HTMLInputElement).value;
+          return `${n}× ${type.options[type.selectedIndex].text.split(' ')[0]}, ${h}h/mo`;
+        }
+        case 'rds': {
+          const type = (document.getElementById('rds-type') as HTMLSelectElement);
+          const s = (document.getElementById('rds-storage') as HTMLInputElement).value;
+          const maz = (document.getElementById('rds-multiaz') as HTMLInputElement).checked;
+          return `${type.options[type.selectedIndex].text.split(' ')[0]}, ${s}GB${maz ? ', Multi-AZ' : ''}`;
+        }
+        case 's3': return `${(document.getElementById('s3-storage') as HTMLInputElement).value}GB, ${(document.getElementById('s3-requests') as HTMLInputElement).value}K req`;
+        case 'lambda': return `${(document.getElementById('lambda-invocations') as HTMLInputElement).value}M inv, ${(document.getElementById('lambda-duration') as HTMLInputElement).value}ms, ${(document.getElementById('lambda-memory') as HTMLSelectElement).value}MB`;
+        case 'fargate': {
+          const n = (document.getElementById('fargate-count') as HTMLInputElement).value;
+          const v = (document.getElementById('fargate-vcpu') as HTMLSelectElement).value;
+          const m = (document.getElementById('fargate-mem') as HTMLSelectElement).value;
+          const h = (document.getElementById('fargate-hours') as HTMLInputElement).value;
+          return `${n} tasks, ${v}vCPU/${m}GB, ${h}h/mo`;
+        }
+        case 'cloudfront': return `${(document.getElementById('cf-transfer') as HTMLInputElement).value}GB transfer, ${(document.getElementById('cf-requests') as HTMLInputElement).value}M req`;
+        case 'dynamodb': return `${(document.getElementById('ddb-rcu') as HTMLInputElement).value}RCU/${(document.getElementById('ddb-wcu') as HTMLInputElement).value}WCU, ${(document.getElementById('ddb-storage') as HTMLInputElement).value}GB`;
+        case 'sqs': return `${(document.getElementById('sqs-requests') as HTMLInputElement).value}M requests`;
+        case 'sns': {
+          const typeEl = (document.getElementById('sns-type') as HTMLSelectElement);
+          return `${(document.getElementById('sns-notifications') as HTMLInputElement).value}M notif, ${typeEl.options[typeEl.selectedIndex].text.split(' ')[0]}`;
+        }
+        case 'alb': return `${(document.getElementById('alb-hours') as HTMLInputElement).value}h/mo, ${(document.getElementById('alb-lcu') as HTMLInputElement).value} LCU avg`;
+      }
+    } catch {}
+    return '';
+  }
+
+  function renderStack() {
+    const wrap = document.getElementById('stack-list-wrap')!;
+    const list = document.getElementById('stack-list')!;
+    if (stackItems.length === 0) {
+      wrap.classList.add('hidden');
+      return;
+    }
+    wrap.classList.remove('hidden');
+    list.innerHTML = stackItems.map(item => {
+      const displayCost = item.cost * envMultiplier * (period === 'annual' ? 12 : 1);
+      return `
+        <div class="flex items-center justify-between bg-bg-card border border-border rounded-lg px-3 py-2.5 gap-2" data-id="${item.id}">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${SERVICE_COLORS[item.svc]}"></span>
+            <div class="min-w-0">
+              <p class="text-sm font-medium truncate">${item.label}</p>
+              <p class="text-xs text-text-muted truncate">${item.detail}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <span class="text-sm font-semibold tabular-nums">${fmt(displayCost)}</span>
+            <button class="remove-item text-xs text-text-muted hover:text-red-400 transition-colors px-1" data-id="${item.id}">✕</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    document.querySelectorAll('.remove-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id')!;
+        stackItems = stackItems.filter(i => i.id !== id);
+        renderAll();
+      });
+    });
+  }
+
+  function renderBreakdown() {
+    const breakdownWrap = document.getElementById('breakdown-wrap')!;
+    const emptyBreakdown = document.getElementById('empty-breakdown')!;
+    const chartBars = document.getElementById('chart-bars')!;
+    const breakdownTable = document.getElementById('breakdown-table')!;
+
+    if (stackItems.length === 0) {
+      breakdownWrap.classList.add('hidden');
+      emptyBreakdown.classList.remove('hidden');
+      return;
+    }
+    breakdownWrap.classList.remove('hidden');
+    emptyBreakdown.classList.add('hidden');
+
+    // Aggregate by service type
+    const agg: Record<string, number> = {};
+    stackItems.forEach(item => {
+      agg[item.svc] = (agg[item.svc] || 0) + item.cost;
+    });
+
+    const total = Object.values(agg).reduce((s, v) => s + v, 0) * envMultiplier;
+    const periodMult = period === 'annual' ? 12 : 1;
+
+    const sorted = Object.entries(agg).sort((a, b) => b[1] - a[1]);
+    const maxVal = sorted[0]?.[1] ?? 1;
+
+    chartBars.innerHTML = sorted.map(([svc, cost]) => {
+      const displayCost = cost * envMultiplier * periodMult;
+      const pct = Math.round((cost / maxVal) * 100);
+      const share = total > 0 ? Math.round((cost * envMultiplier / total) * 100) : 0;
+      return `
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="font-medium">${SERVICE_LABELS[svc]}</span>
+            <span class="tabular-nums text-text-muted">${share}% · ${fmt(displayCost)}</span>
+          </div>
+          <div class="w-full bg-bg-card border border-border rounded-full h-3">
+            <div class="h-full rounded-full transition-all duration-300"
+              style="width:${pct}%; background:${SERVICE_COLORS[svc]}; min-width:${pct > 0 ? '4px' : '0'}"></div>
+          </div>
+        </div>`;
+    }).join('');
+
+    breakdownTable.innerHTML = sorted.map(([svc, cost]) => {
+      const displayCost = cost * envMultiplier * periodMult;
+      return `<div class="flex justify-between"><span class="text-text-muted">${SERVICE_LABELS[svc]}</span><span class="tabular-nums font-medium">${fmt(displayCost)}</span></div>`;
+    }).join('');
+  }
+
+  function renderTotal() {
+    const total = stackItems.reduce((s, i) => s + i.cost, 0) * envMultiplier;
+    const displayTotal = total * (period === 'annual' ? 12 : 1);
+    document.getElementById('total-display')!.textContent = fmt(displayTotal);
+    document.getElementById('period-label')!.textContent = period === 'annual' ? 'per year' : 'per month';
+    document.getElementById('service-count')!.textContent = String(stackItems.length);
+
+    const badge = document.getElementById('multiplier-badge')!;
+    if (envMultiplier !== 1) {
+      badge.classList.remove('hidden');
+      badge.textContent = `Multiplier: ${envMultiplier}×`;
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  function renderAll() {
+    updatePreviews();
+    renderStack();
+    renderBreakdown();
+    renderTotal();
+  }
+
+  // ─── Service tab switching ─────────────────────────────────────────────────
+
+  document.querySelectorAll('.svc-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentSvc = btn.getAttribute('data-svc')!;
+      document.querySelectorAll('.svc-tab').forEach(b => {
+        b.classList.remove('active', 'border-primary', 'text-primary', 'bg-primary/10');
+        b.classList.add('border-border', 'text-text-muted');
+      });
+      btn.classList.add('active', 'border-primary', 'text-primary', 'bg-primary/10');
+      btn.classList.remove('border-border', 'text-text-muted');
+      document.querySelectorAll('.svc-form').forEach(f => f.classList.add('hidden'));
+      document.getElementById(`form-${currentSvc}`)?.classList.remove('hidden');
+      updatePreviews();
+    });
+  });
+
+  // ─── Add service ──────────────────────────────────────────────────────────
+
+  document.getElementById('add-service-btn')!.addEventListener('click', () => {
+    const calc = CALCULATORS[currentSvc];
+    if (!calc) return;
+    const cost = calc();
+    const id = `${currentSvc}-${Date.now()}`;
+    const detail = getDetailString(currentSvc);
+    // Allow multiple of same type
+    const existingCount = stackItems.filter(i => i.svc === currentSvc).length;
+    const label = existingCount > 0
+      ? `${SERVICE_LABELS[currentSvc]} #${existingCount + 1}`
+      : SERVICE_LABELS[currentSvc];
+    stackItems.push({ id, svc: currentSvc, label, cost, detail });
+    renderAll();
+  });
+
+  // ─── Environment multiplier ───────────────────────────────────────────────
+
+  document.querySelectorAll('.env-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.env-btn').forEach(b => {
+        b.classList.remove('active', 'bg-primary', 'text-white', 'font-medium');
+        b.classList.add('text-text-muted');
+      });
+      btn.classList.add('active', 'bg-primary', 'text-white', 'font-medium');
+      btn.classList.remove('text-text-muted');
+
+      const mult = btn.getAttribute('data-mult')!;
+      const customWrap = document.getElementById('custom-mult-wrap')!;
+      if (mult === 'custom') {
+        customWrap.classList.remove('hidden');
+        const val = parseFloat((document.getElementById('custom-mult') as HTMLInputElement).value) || 1;
+        envMultiplier = val;
+      } else {
+        customWrap.classList.add('hidden');
+        envMultiplier = parseFloat(mult);
+      }
+      renderAll();
+    });
+  });
+
+  document.getElementById('custom-mult')?.addEventListener('input', (e) => {
+    const val = parseFloat((e.target as HTMLInputElement).value) || 1;
+    envMultiplier = val;
+    renderAll();
+  });
+
+  // ─── Period toggle ────────────────────────────────────────────────────────
+
+  document.getElementById('period-monthly')!.addEventListener('click', () => {
+    period = 'monthly';
+    document.getElementById('period-monthly')!.classList.add('active', 'bg-primary', 'text-white', 'font-medium');
+    document.getElementById('period-monthly')!.classList.remove('text-text-muted');
+    document.getElementById('period-annual')!.classList.remove('active', 'bg-primary', 'text-white', 'font-medium');
+    document.getElementById('period-annual')!.classList.add('text-text-muted');
+    renderAll();
+  });
+
+  document.getElementById('period-annual')!.addEventListener('click', () => {
+    period = 'annual';
+    document.getElementById('period-annual')!.classList.add('active', 'bg-primary', 'text-white', 'font-medium');
+    document.getElementById('period-annual')!.classList.remove('text-text-muted');
+    document.getElementById('period-monthly')!.classList.remove('active', 'bg-primary', 'text-white', 'font-medium');
+    document.getElementById('period-monthly')!.classList.add('text-text-muted');
+    renderAll();
+  });
+
+  // ─── Export ───────────────────────────────────────────────────────────────
+
+  document.getElementById('export-btn')!.addEventListener('click', () => {
+    if (stackItems.length === 0) { alert('Add services to your stack first.'); return; }
+    const periodMult = period === 'annual' ? 12 : 1;
+    const periodLabel = period === 'annual' ? 'annual' : 'monthly';
+    const total = stackItems.reduce((s, i) => s + i.cost, 0) * envMultiplier * periodMult;
+    const envLabel = envMultiplier === 1 ? 'Dev/Staging (1×)' : envMultiplier === 1.5 ? 'Prod HA (1.5×)' : `Custom (${envMultiplier}×)`;
+    const lines = [
+      '═══════════════════════════════════════════',
+      '  AWS CDK STACK COST ESTIMATE',
+      `  Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+      `  Environment: ${envLabel}`,
+      `  Period: ${periodLabel.charAt(0).toUpperCase() + periodLabel.slice(1)}`,
+      '═══════════════════════════════════════════',
+      '',
+      'SERVICE BREAKDOWN',
+      '─────────────────────────────────────────',
+      ...stackItems.map(item => {
+        const c = item.cost * envMultiplier * periodMult;
+        return `  ${item.label.padEnd(22)} ${fmt(c).padStart(10)}   ${item.detail}`;
+      }),
+      '─────────────────────────────────────────',
+      `  ${'TOTAL'.padEnd(22)} ${fmt(total).padStart(10)}`,
+      '',
+      'NOTES',
+      '─────────────────────────────────────────',
+      '  • Estimates based on AWS us-east-1 list prices.',
+      '  • Verify at calculator.aws before budgeting.',
+      '  • Free tier deducted where applicable.',
+      '  • Prod multiplier accounts for HA (Multi-AZ,',
+      '    redundant instances, increased traffic).',
+      '  • Data transfer costs not fully included.',
+      '═══════════════════════════════════════════',
+    ];
+    const text = lines.join('\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cdk-cost-estimate-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // ─── Live preview on input change ────────────────────────────────────────
+
+  document.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', updatePreviews);
+    el.addEventListener('change', updatePreviews);
+  });
+
+  // ─── Init ─────────────────────────────────────────────────────────────────
+
+  updatePreviews();
+</script>
