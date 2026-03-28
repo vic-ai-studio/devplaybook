@@ -1,9 +1,9 @@
 ---
 title: "Temporal Workflow Engine 2026: The Complete Guide to Durable Execution"
 description: "Master Temporal workflow engine in 2026. Learn durable execution, activities vs workflows, TypeScript SDK examples, comparison with AWS Step Functions and Airflow, and when to choose Temporal Cloud vs self-hosted."
-pubDate: 2026-03-28
+date: "2026-03-28"
+readingTime: "10 min read"
 tags: [temporal, workflow, distributed-systems, microservices]
-category: backend
 ---
 
 # Temporal Workflow Engine 2026: The Complete Guide to Durable Execution

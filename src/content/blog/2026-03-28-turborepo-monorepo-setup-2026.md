@@ -1,9 +1,9 @@
 ---
 title: "Turborepo Monorepo Setup 2026: Complete Guide"
 description: "Learn how to set up a production-ready Turborepo monorepo in 2026. Covers turbo.json pipelines, remote caching, shared packages, CI/CD with GitHub Actions, and real-world project structure."
-pubDate: 2026-03-28
+date: "2026-03-28"
+readingTime: "10 min read"
 tags: [turborepo, monorepo, build-tools, nx, javascript]
-category: build-tools
 ---
 
 # Turborepo Monorepo Setup 2026: Complete Guide

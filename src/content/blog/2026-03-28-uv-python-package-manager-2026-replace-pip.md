@@ -1,9 +1,9 @@
 ---
 title: "uv Python Package Manager 2026: Replace pip, poetry & virtualenv with One Tool"
 description: "Complete guide to uv, the Rust-powered Python package manager from Astral. Speed benchmarks, migration from pip/poetry, Python version management, lock files, and CI/CD integration for 2026."
-pubDate: 2026-03-28
+date: "2026-03-28"
+readingTime: "10 min read"
 tags: [python, uv, package-manager, pip]
-category: backend
 ---
 
 # uv Python Package Manager 2026: Replace pip, poetry & virtualenv with One Tool

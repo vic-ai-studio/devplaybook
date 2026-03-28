@@ -1,9 +1,9 @@
 ---
 title: "Playwright E2E Testing Guide 2026: Complete Setup & Best Practices"
 description: "A complete guide to Playwright end-to-end testing in 2026. Covers installation, Page Object Model, visual regression, parallel execution, GitHub Actions CI, and debugging techniques with TypeScript examples."
-pubDate: 2026-03-28
+date: "2026-03-28"
+readingTime: "10 min read"
 tags: [playwright, testing, e2e, automation, ci-cd]
-category: testing
 ---
 
 End-to-end testing has never been more critical — and never more capable. Playwright has firmly established itself as the dominant E2E testing framework in 2026, outpacing Cypress and leaving Selenium far behind for modern web applications. This guide walks you through everything you need: why Playwright won, how to set it up, and how to write tests that actually hold up in production CI pipelines.

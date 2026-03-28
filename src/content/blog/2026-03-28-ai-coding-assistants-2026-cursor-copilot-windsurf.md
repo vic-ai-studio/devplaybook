@@ -1,9 +1,9 @@
 ---
 title: "AI Coding Assistants 2026: Cursor vs GitHub Copilot vs Windsurf vs Claude Code"
 description: "Comprehensive comparison of the best AI coding assistants in 2026: Cursor, GitHub Copilot, Windsurf, Claude Code, and Continue.dev. Pricing, agentic mode, code quality, context windows, and real-world productivity benchmarks."
-pubDate: 2026-03-28
+date: "2026-03-28"
 tags: [ai, cursor, copilot, windsurf, coding-assistant]
-category: ai-tools
+readingTime: "12 min read"
 ---
 
 # AI Coding Assistants 2026: Cursor vs GitHub Copilot vs Windsurf vs Claude Code

@@ -1,0 +1,180 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const configExample = `# prometheus.yml
+global:
+  scrape_interval: 15s      # How often to scrape targets
+  evaluation_interval: 15s  # How often to evaluate rules
+  scrape_timeout: 10s
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+# Rule files (recording rules + alert rules)
+rule_files:
+  - 'rules/*.yml'
+
+# Scrape targets
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  - job_name: app
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['app:3000']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance`;
+
+const promqlExample = `# PromQL Examples
+
+# HTTP request rate (requests per second, 5m window)
+rate(http_requests_total[5m])
+
+# Error rate as a percentage
+sum(rate(http_requests_total{status=~"5.."}[5m]))
+/ sum(rate(http_requests_total[5m])) * 100
+
+# 95th percentile request latency
+histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+
+# CPU usage by instance
+100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# Memory usage percentage
+(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)
+/ node_memory_MemTotal_bytes * 100
+
+# Number of pods in a Kubernetes namespace
+count(kube_pod_info{namespace="production"})`;
+
+const alertRuleExample = `# rules/alerts.yml
+groups:
+  - name: application
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          / sum(rate(http_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ \$value | humanizePercentage }} (threshold: 5%)"
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+          > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 latency above 1 second"`;
+
+const faq = [
+  { question: "What is Prometheus?", answer: "Prometheus is an open-source systems monitoring and alerting toolkit. It uses a pull-based model: Prometheus scrapes an HTTP /metrics endpoint on each target at a configured interval and stores the data as time series in its local TSDB (time-series database). You query the data using PromQL (Prometheus Query Language) and set up alert rules that fire when conditions are met. It is the de facto standard for Kubernetes monitoring." },
+  { question: "What is a Prometheus metric type?", answer: "Prometheus has four core metric types: Counter (monotonically increasing — total requests, total errors), Gauge (can go up and down — memory usage, queue depth), Histogram (samples observations into configurable buckets — request latency distribution), and Summary (similar to Histogram but computes quantiles on the client side). Counters are most common; use rate() or increase() functions to compute rates from them in PromQL." },
+  { question: "What is the difference between Prometheus pull and push models?", answer: "Prometheus uses a pull model: it initiates HTTP scrapes to /metrics endpoints on your services. This means the services don't need to know about Prometheus — they just expose metrics. The pull model makes it easy to detect when a target is down (scrape fails). For short-lived jobs that can't be scraped (batch scripts, CI jobs), use the Pushgateway: the job pushes metrics to Pushgateway, and Prometheus scrapes Pushgateway." },
+  { question: "What is a recording rule?", answer: "Recording rules precompute expensive or frequently-needed PromQL expressions and store the result as a new time series. For example, computing P95 latency with histogram_quantile across 50 services on every dashboard load is expensive. A recording rule runs the computation periodically and stores the result as job:request_latency_p95:rate5m. Dashboards query this pre-aggregated series instead, dramatically reducing query load." },
+  { question: "How does Prometheus handle long-term storage?", answer: "By default, Prometheus stores data locally for 15 days. For long-term retention, use remote_write to ship data to a compatible storage backend: Thanos, Cortex, Mimir (Grafana's managed Prometheus), VictoriaMetrics, or cloud providers (AWS AMP, Google Cloud Managed Prometheus). Thanos and Mimir are the most common self-hosted solutions, adding global queries across multiple Prometheus instances and indefinite object-storage retention." },
+  { question: "What is Alertmanager?", answer: "Alertmanager handles alerts fired by Prometheus. When a Prometheus alert rule condition is true for the configured duration (for: 2m), Prometheus sends the alert to Alertmanager. Alertmanager handles deduplication (same alert from multiple Prometheus servers), grouping (batching related alerts into one notification), silencing, and routing (send severity:critical to PagerDuty, send severity:warning to Slack). Alertmanager is a separate process deployed alongside Prometheus." },
+];
+---
+
+<BaseLayout
+  title="Prometheus — Open-Source Metrics Monitoring and Alerting"
+  description="Prometheus is the open-source monitoring standard for cloud-native systems. Pull-based metric scraping, PromQL queries, histogram_quantile for percentiles, and Alertmanager for routing alerts."
+  tool="Prometheus, PromQL, Prometheus alertmanager, Prometheus scrape, metrics monitoring, Prometheus Kubernetes, recording rules, Prometheus remote write, node exporter"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Prometheus — Open-Source Metrics Monitoring and Alerting",
+    "url": "https://devplaybook.cc/tools/prometheus",
+    "description": "Prometheus is the open-source monitoring standard for cloud-native systems. Pull-based metric scraping, PromQL queries, histogram_quantile for percentiles, and Alertmanager for routing alerts.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Prometheus</h1>
+  <p class="text-text-muted mb-6">
+    The <strong>open-source monitoring standard for cloud-native systems</strong>. Prometheus scrapes
+    <code class="bg-bg-card px-1 rounded text-xs">/metrics</code> endpoints, stores time-series data locally,
+    and evaluates alert rules via Alertmanager. Paired with Grafana, it forms the backbone of the
+    open-source observability stack.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pull-based metric scraping</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PromQL query language</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Native Kubernetes support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Open source (Apache 2.0)</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Prometheus?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Prometheus is an open-source monitoring system and time-series database originally built at SoundCloud and now a CNCF graduated project. It uses a <em>pull model</em>: Prometheus periodically makes HTTP requests to a <code class="bg-bg-card px-1 rounded text-xs">/metrics</code> endpoint on each monitored service, parsing the Prometheus text exposition format into time-series data stored in its local TSDB.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Prometheus is the de facto standard for Kubernetes observability. The kube-state-metrics and node-exporter exporters instrument your cluster, and the Prometheus Operator lets you manage Prometheus configuration via Kubernetes CRDs. In non-Kubernetes environments, client libraries for Go, Python, Java, Node.js, and Ruby let you instrument any service in minutes.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Metric Types</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Type</th>
+          <th class="text-left py-2 pr-4 font-semibold">Description</th>
+          <th class="text-left py-2 font-semibold">Example</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-xs">Counter</td><td class="py-2 pr-4">Monotonically increasing — resets on restart</td><td class="py-2 font-mono text-xs">http_requests_total</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-xs">Gauge</td><td class="py-2 pr-4">Arbitrary float — can increase or decrease</td><td class="py-2 font-mono text-xs">memory_usage_bytes</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono text-xs">Histogram</td><td class="py-2 pr-4">Samples observations into configured buckets</td><td class="py-2 font-mono text-xs">http_request_duration_seconds</td></tr>
+        <tr><td class="py-2 pr-4 font-mono text-xs">Summary</td><td class="py-2 pr-4">Pre-computed quantiles (client-side)</td><td class="py-2 font-mono text-xs">rpc_duration_seconds</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">prometheus.yml Configuration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={configExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">PromQL Examples</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={promqlExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Alert Rules</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={alertRuleExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Docker
+docker run -p 9090:9090 \
+  -v ./prometheus.yml:/etc/prometheus/prometheus.yml \
+  prom/prometheus
+
+# Kubernetes (kube-prometheus-stack — includes Grafana + Alertmanager)
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+  --namespace monitoring --create-namespace
+
+# Binary (Linux)
+wget https://github.com/prometheus/prometheus/releases/latest/download/prometheus-*.linux-amd64.tar.gz
+tar xvf prometheus-*.linux-amd64.tar.gz
+./prometheus --config.file=prometheus.yml</pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

@@ -1,9 +1,9 @@
 ---
 title: "Zod Schema Validation in TypeScript 2026: Complete Guide"
 description: "Master Zod schema validation in TypeScript for 2026. Compare Zod vs Yup vs Valibot, learn advanced patterns, React Hook Form integration, tRPC type safety, and performance best practices with working code examples."
-pubDate: 2026-03-28
+date: "2026-03-28"
+readingTime: "10 min read"
 tags: [typescript, zod, validation, forms, trpc]
-category: typescript
 ---
 
 Runtime type safety is one of the most persistent challenges in TypeScript development. TypeScript's type system is erased at compile time — the types you write never actually run. Zod bridges that gap. It lets you define schemas that both validate data at runtime and infer static TypeScript types from those definitions.
