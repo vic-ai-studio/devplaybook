@@ -1,0 +1,316 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "Why should I care about Docker image size?", answer: "Smaller images pull faster in CI/CD pipelines (critical for autoscaling), start containers faster in serverless/ephemeral environments, consume less storage in registries (reducing costs), and have a smaller attack surface — fewer packages mean fewer CVEs to patch. A 200 MB image pulls ~5× faster than a 1 GB image on a 100 Mbps connection." },
+  { question: "What is a multi-stage build and when should I use it?", answer: "Multi-stage builds use multiple FROM statements. Stage 1: install build tools, compile your app. Stage 2 (final): copy only the compiled output into a minimal base image — no build tools, no source code. Use multi-stage builds whenever you have a compile step: Go, Rust, Java/Gradle, TypeScript, webpack bundles. The savings can be enormous: a Go app might go from 800 MB (golang:latest) to 15 MB (scratch)." },
+  { question: "What base image should I use?", answer: "scratch: zero-overhead, only for statically compiled binaries (Go, Rust). alpine: ~5 MB, uses musl libc — small but may have glibc compatibility issues. debian:slim / ubuntu:22.04-minimal: 50–80 MB, good compatibility. node:alpine vs node:slim: alpine is ~50 MB smaller but has native module compilation issues. For production, prefer distroless (gcr.io/distroless) for security without the shell." },
+  { question: "How do I minimize apt-get layer size?", answer: "Always combine update, install, and clean in ONE RUN command: RUN apt-get update && apt-get install -y --no-install-recommends pkg1 pkg2 && rm -rf /var/lib/apt/lists/*. Split commands create separate layers where package lists remain in the image. The --no-install-recommends flag skips optional packages, often saving 50–200 MB." },
+  { question: "What should be in .dockerignore?", answer: "Always include: node_modules/ (can be 500 MB+), .git/, *.log, .env, dist/, build/, coverage/, .DS_Store, *.test.ts, __tests__/. Not having a .dockerignore means COPY . . sends everything to the build context, which is slow and may include secrets." },
+];
+
+const EXAMPLE_DOCKERFILE = `FROM node:20
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+RUN npm run build
+
+EXPOSE 3000
+CMD ["node", "dist/index.js"]`;
+---
+
+<BaseLayout
+  title="Docker Image Size Analyzer — Optimize Dockerfile & Reduce Image Size"
+  description="Paste your Dockerfile to get layer-by-layer size analysis, multi-stage build suggestions, base image alternatives, .dockerignore recommendations, and security improvements."
+  tool="Docker image size analyzer, Dockerfile optimizer, Docker layer analysis, multi-stage build generator, Docker image optimization"
+  keywords={["docker image size", "dockerfile analyzer", "docker optimization", "multi-stage build", "docker image reduce", "dockerfile best practices"]}
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Docker Image Size Analyzer</h1>
+  <p class="text-text-muted mb-4">Paste your Dockerfile to get a layer-by-layer size estimate, optimization opportunities, and a suggested multi-stage build.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Layer size breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-stage build suggestion</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Security + .dockerignore tips</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Input -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm font-semibold">Dockerfile</label>
+        <button id="load-example" class="text-xs text-primary hover:underline">Load example</button>
+      </div>
+      <textarea id="dockerfile-input" rows="18" spellcheck="false"
+        placeholder="Paste your Dockerfile here..."
+        class="w-full bg-bg border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+      ></textarea>
+      <button id="analyze-btn"
+        class="mt-3 w-full bg-primary text-white rounded-lg py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity">
+        Analyze Dockerfile
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Layer Analysis</h2>
+        <div id="layer-list" class="space-y-2 text-sm">
+          <p class="text-text-muted text-sm">Paste a Dockerfile and click Analyze.</p>
+        </div>
+        <div id="total-estimate" class="mt-3 pt-3 border-t border-border hidden">
+          <div class="flex justify-between items-center">
+            <span class="text-sm font-semibold">Estimated total size</span>
+            <span id="total-size-val" class="font-mono font-bold text-primary"></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="suggestions-panel" class="bg-bg-card border border-border rounded-xl p-5 hidden">
+        <h2 class="text-base font-semibold mb-3">Optimization Opportunities</h2>
+        <ul id="suggestions-list" class="space-y-2 text-sm"></ul>
+      </div>
+
+      <div id="multistage-panel" class="bg-bg-card border border-border rounded-xl p-5 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-base font-semibold">Suggested Multi-Stage Build</h2>
+          <button id="copy-multistage" class="text-xs text-primary hover:underline">Copy</button>
+        </div>
+        <pre id="multistage-output" class="text-xs font-mono bg-bg border border-border rounded-lg p-3 overflow-x-auto whitespace-pre text-text-muted leading-relaxed max-h-64"></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">Base Image Size Comparison</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left border-b border-border">
+            <th class="pb-2 font-medium text-text-muted">Base Image</th>
+            <th class="pb-2 font-medium text-text-muted">Compressed Size</th>
+            <th class="pb-2 font-medium text-text-muted">Notes</th>
+          </tr>
+        </thead>
+        <tbody id="base-table" class="divide-y divide-border">
+          <tr><td class="py-2 font-mono text-xs">scratch</td><td class="py-2 font-mono text-xs text-green-400">0 MB</td><td class="py-2 text-xs text-text-muted">Only for static binaries (Go/Rust)</td></tr>
+          <tr><td class="py-2 font-mono text-xs">gcr.io/distroless/base</td><td class="py-2 font-mono text-xs text-green-400">~2 MB</td><td class="py-2 text-xs text-text-muted">No shell, minimal attack surface</td></tr>
+          <tr><td class="py-2 font-mono text-xs">alpine:3</td><td class="py-2 font-mono text-xs text-green-400">~5 MB</td><td class="py-2 text-xs text-text-muted">musl libc, may break native modules</td></tr>
+          <tr><td class="py-2 font-mono text-xs">debian:bookworm-slim</td><td class="py-2 font-mono text-xs text-yellow-400">~30 MB</td><td class="py-2 text-xs text-text-muted">Good compatibility, glibc</td></tr>
+          <tr><td class="py-2 font-mono text-xs">node:20-alpine</td><td class="py-2 font-mono text-xs text-yellow-400">~45 MB</td><td class="py-2 text-xs text-text-muted">Node on Alpine</td></tr>
+          <tr><td class="py-2 font-mono text-xs">node:20-slim</td><td class="py-2 font-mono text-xs text-yellow-400">~80 MB</td><td class="py-2 text-xs text-text-muted">Node on Debian slim</td></tr>
+          <tr><td class="py-2 font-mono text-xs">python:3.12-slim</td><td class="py-2 font-mono text-xs text-yellow-400">~70 MB</td><td class="py-2 text-xs text-text-muted">Python on Debian slim</td></tr>
+          <tr><td class="py-2 font-mono text-xs">node:20</td><td class="py-2 font-mono text-xs text-red-400">~350 MB</td><td class="py-2 text-xs text-text-muted">Full Debian, avoid in production</td></tr>
+          <tr><td class="py-2 font-mono text-xs">ubuntu:22.04</td><td class="py-2 font-mono text-xs text-red-400">~30 MB</td><td class="py-2 text-xs text-text-muted">Great compatibility but bulky</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+  const EXAMPLE = `FROM node:20\n\nWORKDIR /app\n\nCOPY package*.json ./\nRUN npm install\n\nCOPY . .\n\nRUN npm run build\n\nEXPOSE 3000\nCMD ["node", "dist/index.js"]`;
+
+  document.getElementById('load-example')?.addEventListener('click', () => {
+    (document.getElementById('dockerfile-input') as HTMLTextAreaElement).value = EXAMPLE;
+  });
+
+  function estimateLayerSize(instruction: string, arg: string): { mb: number; label: string } {
+    const i = instruction.toUpperCase();
+    const a = arg.toLowerCase();
+
+    if (i === 'FROM') {
+      if (a.includes('scratch')) return { mb: 0, label: 'scratch' };
+      if (a.includes('alpine')) return { mb: 5, label: 'base (~5 MB)' };
+      if (a.includes('distroless')) return { mb: 2, label: 'base (~2 MB)' };
+      if (a.includes('slim')) return { mb: 50, label: 'base (~50 MB)' };
+      if (a.includes('node:') && !a.includes('alpine') && !a.includes('slim')) return { mb: 350, label: 'base (~350 MB)' };
+      if (a.includes('python:') && !a.includes('alpine') && !a.includes('slim')) return { mb: 350, label: 'base (~350 MB)' };
+      if (a.includes('ubuntu')) return { mb: 80, label: 'base (~80 MB)' };
+      if (a.includes('debian')) return { mb: 50, label: 'base (~50 MB)' };
+      return { mb: 100, label: 'base (~100 MB est.)' };
+    }
+
+    if (i === 'RUN') {
+      let mb = 0;
+      if (a.includes('npm install') && !a.includes('--production') && !a.includes('--omit=dev')) mb += 200;
+      else if (a.includes('npm install')) mb += 80;
+      if (a.includes('npm ci')) mb += 180;
+      if (a.includes('npm run build') || a.includes('npm build')) mb += 20;
+      if (a.includes('pip install')) mb += a.includes('-r') ? 150 : 50;
+      if (a.includes('apt-get install')) {
+        mb += 80;
+        if (!a.includes('rm -rf /var/lib/apt/lists')) mb += 40; // leftovers
+      }
+      if (a.includes('apk add')) mb += 30;
+      if (a.includes('yarn install')) mb += 220;
+      if (a.includes('pnpm install')) mb += 150;
+      if (a.includes('go build') || a.includes('go mod download')) mb += 300;
+      if (a.includes('cargo build')) mb += 500;
+      if (mb === 0) mb = 2;
+      return { mb, label: `~${mb} MB` };
+    }
+
+    if (i === 'COPY' || i === 'ADD') {
+      if (a.includes('package') || a.includes('requirements') || a.includes('go.mod')) return { mb: 0.1, label: '<1 MB' };
+      if (a === '. .' || a === '. /app' || a === '/app .') return { mb: 10, label: '~10 MB (source)' };
+      return { mb: 1, label: '~1 MB' };
+    }
+
+    return { mb: 0, label: '0 MB' };
+  }
+
+  function getBaseImage(lines: string[]): string {
+    for (const l of lines) {
+      const m = l.trim().match(/^FROM\s+(\S+)/i);
+      if (m) return m[1].toLowerCase();
+    }
+    return '';
+  }
+
+  function analyze() {
+    const raw = (document.getElementById('dockerfile-input') as HTMLTextAreaElement).value.trim();
+    if (!raw) return;
+
+    const lines = raw.split('\n');
+    const layerList = document.getElementById('layer-list') as HTMLElement;
+    layerList.innerHTML = '';
+
+    let totalMb = 0;
+    const suggestions: string[] = [];
+    const instructions: Array<{ inst: string; arg: string }> = [];
+
+    // Parse instructions
+    let current = '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('#') || !trimmed) continue;
+      if (trimmed.endsWith('\\')) {
+        current += ' ' + trimmed.slice(0, -1);
+        continue;
+      }
+      current += ' ' + trimmed;
+      const match = current.trim().match(/^(\w+)\s+([\s\S]*)$/);
+      if (match) {
+        instructions.push({ inst: match[1], arg: match[2].trim() });
+      }
+      current = '';
+    }
+
+    const baseImage = getBaseImage(lines);
+    let hasMultiStage = instructions.filter(i => i.inst.toUpperCase() === 'FROM').length > 1;
+
+    instructions.forEach(({ inst, arg }) => {
+      const { mb, label } = estimateLayerSize(inst, arg);
+      totalMb += mb;
+
+      const div = document.createElement('div');
+      const display = arg.length > 50 ? arg.slice(0, 50) + '…' : arg;
+      const color = mb > 100 ? 'text-red-400' : mb > 20 ? 'text-yellow-400' : 'text-green-400';
+      div.className = 'flex items-start justify-between gap-2 py-1.5 border-b border-border/50 last:border-0';
+      div.innerHTML = `<span class="font-mono text-xs"><span class="text-primary font-semibold">${inst}</span> <span class="text-text-muted">${display}</span></span><span class="font-mono text-xs shrink-0 ${color}">${label}</span>`;
+      layerList.appendChild(div);
+    });
+
+    // Show total
+    const totalEl = document.getElementById('total-estimate') as HTMLElement;
+    const totalVal = document.getElementById('total-size-val') as HTMLElement;
+    totalEl.classList.remove('hidden');
+    totalVal.textContent = totalMb < 1000 ? `~${Math.round(totalMb)} MB` : `~${(totalMb / 1024).toFixed(1)} GB`;
+
+    // Suggestions
+    const aptRuns = instructions.filter(i => i.inst === 'RUN' && i.arg.includes('apt-get install'));
+    if (aptRuns.some(r => !r.arg.includes('rm -rf /var/lib/apt/lists'))) {
+      suggestions.push('🔧 <strong>apt-get cleanup missing</strong> — add <code>&amp;&amp; rm -rf /var/lib/apt/lists/*</code> to apt-get RUN commands to remove cached package lists.');
+    }
+    if (aptRuns.some(r => !r.arg.includes('--no-install-recommends'))) {
+      suggestions.push('📦 <strong>Use --no-install-recommends</strong> with apt-get to skip optional packages and reduce image size by 50–200 MB.');
+    }
+    const npmInstall = instructions.find(i => i.inst === 'RUN' && i.arg.includes('npm install') && !i.arg.includes('--production') && !i.arg.includes('--omit=dev'));
+    if (npmInstall) {
+      suggestions.push('📦 <strong>Include devDependencies check</strong> — if this is a production image, use <code>npm ci --omit=dev</code> to skip devDependencies (~50–150 MB savings).');
+    }
+    if (!hasMultiStage && (baseImage.includes('node:') || baseImage.includes('python:') || baseImage.includes('golang:'))) {
+      suggestions.push('🚀 <strong>Multi-stage build opportunity</strong> — your base image is a full build environment. Use a two-stage build to copy only the compiled output into a slim final image.');
+    }
+    const copyDot = instructions.find(i => i.inst === 'COPY' && (i.arg === '. .' || i.arg.startsWith('. /')));
+    if (copyDot) {
+      suggestions.push('🛡️ <strong>Add .dockerignore</strong> — your COPY . . may include node_modules, .git, .env, and build artifacts. Create a .dockerignore to exclude them.');
+    }
+    if (baseImage.includes('node:20') && !baseImage.includes('slim') && !baseImage.includes('alpine')) {
+      suggestions.push('💡 <strong>Switch base image</strong> — <code>node:20</code> is ~350 MB. Consider <code>node:20-slim</code> (~80 MB) or <code>node:20-alpine</code> (~45 MB) for a significant reduction.');
+    }
+
+    const sugPanel = document.getElementById('suggestions-panel') as HTMLElement;
+    const sugList = document.getElementById('suggestions-list') as HTMLElement;
+    if (suggestions.length > 0) {
+      sugPanel.classList.remove('hidden');
+      sugList.innerHTML = suggestions.map(s => `<li class="flex gap-2 text-sm">${s}</li>`).join('');
+    } else {
+      sugPanel.classList.add('hidden');
+    }
+
+    // Multi-stage suggestion
+    const msPanel = document.getElementById('multistage-panel') as HTMLElement;
+    const msOutput = document.getElementById('multistage-output') as HTMLElement;
+    if (!hasMultiStage && (baseImage.includes('node') || baseImage.includes('python'))) {
+      msPanel.classList.remove('hidden');
+      if (baseImage.includes('node')) {
+        msOutput.textContent = `# Stage 1: Build
+FROM node:20-slim AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Stage 2: Production
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+EXPOSE 3000
+CMD ["node", "dist/index.js"]`;
+      } else if (baseImage.includes('python')) {
+        msOutput.textContent = `# Stage 1: Build dependencies
+FROM python:3.12-slim AS builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Stage 2: Production
+FROM python:3.12-slim AS runner
+WORKDIR /app
+COPY --from=builder /root/.local /root/.local
+COPY . .
+ENV PATH=/root/.local/bin:$PATH
+CMD ["python", "app.py"]`;
+      }
+    } else {
+      msPanel.classList.add('hidden');
+    }
+  }
+
+  document.getElementById('analyze-btn')?.addEventListener('click', analyze);
+  document.getElementById('copy-multistage')?.addEventListener('click', () => {
+    const txt = (document.getElementById('multistage-output') as HTMLElement).textContent || '';
+    navigator.clipboard.writeText(txt).then(() => {
+      const btn = document.getElementById('copy-multistage') as HTMLElement;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+</script>

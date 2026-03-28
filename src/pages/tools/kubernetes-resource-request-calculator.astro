@@ -1,0 +1,265 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the difference between requests and limits?", answer: "Requests are the guaranteed minimum resources Kubernetes schedules your pod with — the scheduler uses requests to find a node with enough capacity. Limits are the maximum a container can use; if it exceeds the CPU limit, it's throttled; if it exceeds memory, it's OOMKilled. Always set requests; limits are optional but recommended for multi-tenant clusters." },
+  { question: "What is the VPA vs HPA?", answer: "HPA (Horizontal Pod Autoscaler) scales the number of replicas based on CPU/memory/custom metrics. VPA (Vertical Pod Autoscaler) adjusts the resource requests/limits of existing pods. HPA is best for stateless web workloads with variable traffic. VPA is useful when you don't know the right resource sizing and want Kubernetes to learn it." },
+  { question: "How do I calculate the right memory request?", answer: "Run your workload under production-like load and check actual memory usage with kubectl top pods. Set requests to ~80% of P99 observed usage. Set limits to 1.5–2× the request. For Java apps, account for JVM overhead: add 512 MB–1 GB on top of your heap size for GC, metaspace, and native memory." },
+  { question: "What are millicores?", answer: "1000 millicores = 1 vCPU. So 250m = 0.25 cores, 500m = 0.5 cores. Kubernetes uses millicores for CPU requests to allow fractional CPU allocation. For a web server that's CPU-light but needs consistent latency, 100–250m is typical. CPU limits above 1000m (1 full core) should be considered carefully as they increase throttling risk." },
+  { question: "What is a node sizing recommendation?", answer: "Node size affects scheduling efficiency. Smaller nodes (2–4 vCPU) waste less capacity when pods can't be co-located but add overhead per node. Larger nodes (8–16 vCPU) allow more efficient packing but increase blast radius if a node fails. A common pattern: use nodes with 4–8× your typical pod's resource requirements to allow efficient bin-packing." },
+];
+---
+
+<BaseLayout
+  title="Kubernetes Resource Request Calculator — CPU & Memory Sizing"
+  description="Calculate optimal Kubernetes resource requests and limits for your workload. Get HPA configuration, node sizing recommendations, and ready-to-paste YAML."
+  tool="Kubernetes resource calculator, K8s CPU memory requests limits, HPA config generator, pod resource sizing, Kubernetes YAML generator"
+  keywords={["kubernetes resource requests", "k8s cpu limits", "kubernetes hpa", "pod resource calculator", "kubernetes yaml", "resource requests limits"]}
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Kubernetes Resource Request Calculator</h1>
+  <p class="text-text-muted mb-4">Get recommended CPU/memory requests, limits, HPA config, and node sizing for your app type and traffic profile.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> requests.cpu + requests.memory</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HPA YAML snippet</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Node sizing recommendation</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Input Panel -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 space-y-4">
+      <h2 class="text-base font-semibold">Workload Profile</h2>
+
+      <div>
+        <label class="block text-sm font-medium mb-2">App Type</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button class="app-type-btn active px-3 py-2 text-sm rounded-lg border border-primary bg-primary/10 text-primary transition-all" data-type="web">Web Server</button>
+          <button class="app-type-btn px-3 py-2 text-sm rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-type="worker">Worker</button>
+          <button class="app-type-btn px-3 py-2 text-sm rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-type="batch">Batch Job</button>
+        </div>
+        <input type="hidden" id="app-type" value="web" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Expected RPS (requests per second)</label>
+        <input id="rps" type="number" min="1" value="100"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <div class="flex gap-2 mt-2 flex-wrap">
+          <button class="rps-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="10">10 rps</button>
+          <button class="rps-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="100">100 rps</button>
+          <button class="rps-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="500">500 rps</button>
+          <button class="rps-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="2000">2K rps</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-2">Memory Profile</label>
+        <div class="space-y-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="mem-profile" value="light" checked class="accent-primary" />
+            <span class="text-sm">Light — static files, simple API (Node/Go/Rust)</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="mem-profile" value="medium" class="accent-primary" />
+            <span class="text-sm">Medium — typical Node.js/Python app, Redis client</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="mem-profile" value="heavy" class="accent-primary" />
+            <span class="text-sm">Heavy — JVM (Java/Kotlin/Scala), large ML models</span>
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Replicas (min)</label>
+        <input id="replicas" type="number" min="1" max="100" value="2"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Recommended Resources</h2>
+        <div class="grid grid-cols-2 gap-3 text-sm mb-4">
+          <div class="bg-bg border border-border rounded-lg p-3">
+            <p class="text-text-muted text-xs mb-1">requests.cpu</p>
+            <p id="req-cpu" class="font-mono font-semibold text-primary">250m</p>
+          </div>
+          <div class="bg-bg border border-border rounded-lg p-3">
+            <p class="text-text-muted text-xs mb-1">limits.cpu</p>
+            <p id="lim-cpu" class="font-mono font-semibold">500m</p>
+          </div>
+          <div class="bg-bg border border-border rounded-lg p-3">
+            <p class="text-text-muted text-xs mb-1">requests.memory</p>
+            <p id="req-mem" class="font-mono font-semibold text-primary">256Mi</p>
+          </div>
+          <div class="bg-bg border border-border rounded-lg p-3">
+            <p class="text-text-muted text-xs mb-1">limits.memory</p>
+            <p id="lim-mem" class="font-mono font-semibold">512Mi</p>
+          </div>
+        </div>
+        <div id="node-rec" class="text-xs text-text-muted p-3 bg-bg border border-border rounded-lg"></div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">YAML Snippet</h2>
+          <button id="copy-yaml" class="text-xs text-primary hover:underline">Copy</button>
+        </div>
+        <pre id="yaml-output" class="text-xs font-mono bg-bg border border-border rounded-lg p-3 overflow-x-auto whitespace-pre text-text-muted leading-relaxed"></pre>
+      </div>
+    </div>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+  interface Profile {
+    cpuBase: number;
+    cpuPerRps: number;
+    memBase: number;
+    memPerRps: number;
+  }
+
+  const profiles: Record<string, Record<string, Profile>> = {
+    web: {
+      light:  { cpuBase: 50,  cpuPerRps: 0.5,  memBase: 64,   memPerRps: 0.2 },
+      medium: { cpuBase: 100, cpuPerRps: 1.0,  memBase: 128,  memPerRps: 0.5 },
+      heavy:  { cpuBase: 250, cpuPerRps: 2.0,  memBase: 512,  memPerRps: 1.0 },
+    },
+    worker: {
+      light:  { cpuBase: 100, cpuPerRps: 2.0,  memBase: 128,  memPerRps: 0.5 },
+      medium: { cpuBase: 250, cpuPerRps: 4.0,  memBase: 256,  memPerRps: 1.5 },
+      heavy:  { cpuBase: 500, cpuPerRps: 8.0,  memBase: 512,  memPerRps: 3.0 },
+    },
+    batch: {
+      light:  { cpuBase: 500, cpuPerRps: 5.0,  memBase: 256,  memPerRps: 2.0 },
+      medium: { cpuBase: 1000, cpuPerRps: 8.0, memBase: 512,  memPerRps: 4.0 },
+      heavy:  { cpuBase: 2000, cpuPerRps: 12.0, memBase: 1024, memPerRps: 8.0 },
+    },
+  };
+
+  function roundMemory(mb: number): string {
+    const steps = [64, 128, 256, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192];
+    for (const s of steps) if (mb <= s) return s + 'Mi';
+    return Math.ceil(mb / 1024) + 'Gi';
+  }
+  function roundCpu(m: number): string {
+    if (m <= 10) return '10m';
+    if (m < 1000) return Math.ceil(m / 10) * 10 + 'm';
+    return (Math.ceil(m / 100) / 10).toFixed(1);
+  }
+
+  function calculate() {
+    const appType = (document.getElementById('app-type') as HTMLInputElement).value;
+    const rps = parseFloat((document.getElementById('rps') as HTMLInputElement).value) || 100;
+    const memProfile = (document.querySelector('input[name="mem-profile"]:checked') as HTMLInputElement)?.value || 'medium';
+    const replicas = parseInt((document.getElementById('replicas') as HTMLInputElement).value) || 2;
+
+    const p = profiles[appType]?.[memProfile] || profiles.web.medium;
+    const cpuReqM = Math.min(p.cpuBase + rps * p.cpuPerRps, 4000);
+    const cpuLimM = Math.min(cpuReqM * 2, 8000);
+    const memReqMb = p.memBase + rps * p.memPerRps;
+    const memLimMb = memReqMb * 2;
+
+    const cpuReq = roundCpu(cpuReqM);
+    const cpuLim = roundCpu(cpuLimM);
+    const memReq = roundMemory(memReqMb);
+    const memLim = roundMemory(memLimMb);
+
+    (document.getElementById('req-cpu') as HTMLElement).textContent = cpuReq;
+    (document.getElementById('lim-cpu') as HTMLElement).textContent = cpuLim;
+    (document.getElementById('req-mem') as HTMLElement).textContent = memReq;
+    (document.getElementById('lim-mem') as HTMLElement).textContent = memLim;
+
+    const totalCpu = cpuReqM * replicas;
+    const totalMem = memReqMb * replicas;
+    const nodeCpu = Math.ceil(totalCpu / 1000 * 2 + 1);
+    const nodeMem = Math.ceil(totalMem / 1024 * 1.5 + 1);
+    const nodeSize = Math.max(nodeCpu, nodeMem);
+    const nodeRec = document.getElementById('node-rec') as HTMLElement;
+    nodeRec.textContent = `Node sizing: with ${replicas} replicas, you need at least ${totalCpu}m CPU + ${Math.ceil(totalMem)}MB memory total. Consider nodes with ${nodeSize}+ vCPU (e.g., m5.xlarge for ${nodeSize}-${nodeSize*2} vCPU).`;
+
+    const hpaMin = Math.max(replicas, 2);
+    const hpaMax = Math.max(hpaMin * 5, 10);
+    const yaml = `# Deployment resources
+resources:
+  requests:
+    cpu: "${cpuReq}"
+    memory: "${memReq}"
+  limits:
+    cpu: "${cpuLim}"
+    memory: "${memLim}"
+
+---
+# HPA configuration
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-app
+  minReplicas: ${hpaMin}
+  maxReplicas: ${hpaMax}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80`;
+
+    (document.getElementById('yaml-output') as HTMLElement).textContent = yaml;
+  }
+
+  document.querySelectorAll('.app-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.app-type-btn').forEach(b => {
+        b.className = 'app-type-btn px-3 py-2 text-sm rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary transition-all';
+      });
+      btn.className = 'app-type-btn active px-3 py-2 text-sm rounded-lg border border-primary bg-primary/10 text-primary transition-all';
+      (document.getElementById('app-type') as HTMLInputElement).value = btn.getAttribute('data-type') || 'web';
+      calculate();
+    });
+  });
+
+  document.querySelectorAll('.rps-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      (document.getElementById('rps') as HTMLInputElement).value = btn.getAttribute('data-v') || '';
+      calculate();
+    });
+  });
+
+  ['rps', 'replicas'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', calculate);
+  });
+  document.querySelectorAll('input[name="mem-profile"]').forEach(r => {
+    r.addEventListener('change', calculate);
+  });
+
+  document.getElementById('copy-yaml')?.addEventListener('click', () => {
+    const txt = (document.getElementById('yaml-output') as HTMLElement).textContent || '';
+    navigator.clipboard.writeText(txt).then(() => {
+      const btn = document.getElementById('copy-yaml') as HTMLElement;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  calculate();
+</script>

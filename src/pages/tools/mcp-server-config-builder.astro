@@ -1,0 +1,340 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is MCP (Model Context Protocol)?",
+    answer: "MCP is an open protocol by Anthropic that standardizes how AI applications connect to external tools and data sources. It lets Claude Desktop, Cursor, Windsurf, and other AI tools talk to file systems, databases, APIs, and more through a consistent server interface — similar to how LSP standardized editor language support."
+  },
+  {
+    question: "What is the difference between stdio and SSE transport?",
+    answer: "stdio (standard input/output) launches the MCP server as a local subprocess — your AI tool spawns it directly. SSE (Server-Sent Events) connects to a remote HTTP server that streams events. Use stdio for local tools (filesystem, shell commands). Use SSE for remote or shared servers accessible via URL."
+  },
+  {
+    question: "Why do Claude Desktop and Cursor use the same config format?",
+    answer: "Both tools adopted the same mcpServers JSON schema to maximize compatibility. The config key name differs slightly (Claude Desktop uses ~/Library/Application Support/Claude/claude_desktop_config.json, Cursor uses ~/.cursor/mcp.json), but the structure inside is identical. Windsurf follows the same convention."
+  },
+  {
+    question: "Are environment variables in the config secure?",
+    answer: "The config files are stored in plaintext on your local machine. For development this is acceptable, but for production or shared machines consider using a secrets manager. Never commit config files with real API keys to version control — add them to .gitignore immediately."
+  },
+  {
+    question: "Where do I put the config file for each app?",
+    answer: "Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%/Claude/claude_desktop_config.json (Windows). Cursor: ~/.cursor/mcp.json. Windsurf: ~/.codeium/windsurf/mcp_config.json. Restart the app after editing."
+  },
+  {
+    question: "What does the npx command do in MCP server configs?",
+    answer: "npx downloads and runs the MCP server package from npm without a permanent installation. On first run it downloads the package; subsequent runs use the npm cache. This is the simplest way to use community MCP servers. For production use, consider npm install -g to avoid cold-start delays."
+  },
+];
+---
+
+<BaseLayout
+  title="MCP Server Config Builder — Claude Desktop, Cursor, Windsurf"
+  description="Generate MCP server configuration JSON for Claude Desktop, Cursor, and Windsurf. Fill in server name, transport, command, args, and env vars — get copy-ready config for all three apps instantly."
+  tool="MCP Server Config Builder, Model Context Protocol, Claude Desktop MCP Config, Cursor MCP Setup, Windsurf MCP Configuration"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">MCP Server Config Builder</h1>
+  <p class="text-text-muted mb-4">Generate Model Context Protocol server configuration JSON for Claude Desktop, Cursor, and Windsurf. Fill in the fields or pick a preset — copy the config directly into your app.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Claude Desktop, Cursor, Windsurf</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 5 built-in presets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> stdio & SSE transport</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs in your browser</span>
+  </div>
+
+  <!-- Presets -->
+  <div class="mb-6">
+    <p class="text-sm font-medium mb-2">Quick Presets</p>
+    <div class="flex flex-wrap gap-2">
+      <button class="preset-btn text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all"
+        data-preset="filesystem">filesystem</button>
+      <button class="preset-btn text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all"
+        data-preset="github">github</button>
+      <button class="preset-btn text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all"
+        data-preset="brave-search">brave-search</button>
+      <button class="preset-btn text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all"
+        data-preset="postgres">postgres</button>
+      <button class="preset-btn text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all"
+        data-preset="sequential-thinking">sequential-thinking</button>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Server Name <span class="text-text-muted font-normal">(key in mcpServers)</span></label>
+        <input id="server-name" type="text" placeholder="e.g. filesystem"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Transport</label>
+        <div class="flex gap-3">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="transport" value="stdio" id="transport-stdio" checked class="accent-primary" />
+            <span class="text-sm">stdio (local subprocess)</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="transport" value="sse" id="transport-sse" class="accent-primary" />
+            <span class="text-sm">SSE (remote URL)</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="stdio-fields">
+        <div class="mb-3">
+          <label class="block text-sm font-medium mb-1.5">Command</label>
+          <input id="server-command" type="text" placeholder="e.g. npx"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Args <span class="text-text-muted font-normal">(one per line)</span></label>
+          <textarea id="server-args" rows="4" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/Users/you/projects"
+            class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary resize-y font-mono"></textarea>
+        </div>
+      </div>
+
+      <div id="sse-fields" class="hidden">
+        <label class="block text-sm font-medium mb-1.5">SSE URL</label>
+        <input id="server-url" type="text" placeholder="http://localhost:3001/sse"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium mb-1.5">Environment Variables <span class="text-text-muted font-normal">(KEY=VALUE, one per line)</span></label>
+      <textarea id="server-env" rows="6" placeholder="GITHUB_TOKEN=ghp_xxxx&#10;API_KEY=your-key-here"
+        class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary resize-y font-mono"></textarea>
+      <p class="text-xs text-text-muted mt-1.5">Leave empty if no env vars needed</p>
+    </div>
+  </div>
+
+  <!-- Output tabs -->
+  <div class="mb-2">
+    <p class="text-sm font-medium mb-3">Generated Config</p>
+    <div class="flex gap-2 mb-0 border-b border-border">
+      <button class="tab-btn active text-sm px-4 py-2 border-b-2 border-primary text-primary font-medium -mb-px" data-tab="claude">Claude Desktop</button>
+      <button class="tab-btn text-sm px-4 py-2 border-b-2 border-transparent text-text-muted hover:text-primary -mb-px transition-colors" data-tab="cursor">Cursor</button>
+      <button class="tab-btn text-sm px-4 py-2 border-b-2 border-transparent text-text-muted hover:text-primary -mb-px transition-colors" data-tab="windsurf">Windsurf</button>
+    </div>
+  </div>
+
+  <div id="tab-claude" class="tab-panel relative">
+    <div class="absolute top-2 right-2 flex items-center gap-2 z-10">
+      <span class="copy-feedback text-xs text-green-500 opacity-0 transition-opacity">Copied!</span>
+      <button class="copy-btn text-xs px-3 py-1.5 bg-bg-card border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-target="output-claude">Copy</button>
+    </div>
+    <pre id="output-claude" class="bg-bg-card border border-border rounded-xl p-4 text-sm font-mono overflow-x-auto whitespace-pre text-text-muted min-h-[120px]"></pre>
+    <p class="text-xs text-text-muted mt-1.5">File: <code class="font-mono">~/Library/Application Support/Claude/claude_desktop_config.json</code></p>
+  </div>
+
+  <div id="tab-cursor" class="tab-panel hidden relative">
+    <div class="absolute top-2 right-2 flex items-center gap-2 z-10">
+      <span class="copy-feedback text-xs text-green-500 opacity-0 transition-opacity">Copied!</span>
+      <button class="copy-btn text-xs px-3 py-1.5 bg-bg-card border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-target="output-cursor">Copy</button>
+    </div>
+    <pre id="output-cursor" class="bg-bg-card border border-border rounded-xl p-4 text-sm font-mono overflow-x-auto whitespace-pre text-text-muted min-h-[120px]"></pre>
+    <p class="text-xs text-text-muted mt-1.5">File: <code class="font-mono">~/.cursor/mcp.json</code></p>
+  </div>
+
+  <div id="tab-windsurf" class="tab-panel hidden relative">
+    <div class="absolute top-2 right-2 flex items-center gap-2 z-10">
+      <span class="copy-feedback text-xs text-green-500 opacity-0 transition-opacity">Copied!</span>
+      <button class="copy-btn text-xs px-3 py-1.5 bg-bg-card border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-target="output-windsurf">Copy</button>
+    </div>
+    <pre id="output-windsurf" class="bg-bg-card border border-border rounded-xl p-4 text-sm font-mono overflow-x-auto whitespace-pre text-text-muted min-h-[120px]"></pre>
+    <p class="text-xs text-text-muted mt-1.5">File: <code class="font-mono">~/.codeium/windsurf/mcp_config.json</code></p>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="MCP Server Config Builder" relatedTags={['mcp', 'claude', 'cursor', 'ai', 'config', 'llm']} />
+</BaseLayout>
+
+<script>
+  var PRESETS = {
+    'filesystem': {
+      name: 'filesystem',
+      transport: 'stdio',
+      command: 'npx',
+      args: '-y\n@modelcontextprotocol/server-filesystem\n/Users/username/projects',
+      env: ''
+    },
+    'github': {
+      name: 'github',
+      transport: 'stdio',
+      command: 'npx',
+      args: '-y\n@modelcontextprotocol/server-github',
+      env: 'GITHUB_TOKEN=ghp_your_token_here'
+    },
+    'brave-search': {
+      name: 'brave-search',
+      transport: 'stdio',
+      command: 'npx',
+      args: '-y\n@modelcontextprotocol/server-brave-search',
+      env: 'BRAVE_API_KEY=BSA_your_key_here'
+    },
+    'postgres': {
+      name: 'postgres',
+      transport: 'stdio',
+      command: 'npx',
+      args: '-y\n@modelcontextprotocol/server-postgres\npostgresql://localhost/mydb',
+      env: 'DATABASE_URL=postgresql://user:password@localhost:5432/mydb'
+    },
+    'sequential-thinking': {
+      name: 'sequential-thinking',
+      transport: 'stdio',
+      command: 'npx',
+      args: '-y\n@modelcontextprotocol/server-sequential-thinking',
+      env: ''
+    }
+  };
+
+  function buildConfig(serverName, transport, command, argsText, envText, sseUrl) {
+    if (!serverName) {
+      return '// Enter a server name to generate config';
+    }
+
+    var serverConfig = {};
+
+    if (transport === 'sse') {
+      if (!sseUrl) {
+        return '// Enter an SSE URL to generate config';
+      }
+      serverConfig.url = sseUrl;
+    } else {
+      if (!command) {
+        return '// Enter a command to generate config';
+      }
+      serverConfig.command = command;
+      var args = argsText.split('\n').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+      if (args.length > 0) {
+        serverConfig.args = args;
+      }
+    }
+
+    var envLines = envText.split('\n').map(function(s) { return s.trim(); }).filter(function(s) { return s.includes('='); });
+    if (envLines.length > 0) {
+      var env = {};
+      envLines.forEach(function(line) {
+        var idx = line.indexOf('=');
+        var k = line.substring(0, idx).trim();
+        var v = line.substring(idx + 1).trim();
+        if (k) env[k] = v;
+      });
+      serverConfig.env = env;
+    }
+
+    var config = { mcpServers: {} };
+    config.mcpServers[serverName] = serverConfig;
+    return JSON.stringify(config, null, 2);
+  }
+
+  function update() {
+    var name = document.getElementById('server-name').value.trim();
+    var transport = document.querySelector('input[name="transport"]:checked').value;
+    var command = document.getElementById('server-command').value.trim();
+    var args = document.getElementById('server-args').value;
+    var env = document.getElementById('server-env').value;
+    var sseUrl = document.getElementById('server-url').value.trim();
+
+    var config = buildConfig(name, transport, command, args, env, sseUrl);
+
+    document.getElementById('output-claude').textContent = config;
+    document.getElementById('output-cursor').textContent = config;
+    document.getElementById('output-windsurf').textContent = config;
+  }
+
+  // Transport toggle
+  document.querySelectorAll('input[name="transport"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      if (this.value === 'sse') {
+        document.getElementById('stdio-fields').classList.add('hidden');
+        document.getElementById('sse-fields').classList.remove('hidden');
+      } else {
+        document.getElementById('stdio-fields').classList.remove('hidden');
+        document.getElementById('sse-fields').classList.add('hidden');
+      }
+      update();
+    });
+  });
+
+  // Input listeners
+  ['server-name', 'server-command', 'server-args', 'server-env', 'server-url'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', update);
+  });
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var preset = PRESETS[this.getAttribute('data-preset')];
+      if (!preset) return;
+
+      document.getElementById('server-name').value = preset.name;
+      document.getElementById('server-command').value = preset.command;
+      document.getElementById('server-args').value = preset.args;
+      document.getElementById('server-env').value = preset.env;
+
+      if (preset.transport === 'sse') {
+        document.getElementById('transport-sse').checked = true;
+        document.getElementById('stdio-fields').classList.add('hidden');
+        document.getElementById('sse-fields').classList.remove('hidden');
+      } else {
+        document.getElementById('transport-stdio').checked = true;
+        document.getElementById('stdio-fields').classList.remove('hidden');
+        document.getElementById('sse-fields').classList.add('hidden');
+      }
+
+      document.querySelectorAll('.preset-btn').forEach(function(b) {
+        b.classList.remove('border-primary', 'text-primary');
+        b.classList.add('border-border', 'text-text-muted');
+      });
+      this.classList.add('border-primary', 'text-primary');
+      this.classList.remove('border-border', 'text-text-muted');
+
+      update();
+    });
+  });
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var tab = this.getAttribute('data-tab');
+
+      document.querySelectorAll('.tab-btn').forEach(function(b) {
+        b.classList.remove('active', 'border-primary', 'text-primary', 'font-medium');
+        b.classList.add('border-transparent', 'text-text-muted');
+      });
+      this.classList.add('active', 'border-primary', 'text-primary', 'font-medium');
+      this.classList.remove('border-transparent', 'text-text-muted');
+
+      document.querySelectorAll('.tab-panel').forEach(function(p) {
+        p.classList.add('hidden');
+      });
+      document.getElementById('tab-' + tab).classList.remove('hidden');
+    });
+  });
+
+  // Copy buttons
+  document.querySelectorAll('.copy-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var targetId = this.getAttribute('data-target');
+      var text = document.getElementById(targetId).textContent;
+      var feedback = this.parentElement.querySelector('.copy-feedback');
+
+      navigator.clipboard.writeText(text).then(function() {
+        feedback.style.opacity = '1';
+        setTimeout(function() { feedback.style.opacity = '0'; }, 2000);
+      });
+    });
+  });
+
+  // Initialize
+  update();
+</script>
