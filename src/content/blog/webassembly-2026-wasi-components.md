@@ -1,8 +1,9 @@
 ---
 title: "WebAssembly 2026: WASI, Components, and the Future of Portable Code"
 description: "WebAssembly in 2026 goes far beyond the browser. Explore WASI, the Component Model, Wasmtime, edge computing use cases with Cloudflare Workers and Fastly, and real-world applications running Rust, Go, and Python compiled to Wasm."
-pubDate: 2026-03-28
+date: "2026-03-28"
 tags: ["webassembly", "wasm", "wasi", "rust", "edge-computing", "cloudflare-workers", "portable-code"]
+readingTime: "7 min read"
 author: "DevPlaybook"
 category: "web-performance"
 ---
