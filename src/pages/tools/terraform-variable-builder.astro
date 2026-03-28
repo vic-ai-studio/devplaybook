@@ -1,0 +1,201 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a Terraform variable block?", answer: "A variable block declares an input variable for a Terraform module. It defines the variable's type, default value, description, and optional validation rules. Variables make modules reusable by parameterizing resource configurations. They are set via .tfvars files, -var flags, environment variables (TF_VAR_*), or Terraform Cloud workspace variables." },
+  { question: "What types can Terraform variables have?", answer: "Terraform supports primitive types (string, number, bool) and structural types (list(), map(), set(), object(), tuple()). For example, list(string) is a list of strings, map(number) is a map with string keys and number values. You can also use any to disable type checking, but this reduces safety." },
+  { question: "How do I mark a variable as sensitive?", answer: "Add sensitive = true to the variable block. Terraform will redact the value in plan and apply output, and won't store it in state. Note: sensitive only prevents display in CLI output — the value is still stored in state. Use remote state with encryption (e.g., S3 with SSE-KMS) for production secrets." },
+  { question: "What is a validation block?", answer: "A validation block adds custom constraints to a variable. It has condition (a bool expression using var.<name>) and error_message (shown when condition is false). Example: condition = can(regex('^[a-z][a-z0-9-]*$', var.name)) — ensures the name is lowercase and DNS-safe. Multiple validation blocks are allowed per variable." },
+  { question: "Where should I put variables.tf?", answer: "By convention, declare all input variables in a file called variables.tf. Set values for local environments in terraform.tfvars (auto-loaded by Terraform). For multiple environments, use separate files: dev.tfvars, prod.tfvars, loaded with -var-file=prod.tfvars. Never commit .tfvars files with real secrets." },
+  { question: "What is the difference between variable, local, and output?", answer: "variable is for inputs — values provided externally to the module. local (in a locals block) is for intermediate computed values inside the module — think constants or expressions you reuse. output is for exposing values from a module to its caller or for display after terraform apply. They serve different roles in the data flow." },
+];
+---
+
+<BaseLayout
+  title="Terraform Variable Builder — Generate variables.tf Snippets"
+  description="Build Terraform variable declarations with a visual form. Set type, default value, description, sensitivity, and validation rules. Generates ready-to-use variables.tf HCL snippets. Free, runs in your browser."
+  tool="Terraform variable builder, variables.tf generator, Terraform HCL variable, Terraform input variable, Terraform variable validation"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Terraform Variable Builder",
+    "url": "https://devplaybook.cc/tools/terraform-variable-builder",
+    "description": "Build Terraform variable declarations with a visual form. Set type, default value, description, sensitivity, and validation rules. Generates ready-to-use variables.tf HCL snippets.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Terraform Variable Builder</h1>
+  <p class="text-text-muted mb-6">
+    Build <strong>Terraform variable blocks</strong> for your <code class="bg-bg-card px-1 rounded text-sm">variables.tf</code>.
+    Set type, default, description, sensitivity, and validation rules — then copy the HCL.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> All Terraform types</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Validation blocks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Sensitive flag</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-variable output</span>
+  </div>
+
+  <div id="builder-app" class="space-y-4">
+    <!-- Variable list -->
+    <div id="var-list" class="space-y-4"></div>
+
+    <button id="add-var-btn" class="text-sm text-primary hover:underline">+ Add variable</button>
+
+    <div class="flex gap-3 flex-wrap">
+      <button id="build-btn" class="px-6 py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition-colors text-sm">
+        Generate variables.tf
+      </button>
+    </div>
+
+    <!-- Output -->
+    <div id="output-section" class="hidden">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="text-base font-semibold">Generated variables.tf</h2>
+        <button id="copy-btn" class="text-xs px-3 py-1.5 bg-surface-2 hover:bg-surface-3 rounded-lg border border-border transition-colors">Copy</button>
+      </div>
+      <pre id="hcl-output" class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text"></pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Terraform Variable Builder" relatedTags={['terraform', 'devops', 'infrastructure', 'iac', 'hcl']} />
+</BaseLayout>
+
+<script>
+  let varCount = 0;
+
+  const TF_TYPES = ['string', 'number', 'bool', 'list(string)', 'list(number)', 'map(string)', 'map(any)', 'set(string)', 'any'];
+
+  function addVarBlock(defaults: { name?: string; type?: string; description?: string; defaultVal?: string; sensitive?: boolean } = {}) {
+    varCount++;
+    const id = `var-${varCount}`;
+    const container = document.getElementById('var-list');
+    if (!container) return;
+
+    const div = document.createElement('div');
+    div.id = id;
+    div.className = 'bg-bg-card border border-border rounded-xl p-5 space-y-3';
+
+    div.innerHTML = `
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-sm font-semibold text-text-muted uppercase tracking-wide">Variable</h3>
+        <button onclick="document.getElementById('${id}')?.remove()" class="text-text-muted hover:text-red-400 text-sm">Remove</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">Name</label>
+          <input data-role="name" type="text" value="${defaults.name || ''}" placeholder="instance_type" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Type</label>
+          <select data-role="type" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+            ${TF_TYPES.map(t => `<option${t === (defaults.type || 'string') ? ' selected' : ''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium mb-1">Description</label>
+          <input data-role="description" type="text" value="${defaults.description || ''}" placeholder="EC2 instance type for the application servers" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Default Value <span class="text-text-muted font-normal">(leave blank for required)</span></label>
+          <input data-role="default" type="text" value="${defaults.defaultVal || ''}" placeholder='e.g. "t3.micro"' class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div class="flex items-end pb-2 gap-4">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input data-role="sensitive" type="checkbox" ${defaults.sensitive ? 'checked' : ''} class="rounded border-border" />
+            Sensitive
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input data-role="has-validation" type="checkbox" class="rounded border-border" />
+            Add validation
+          </label>
+        </div>
+      </div>
+      <div data-role="validation-fields" class="hidden grid grid-cols-1 gap-3 pt-1 border-t border-border">
+        <div>
+          <label class="block text-sm font-medium mb-1">Condition expression</label>
+          <input data-role="validation-condition" type="text" value="" placeholder='length(var.name) > 0 && length(var.name) <= 64' class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Error message</label>
+          <input data-role="validation-error" type="text" value="" placeholder="Value must be between 1 and 64 characters." class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+      </div>
+    `;
+
+    container.appendChild(div);
+
+    // Toggle validation fields
+    const hasValidation = div.querySelector('[data-role="has-validation"]') as HTMLInputElement;
+    const validationFields = div.querySelector('[data-role="validation-fields"]') as HTMLElement;
+    hasValidation.addEventListener('change', () => {
+      validationFields.classList.toggle('hidden', !hasValidation.checked);
+    });
+  }
+
+  // Add default variables
+  addVarBlock({ name: 'region', type: 'string', description: 'AWS region to deploy resources', defaultVal: '"us-east-1"' });
+  addVarBlock({ name: 'environment', type: 'string', description: 'Deployment environment (dev/staging/prod)' });
+  addVarBlock({ name: 'instance_count', type: 'number', description: 'Number of EC2 instances', defaultVal: '2' });
+
+  document.getElementById('add-var-btn')?.addEventListener('click', () => addVarBlock());
+
+  function generateHcl(): string {
+    const blocks: string[] = [];
+
+    const varBlocks = document.querySelectorAll('#var-list > div');
+    varBlocks.forEach(block => {
+      const name = (block.querySelector('[data-role="name"]') as HTMLInputElement)?.value.trim();
+      if (!name) return;
+      const type = (block.querySelector('[data-role="type"]') as HTMLSelectElement)?.value || 'string';
+      const description = (block.querySelector('[data-role="description"]') as HTMLInputElement)?.value.trim();
+      const defaultVal = (block.querySelector('[data-role="default"]') as HTMLInputElement)?.value.trim();
+      const sensitive = (block.querySelector('[data-role="sensitive"]') as HTMLInputElement)?.checked;
+      const hasValidation = (block.querySelector('[data-role="has-validation"]') as HTMLInputElement)?.checked;
+      const condition = (block.querySelector('[data-role="validation-condition"]') as HTMLInputElement)?.value.trim();
+      const errorMsg = (block.querySelector('[data-role="validation-error"]') as HTMLInputElement)?.value.trim();
+
+      const lines: string[] = [];
+      lines.push(`variable "${name}" {`);
+      lines.push(`  type = ${type}`);
+      if (description) lines.push(`  description = "${description}"`);
+      if (defaultVal !== '') lines.push(`  default     = ${defaultVal}`);
+      if (sensitive) lines.push(`  sensitive   = true`);
+      if (hasValidation && condition) {
+        lines.push('');
+        lines.push('  validation {');
+        lines.push(`    condition     = ${condition}`);
+        lines.push(`    error_message = "${errorMsg || 'Invalid value.'}"`);
+        lines.push('  }');
+      }
+      lines.push('}');
+      blocks.push(lines.join('\n'));
+    });
+
+    return blocks.join('\n\n');
+  }
+
+  document.getElementById('build-btn')?.addEventListener('click', () => {
+    const hcl = generateHcl();
+    const output = document.getElementById('hcl-output') as HTMLElement;
+    output.textContent = hcl;
+    document.getElementById('output-section')?.classList.remove('hidden');
+  });
+
+  document.getElementById('copy-btn')?.addEventListener('click', () => {
+    const text = (document.getElementById('hcl-output') as HTMLElement).textContent || '';
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('copy-btn') as HTMLButtonElement;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+</script>

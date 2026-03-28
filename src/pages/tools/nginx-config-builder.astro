@@ -1,0 +1,254 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the difference between a server block and a location block?", answer: "A server block defines a virtual host — it listens on a port and matches a domain name. A location block lives inside a server block and matches request paths (e.g. /api/, /static/). You can have multiple location blocks per server block to route different paths to different backends or apply different rules." },
+  { question: "When should I use proxy_pass vs alias vs root?", answer: "Use proxy_pass to forward requests to a backend (Node.js, Python, etc.). Use root to set the base directory for serving static files — the full path is root + URI. Use alias to map a location path to a different filesystem path, replacing the location prefix rather than appending to root." },
+  { question: "What does proxy_set_header X-Real-IP do?", answer: "When nginx acts as a reverse proxy, it forwards requests to your backend. Without extra headers, the backend sees nginx's address, not the real client IP. proxy_set_header X-Real-IP $remote_addr passes the original client IP. Use $http_x_forwarded_for if there's a load balancer in front of nginx." },
+  { question: "How do I handle WebSocket connections in nginx?", answer: "WebSocket upgrades require two extra headers: proxy_set_header Upgrade $http_upgrade and proxy_set_header Connection 'upgrade'. Also set proxy_http_version 1.1 since WebSockets require HTTP/1.1. Without these, nginx closes the connection and WebSocket handshake fails." },
+  { question: "What is try_files and when do I use it?", answer: "try_files checks a list of files/paths in order. try_files $uri $uri/ /index.html is the classic SPA pattern: try the exact file, then a directory index, then fall back to index.html. This enables client-side routing for React, Vue, Angular apps served from nginx." },
+  { question: "How do I apply these config snippets?", answer: "Place snippets in /etc/nginx/sites-available/mysite.conf. Then enable: sudo ln -s /etc/nginx/sites-available/mysite.conf /etc/nginx/sites-enabled/. Test: sudo nginx -t. Reload: sudo systemctl reload nginx. On some systems, you include from /etc/nginx/conf.d/ instead." },
+];
+---
+
+<BaseLayout
+  title="nginx Config Builder — Server Block & Location Block Generator"
+  description="Build nginx server blocks and location blocks with a visual form. Configure reverse proxy, static files, WebSocket support, CORS, gzip, and security headers. Generates copy-ready nginx config snippets. Free, runs in your browser."
+  tool="nginx config builder, nginx server block generator, nginx location block, nginx reverse proxy config, nginx WebSocket config, nginx CORS config"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "nginx Config Builder",
+    "url": "https://devplaybook.cc/tools/nginx-config-builder",
+    "description": "Build nginx server blocks and location blocks with a visual form. Configure reverse proxy, static files, WebSocket, CORS, gzip, and security headers.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">nginx Config Builder</h1>
+  <p class="text-text-muted mb-6">
+    Build <strong>nginx server blocks</strong> and <strong>location blocks</strong> with a visual form.
+    Configure reverse proxy, static file serving, WebSocket, CORS, gzip, and security headers — then copy the generated config.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Server + location blocks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Reverse proxy & static</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> WebSocket / CORS / gzip</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy-ready output</span>
+  </div>
+
+  <div id="builder-app" class="space-y-6">
+    <!-- Server block settings -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-4">Server Block</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Server Name (domain)</label>
+          <input id="server-name" type="text" value="example.com" placeholder="example.com" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Listen Port</label>
+          <input id="listen-port" type="text" value="80" placeholder="80" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Server Type</label>
+          <select id="server-type" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+            <option value="proxy">Reverse Proxy (Node.js / API)</option>
+            <option value="static">Static Files</option>
+            <option value="php">PHP-FPM</option>
+          </select>
+        </div>
+        <div id="upstream-field">
+          <label class="block text-sm font-medium mb-1">Upstream URL</label>
+          <input id="upstream-url" type="text" value="http://127.0.0.1:3000" placeholder="http://127.0.0.1:3000" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div id="root-field" class="hidden">
+          <label class="block text-sm font-medium mb-1">Root Directory</label>
+          <input id="root-dir" type="text" value="/var/www/html" placeholder="/var/www/html" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Location blocks -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-4">Location Block Options</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Location Path</label>
+          <input id="location-path" type="text" value="/" placeholder="/" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div class="flex flex-col gap-2 justify-center pt-5">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="enable-websocket" type="checkbox" class="rounded border-border" />
+            WebSocket support
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="enable-cors" type="checkbox" class="rounded border-border" />
+            CORS headers
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="enable-gzip" type="checkbox" checked class="rounded border-border" />
+            Gzip compression
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="enable-security" type="checkbox" checked class="rounded border-border" />
+            Security headers
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="enable-spa" type="checkbox" class="rounded border-border" />
+            SPA fallback (try_files)
+          </label>
+        </div>
+        <div id="cors-origin-field" class="hidden">
+          <label class="block text-sm font-medium mb-1">CORS Allow-Origin</label>
+          <input id="cors-origin" type="text" value="*" placeholder="* or https://app.example.com" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+      </div>
+    </div>
+
+    <button id="build-btn" class="px-6 py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition-colors text-sm">
+      Build Config
+    </button>
+
+    <!-- Output -->
+    <div id="output-section" class="hidden">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="text-base font-semibold">Generated nginx Config</h2>
+        <button id="copy-btn" class="text-xs px-3 py-1.5 bg-surface-2 hover:bg-surface-3 rounded-lg border border-border transition-colors">Copy</button>
+      </div>
+      <pre id="config-output" class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text"></pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="nginx Config Builder" relatedTags={['nginx', 'server', 'devops', 'ssl', 'web-server', 'proxy']} />
+</BaseLayout>
+
+<script>
+  function indent(n: number, s: string): string {
+    const pad = '    '.repeat(n);
+    return s.split('\n').map(l => l ? pad + l : l).join('\n');
+  }
+
+  function buildConfig() {
+    const serverName = (document.getElementById('server-name') as HTMLInputElement).value.trim() || 'example.com';
+    const port = (document.getElementById('listen-port') as HTMLInputElement).value.trim() || '80';
+    const type = (document.getElementById('server-type') as HTMLSelectElement).value;
+    const upstream = (document.getElementById('upstream-url') as HTMLInputElement).value.trim() || 'http://127.0.0.1:3000';
+    const rootDir = (document.getElementById('root-dir') as HTMLInputElement).value.trim() || '/var/www/html';
+    const locationPath = (document.getElementById('location-path') as HTMLInputElement).value.trim() || '/';
+    const wsEnabled = (document.getElementById('enable-websocket') as HTMLInputElement).checked;
+    const corsEnabled = (document.getElementById('enable-cors') as HTMLInputElement).checked;
+    const gzip = (document.getElementById('enable-gzip') as HTMLInputElement).checked;
+    const security = (document.getElementById('enable-security') as HTMLInputElement).checked;
+    const spa = (document.getElementById('enable-spa') as HTMLInputElement).checked;
+    const corsOrigin = (document.getElementById('cors-origin') as HTMLInputElement).value.trim() || '*';
+
+    const lines: string[] = [];
+
+    if (gzip) {
+      lines.push('# Gzip compression');
+      lines.push('gzip on;');
+      lines.push('gzip_vary on;');
+      lines.push('gzip_types text/plain text/css application/json application/javascript text/xml application/xml;');
+      lines.push('');
+    }
+
+    lines.push(`server {`);
+    lines.push(`    listen ${port};`);
+    lines.push(`    server_name ${serverName};`);
+    lines.push('');
+
+    if (type === 'static' || type === 'php') {
+      lines.push(`    root ${rootDir};`);
+      lines.push(`    index index.html index.htm${type === 'php' ? ' index.php' : ''};`);
+      lines.push('');
+    }
+
+    if (security) {
+      lines.push('    # Security headers');
+      lines.push('    add_header X-Frame-Options "SAMEORIGIN" always;');
+      lines.push('    add_header X-Content-Type-Options "nosniff" always;');
+      lines.push('    add_header X-XSS-Protection "1; mode=block" always;');
+      lines.push('    add_header Referrer-Policy "no-referrer-when-downgrade" always;');
+      lines.push('');
+    }
+
+    lines.push(`    location ${locationPath} {`);
+
+    if (type === 'proxy') {
+      lines.push(`        proxy_pass ${upstream};`);
+      lines.push(`        proxy_http_version 1.1;`);
+      lines.push(`        proxy_set_header Host $host;`);
+      lines.push(`        proxy_set_header X-Real-IP $remote_addr;`);
+      lines.push(`        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`);
+      lines.push(`        proxy_set_header X-Forwarded-Proto $scheme;`);
+      if (wsEnabled) {
+        lines.push(`        proxy_set_header Upgrade $http_upgrade;`);
+        lines.push(`        proxy_set_header Connection "upgrade";`);
+        lines.push(`        proxy_read_timeout 86400;`);
+      }
+    } else if (type === 'php') {
+      lines.push(`        try_files $uri $uri/ =404;`);
+      lines.push('');
+      lines.push('        location ~ \\.php$ {');
+      lines.push('            include snippets/fastcgi-php.conf;');
+      lines.push('            fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;');
+      lines.push('        }');
+    } else {
+      if (spa) {
+        lines.push(`        try_files $uri $uri/ /index.html;`);
+      } else {
+        lines.push(`        try_files $uri $uri/ =404;`);
+      }
+    }
+
+    if (corsEnabled) {
+      lines.push('');
+      lines.push(`        add_header Access-Control-Allow-Origin "${corsOrigin}" always;`);
+      lines.push(`        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;`);
+      lines.push(`        add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;`);
+      lines.push(`        if ($request_method = OPTIONS) { return 204; }`);
+    }
+
+    lines.push('    }');
+    lines.push('}');
+
+    return lines.join('\n');
+  }
+
+  document.getElementById('build-btn')?.addEventListener('click', () => {
+    const config = buildConfig();
+    const output = document.getElementById('config-output') as HTMLElement;
+    output.textContent = config;
+    document.getElementById('output-section')?.classList.remove('hidden');
+  });
+
+  document.getElementById('copy-btn')?.addEventListener('click', () => {
+    const text = (document.getElementById('config-output') as HTMLElement).textContent || '';
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('copy-btn') as HTMLButtonElement;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  document.getElementById('server-type')?.addEventListener('change', (e) => {
+    const type = (e.target as HTMLSelectElement).value;
+    const upstreamField = document.getElementById('upstream-field') as HTMLElement;
+    const rootField = document.getElementById('root-field') as HTMLElement;
+    upstreamField.classList.toggle('hidden', type !== 'proxy');
+    rootField.classList.toggle('hidden', type === 'proxy');
+  });
+
+  document.getElementById('enable-cors')?.addEventListener('change', (e) => {
+    const corsOriginField = document.getElementById('cors-origin-field') as HTMLElement;
+    corsOriginField.classList.toggle('hidden', !(e.target as HTMLInputElement).checked);
+  });
+</script>
