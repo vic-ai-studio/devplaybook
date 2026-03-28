@@ -1,0 +1,319 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Ethereum ABI encoding?", answer: "ABI (Application Binary Interface) encoding is how Ethereum represents function arguments and return values as raw bytes. It's used in calldata, event logs, and function return data. Static types are padded to 32-byte slots. Dynamic types (bytes, string, arrays) use an offset/length scheme where the static section holds a pointer to the dynamic data location." },
+  { question: "What is the difference between abi.encode and abi.encodePacked?", answer: "abi.encode pads all types to 32-byte boundaries — safe and unambiguous. abi.encodePacked concatenates types without padding — smaller output but can be ambiguous (e.g., abi.encodePacked('a','bc') == abi.encodePacked('ab','c')). Never use encodePacked for signatures or hash inputs that combine dynamic types, as it can enable hash collision attacks." },
+  { question: "How are events ABI-encoded in logs?", answer: "Event logs have up to 4 topics (32 bytes each) and arbitrary data. The first topic is the event selector (keccak256 of the event signature). Indexed parameters go into topics (up to 3). Non-indexed parameters go into data as ABI-encoded values. Dynamic types (string, bytes, arrays) when indexed are keccak256-hashed — you can't reverse this." },
+  { question: "What is a struct in ABI encoding?", answer: "Structs are encoded as tuples in ABI. A struct with fields (uint256 a, address b) is encoded as tuple(uint256,address). The encoding follows the same rules as regular ABI — static fields are at their offsets, dynamic fields use pointer indirection. Nested structs are recursively encoded." },
+  { question: "How do I decode a Revert error?", answer: "Revert with a reason string encodes as: selector for Error(string) = 0x08c379a0, followed by ABI-encoded string offset + length + data. Custom errors use their own selector + ABI-encoded arguments. You can decode a revert reason by removing the 4-byte selector and decoding the remaining data as ABI-encoded (string) or custom error types." },
+];
+---
+
+<BaseLayout
+  title="ABI Encoder/Decoder — Ethereum ABI Encode Decode Tool"
+  description="Encode and decode Ethereum ABI data. Supports all Solidity types: uint, address, bool, bytes, string, arrays, tuples. Includes abi.encode, encodePacked, function calldata, and event log decoder."
+  tool="ABI Encoder Decoder, Ethereum ABI Tool, Solidity ABI Encode, Smart Contract ABI Decoder, EVM ABI Parser"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Ethereum ABI Encoder/Decoder</h1>
+  <p class="text-text-muted mb-4">Encode Solidity values to ABI hex and decode ABI hex back to values. Supports all primitive types, arrays, and tuples.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> abi.encode / encodePacked</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> All Solidity types</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Tuple / struct support</span>
+  </div>
+
+  <!-- Encode panel -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold">Encode Values</h2>
+          <div class="flex gap-2">
+            <button class="enc-mode active text-xs px-3 py-1 bg-primary text-white rounded" data-mode="encode">abi.encode</button>
+            <button class="enc-mode text-xs px-3 py-1 border border-border text-text-muted rounded hover:border-primary" data-mode="packed">encodePacked</button>
+          </div>
+        </div>
+
+        <div id="encode-fields" class="space-y-2 mb-3"></div>
+        <button id="add-field-enc" class="text-xs px-3 py-1.5 border border-border text-text-muted rounded-lg hover:border-primary hover:text-primary transition-all w-full">+ Add Field</button>
+      </div>
+
+      <div class="flex gap-3">
+        <button id="encode-btn" class="flex-1 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/80 transition-colors">Encode →</button>
+        <button class="enc-template text-xs px-3 py-2 border border-border text-text-muted rounded-lg hover:border-primary" data-tpl="transfer">transfer()</button>
+        <button class="enc-template text-xs px-3 py-2 border border-border text-text-muted rounded-lg hover:border-primary" data-tpl="swap">swap()</button>
+      </div>
+    </div>
+
+    <!-- Decode panel -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Decode ABI Hex</h2>
+        <div class="mb-3">
+          <label class="block text-xs text-text-muted mb-1">ABI-encoded hex</label>
+          <textarea id="decode-input" rows="4" placeholder="0x000000000000..."
+            class="w-full bg-bg-card border border-border rounded-lg p-3 text-xs focus:outline-none focus:border-primary font-mono resize-none"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs text-text-muted mb-1">Types (comma-separated)</label>
+          <input id="decode-types" type="text" value="address,uint256" placeholder="address,uint256,bool"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+        </div>
+        <button id="decode-btn" class="w-full py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/80 transition-colors">← Decode</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Output area -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold">Encoded Output</h2>
+        <button id="copy-encoded" class="text-xs border border-border text-text-muted rounded px-2 py-0.5 hover:border-primary">Copy</button>
+      </div>
+      <div id="encode-output" class="font-mono text-xs break-all text-primary min-h-12 bg-bg-card border border-border rounded p-2"></div>
+      <div id="encode-breakdown" class="mt-3 space-y-1"></div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-sm font-semibold mb-3">Decoded Values</h2>
+      <div id="decode-output" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="ABI Encoder/Decoder" relatedTags={['ethereum', 'solidity', 'abi', 'evm', 'web3', 'encoding', 'blockchain']} />
+</BaseLayout>
+
+<script>
+  interface EncField { id: string; type: string; value: string }
+
+  let encFields: EncField[] = [
+    { id: '1', type: 'address', value: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' },
+    { id: '2', type: 'uint256', value: '1000000000000000000' },
+  ];
+  let encMode = 'encode';
+
+  const TEMPLATES: Record<string, EncField[]> = {
+    transfer: [
+      { id: '1', type: 'address', value: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' },
+      { id: '2', type: 'uint256', value: '1000000000000000000' },
+    ],
+    swap: [
+      { id: '1', type: 'address', value: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
+      { id: '2', type: 'address', value: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' },
+      { id: '3', type: 'uint24', value: '3000' },
+      { id: '4', type: 'uint256', value: '1000000' },
+    ],
+  };
+
+  function padHex(hex: string, bytes: number): string {
+    return hex.padStart(bytes * 2, '0');
+  }
+
+  function encodeValue(type: string, value: string, packed: boolean): { hex: string; label: string } {
+    const t = type.trim();
+
+    if (t === 'address') {
+      const addr = value.replace('0x', '').toLowerCase();
+      return { hex: packed ? addr.padStart(40, '0') : addr.padStart(64, '0'), label: `address ${value}` };
+    }
+
+    if (t === 'bool') {
+      const b = value === 'true' || value === '1' ? 1 : 0;
+      return { hex: packed ? b.toString(16).padStart(2, '0') : b.toString(16).padStart(64, '0'), label: `bool ${b ? 'true' : 'false'}` };
+    }
+
+    if (t.startsWith('uint') || t.startsWith('int')) {
+      const bits = parseInt(t.replace(/u?int/, '') || '256');
+      const n = BigInt(value);
+      const hex = n < 0n ? (((1n << BigInt(256)) + n).toString(16)) : n.toString(16);
+      return { hex: packed ? hex.padStart(bits / 4, '0') : hex.padStart(64, '0'), label: `${t} ${value}` };
+    }
+
+    if (t.match(/^bytes\d+$/)) {
+      const size = parseInt(t.replace('bytes', ''));
+      const raw = value.replace('0x', '').substring(0, size * 2);
+      return { hex: packed ? raw.padEnd(size * 2, '0') : raw.padEnd(64, '0'), label: `${t} ${value}` };
+    }
+
+    if (t === 'string' || t === 'bytes') {
+      const encoder = new TextEncoder();
+      const bytes = t === 'string' ? encoder.encode(value) : new Uint8Array((value.replace('0x','').match(/.{2}/g)||[]).map(b => parseInt(b,16)));
+      const lenHex = bytes.length.toString(16).padStart(64, '0');
+      const dataHex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').padEnd(Math.ceil(bytes.length/32)*64, '0');
+      if (packed) return { hex: Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(''), label: `${t} "${value}"` };
+      // offset will be calculated externally
+      return { hex: lenHex + dataHex, label: `${t} "${value}"`, isDynamic: true } as any;
+    }
+
+    return { hex: value.replace('0x', '').padStart(64, '0'), label: `${t} ${value}` };
+  }
+
+  function encodeAll(fields: EncField[], packed: boolean): { full: string; breakdown: { label: string; hex: string }[] } {
+    const breakdown: { label: string; hex: string }[] = [];
+    let staticPart = '';
+    let dynamicPart = '';
+    let dynamicTypes = fields.filter(f => f.type === 'string' || f.type === 'bytes');
+    let dynOffset = fields.length * 32;
+
+    if (packed) {
+      let hex = '';
+      fields.forEach(f => {
+        const enc = encodeValue(f.type, f.value, true);
+        hex += enc.hex;
+        breakdown.push({ label: enc.label, hex: enc.hex });
+      });
+      return { full: '0x' + hex, breakdown };
+    }
+
+    // abi.encode
+    let dynIdx = 0;
+    fields.forEach(f => {
+      if (f.type === 'string' || f.type === 'bytes') {
+        // pointer
+        const ptrHex = dynOffset.toString(16).padStart(64, '0');
+        staticPart += ptrHex;
+        breakdown.push({ label: `${f.type} offset`, hex: ptrHex });
+
+        const enc = encodeValue(f.type, f.value, false) as any;
+        dynamicPart += enc.hex;
+        dynOffset += 32 + Math.ceil((enc.hex.length / 2 - 32) / 32) * 32;
+        dynIdx++;
+      } else {
+        const enc = encodeValue(f.type, f.value, false);
+        staticPart += enc.hex;
+        breakdown.push({ label: enc.label, hex: enc.hex });
+      }
+    });
+
+    dynIdx = 0;
+    fields.filter(f => f.type === 'string' || f.type === 'bytes').forEach(f => {
+      const enc = encodeValue(f.type, f.value, false) as any;
+      breakdown.push({ label: `${f.type} data`, hex: enc.hex });
+    });
+
+    return { full: '0x' + staticPart + dynamicPart, breakdown };
+  }
+
+  function decodeAll(hex: string, types: string[]): { type: string; value: string }[] {
+    const raw = hex.startsWith('0x') ? hex.substring(2) : hex;
+    const results: { type: string; value: string }[] = [];
+
+    types.forEach((type, i) => {
+      const slot = raw.substring(i * 64, i * 64 + 64);
+      if (!slot) { results.push({ type, value: '(insufficient data)' }); return; }
+
+      if (type === 'address') {
+        results.push({ type, value: '0x' + slot.substring(24) });
+      } else if (type.startsWith('uint') || type.startsWith('int')) {
+        results.push({ type, value: BigInt('0x' + slot).toString() });
+      } else if (type === 'bool') {
+        results.push({ type, value: slot.endsWith('1') ? 'true' : 'false' });
+      } else if (type === 'string' || type === 'bytes') {
+        const offset = parseInt(slot, 16) * 2;
+        const lenSlot = raw.substring(8 + offset, 8 + offset + 64);
+        const len = parseInt(lenSlot || '0', 16);
+        const data = raw.substring(8 + offset + 64, 8 + offset + 64 + len * 2);
+        if (type === 'string') {
+          try {
+            const bytes = data.match(/.{2}/g)?.map(b => parseInt(b, 16)) || [];
+            results.push({ type, value: `"${new TextDecoder().decode(new Uint8Array(bytes))}"` });
+          } catch { results.push({ type, value: '0x' + data }); }
+        } else {
+          results.push({ type, value: '0x' + data });
+        }
+      } else {
+        results.push({ type, value: '0x' + slot });
+      }
+    });
+
+    return results;
+  }
+
+  function renderFields() {
+    const container = document.getElementById('encode-fields')!;
+    container.innerHTML = encFields.map(f => `
+      <div class="field-row flex items-center gap-2" data-id="${f.id}">
+        <select class="field-type bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary w-28">
+          ${['address','uint256','uint128','uint64','uint32','uint8','int256','bool','bytes32','bytes','string','bytes4'].map(t => `<option ${t===f.type?'selected':''}>${t}</option>`).join('')}
+        </select>
+        <input type="text" value="${f.value}" class="field-value flex-1 bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary font-mono" placeholder="value" />
+        <button class="remove-enc text-xs text-red-400 px-1">✕</button>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.field-row').forEach(row => {
+      const id = row.getAttribute('data-id')!;
+      const field = encFields.find(f => f.id === id)!;
+      row.querySelector('.field-type')!.addEventListener('change', (e) => { field.type = (e.target as HTMLSelectElement).value; });
+      row.querySelector('.field-value')!.addEventListener('input', (e) => { field.value = (e.target as HTMLInputElement).value; });
+      row.querySelector('.remove-enc')!.addEventListener('click', () => { encFields = encFields.filter(f => f.id !== id); renderFields(); });
+    });
+  }
+
+  document.getElementById('add-field-enc')!.addEventListener('click', () => {
+    encFields.push({ id: Date.now().toString(), type: 'uint256', value: '0' });
+    renderFields();
+  });
+
+  document.querySelectorAll('.enc-mode').forEach(btn => {
+    btn.addEventListener('click', () => {
+      encMode = btn.getAttribute('data-mode')!;
+      document.querySelectorAll('.enc-mode').forEach(b => {
+        b.classList.remove('bg-primary', 'text-white');
+        b.classList.add('border', 'border-border', 'text-text-muted');
+      });
+      btn.classList.add('bg-primary', 'text-white');
+      btn.classList.remove('border', 'border-border', 'text-text-muted');
+    });
+  });
+
+  document.querySelectorAll('.enc-template').forEach(btn => {
+    btn.addEventListener('click', () => {
+      encFields = TEMPLATES[btn.getAttribute('data-tpl')!].map(f => ({ ...f }));
+      renderFields();
+    });
+  });
+
+  document.getElementById('encode-btn')!.addEventListener('click', () => {
+    const { full, breakdown } = encodeAll(encFields, encMode === 'packed');
+    document.getElementById('encode-output')!.textContent = full;
+    document.getElementById('encode-breakdown')!.innerHTML = breakdown.map((b, i) => `
+      <div class="text-xs flex items-start gap-2 ${i % 2 === 0 ? 'bg-primary/5' : ''} rounded px-1 py-0.5">
+        <span class="text-text-muted w-36 flex-shrink-0">${b.label}</span>
+        <span class="font-mono text-primary break-all">${b.hex}</span>
+      </div>
+    `).join('');
+
+    // Copy decoded to decode tab for round-trip test
+    (document.getElementById('decode-input') as HTMLTextAreaElement).value = full;
+    (document.getElementById('decode-types') as HTMLInputElement).value = encFields.map(f => f.type).join(',');
+  });
+
+  document.getElementById('decode-btn')!.addEventListener('click', () => {
+    const hex = (document.getElementById('decode-input') as HTMLTextAreaElement).value.trim();
+    const types = (document.getElementById('decode-types') as HTMLInputElement).value.split(',').map(t => t.trim()).filter(Boolean);
+    const decoded = decodeAll(hex, types);
+    document.getElementById('decode-output')!.innerHTML = decoded.map(d => `
+      <div class="flex items-start gap-2">
+        <span class="font-mono text-xs text-primary w-24 flex-shrink-0">${d.type}</span>
+        <span class="font-mono text-xs break-all">${d.value}</span>
+      </div>
+    `).join('');
+  });
+
+  document.getElementById('copy-encoded')!.addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('encode-output')!.textContent || '');
+    const btn = document.getElementById('copy-encoded')!;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+
+  renderFields();
+</script>

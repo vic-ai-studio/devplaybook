@@ -1,0 +1,376 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a Solana Program ID?", answer: "A Solana Program ID (also called a Program Address) is the public key of a deployed program's keypair. It's a base58-encoded 32-byte Ed25519 public key that uniquely identifies a program on the Solana blockchain. When users interact with your program, they reference it by this ID." },
+  { question: "What is the difference between a Program ID and a PDA?", answer: "A Program ID is a real keypair address — it has a corresponding private key used to upgrade/deploy the program. A PDA (Program Derived Address) is derived deterministically from seeds + program ID, has no private key, and can only be signed by the program itself. PDAs are used for program-owned accounts like user vaults, metadata, and state accounts." },
+  { question: "How do I generate a vanity Program ID?", answer: "Use `solana-keygen grind` to find keypairs whose public key starts with a specific prefix. Example: `solana-keygen grind --starts-with ABC:1`. This is computationally intensive. For production programs, the keypair's private key is the authority to upgrade the program — keep it secure." },
+  { question: "What is a PDA (Program Derived Address)?", answer: "PDAs are deterministic addresses derived from seeds and a program ID. They're 32-byte points NOT on the Ed25519 curve (so no valid private key exists). Generated via `findProgramAddress(seeds, programId)`. Used for storing program state, token vaults, metadata accounts, and as signers in CPIs (Cross-Program Invocations)." },
+  { question: "What is the bump seed in PDAs?", answer: "When deriving a PDA, the system tries different bump values (255 down to 0) until it finds an address not on the Ed25519 curve. The canonical bump is the first valid value found. Always store and reuse the canonical bump — it avoids re-deriving the PDA in your program and is a security best practice." },
+];
+---
+
+<BaseLayout
+  title="Solana Program ID Generator — PDA Address Finder & Vanity Keypair Tool"
+  description="Generate Solana Program IDs, derive PDAs from seeds, and create vanity program addresses. Includes PDA derivation simulator, bump seed finder, and keypair format converter."
+  tool="Solana Program ID Generator, PDA Address Finder, Solana Vanity Keypair, Program Derived Address Calculator, Solana Keypair Tool"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Solana Program ID Generator</h1>
+  <p class="text-text-muted mb-4">Generate Solana program IDs, derive PDAs from seeds, find vanity addresses, and convert keypair formats. Everything you need for Solana program development.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PDA derivation simulator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Base58 / hex converter</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Seed combinatorics</span>
+  </div>
+
+  <!-- Tab nav -->
+  <div class="flex gap-2 mb-5 flex-wrap">
+    <button class="sol-tab active text-sm px-4 py-2 bg-primary text-white rounded-lg" data-tab="pda">PDA Deriver</button>
+    <button class="sol-tab text-sm px-4 py-2 border border-border text-text-muted rounded-lg hover:border-primary" data-tab="keypair">Keypair Info</button>
+    <button class="sol-tab text-sm px-4 py-2 border border-border text-text-muted rounded-lg hover:border-primary" data-tab="vanity">Vanity Guide</button>
+  </div>
+
+  <!-- PDA Deriver tab -->
+  <div id="tab-pda" class="tab-content">
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <h2 class="text-base font-semibold mb-4">PDA Derivation Simulator</h2>
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-1.5">Program ID</label>
+        <input id="pda-program-id" type="text" value="11111111111111111111111111111111"
+          placeholder="Program public key (base58)"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-sm font-medium">Seeds</label>
+          <button id="add-seed" class="text-xs px-2 py-1 border border-border text-text-muted rounded hover:border-primary hover:text-primary transition-all">+ Add Seed</button>
+        </div>
+        <div id="seeds-list" class="space-y-2"></div>
+      </div>
+
+      <div class="flex gap-3 mb-4">
+        <button id="derive-pda" class="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/80 transition-colors">Derive PDA</button>
+        <button id="load-example" class="px-4 py-2 border border-border text-sm text-text-muted rounded-lg hover:border-primary hover:text-primary transition-all">Load Example</button>
+      </div>
+
+      <div id="pda-result" class="hidden bg-bg-card border border-border rounded-lg p-4 space-y-3">
+        <div>
+          <div class="text-xs text-text-muted mb-1">Derived PDA Address</div>
+          <div id="pda-address" class="font-mono text-sm text-primary break-all"></div>
+        </div>
+        <div>
+          <div class="text-xs text-text-muted mb-1">Canonical Bump Seed</div>
+          <div id="pda-bump" class="font-mono text-lg font-bold text-green-500"></div>
+        </div>
+        <div>
+          <div class="text-xs text-text-muted mb-1">Rust Code</div>
+          <pre id="pda-rust-code" class="text-xs font-mono bg-bg-card border border-border rounded p-3 overflow-x-auto"></pre>
+        </div>
+        <div>
+          <div class="text-xs text-text-muted mb-1">TypeScript (Anchor) Code</div>
+          <pre id="pda-ts-code" class="text-xs font-mono bg-bg-card border border-border rounded p-3 overflow-x-auto"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keypair Info tab -->
+  <div id="tab-keypair" class="tab-content hidden">
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <h2 class="text-base font-semibold mb-4">Keypair Format Converter</h2>
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-1.5">Input (base58 public key or JSON array)</label>
+        <textarea id="keypair-input" rows="3" placeholder="Paste base58 public key, or JSON keypair array [1,2,...,64]"
+          class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary font-mono resize-none"></textarea>
+      </div>
+      <button id="parse-keypair" class="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/80 transition-colors mb-4">Parse & Convert</button>
+      <div id="keypair-result" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- Vanity Guide tab -->
+  <div id="tab-vanity" class="tab-content hidden">
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <h2 class="text-base font-semibold mb-4">Vanity Address Generator Guide</h2>
+      <p class="text-sm text-text-muted mb-4">Vanity generation must run locally (requires CPU/GPU). This tool generates the CLI commands for you.</p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Desired prefix (case-sensitive)</label>
+          <input id="vanity-prefix" type="text" value="dev" maxlength="6" placeholder="e.g. abc"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Case sensitive?</label>
+          <select id="vanity-case" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+            <option value="case-sensitive">Case sensitive (faster)</option>
+            <option value="ignore-case">Ignore case (slower)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="vanity-output" class="space-y-4"></div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Solana Program ID Generator" relatedTags={['solana', 'web3', 'blockchain', 'pda', 'keypair', 'rust', 'anchor']} />
+</BaseLayout>
+
+<script>
+  // Minimal base58 implementation
+  const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+  function base58Decode(str: string): Uint8Array {
+    const bytes = [0];
+    for (const char of str) {
+      let carry = BASE58_ALPHABET.indexOf(char);
+      if (carry < 0) throw new Error('Invalid base58 character');
+      for (let i = 0; i < bytes.length; i++) {
+        carry += bytes[i] * 58;
+        bytes[i] = carry & 0xff;
+        carry >>= 8;
+      }
+      while (carry > 0) { bytes.push(carry & 0xff); carry >>= 8; }
+    }
+    for (const char of str) { if (char === '1') bytes.push(0); else break; }
+    return new Uint8Array(bytes.reverse());
+  }
+
+  function base58Encode(bytes: Uint8Array): string {
+    const digits = [0];
+    for (const byte of bytes) {
+      let carry = byte;
+      for (let i = 0; i < digits.length; i++) {
+        carry += digits[i] << 8;
+        digits[i] = carry % 58;
+        carry = Math.floor(carry / 58);
+      }
+      while (carry > 0) { digits.push(carry % 58); carry = Math.floor(carry / 58); }
+    }
+    let result = '';
+    for (const byte of bytes) { if (byte === 0) result += '1'; else break; }
+    return result + digits.reverse().map(d => BASE58_ALPHABET[d]).join('');
+  }
+
+  function bytesToHex(bytes: Uint8Array): string {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Simple SHA256 for PDA simulation (uses SubtleCrypto)
+  async function sha256(data: Uint8Array): Promise<Uint8Array> {
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return new Uint8Array(hash);
+  }
+
+  // Simulate PDA derivation (simplified - actual uses SHA256 hash of seeds + program_id + "ProgramDerivedAddress")
+  async function derivePDA(seeds: Uint8Array[], programId: Uint8Array): Promise<{ address: Uint8Array; bump: number } | null> {
+    const marker = new TextEncoder().encode('ProgramDerivedAddress');
+    for (let bump = 255; bump >= 0; bump--) {
+      const bumpBytes = new Uint8Array([bump]);
+      const data = new Uint8Array([...seeds.flat(), ...bumpBytes, ...programId, ...marker]);
+      const hash = await sha256(data);
+      // Check if point is NOT on Ed25519 curve (simplified check: high bit of last byte)
+      if ((hash[31] & 0x80) === 0) {
+        return { address: hash, bump };
+      }
+    }
+    return null;
+  }
+
+  let seeds: { id: string; type: string; value: string }[] = [
+    { id: '1', type: 'string', value: 'user-account' },
+    { id: '2', type: 'pubkey', value: 'So11111111111111111111111111111111111111112' },
+  ];
+
+  function renderSeeds() {
+    const list = document.getElementById('seeds-list')!;
+    list.innerHTML = seeds.map(s => `
+      <div class="seed-item flex items-center gap-2" data-id="${s.id}">
+        <select class="seed-type bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary">
+          <option ${s.type==='string'?'selected':''} value="string">string</option>
+          <option ${s.type==='pubkey'?'selected':''} value="pubkey">pubkey</option>
+          <option ${s.type==='u8'?'selected':''} value="u8">u8</option>
+          <option ${s.type==='u64'?'selected':''} value="u64">u64 (LE)</option>
+          <option ${s.type==='bytes'?'selected':''} value="bytes">hex bytes</option>
+        </select>
+        <input type="text" value="${s.value}" class="seed-value flex-1 bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary font-mono" placeholder="seed value" />
+        <button class="remove-seed text-xs text-red-400 px-1">✕</button>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.seed-item').forEach(item => {
+      const id = item.getAttribute('data-id')!;
+      const seed = seeds.find(s => s.id === id)!;
+      item.querySelector('.seed-type')!.addEventListener('change', (e) => { seed.type = (e.target as HTMLSelectElement).value; });
+      item.querySelector('.seed-value')!.addEventListener('input', (e) => { seed.value = (e.target as HTMLInputElement).value; });
+      item.querySelector('.remove-seed')!.addEventListener('click', () => { seeds = seeds.filter(s => s.id !== id); renderSeeds(); });
+    });
+  }
+
+  function seedToBytes(type: string, value: string): Uint8Array {
+    if (type === 'string') return new TextEncoder().encode(value);
+    if (type === 'pubkey') {
+      try { return base58Decode(value); } catch { return new TextEncoder().encode(value); }
+    }
+    if (type === 'u8') return new Uint8Array([parseInt(value) & 0xff]);
+    if (type === 'u64') {
+      const n = BigInt(value || '0');
+      const arr = new Uint8Array(8);
+      for (let i = 0; i < 8; i++) arr[i] = Number((n >> BigInt(i * 8)) & BigInt(0xff));
+      return arr;
+    }
+    if (type === 'bytes') {
+      const hex = value.replace(/\s/g, '');
+      return new Uint8Array(hex.match(/.{2}/g)?.map(b => parseInt(b, 16)) || []);
+    }
+    return new TextEncoder().encode(value);
+  }
+
+  document.getElementById('add-seed')!.addEventListener('click', () => {
+    seeds.push({ id: Date.now().toString(), type: 'string', value: 'new-seed' });
+    renderSeeds();
+  });
+
+  document.getElementById('derive-pda')!.addEventListener('click', async () => {
+    const btn = document.getElementById('derive-pda') as HTMLButtonElement;
+    btn.textContent = 'Deriving...';
+    btn.disabled = true;
+
+    try {
+      const programIdStr = (document.getElementById('pda-program-id') as HTMLInputElement).value.trim();
+      const programIdBytes = base58Decode(programIdStr);
+      const seedBytes = seeds.map(s => seedToBytes(s.type, s.value));
+      const result = await derivePDA(seedBytes, programIdBytes);
+
+      const resultEl = document.getElementById('pda-result')!;
+      if (result) {
+        const addrBase58 = base58Encode(result.address);
+        resultEl.classList.remove('hidden');
+        document.getElementById('pda-address')!.textContent = addrBase58;
+        document.getElementById('pda-bump')!.textContent = result.bump.toString();
+
+        const seedsRust = seeds.map(s => {
+          if (s.type === 'string') return `b"${s.value}"`;
+          if (s.type === 'pubkey') return `${s.value.substring(0, 8)}..key.as_ref()`;
+          if (s.type === 'u8') return `&[${s.value}u8]`;
+          return `&[/* ${s.type} */]`;
+        }).join(',\n        ');
+
+        document.getElementById('pda-rust-code')!.textContent =
+`let (pda, bump) = Pubkey::find_program_address(
+    &[
+        ${seedsRust}
+    ],
+    &program_id,
+);`;
+
+        const seedsTs = seeds.map(s => {
+          if (s.type === 'string') return `Buffer.from("${s.value}")`;
+          if (s.type === 'pubkey') return `new PublicKey("${s.value}").toBuffer()`;
+          if (s.type === 'u8') return `Buffer.from([${s.value}])`;
+          return `Buffer.from(/* ${s.type} */)`;
+        }).join(',\n    ');
+
+        document.getElementById('pda-ts-code')!.textContent =
+`const [pda, bump] = await PublicKey.findProgramAddress(
+    [
+    ${seedsTs}
+    ],
+    programId
+);`;
+      }
+    } catch (e) {
+      alert('Derivation error: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      btn.textContent = 'Derive PDA';
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('load-example')!.addEventListener('click', () => {
+    (document.getElementById('pda-program-id') as HTMLInputElement).value = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+    seeds = [
+      { id: '1', type: 'pubkey', value: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM' },
+      { id: '2', type: 'string', value: 'token-account' },
+    ];
+    renderSeeds();
+  });
+
+  document.getElementById('parse-keypair')!.addEventListener('click', () => {
+    const input = (document.getElementById('keypair-input') as HTMLTextAreaElement).value.trim();
+    const resultEl = document.getElementById('keypair-result')!;
+
+    try {
+      let pubKeyBytes: Uint8Array;
+      if (input.startsWith('[')) {
+        const arr = JSON.parse(input) as number[];
+        pubKeyBytes = new Uint8Array(arr.slice(32, 64));
+      } else {
+        pubKeyBytes = base58Decode(input.replace(/\s/g, ''));
+      }
+
+      resultEl.innerHTML = `
+        <div><div class="text-xs text-text-muted mb-1">Base58 Address</div><div class="font-mono text-sm text-primary break-all">${base58Encode(pubKeyBytes)}</div></div>
+        <div><div class="text-xs text-text-muted mb-1">Hex</div><div class="font-mono text-sm text-text-muted break-all">${bytesToHex(pubKeyBytes)}</div></div>
+        <div><div class="text-xs text-text-muted mb-1">Byte Length</div><div class="font-mono text-sm">${pubKeyBytes.length} bytes</div></div>
+      `;
+    } catch (e) {
+      resultEl.innerHTML = `<div class="text-red-500 text-sm">Parse error: ${e instanceof Error ? e.message : 'Invalid input'}</div>`;
+    }
+  });
+
+  function updateVanity() {
+    const prefix = (document.getElementById('vanity-prefix') as HTMLInputElement).value;
+    const caseMode = (document.getElementById('vanity-case') as HTMLSelectElement).value;
+    const isCaseSensitive = caseMode === 'case-sensitive';
+
+    // Estimate attempts needed
+    const charset = isCaseSensitive ? 58 : 36;
+    const attempts = Math.pow(charset, prefix.length);
+    const attemptsK = attempts > 1e9 ? `~${(attempts / 1e9).toFixed(1)}B` : attempts > 1e6 ? `~${(attempts / 1e6).toFixed(1)}M` : `~${attempts.toLocaleString()}`;
+    const seconds = attempts / 500000; // ~500K keys/sec on modern CPU
+    const timeStr = seconds < 1 ? '<1s' : seconds < 60 ? `${Math.round(seconds)}s` : seconds < 3600 ? `${Math.round(seconds/60)}m` : `${Math.round(seconds/3600)}h`;
+
+    const flag = isCaseSensitive ? `--starts-with ${prefix}:1` : `--starts-with ${prefix.toLowerCase()}:1 --ignore-case`;
+
+    document.getElementById('vanity-output')!.innerHTML = `
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="bg-bg-card border border-border rounded-lg p-3 text-center"><div class="text-xl font-bold text-primary">${attemptsK}</div><div class="text-xs text-text-muted">Avg attempts</div></div>
+        <div class="bg-bg-card border border-border rounded-lg p-3 text-center"><div class="text-xl font-bold ${seconds > 3600 ? 'text-red-400' : seconds > 60 ? 'text-yellow-400' : 'text-green-500'}">${timeStr}</div><div class="text-xs text-text-muted">Estimated time</div></div>
+        <div class="bg-bg-card border border-border rounded-lg p-3 text-center"><div class="text-xl font-bold text-primary">${prefix.length}</div><div class="text-xs text-text-muted">Prefix length</div></div>
+      </div>
+      <div>
+        <div class="text-xs text-text-muted mb-1">CLI Command</div>
+        <pre class="bg-bg-card border border-border rounded-lg p-3 text-xs font-mono overflow-x-auto">solana-keygen grind ${flag}</pre>
+      </div>
+      <div class="text-xs text-text-muted mt-3">⚠ Never share the generated keypair's private key. Store the .json file securely — it controls your program upgrades.</div>
+    `;
+  }
+
+  // Tab switching
+  document.querySelectorAll('.sol-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-tab')!;
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(`tab-${tab}`)!.classList.remove('hidden');
+      document.querySelectorAll('.sol-tab').forEach(b => {
+        b.classList.remove('bg-primary', 'text-white');
+        b.classList.add('border', 'border-border', 'text-text-muted');
+      });
+      btn.classList.add('bg-primary', 'text-white');
+      btn.classList.remove('border', 'border-border', 'text-text-muted');
+    });
+  });
+
+  document.getElementById('vanity-prefix')!.addEventListener('input', updateVanity);
+  document.getElementById('vanity-case')!.addEventListener('change', updateVanity);
+
+  renderSeeds();
+  updateVanity();
+</script>

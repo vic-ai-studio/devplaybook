@@ -1,0 +1,251 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How is gas cost calculated on Ethereum?", answer: "Transaction cost = gasUsed × gasPrice. Gas price = baseFee + priorityFee (EIP-1559). baseFee is burned by the protocol and fluctuates with demand. priorityFee (tip) goes to the validator. Gas limit is the maximum gas you're willing to spend — unused gas is refunded. Total ETH cost = gasUsed × (baseFee + priorityFee)." },
+  { question: "What are typical gas costs for common operations?", answer: "ETH transfer: 21,000 gas. ERC-20 transfer: ~65,000 gas. ERC-20 approve: ~46,000 gas. Uniswap V3 swap: ~130,000-200,000 gas. NFT mint (ERC-721): ~100,000-200,000 gas. Contract deployment: 200,000+ gas depending on bytecode size. Storage write (SSTORE): 20,000 gas. Storage read (SLOAD): 2,100 gas." },
+  { question: "How do L2s reduce gas costs?", answer: "L2s (Arbitrum, Optimism, Base, zkSync) execute transactions off the main Ethereum chain and only post compressed data to L1. This reduces costs 10-100x. Optimistic rollups have ~7-day withdrawal delays but are EVM-equivalent. ZK rollups use validity proofs for instant finality. Most DeFi activity has moved to L2s for cost reasons." },
+  { question: "What is the EIP-1559 fee mechanism?", answer: "EIP-1559 (London upgrade, 2021) replaced the first-price auction with a base fee + tip model. The base fee is algorithmically set by the protocol based on demand and is burned (removed from supply). The tip (priority fee) is optional and goes to validators. This makes fee prediction more reliable and reduces fee overpayment." },
+  { question: "How can I optimize smart contract gas usage?", answer: "Key optimizations: (1) Pack storage slots — multiple small variables in one slot. (2) Use calldata instead of memory for read-only inputs. (3) Cache storage reads in memory variables. (4) Use mappings over arrays for lookups. (5) Avoid dynamic array loops with unbounded size. (6) Use custom errors instead of require strings. (7) Use immutable/constant for deploy-time values." },
+];
+
+const OPERATIONS = [
+  { name: 'ETH Transfer', gas: 21000, category: 'basic' },
+  { name: 'ERC-20 Transfer', gas: 65000, category: 'token' },
+  { name: 'ERC-20 Approve', gas: 46000, category: 'token' },
+  { name: 'ERC-20 TransferFrom', gas: 75000, category: 'token' },
+  { name: 'ERC-721 Mint', gas: 150000, category: 'nft' },
+  { name: 'ERC-721 Transfer', gas: 85000, category: 'nft' },
+  { name: 'ERC-1155 SafeTransfer', gas: 90000, category: 'nft' },
+  { name: 'Uniswap V3 Swap', gas: 165000, category: 'defi' },
+  { name: 'Uniswap V2 Swap', gas: 110000, category: 'defi' },
+  { name: 'Aave Supply', gas: 210000, category: 'defi' },
+  { name: 'Aave Borrow', gas: 270000, category: 'defi' },
+  { name: 'OpenSea Listing', gas: 140000, category: 'nft' },
+  { name: 'Contract Deploy (small)', gas: 300000, category: 'deploy' },
+  { name: 'Contract Deploy (large)', gas: 1500000, category: 'deploy' },
+  { name: 'SSTORE (cold write)', gas: 20000, category: 'opcode' },
+  { name: 'SLOAD (cold read)', gas: 2100, category: 'opcode' },
+];
+---
+
+<BaseLayout
+  title="Smart Contract Gas Estimator — Ethereum Gas Cost Calculator"
+  description="Estimate Ethereum smart contract gas costs in USD. Compare operation costs across mainnet, Arbitrum, Optimism, and Base. Calculate gas for common DeFi, NFT, and ERC-20 operations."
+  tool="Smart Contract Gas Estimator, Ethereum Gas Calculator, DeFi Gas Cost Tool, L2 Gas Comparison, EVM Gas Optimizer"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Smart Contract Gas Estimator</h1>
+  <p class="text-text-muted mb-4">Calculate ETH gas costs for common smart contract operations. Compare costs across Ethereum mainnet and L2 networks at current gas prices.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 16 common operations</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Mainnet + L2 comparison</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> USD cost calculator</span>
+  </div>
+
+  <!-- Config panel -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Network & Price Configuration</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">ETH Price (USD)</label>
+        <input id="eth-price" type="number" value="3200" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Base Fee (Gwei)</label>
+        <input id="base-fee" type="number" value="15" min="0" step="0.1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Priority Fee (Gwei)</label>
+        <input id="priority-fee" type="number" value="1" min="0" step="0.1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Gas Price Preset</label>
+        <select id="gas-preset" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="5,0.5">Low (5 + 0.5)</option>
+          <option value="15,1" selected>Average (15 + 1)</option>
+          <option value="30,2">Fast (30 + 2)</option>
+          <option value="80,5">Very Fast (80 + 5)</option>
+          <option value="200,10">Urgent (200 + 10)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div id="summary-cards" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5"></div>
+
+  <!-- Operations table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-semibold">Gas Cost by Operation</h2>
+      <select id="filter-category" class="bg-bg-card border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary">
+        <option value="all">All operations</option>
+        <option value="basic">Basic</option>
+        <option value="token">ERC-20 Tokens</option>
+        <option value="nft">NFTs</option>
+        <option value="defi">DeFi</option>
+        <option value="deploy">Deployment</option>
+        <option value="opcode">Opcodes</option>
+      </select>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[640px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Operation</th>
+            <th class="text-right pb-2 pr-4">Gas</th>
+            <th class="text-right pb-2 pr-4">ETH</th>
+            <th class="text-right pb-2 pr-4">USD (Mainnet)</th>
+            <th class="text-right pb-2 pr-4">USD (Arbitrum)</th>
+            <th class="text-right pb-2">USD (Base)</th>
+          </tr>
+        </thead>
+        <tbody id="ops-table" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Custom operation calc -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-4">Custom Gas Calculation</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Gas Used</label>
+        <input id="custom-gas" type="number" value="150000" min="21000"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Calls per Day</label>
+        <input id="custom-calls" type="number" value="1000" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div id="custom-result" class="flex items-end">
+        <div class="bg-bg-card border border-primary/30 rounded-lg p-3 w-full text-center">
+          <div id="custom-usd" class="text-2xl font-bold text-primary">$0.00</div>
+          <div class="text-xs text-text-muted">per transaction</div>
+        </div>
+      </div>
+    </div>
+    <div id="custom-breakdown" class="grid grid-cols-1 md:grid-cols-3 gap-3"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Smart Contract Gas Estimator" relatedTags={['ethereum', 'gas', 'evm', 'solidity', 'web3', 'l2', 'defi']} />
+</BaseLayout>
+
+<script>
+  const OPERATIONS = [
+    { name: 'ETH Transfer', gas: 21000, category: 'basic' },
+    { name: 'ERC-20 Transfer', gas: 65000, category: 'token' },
+    { name: 'ERC-20 Approve', gas: 46000, category: 'token' },
+    { name: 'ERC-20 TransferFrom', gas: 75000, category: 'token' },
+    { name: 'ERC-721 Mint', gas: 150000, category: 'nft' },
+    { name: 'ERC-721 Transfer', gas: 85000, category: 'nft' },
+    { name: 'ERC-1155 SafeTransfer', gas: 90000, category: 'nft' },
+    { name: 'Uniswap V3 Swap', gas: 165000, category: 'defi' },
+    { name: 'Uniswap V2 Swap', gas: 110000, category: 'defi' },
+    { name: 'Aave Supply', gas: 210000, category: 'defi' },
+    { name: 'Aave Borrow', gas: 270000, category: 'defi' },
+    { name: 'OpenSea Listing', gas: 140000, category: 'nft' },
+    { name: 'Contract Deploy (small)', gas: 300000, category: 'deploy' },
+    { name: 'Contract Deploy (large)', gas: 1500000, category: 'deploy' },
+    { name: 'SSTORE (cold write)', gas: 20000, category: 'opcode' },
+    { name: 'SLOAD (cold read)', gas: 2100, category: 'opcode' },
+  ];
+
+  // L2 cost multipliers relative to mainnet
+  const L2_MULTIPLIER = { mainnet: 1, arbitrum: 0.02, base: 0.015, optimism: 0.025, zksync: 0.01 };
+
+  function getConfig() {
+    const ethPrice = parseFloat((document.getElementById('eth-price') as HTMLInputElement).value) || 3200;
+    const baseFee = parseFloat((document.getElementById('base-fee') as HTMLInputElement).value) || 15;
+    const priorityFee = parseFloat((document.getElementById('priority-fee') as HTMLInputElement).value) || 1;
+    return { ethPrice, gasPrice: baseFee + priorityFee };
+  }
+
+  function gasToUSD(gasUsed: number, gasPrice: number, ethPrice: number, l2Mult: number): number {
+    const ethCost = (gasUsed * gasPrice * 1e-9) * l2Mult;
+    return ethCost * ethPrice;
+  }
+
+  function update() {
+    const { ethPrice, gasPrice } = getConfig();
+    const category = (document.getElementById('filter-category') as HTMLSelectElement).value;
+
+    const filtered = category === 'all' ? OPERATIONS : OPERATIONS.filter(o => o.category === category);
+
+    const tableEl = document.getElementById('ops-table')!;
+    tableEl.innerHTML = filtered.map(op => {
+      const mainnetUSD = gasToUSD(op.gas, gasPrice, ethPrice, 1);
+      const arbUSD = gasToUSD(op.gas, gasPrice, ethPrice, L2_MULTIPLIER.arbitrum);
+      const baseUSD = gasToUSD(op.gas, gasPrice, ethPrice, L2_MULTIPLIER.base);
+      const ethCost = op.gas * gasPrice * 1e-9;
+
+      return `<tr class="hover:bg-bg-card/50 transition-colors">
+        <td class="py-2.5 pr-4 font-medium">${op.name}<br/><span class="text-xs text-text-muted">${op.category}</span></td>
+        <td class="py-2.5 pr-4 text-right font-mono text-xs">${op.gas.toLocaleString()}</td>
+        <td class="py-2.5 pr-4 text-right font-mono text-xs">${ethCost.toFixed(6)}</td>
+        <td class="py-2.5 pr-4 text-right font-mono font-semibold">$${mainnetUSD.toFixed(2)}</td>
+        <td class="py-2.5 pr-4 text-right font-mono text-green-500">$${arbUSD.toFixed(4)}</td>
+        <td class="py-2.5 text-right font-mono text-green-500">$${baseUSD.toFixed(4)}</td>
+      </tr>`;
+    }).join('');
+
+    // Summary cards
+    const ethTransfer = gasToUSD(21000, gasPrice, ethPrice, 1);
+    const erc20 = gasToUSD(65000, gasPrice, ethPrice, 1);
+    const swap = gasToUSD(165000, gasPrice, ethPrice, 1);
+    const swapL2 = gasToUSD(165000, gasPrice, ethPrice, L2_MULTIPLIER.arbitrum);
+
+    document.getElementById('summary-cards')!.innerHTML = [
+      { label: 'ETH Transfer', value: `$${ethTransfer.toFixed(2)}` },
+      { label: 'ERC-20 Transfer', value: `$${erc20.toFixed(2)}` },
+      { label: 'Uniswap Swap (L1)', value: `$${swap.toFixed(2)}` },
+      { label: 'Swap on Arbitrum', value: `$${swapL2.toFixed(4)}` },
+    ].map(c => `<div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+      <div class="text-2xl font-bold text-primary">${c.value}</div>
+      <div class="text-xs text-text-muted mt-1">${c.label}</div>
+    </div>`).join('');
+
+    // Custom calc
+    const customGas = parseFloat((document.getElementById('custom-gas') as HTMLInputElement).value) || 0;
+    const customCalls = parseFloat((document.getElementById('custom-calls') as HTMLInputElement).value) || 1;
+    const customUSD = gasToUSD(customGas, gasPrice, ethPrice, 1);
+    document.getElementById('custom-usd')!.textContent = `$${customUSD.toFixed(4)}`;
+
+    document.getElementById('custom-breakdown')!.innerHTML = [
+      { net: 'Mainnet', mult: 1 },
+      { net: 'Arbitrum', mult: L2_MULTIPLIER.arbitrum },
+      { net: 'Base', mult: L2_MULTIPLIER.base },
+    ].map(n => {
+      const perTx = gasToUSD(customGas, gasPrice, ethPrice, n.mult);
+      const monthly = perTx * customCalls * 30;
+      return `<div class="bg-bg-card border border-border rounded-lg p-3">
+        <div class="font-semibold text-sm mb-1">${n.net}</div>
+        <div class="text-xs text-text-muted">Per tx: <span class="text-primary font-mono">$${perTx.toFixed(5)}</span></div>
+        <div class="text-xs text-text-muted">Monthly (${customCalls}/day): <span class="text-primary font-mono">$${monthly.toFixed(2)}</span></div>
+      </div>`;
+    }).join('');
+  }
+
+  document.getElementById('gas-preset')!.addEventListener('change', (e) => {
+    const [base, priority] = (e.target as HTMLSelectElement).value.split(',');
+    (document.getElementById('base-fee') as HTMLInputElement).value = base;
+    (document.getElementById('priority-fee') as HTMLInputElement).value = priority;
+    update();
+  });
+
+  document.querySelectorAll('input, select').forEach(el => {
+    if (el.id !== 'gas-preset') el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+
+  update();
+</script>

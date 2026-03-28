@@ -1,0 +1,299 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a CID in IPFS?", answer: "A CID (Content Identifier) is a self-describing content address used in IPFS and many blockchain systems. It encodes the hash function used, the content type, and the hash itself. Unlike URLs, a CID always refers to the same content regardless of where it's stored — it's content-addressed, not location-addressed." },
+  { question: "What is the difference between CIDv0 and CIDv1?", answer: "CIDv0 uses base58btc encoding and always uses SHA2-256 with dag-pb codec. They start with 'Qm'. CIDv1 is more flexible — it supports multiple base encodings (base32, base64, base58), multiple hash functions, and multiple codecs. CIDv1 in base32 starts with 'b'. NFT metadata on Filecoin/IPFS often uses CIDv1 for case-insensitive DNS compatibility." },
+  { question: "How are NFT metadata CIDs used on Ethereum?", answer: "NFTs store IPFS CIDs as tokenURIs. The token contract returns a URI like `ipfs://QmXxx...` or `ipfs://bafyXxx...`. Marketplaces resolve this by querying an IPFS gateway. The CID is the content hash of the JSON metadata file, which in turn contains image CIDs. This makes NFT metadata tamper-proof." },
+  { question: "What is a multibase prefix?", answer: "Multibase is a protocol for encoding binary data as text. The first character indicates the encoding: 'Q' = base58btc (CIDv0), 'b' = base32 (CIDv1), 'z' = base58btc (CIDv1), 'f' = base16 (hex). This allows CIDs and other binary data to declare their own encoding, enabling self-describing identifiers." },
+  { question: "How do I pin content to IPFS?", answer: "Pinning ensures content stays available on the network. Options: (1) Pin locally with `ipfs pin add <CID>`. (2) Use Pinata, Web3.Storage, or NFT.Storage APIs for cloud pinning. (3) Use Filecoin for long-term paid storage. (4) Fleek and similar services offer IPFS+CDN hosting with automatic pinning." },
+];
+---
+
+<BaseLayout
+  title="IPFS CID Version Converter — CIDv0 to CIDv1 Base32/Base58 Tool"
+  description="Convert IPFS CIDs between versions and encodings. Transform CIDv0 (Qm...) to CIDv1 (baf...) in base32 or base58. Validate CIDs, decode multihash, and generate IPFS gateway URLs."
+  tool="IPFS CID Converter, CIDv0 to CIDv1 Converter, IPFS Content Identifier Tool, Multihash Decoder, IPFS Gateway URL Generator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">IPFS CID Version Converter</h1>
+  <p class="text-text-muted mb-4">Convert, validate, and analyze IPFS Content Identifiers. Transform between CIDv0 and CIDv1 formats, decode multihash components, and generate gateway URLs.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CIDv0 ↔ CIDv1 conversion</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Base32 / Base58 / hex</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Gateway URL generator</span>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">CID Input</h2>
+      <div class="flex gap-2">
+        <button class="cid-example text-xs text-primary hover:underline" data-cid="QmPChd2hVbrJ6bfo3WBcTW4iZnpHm8TEzWkLHmLpXhF68A">CIDv0 example</button>
+        <button class="cid-example text-xs text-primary hover:underline" data-cid="bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi">CIDv1 example</button>
+      </div>
+    </div>
+    <input id="cid-input" type="text" placeholder="Paste CID here (Qm... or baf...)"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono mb-3" />
+    <button id="analyze-cid" class="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/80 transition-colors">Analyze CID</button>
+  </div>
+
+  <!-- Results -->
+  <div id="cid-results" class="space-y-5"></div>
+
+  <!-- Gateway generator -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">IPFS Gateway URLs</h2>
+    <div class="flex gap-3 mb-3">
+      <input id="gateway-cid" type="text" placeholder="CID or auto-filled from above" value=""
+        class="flex-1 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      <input id="gateway-path" type="text" placeholder="/path/to/file (optional)"
+        class="w-48 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+    </div>
+    <div id="gateway-list" class="space-y-2"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="IPFS CID Version Converter" relatedTags={['ipfs', 'web3', 'blockchain', 'nft', 'filecoin', 'cid', 'content-addressing']} />
+</BaseLayout>
+
+<script>
+  const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
+
+  function base58Decode(str: string): Uint8Array {
+    const bytes = [0];
+    for (const char of str) {
+      let carry = BASE58_ALPHABET.indexOf(char);
+      if (carry < 0) throw new Error('Invalid base58');
+      for (let i = 0; i < bytes.length; i++) {
+        carry += bytes[i] * 58;
+        bytes[i] = carry & 0xff;
+        carry >>= 8;
+      }
+      while (carry > 0) { bytes.push(carry & 0xff); carry >>= 8; }
+    }
+    for (const c of str) { if (c === '1') bytes.push(0); else break; }
+    return new Uint8Array(bytes.reverse());
+  }
+
+  function base58Encode(bytes: Uint8Array): string {
+    const digits = [0];
+    for (const byte of bytes) {
+      let carry = byte;
+      for (let i = 0; i < digits.length; i++) {
+        carry += digits[i] << 8;
+        digits[i] = carry % 58;
+        carry = Math.floor(carry / 58);
+      }
+      while (carry > 0) { digits.push(carry % 58); carry = Math.floor(carry / 58); }
+    }
+    let result = '';
+    for (const b of bytes) { if (b === 0) result += '1'; else break; }
+    return result + digits.reverse().map(d => BASE58_ALPHABET[d]).join('');
+  }
+
+  function base32Encode(bytes: Uint8Array): string {
+    let result = '';
+    let bits = 0, value = 0;
+    for (const byte of bytes) {
+      value = (value << 8) | byte;
+      bits += 8;
+      while (bits >= 5) {
+        result += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
+        bits -= 5;
+      }
+    }
+    if (bits > 0) result += BASE32_ALPHABET[(value << (5 - bits)) & 31];
+    return result;
+  }
+
+  function bytesToHex(bytes: Uint8Array): string {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function decodeVarint(bytes: Uint8Array, offset: number): { value: number; bytesRead: number } {
+    let value = 0, shift = 0, i = offset;
+    while (i < bytes.length) {
+      const byte = bytes[i++];
+      value |= (byte & 0x7f) << shift;
+      shift += 7;
+      if ((byte & 0x80) === 0) break;
+    }
+    return { value, bytesRead: i - offset };
+  }
+
+  const MULTICODEC: Record<number, string> = {
+    0x70: 'dag-pb', 0x71: 'dag-cbor', 0x55: 'raw', 0x0129: 'dag-json',
+    0x0200: 'libp2p-key', 0x72: 'git-raw'
+  };
+  const MULTIHASH: Record<number, string> = {
+    0x12: 'SHA2-256', 0x13: 'SHA2-512', 0x14: 'SHA3-512',
+    0x1b: 'KECCAK-256', 0x20: 'Blake2B-256'
+  };
+
+  function analyzeCID(cidStr: string) {
+    const str = cidStr.trim();
+    if (!str) return null;
+
+    const info: Record<string, string> = {
+      input: str,
+      version: 'unknown',
+      codec: 'unknown',
+      hashFunc: 'unknown',
+      hashHex: '',
+      base: 'unknown',
+      cidv0: '',
+      cidv1Base32: '',
+      cidv1Base58: '',
+      cidv1Hex: '',
+    };
+
+    try {
+      if (str.startsWith('Qm') && str.length === 46) {
+        // CIDv0
+        info.version = 'CIDv0';
+        info.base = 'base58btc';
+        info.codec = 'dag-pb';
+        info.hashFunc = 'SHA2-256';
+        info.cidv0 = str;
+
+        const bytes = base58Decode(str);
+        info.hashHex = bytesToHex(bytes.slice(2));
+
+        // CIDv1 = varint(1) + varint(0x70) + multihash
+        const cidv1Bytes = new Uint8Array([0x01, 0x70, ...bytes]);
+        info.cidv1Base58 = 'z' + base58Encode(cidv1Bytes);
+        info.cidv1Base32 = 'b' + base32Encode(cidv1Bytes);
+        info.cidv1Hex = 'f' + bytesToHex(cidv1Bytes);
+
+      } else if (str.startsWith('b') || str.startsWith('z') || str.startsWith('f')) {
+        // CIDv1
+        info.version = 'CIDv1';
+        let bytes: Uint8Array;
+
+        if (str.startsWith('z')) {
+          info.base = 'base58btc';
+          bytes = base58Decode(str.substring(1));
+        } else if (str.startsWith('f')) {
+          info.base = 'base16 (hex)';
+          const hex = str.substring(1);
+          bytes = new Uint8Array(hex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+        } else {
+          // base32 - simplified decode
+          info.base = 'base32';
+          const encoded = str.substring(1).toLowerCase();
+          const bits: number[] = [];
+          for (const c of encoded) {
+            const idx = BASE32_ALPHABET.indexOf(c);
+            if (idx >= 0) for (let i = 4; i >= 0; i--) bits.push((idx >> i) & 1);
+          }
+          const result: number[] = [];
+          for (let i = 0; i + 8 <= bits.length; i += 8) {
+            result.push(bits.slice(i, i + 8).reduce((acc, b, j) => acc | (b << (7 - j)), 0));
+          }
+          bytes = new Uint8Array(result);
+        }
+
+        const version = decodeVarint(bytes, 0);
+        const codec = decodeVarint(bytes, version.bytesRead);
+        const mhStart = version.bytesRead + codec.bytesRead;
+        const hashCode = decodeVarint(bytes, mhStart);
+        const hashLen = decodeVarint(bytes, mhStart + hashCode.bytesRead);
+        const hashStart = mhStart + hashCode.bytesRead + hashLen.bytesRead;
+
+        info.codec = MULTICODEC[codec.value] || `0x${codec.value.toString(16)}`;
+        info.hashFunc = MULTIHASH[hashCode.value] || `0x${hashCode.value.toString(16)}`;
+        info.hashHex = bytesToHex(bytes.slice(hashStart));
+
+        // CIDv0 only if dag-pb + SHA2-256
+        if (codec.value === 0x70 && hashCode.value === 0x12) {
+          info.cidv0 = base58Encode(bytes.slice(mhStart));
+        }
+
+        info.cidv1Base32 = 'b' + base32Encode(bytes);
+        info.cidv1Base58 = 'z' + base58Encode(bytes);
+        info.cidv1Hex = 'f' + bytesToHex(bytes);
+      }
+    } catch (e) {
+      return { error: (e instanceof Error ? e.message : 'Parse error') };
+    }
+
+    return info;
+  }
+
+  const GATEWAYS = [
+    { name: 'IPFS.io', url: 'https://ipfs.io/ipfs/' },
+    { name: 'Cloudflare', url: 'https://cloudflare-ipfs.com/ipfs/' },
+    { name: 'Pinata', url: 'https://gateway.pinata.cloud/ipfs/' },
+    { name: 'Dweb.link (CIDv1 subdomain)', url: 'https://{cid}.ipfs.dweb.link/' },
+    { name: 'NFT.Storage', url: 'https://{cid}.ipfs.nftstorage.link/' },
+  ];
+
+  function updateGateways() {
+    const cid = (document.getElementById('gateway-cid') as HTMLInputElement).value.trim() || 'YOUR_CID';
+    const path = (document.getElementById('gateway-path') as HTMLInputElement).value.trim();
+    const list = document.getElementById('gateway-list')!;
+    list.innerHTML = GATEWAYS.map(g => {
+      const url = g.url.includes('{cid}')
+        ? g.url.replace('{cid}', cid) + path
+        : g.url + cid + path;
+      return `<div class="flex items-center gap-2 text-xs">
+        <span class="w-32 text-text-muted flex-shrink-0">${g.name}</span>
+        <a href="${url}" target="_blank" class="font-mono text-primary hover:underline truncate">${url}</a>
+      </div>`;
+    }).join('');
+  }
+
+  document.getElementById('analyze-cid')!.addEventListener('click', () => {
+    const cid = (document.getElementById('cid-input') as HTMLInputElement).value.trim();
+    const resultsEl = document.getElementById('cid-results')!;
+
+    const info = analyzeCID(cid);
+    if (!info) { resultsEl.innerHTML = '<div class="text-text-muted text-sm">Enter a CID to analyze</div>'; return; }
+    if ('error' in info) { resultsEl.innerHTML = `<div class="text-red-500 text-sm">Error: ${info.error}</div>`; return; }
+
+    (document.getElementById('gateway-cid') as HTMLInputElement).value = info.cidv1Base32 || cid;
+    updateGateways();
+
+    resultsEl.innerHTML = `
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        ${[
+          { l: 'Version', v: info.version },
+          { l: 'Codec', v: info.codec },
+          { l: 'Hash Function', v: info.hashFunc },
+          { l: 'Base Encoding', v: info.base },
+        ].map(r => `<div class="bg-bg-card border border-border rounded-lg p-3 text-center"><div class="font-semibold text-primary">${r.v}</div><div class="text-xs text-text-muted">${r.l}</div></div>`).join('')}
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-4 space-y-3">
+        <h3 class="text-sm font-semibold">Format Conversions</h3>
+        ${[
+          { l: 'CIDv0 (base58)', v: info.cidv0 || '(not possible — codec/hash mismatch)', mono: true },
+          { l: 'CIDv1 base32 (recommended)', v: info.cidv1Base32, mono: true },
+          { l: 'CIDv1 base58', v: info.cidv1Base58, mono: true },
+          { l: 'CIDv1 hex', v: info.cidv1Hex, mono: true },
+          { l: 'Raw hash (hex)', v: info.hashHex, mono: true },
+        ].map(r => `<div class="flex items-start gap-3">
+          <span class="text-xs text-text-muted w-40 flex-shrink-0 pt-0.5">${r.l}</span>
+          <span class="font-mono text-xs text-primary break-all">${r.v}</span>
+        </div>`).join('')}
+      </div>
+    `;
+  });
+
+  document.querySelectorAll('.cid-example').forEach(btn => {
+    btn.addEventListener('click', () => {
+      (document.getElementById('cid-input') as HTMLInputElement).value = btn.getAttribute('data-cid')!;
+    });
+  });
+
+  ['gateway-cid', 'gateway-path'].forEach(id => {
+    document.getElementById(id)!.addEventListener('input', updateGateways);
+  });
+
+  updateGateways();
+</script>
