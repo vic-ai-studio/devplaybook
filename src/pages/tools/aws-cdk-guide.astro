@@ -4,6 +4,52 @@ import ToolPageCta from '../../components/ToolPageCta.astro';
 import FaqSection from '../../components/FaqSection.astro';
 import AdUnit from '../../components/AdUnit.astro';
 
+const cdkStackExample = `// lib/my-app-stack.ts
+import * as cdk from 'aws-cdk-lib';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
+import { Construct } from 'constructs';
+
+export class MyAppStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
+
+    // L2 construct — S3 bucket with secure defaults
+    const bucket = new s3.Bucket(this, 'DataBucket', {
+      bucketName: \`my-app-data-\${this.account}\`,
+      versioned: true,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // L2 construct — Lambda function with bundled code
+    const processor = new lambda.Function(this, 'Processor', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        BUCKET_NAME: bucket.bucketName,
+      },
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+    });
+
+    // Grant Lambda read/write access to the bucket (manages IAM automatically)
+    bucket.grantReadWrite(processor);
+
+    // Trigger Lambda on S3 object uploads
+    bucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(processor)
+    );
+
+    // Output the bucket name
+    new cdk.CfnOutput(this, 'BucketName', { value: bucket.bucketName });
+  }
+}`;
+
 const faq = [
   { question: "What is AWS CDK and how does it differ from CloudFormation?", answer: "AWS CDK (Cloud Development Kit) is an open-source framework that lets you define cloud infrastructure using familiar programming languages like TypeScript, Python, Java, C#, and Go. Under the hood, CDK synthesizes your code into CloudFormation templates. The key difference is developer experience: instead of writing hundreds of lines of YAML, you write type-safe, object-oriented code with IDE auto-completion, loops, conditionals, and abstractions. CDK Constructs are reusable building blocks that encapsulate best practices, making CDK far more productive than raw CloudFormation." },
   { question: "What are L1, L2, and L3 constructs in AWS CDK?", answer: "CDK organizes constructs into three levels. L1 (CloudFormation Resources, prefixed with Cfn) are auto-generated direct mappings to CloudFormation resources — they expose every property but require you to configure everything. L2 constructs are handcrafted abstractions with sensible defaults, type-safe properties, and helper methods (e.g., s3.Bucket, lambda.Function). L3 constructs (also called Patterns) are higher-level solutions that compose multiple L2 constructs, like aws-ecs-patterns.ApplicationLoadBalancedFargateService, which wires up ECS, ALB, IAM, and more automatically." },
@@ -68,51 +114,7 @@ cdk init app --language typescript
 npm install</pre>
 
   <p class="text-text-muted mb-3 leading-relaxed">Define a stack with an S3 bucket and Lambda function:</p>
-  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// lib/my-app-stack.ts
-import * as cdk from 'aws-cdk-lib';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
-import { Construct } from 'constructs';
-
-export class MyAppStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-    super(scope, id, props);
-
-    // L2 construct — S3 bucket with secure defaults
-    const bucket = new s3.Bucket(this, 'DataBucket', {
-      bucketName: `my-app-data-${this.account}`,
-      versioned: true,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    // L2 construct — Lambda function with bundled code
-    const processor = new lambda.Function(this, 'Processor', {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset('lambda'),
-      environment: {
-        BUCKET_NAME: bucket.bucketName,
-      },
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 512,
-    });
-
-    // Grant Lambda read/write access to the bucket (manages IAM automatically)
-    bucket.grantReadWrite(processor);
-
-    // Trigger Lambda on S3 object uploads
-    bucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
-      new s3n.LambdaDestination(processor)
-    );
-
-    // Output the bucket name
-    new cdk.CfnOutput(this, 'BucketName', { value: bucket.bucketName });
-  }
-}</pre>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={cdkStackExample}></pre>
 
   <p class="text-text-muted mb-3 leading-relaxed">Synthesize and deploy:</p>
   <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">cdk bootstrap aws://ACCOUNT_ID/us-east-1   # one-time setup
