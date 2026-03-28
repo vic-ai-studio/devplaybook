@@ -1,0 +1,248 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What does 'immutable' mean in Cache-Control?", answer: "The `immutable` directive tells browsers that the response body will never change during its freshness lifetime. This prevents browsers from sending conditional revalidation requests (If-None-Match / If-Modified-Since) even when the user manually refreshes. Use it only for content-hashed assets like `bundle.a3f7c2.js` where the filename changes when content changes." },
+  { question: "When should I use stale-while-revalidate?", answer: "stale-while-revalidate allows browsers to serve a cached (stale) response immediately while fetching a fresh version in the background. It's ideal for API responses and pages where slight staleness is acceptable but you want near-instant loads. Example: `Cache-Control: max-age=60, stale-while-revalidate=3600` — serve from cache for 1 min, then background-revalidate for up to 1 hour." },
+  { question: "What is the Vary header used for?", answer: "The `Vary` header tells caches which request headers affect the response content. For example, `Vary: Accept-Encoding` means the cache must store separate versions for gzip and non-gzip clients. `Vary: Accept-Language` stores language-specific versions. Misconfiguring Vary can cause cache thrashing (too many variants) or serving wrong content to users." },
+  { question: "Should I use ETags with hashed filenames?", answer: "No — if your filenames include a content hash (like bundle.a3f7c2.js), the URL itself changes when content changes. ETags provide no additional benefit and add unnecessary server overhead for revalidation requests. ETags are most valuable for content without cache-busting URLs, like HTML pages, API responses, or image files with stable names." },
+  { question: "What is the difference between Cache-First and Network-First service worker strategies?", answer: "Cache-First serves from cache immediately, falling back to network if not cached — best for static assets that rarely change. Network-First always tries the network first and falls back to cache on failure — best for dynamic content where freshness matters. Stale-While-Revalidate serves cached content immediately and updates the cache in the background — best for frequently updated but non-critical content." },
+];
+---
+
+<BaseLayout
+  title="HTTP Cache Header Builder — Cache-Control Generator for Nginx / Apache"
+  description="Build the perfect HTTP caching headers for any resource type. Get Cache-Control, ETag strategy, Vary header, and service worker cache strategy with Nginx/Apache config snippets."
+  tool="HTTP Cache Headers, Cache-Control Generator, ETag Strategy, Service Worker Cache, Nginx Cache Config, HTTP Caching Best Practices"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">HTTP Cache Header Builder</h1>
+  <p class="text-text-muted mb-4">Generate the correct <code class="text-primary">Cache-Control</code> headers, ETag strategy, and service worker cache strategy for any resource type. Get ready-to-paste Nginx and Apache config snippets.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 8 resource types</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 5 caching strategies</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Nginx + Apache snippets</span>
+  </div>
+
+  <!-- Inputs -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Resource & Strategy</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5" for="resource-type">Resource Type</label>
+        <select id="resource-type" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="html">HTML Page</option>
+          <option value="js-hashed" selected>JavaScript Bundle (hashed filename)</option>
+          <option value="css-hashed">CSS File (hashed filename)</option>
+          <option value="api">API Response (JSON)</option>
+          <option value="image">Image (static)</option>
+          <option value="font">Font File</option>
+          <option value="sw">Service Worker Script</option>
+          <option value="third-party">Third-party Script</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5" for="cache-strategy">Cache Strategy</label>
+        <select id="cache-strategy" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="aggressive">Aggressive (immutable, hashed assets)</option>
+          <option value="moderate">Moderate (cache with revalidation)</option>
+          <option value="conservative">Conservative (short TTL)</option>
+          <option value="no-cache">No Cache (dynamic / real-time)</option>
+          <option value="offline-first">Offline-first (service worker)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results-panel" class="space-y-5 mb-6">
+    <!-- Header values -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-4">Generated Headers</h2>
+      <div class="space-y-3">
+        <div>
+          <div class="text-xs text-text-muted uppercase tracking-wide mb-1.5">Cache-Control</div>
+          <div id="cc-value" class="font-mono text-sm bg-bg-surface border border-border rounded-lg px-4 py-3 text-primary break-all"></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <div class="text-xs text-text-muted uppercase tracking-wide mb-1.5">TTL (human)</div>
+            <div id="ttl-human" class="font-mono text-sm bg-bg-surface border border-border rounded-lg px-3 py-2.5"></div>
+          </div>
+          <div>
+            <div class="text-xs text-text-muted uppercase tracking-wide mb-1.5">ETag</div>
+            <div id="etag-rec" class="font-mono text-sm bg-bg-surface border border-border rounded-lg px-3 py-2.5"></div>
+          </div>
+          <div>
+            <div class="text-xs text-text-muted uppercase tracking-wide mb-1.5">Vary</div>
+            <div id="vary-header" class="font-mono text-sm bg-bg-surface border border-border rounded-lg px-3 py-2.5"></div>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs text-text-muted uppercase tracking-wide mb-1.5">Service Worker Strategy</div>
+          <div id="sw-strategy" class="text-sm bg-bg-surface border border-border rounded-lg px-3 py-2.5"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Explanation -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-2">Why This Configuration</h2>
+      <p id="explanation" class="text-sm text-text-muted leading-relaxed"></p>
+    </div>
+
+    <!-- Code snippet -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Server Config Snippet</h2>
+        <div class="flex gap-2">
+          <button id="tab-nginx" class="text-xs px-3 py-1 rounded-lg bg-primary text-white">Nginx</button>
+          <button id="tab-apache" class="text-xs px-3 py-1 rounded-lg bg-bg-surface border border-border text-text-muted hover:border-primary">Apache</button>
+        </div>
+      </div>
+      <pre id="code-snippet" class="bg-bg-surface border border-border rounded-lg p-4 text-xs font-mono overflow-x-auto whitespace-pre text-green-400"></pre>
+      <button id="copy-btn" class="mt-3 text-xs text-primary hover:underline">Copy to clipboard</button>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="HTTP Cache Header Builder" relatedTags={['http', 'performance', 'caching', 'nginx', 'apache', 'web-performance', 'headers']} />
+</BaseLayout>
+
+<script>
+  var CONFIGS = {
+    'html': {
+      aggressive:     { cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes — use ETags for efficient revalidation', vary: 'Accept-Encoding', sw: 'Network First', explain: 'HTML pages change frequently and must always reflect the latest content. `no-cache` forces revalidation on every request but allows the browser to use its cached copy if the server returns 304 Not Modified, saving bandwidth.' },
+      moderate:       { cc: 'public, max-age=300, stale-while-revalidate=3600', ttl: '5 min fresh, 1 hr stale-ok', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Stale-While-Revalidate', explain: 'Suitable for pages that update infrequently. Serves cached HTML for 5 minutes, then revalidates in the background for up to an hour — users always see a fast response.' },
+      conservative:   { cc: 'public, max-age=60, must-revalidate', ttl: '1 minute', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Network First', explain: 'Short TTL ensures fresh HTML for near-real-time content. `must-revalidate` prevents stale fallback — if the server is unavailable after expiry, the browser shows an error rather than stale content.' },
+      'no-cache':     { cc: 'no-store', ttl: 'Never cached', etag: 'No', vary: 'None', sw: 'Network Only', explain: 'For sensitive or real-time HTML (dashboards, auth pages). `no-store` instructs caches to not retain any copy — every request fetches from the origin.' },
+      'offline-first':{ cc: 'no-cache', ttl: 'SW-controlled', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Stale-While-Revalidate (App Shell)', explain: 'The service worker manages caching. HTTP `no-cache` ensures the service worker always gets the freshest version from the network when online, while the app shell is served instantly from the SW cache.' },
+    },
+    'js-hashed': {
+      aggressive:     { cc: 'public, max-age=31536000, immutable', ttl: '1 year', etag: 'No — URL contains hash', vary: 'Accept-Encoding', sw: 'Cache First', explain: 'Content-hashed JS bundles (bundle.abc123.js) can be cached for 1 year. When code changes, the build tool emits a new filename. `immutable` prevents revalidation requests even on user refresh, improving performance.' },
+      moderate:       { cc: 'public, max-age=86400, stale-while-revalidate=604800', ttl: '1 day fresh, 7 days stale-ok', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Cache First', explain: 'Shorter TTL for hashed files if you want more control. Serves from cache for 1 day, then revalidates in background for up to 7 days. Slightly conservative for hashed assets but safe.' },
+      conservative:   { cc: 'public, max-age=3600, must-revalidate', ttl: '1 hour', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Stale-While-Revalidate', explain: 'For JS files where you want frequent cache busting without relying solely on filenames. After 1 hour, browser must revalidate with the server before serving cached content.' },
+      'no-cache':     { cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Network First', explain: 'Forces revalidation on every request. Use for JS that changes frequently and is not content-hashed — ETags ensure the browser only re-downloads when content actually changes.' },
+      'offline-first':{ cc: 'public, max-age=31536000, immutable', ttl: '1 year + SW precache', etag: 'No', vary: 'Accept-Encoding', sw: 'Cache First (precached)', explain: 'Hashed JS is ideal for service worker precaching. Set max-age=1yr so the HTTP cache never re-fetches, and precache during SW install for offline support.' },
+    },
+    'css-hashed': {
+      aggressive:     { cc: 'public, max-age=31536000, immutable', ttl: '1 year', etag: 'No — URL contains hash', vary: 'Accept-Encoding', sw: 'Cache First', explain: 'Same as hashed JS — content hash in filename means the URL changes when CSS changes. 1-year cache with `immutable` is the standard approach for build-tool-generated CSS.' },
+      moderate:       { cc: 'public, max-age=86400', ttl: '1 day', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Cache First', explain: 'Cache for 1 day. Suitable for CSS files with less aggressive hashing, or where you want a middle ground between performance and freshness.' },
+      conservative:   { cc: 'public, max-age=3600, must-revalidate', ttl: '1 hour', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Stale-While-Revalidate', explain: 'Hourly cache for CSS that changes more often than typical builds. Revalidation ensures users see CSS changes quickly.' },
+      'no-cache':     { cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Network First', explain: 'For CSS without content hashing that changes frequently. ETags avoid re-downloading unchanged CSS.' },
+      'offline-first':{ cc: 'public, max-age=31536000, immutable', ttl: '1 year + SW precache', etag: 'No', vary: 'Accept-Encoding', sw: 'Cache First (precached)', explain: 'Precache hashed CSS in service worker for offline support. HTTP cache acts as secondary cache layer.' },
+    },
+    'api': {
+      aggressive:     { cc: 'public, max-age=86400', ttl: '1 day', etag: 'Yes', vary: 'Accept-Encoding, Authorization', sw: 'Cache First', explain: 'For read-heavy API responses that change at most daily (e.g. reference data, pricing). `Vary: Authorization` ensures authenticated users get their own cached response.' },
+      moderate:       { cc: 'public, max-age=300, stale-while-revalidate=600', ttl: '5 min fresh, 10 min stale-ok', etag: 'Yes', vary: 'Accept-Encoding, Accept', sw: 'Stale-While-Revalidate', explain: 'Typical REST API caching. Serve fresh responses for 5 minutes, then serve stale while fetching in background. `Vary: Accept` supports both JSON and other content types.' },
+      conservative:   { cc: 'private, max-age=60, must-revalidate', ttl: '1 minute', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Network First', explain: '`private` prevents CDN/proxy caching for user-specific responses. 1-minute TTL balances freshness with reduced server load. Must-revalidate ensures strict freshness after expiry.' },
+      'no-cache':     { cc: 'no-store', ttl: 'Never cached', etag: 'No', vary: 'None', sw: 'Network Only', explain: 'For real-time APIs (stock prices, live inventory, auth tokens). `no-store` ensures no caching at any layer — every request hits the origin server.' },
+      'offline-first':{ cc: 'public, max-age=300', ttl: '5 minutes', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Stale-While-Revalidate + Background Sync', explain: 'The service worker caches API responses for offline use. HTTP cache provides a 5-minute buffer. Background sync handles offline mutations.' },
+    },
+    'image': {
+      aggressive:     { cc: 'public, max-age=31536000, immutable', ttl: '1 year', etag: 'No', vary: 'Accept', sw: 'Cache First', explain: 'For images with content-addressed URLs (CDN with hash in path). `Vary: Accept` supports WebP negotiation. Immutable prevents unnecessary revalidation.' },
+      moderate:       { cc: 'public, max-age=2592000', ttl: '30 days', etag: 'Yes', vary: 'Accept', sw: 'Cache First', explain: 'Standard for product/marketing images that rarely change. 30-day cache with ETags lets the browser skip re-downloads when images haven\'t changed.' },
+      conservative:   { cc: 'public, max-age=86400', ttl: '1 day', etag: 'Yes', vary: 'Accept', sw: 'Stale-While-Revalidate', explain: 'For images that get updated occasionally (e.g. thumbnails, user avatars). 1-day cache ensures users see updates within a day.' },
+      'no-cache':     { cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes', vary: 'Accept', sw: 'Network First', explain: 'For images that change frequently (e.g. live webcam, real-time charts). Revalidation with ETags avoids re-downloading unchanged images.' },
+      'offline-first':{ cc: 'public, max-age=86400', ttl: '1 day + SW cache', etag: 'Yes', vary: 'Accept', sw: 'Cache First (lazy cache)', explain: 'Service worker caches images on first request and serves from cache offline. HTTP cache avoids re-fetching recently loaded images.' },
+    },
+    'font': {
+      aggressive:     { cc: 'public, max-age=31536000, immutable', ttl: '1 year', etag: 'No', vary: 'Accept-Encoding', sw: 'Cache First', explain: 'Fonts are ideal for long-term caching — they almost never change for a given URL. `immutable` prevents revalidation requests and saves bandwidth.' },
+      moderate:       { cc: 'public, max-age=2592000', ttl: '30 days', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Cache First', explain: 'Conservative font caching with 30-day TTL and ETag revalidation. Useful if fonts are periodically updated without changing the URL.' },
+      conservative:   { cc: 'public, max-age=86400', ttl: '1 day', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Stale-While-Revalidate', explain: 'Short-lived font caching for rapid iteration. ETags prevent re-downloading unchanged fonts.' },
+      'no-cache':     { cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Network First', explain: 'Uncommon for fonts, but use when fonts are dynamically generated (e.g. subset by language). ETags keep revalidation lightweight.' },
+      'offline-first':{ cc: 'public, max-age=31536000, immutable', ttl: '1 year + SW precache', etag: 'No', vary: 'Accept-Encoding', sw: 'Cache First (precached)', explain: 'Precache fonts during service worker install for instant offline typography. Combined with HTTP immutable for maximum performance.' },
+    },
+    'sw': {
+      aggressive:     { cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes', vary: 'None', sw: 'N/A — this IS the service worker', explain: 'Service worker scripts must never be cached aggressively — the browser checks for updates based on byte-diff. `no-cache` ensures the browser always checks for a new version on every page load. Never use max-age > 0 for the SW script itself.' },
+      moderate:       { cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes', vary: 'None', sw: 'N/A — this IS the service worker', explain: 'Same as aggressive — service worker scripts should always be `no-cache`. The browser\'s built-in 24-hour SW update check is independent of HTTP cache.' },
+      conservative:   { cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes', vary: 'None', sw: 'N/A — this IS the service worker', explain: 'Service worker HTTP caching must always be no-cache regardless of strategy. This is a browser requirement for correct SW update behavior.' },
+      'no-cache':     { cc: 'no-store', ttl: 'Never cached', etag: 'No', vary: 'None', sw: 'N/A — this IS the service worker', explain: '`no-store` for maximum freshness. The SW script is never stored in the HTTP cache, forcing a fresh download on every page load.' },
+      'offline-first':{ cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes', vary: 'None', sw: 'N/A — this IS the service worker', explain: 'The service worker script should always be revalidated, even in an offline-first app. The SW itself controls caching for all other resources.' },
+    },
+    'third-party': {
+      aggressive:     { cc: 'public, max-age=31536000, immutable', ttl: '1 year', etag: 'No', vary: 'Accept-Encoding', sw: 'Cache First', explain: 'For third-party scripts you self-host with content hashing (e.g. analytics snippets). Locks the script to a specific version for maximum performance and security.' },
+      moderate:       { cc: 'public, max-age=86400', ttl: '1 day', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Stale-While-Revalidate', explain: 'For third-party scripts served from your origin or a controlled CDN. 1-day cache balances freshness with performance. Note: third-party domains bypass your cache headers.' },
+      conservative:   { cc: 'public, max-age=3600', ttl: '1 hour', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Network First', explain: 'Short cache for third-party scripts that receive frequent updates (chat widgets, A/B testing scripts). Hourly check ensures you\'re running recent code.' },
+      'no-cache':     { cc: 'no-cache', ttl: 'Always revalidate', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Network First', explain: 'For third-party scripts that must always be current. Revalidation with ETags avoids full re-download when the script hasn\'t changed.' },
+      'offline-first':{ cc: 'public, max-age=86400', ttl: '1 day + SW cache', etag: 'Yes', vary: 'Accept-Encoding', sw: 'Cache First (with expiration)', explain: 'Cache third-party scripts for offline use. Set an expiration policy in the service worker (e.g. max 7 days) to prevent serving very outdated third-party code.' },
+    },
+  };
+
+  var currentTab = 'nginx';
+
+  function getCC() {
+    var resource = document.getElementById('resource-type').value;
+    var strategy = document.getElementById('cache-strategy').value;
+    return CONFIGS[resource] && CONFIGS[resource][strategy] ? CONFIGS[resource][strategy] : null;
+  }
+
+  function buildNginxSnippet(cfg, resource) {
+    var ext = { 'js-hashed': '.js', 'css-hashed': '.css', 'image': 'images', 'font': 'fonts', 'api': '/api/', 'html': '.html', 'sw': 'sw.js', 'third-party': '.js' }[resource] || '';
+    var loc = resource === 'api' ? 'location /api/' : ('location ~* \\' + ext + '$ ');
+    return loc + '{\n' +
+      '    add_header Cache-Control "' + cfg.cc + '";\n' +
+      (cfg.etag === 'No' || cfg.etag.startsWith('No') ? '    etag off;\n' : '    etag on;\n') +
+      (cfg.vary !== 'None' ? '    add_header Vary "' + cfg.vary + '";\n' : '') +
+      '}';
+  }
+
+  function buildApacheSnippet(cfg, resource) {
+    var ext = { 'js-hashed': '\\.js$', 'css-hashed': '\\.css$', 'image': '\\.(jpg|png|gif|svg|webp)$', 'font': '\\.(woff2|woff|ttf|eot)$', 'api': '^/api/', 'html': '\\.html$', 'sw': 'sw\\.js$', 'third-party': '\\.js$' }[resource] || '\\..+$';
+    return '<FilesMatch "' + ext + '">\n' +
+      '    Header set Cache-Control "' + cfg.cc + '"\n' +
+      (cfg.vary !== 'None' ? '    Header set Vary "' + cfg.vary + '"\n' : '') +
+      '</FilesMatch>';
+  }
+
+  function render() {
+    var resource = document.getElementById('resource-type').value;
+    var cfg = getCC();
+    if (!cfg) return;
+
+    document.getElementById('cc-value').textContent = 'Cache-Control: ' + cfg.cc;
+    document.getElementById('ttl-human').textContent = cfg.ttl;
+    document.getElementById('etag-rec').textContent = cfg.etag;
+    document.getElementById('vary-header').textContent = cfg.vary !== 'None' ? 'Vary: ' + cfg.vary : 'Not needed';
+    document.getElementById('sw-strategy').textContent = cfg.sw;
+    document.getElementById('explanation').textContent = cfg.explain;
+
+    updateSnippet(cfg, resource);
+  }
+
+  function updateSnippet(cfg, resource) {
+    var snippet = currentTab === 'nginx' ? buildNginxSnippet(cfg, resource) : buildApacheSnippet(cfg, resource);
+    document.getElementById('code-snippet').textContent = snippet;
+  }
+
+  document.getElementById('resource-type').addEventListener('change', render);
+  document.getElementById('cache-strategy').addEventListener('change', render);
+
+  document.getElementById('tab-nginx').addEventListener('click', function() {
+    currentTab = 'nginx';
+    document.getElementById('tab-nginx').className = 'text-xs px-3 py-1 rounded-lg bg-primary text-white';
+    document.getElementById('tab-apache').className = 'text-xs px-3 py-1 rounded-lg bg-bg-surface border border-border text-text-muted hover:border-primary';
+    render();
+  });
+
+  document.getElementById('tab-apache').addEventListener('click', function() {
+    currentTab = 'apache';
+    document.getElementById('tab-apache').className = 'text-xs px-3 py-1 rounded-lg bg-primary text-white';
+    document.getElementById('tab-nginx').className = 'text-xs px-3 py-1 rounded-lg bg-bg-surface border border-border text-text-muted hover:border-primary';
+    render();
+  });
+
+  document.getElementById('copy-btn').addEventListener('click', function() {
+    var text = document.getElementById('code-snippet').textContent;
+    navigator.clipboard.writeText(text).then(function() {
+      var btn = document.getElementById('copy-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy to clipboard'; }, 1500);
+    });
+  });
+
+  render();
+</script>

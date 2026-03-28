@@ -1,0 +1,287 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What does gzip size mean for bundle impact?", answer: "Gzip size is what actually gets transferred over the network. Minified size is what runs in the browser after decompression. Always measure gzip size when estimating download times — it's typically 60-80% smaller than the minified size. Tools like Bundlephobia report both values." },
+  { question: "Why does lodash have such a large size warning?", answer: "The standard lodash package bundles all 300+ utility functions. If you only use a few functions, you can use lodash-es (ES module version) with a tree-shaking bundler like webpack or Rollup, or import individual functions like `import debounce from 'lodash/debounce'`. This can reduce the impact from 26KB gzip to just 1-2KB." },
+  { question: "How do I find the actual size of a package not in this list?", answer: "Use Bundlephobia (bundlephobia.com) to get accurate sizes for any npm package. It reports minified, gzip, and download time estimates. For packages in your project, run `npx bundlesize` or use webpack-bundle-analyzer to see exact sizes after tree-shaking." },
+  { question: "What is the recommended maximum bundle size?", answer: "Google's Performance Budget guidelines suggest keeping the total JavaScript below 150-200KB (gzip) for fast load times on mobile 3G. For critical path JavaScript (what's needed to render the first screen), aim for under 50KB gzip. Large bundles cause poor Core Web Vitals scores." },
+  { question: "How accurate are the load time estimates?", answer: "Load time estimates assume 100% of the package is downloaded (no caching). Real-world performance depends on HTTP/2 multiplexing, CDN edge caching, browser caching on repeat visits, and device processing speed. A 40KB gzip download on 4G takes ~16ms transfer but parsing/execution may add 50-200ms on slower devices." },
+];
+---
+
+<BaseLayout
+  title="Bundle Size Impact Calculator — npm Package Cost Estimator"
+  description="Calculate the bundle size impact of adding an npm package. See gzip size, % increase over your current bundle, load time delta on 3G/4G/WiFi, and get alternatives for heavy packages."
+  tool="Bundle Size Calculator, npm Package Size, Bundle Impact, JavaScript Bundle Analyzer, Tree Shaking, Webpack Bundle Size"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Bundle Size Impact Calculator</h1>
+  <p class="text-text-muted mb-4">Estimate the cost of adding an npm package to your JavaScript bundle. Get gzip size, load time delta on different networks, and lighter alternatives for heavy packages.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 23 popular packages in database</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 3G / 4G / WiFi load time</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Lighter alternative suggestions</span>
+  </div>
+
+  <!-- Inputs -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Package Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5" for="pkg-name">Package Name</label>
+        <input id="pkg-name" type="text" placeholder="e.g. lodash, moment, axios" autocomplete="off"
+          class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p id="pkg-hint" class="text-xs text-text-muted mt-1 min-h-[1.2rem]"></p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5" for="current-bundle">Current Bundle Size (KB gzip)</label>
+        <input id="current-bundle" type="number" value="120" min="0" step="1"
+          class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div id="manual-size-row" class="hidden">
+        <label class="block text-sm font-medium mb-1.5" for="manual-size">Manual Package Gzip Size (KB)</label>
+        <input id="manual-size" type="number" value="0" min="0" step="0.1"
+          class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5" for="network-type">Network Type</label>
+        <select id="network-type" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="50">3G Slow (400 Kbps — 50 KB/s)</option>
+          <option value="188">3G Fast (1.5 Mbps — 188 KB/s)</option>
+          <option value="2500" selected>4G (20 Mbps — 2500 KB/s)</option>
+          <option value="6250">WiFi (50 Mbps — 6250 KB/s)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results-section" class="hidden mb-5">
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-gzip" class="text-2xl font-bold text-primary mb-1">—</div>
+        <div class="text-xs text-text-muted">Gzip size (KB)</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-min" class="text-2xl font-bold mb-1">—</div>
+        <div class="text-xs text-text-muted">Minified (KB)</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-pct" class="text-2xl font-bold mb-1">—</div>
+        <div class="text-xs text-text-muted">Bundle increase</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-time" class="text-2xl font-bold mb-1">—</div>
+        <div class="text-xs text-text-muted">Load time delta</div>
+      </div>
+    </div>
+
+    <!-- Detail panel -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
+      <h2 class="text-base font-semibold mb-3">Bundle Impact Analysis</h2>
+      <div id="analysis-body" class="space-y-2 text-sm"></div>
+    </div>
+
+    <!-- Recommendation -->
+    <div id="rec-panel" class="hidden bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-4">
+      <div class="font-semibold text-yellow-400 mb-1">Recommendation</div>
+      <div id="rec-text" class="text-sm text-text-muted"></div>
+    </div>
+
+    <!-- Load time comparison -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-3">Load Time Across Networks</h2>
+      <div id="network-bars" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="empty-state" class="bg-bg-card border border-border rounded-xl p-8 text-center text-text-muted mb-5">
+    <div class="text-4xl mb-3">📦</div>
+    <div class="font-medium">Enter a package name above to see its bundle impact</div>
+    <div class="text-sm mt-1">Try: react, lodash, moment, axios, chart.js</div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Bundle Size Impact Calculator" relatedTags={['performance', 'javascript', 'npm', 'webpack', 'bundler', 'optimization']} />
+</BaseLayout>
+
+<script>
+  var PACKAGES = {
+    'react': { min: 42, gzip: 14, note: 'Core React library' },
+    'react-dom': { min: 130, gzip: 42, note: 'React DOM renderer' },
+    'lodash': { min: 72, gzip: 26, note: 'Use lodash-es for tree-shaking' },
+    'lodash-es': { min: 72, gzip: 23, note: 'ES module version, tree-shakeable' },
+    'moment': { min: 289, gzip: 72, note: 'Consider date-fns (13KB) instead' },
+    'date-fns': { min: 78, gzip: 13, note: 'Tree-shakeable date library' },
+    'axios': { min: 11, gzip: 4, note: 'HTTP client' },
+    'jquery': { min: 88, gzip: 30, note: 'Consider vanilla JS or Alpine.js' },
+    'vue': { min: 110, gzip: 40, note: 'Progressive framework' },
+    'angular/core': { min: 350, gzip: 90, note: 'Full framework' },
+    'next': { min: 80, gzip: 25, note: 'Next.js core (not full bundle)' },
+    'tailwindcss': { min: 3500, gzip: 300, note: 'Purge unused classes in production' },
+    'bootstrap': { min: 152, gzip: 23, note: 'CSS framework' },
+    'material-ui/core': { min: 450, gzip: 130, note: 'Use individual imports' },
+    'antd': { min: 1800, gzip: 420, note: 'Use babel-plugin-import for tree-shaking' },
+    'chart.js': { min: 195, gzip: 63, note: 'Consider lightweight alternatives' },
+    'd3': { min: 250, gzip: 81, note: 'Use d3 subpackages for smaller bundle' },
+    'three': { min: 610, gzip: 170, note: 'Heavy 3D library' },
+    'redux': { min: 7, gzip: 3, note: 'State management' },
+    'zustand': { min: 3, gzip: 1, note: 'Lightweight state management' },
+    'zod': { min: 57, gzip: 14, note: 'Runtime type validation' },
+    'typescript': { min: 0, gzip: 0, note: 'Dev-only, not in bundle' },
+    'webpack': { min: 0, gzip: 0, note: 'Build tool, not in bundle' },
+  };
+
+  var ALTERNATIVES = {
+    'moment': 'Switch to date-fns (~13KB gzip, tree-shakeable) or dayjs (~2KB gzip).',
+    'lodash': 'Use lodash-es with tree-shaking, or individual imports like `lodash/debounce`.',
+    'jquery': 'Modern browsers support querySelector, fetch, classList — no jQuery needed.',
+    'antd': 'Use babel-plugin-import for tree-shaking, or consider a lighter UI library.',
+    'material-ui/core': 'Import components individually: `@mui/material/Button` instead of the full package.',
+    'd3': 'Import only the d3 sub-packages you need (d3-scale, d3-axis, etc.) — each is ~5-20KB.',
+    'tailwindcss': 'Enable PurgeCSS/content config to remove unused classes. Production build can be <10KB.',
+    'three': 'Load three.js asynchronously and only on pages that need it (dynamic import).',
+    'angular/core': 'Angular is a full framework — ensure you need all its features vs React/Vue.',
+    'chart.js': 'Consider Recharts (~45KB), Victory (~70KB), or lightweight uPlot (~14KB).',
+  };
+
+  var NETWORK_SPEEDS = [
+    { label: '3G Slow', speed: 50 },
+    { label: '3G Fast', speed: 188 },
+    { label: '4G', speed: 2500 },
+    { label: 'WiFi', speed: 6250 },
+  ];
+
+  function getVal(id) {
+    return parseFloat(document.getElementById(id).value) || 0;
+  }
+
+  function getStr(id) {
+    return document.getElementById(id).value.trim().toLowerCase();
+  }
+
+  function formatMs(ms) {
+    if (ms < 1) return '<1 ms';
+    if (ms < 1000) return ms.toFixed(0) + ' ms';
+    return (ms / 1000).toFixed(2) + ' s';
+  }
+
+  function sizeColor(gzip) {
+    if (gzip < 10) return 'text-green-500';
+    if (gzip <= 50) return 'text-yellow-500';
+    return 'text-red-500';
+  }
+
+  function sizeBadge(gzip) {
+    if (gzip < 10) return '<span class="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Light</span>';
+    if (gzip <= 50) return '<span class="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full">Moderate</span>';
+    return '<span class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full">Heavy</span>';
+  }
+
+  function calculate() {
+    var pkgName = getStr('pkg-name');
+    var currentBundle = getVal('current-bundle');
+    var networkSpeed = getVal('network-type');
+
+    var resultsSection = document.getElementById('results-section');
+    var emptyState = document.getElementById('empty-state');
+    var manualRow = document.getElementById('manual-size-row');
+    var hintEl = document.getElementById('pkg-hint');
+
+    if (!pkgName) {
+      resultsSection.classList.add('hidden');
+      emptyState.classList.remove('hidden');
+      hintEl.textContent = '';
+      manualRow.classList.add('hidden');
+      return;
+    }
+
+    var pkgData = PACKAGES[pkgName] || PACKAGES['@' + pkgName];
+    var gzip, min, note;
+    var isManual = false;
+
+    if (pkgData) {
+      gzip = pkgData.gzip;
+      min = pkgData.min;
+      note = pkgData.note;
+      hintEl.textContent = note;
+      manualRow.classList.add('hidden');
+    } else {
+      hintEl.textContent = 'Package not in database — enter size manually below.';
+      manualRow.classList.remove('hidden');
+      var manualVal = getVal('manual-size');
+      gzip = manualVal;
+      min = Math.round(manualVal * 3);
+      note = 'Manual entry';
+      isManual = true;
+    }
+
+    emptyState.classList.add('hidden');
+    resultsSection.classList.remove('hidden');
+
+    var pct = currentBundle > 0 ? (gzip / currentBundle) * 100 : 0;
+    var newTotal = currentBundle + gzip;
+    var loadDeltaMs = networkSpeed > 0 ? (gzip / networkSpeed) * 1000 : 0;
+
+    // Stat cards
+    document.getElementById('stat-gzip').textContent = gzip.toFixed(1) + ' KB';
+    document.getElementById('stat-gzip').className = 'text-2xl font-bold mb-1 ' + sizeColor(gzip);
+    document.getElementById('stat-min').textContent = min > 0 ? min + ' KB' : 'N/A';
+    document.getElementById('stat-pct').textContent = pct.toFixed(1) + '%';
+    document.getElementById('stat-pct').className = 'text-2xl font-bold mb-1 ' + sizeColor(gzip);
+    document.getElementById('stat-time').textContent = '+' + formatMs(loadDeltaMs);
+
+    // Analysis body
+    var analysisEl = document.getElementById('analysis-body');
+    analysisEl.innerHTML = [
+      '<div class="flex justify-between py-1.5 border-b border-border"><span class="text-text-muted">Package</span><span class="font-mono font-semibold">' + (pkgName) + '</span></div>',
+      '<div class="flex justify-between py-1.5 border-b border-border items-center"><span class="text-text-muted">Size rating</span><span>' + sizeBadge(gzip) + '</span></div>',
+      '<div class="flex justify-between py-1.5 border-b border-border"><span class="text-text-muted">Gzip size</span><span class="font-mono font-semibold ' + sizeColor(gzip) + '">' + gzip.toFixed(1) + ' KB</span></div>',
+      '<div class="flex justify-between py-1.5 border-b border-border"><span class="text-text-muted">Minified size</span><span class="font-mono">' + (min > 0 ? min + ' KB' : 'Dev-only') + '</span></div>',
+      '<div class="flex justify-between py-1.5 border-b border-border"><span class="text-text-muted">Current bundle</span><span class="font-mono">' + currentBundle.toFixed(1) + ' KB</span></div>',
+      '<div class="flex justify-between py-1.5 border-b border-border"><span class="text-text-muted">New total bundle</span><span class="font-mono font-semibold">' + newTotal.toFixed(1) + ' KB</span></div>',
+      '<div class="flex justify-between py-1.5"><span class="text-text-muted">% increase</span><span class="font-mono font-semibold ' + sizeColor(gzip) + '">' + pct.toFixed(1) + '%</span></div>',
+    ].join('');
+
+    // Recommendation
+    var recPanel = document.getElementById('rec-panel');
+    var recText = document.getElementById('rec-text');
+    var altMsg = ALTERNATIVES[pkgName];
+    if (gzip > 50 && altMsg) {
+      recPanel.classList.remove('hidden');
+      recText.textContent = altMsg;
+    } else if (gzip > 50) {
+      recPanel.classList.remove('hidden');
+      recText.textContent = 'This package adds more than 50KB gzip. Consider code-splitting, dynamic import(), or searching for a lighter alternative on Bundlephobia.';
+    } else {
+      recPanel.classList.add('hidden');
+    }
+
+    // Network bars
+    var barsEl = document.getElementById('network-bars');
+    var maxMs = NETWORK_SPEEDS.reduce(function(m, n) { return Math.max(m, (gzip / n.speed) * 1000); }, 0) || 1;
+    barsEl.innerHTML = NETWORK_SPEEDS.map(function(n) {
+      var ms = (gzip / n.speed) * 1000;
+      var widthPct = maxMs > 0 ? (ms / maxMs) * 100 : 0;
+      var barColor = n.speed <= 50 ? 'bg-red-500' : n.speed <= 188 ? 'bg-yellow-500' : 'bg-green-500';
+      return '<div>' +
+        '<div class="flex justify-between text-xs mb-1"><span class="text-text-muted">' + n.label + '</span><span class="font-mono">+' + formatMs(ms) + '</span></div>' +
+        '<div class="w-full bg-bg-surface border border-border rounded-full h-2">' +
+        '<div class="' + barColor + ' h-full rounded-full transition-all duration-300" style="width:' + widthPct.toFixed(1) + '%"></div>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  document.getElementById('pkg-name').addEventListener('input', calculate);
+  document.getElementById('current-bundle').addEventListener('input', calculate);
+  document.getElementById('network-type').addEventListener('change', calculate);
+  document.getElementById('manual-size').addEventListener('input', calculate);
+
+  calculate();
+</script>
