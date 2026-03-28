@@ -1,0 +1,403 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is the main difference between Jest and Vitest configuration?",
+    answer: "Jest uses jest.config.js/ts with a top-level object, while Vitest uses vitest.config.ts wrapping settings inside a test: {} block via defineConfig(). Vitest also reuses your existing vite.config.ts, so many settings like path aliases transfer automatically. The biggest change is swapping preset/transform settings for Vitest's native ESM and TypeScript support.",
+  },
+  {
+    question: "Do I need to change my test files when migrating from Jest to Vitest?",
+    answer: "For most projects, minimal changes are needed. Vitest is Jest-compatible — describe, it, test, expect, beforeEach, afterAll all work identically. The main differences are: (1) import { vi } from 'vitest' instead of using jest global, (2) vi.fn() instead of jest.fn(), (3) vi.mock() instead of jest.mock(). If you enable globals: true in vitest.config.ts, you don't even need to import these.",
+  },
+  {
+    question: "How do I migrate jest.mock() to vi.mock()?",
+    answer: "Replace jest.mock('module') with vi.mock('module'). The factory function syntax is identical. For manual mocks in __mocks__/ directory, Vitest supports the same pattern. For module-specific mocks, use vi.mock('module', () => ({ default: vi.fn() })). The key difference: use vi.spyOn() instead of jest.spyOn(), and vi.resetAllMocks() instead of jest.resetAllMocks().",
+  },
+  {
+    question: "What happens to my Jest transform/preset configuration?",
+    answer: "Vitest handles TypeScript and JSX natively via Vite — no need for ts-jest, babel-jest, or @babel/preset-env. Remove these from your config entirely. If you used @swc/jest for speed, Vitest already uses esbuild by default (even faster). The only transform you might need is for CSS or static assets (handled the same way as in vite.config.ts).",
+  },
+  {
+    question: "How do I handle moduleNameMapper when migrating to Vitest?",
+    answer: "Jest's moduleNameMapper becomes resolve.alias in vitest.config.ts (or vite.config.ts). Convert { '^@/(.*)$': '<rootDir>/src/$1' } to { '@': path.resolve(__dirname, './src') } in the resolve.alias block. This is identical to Vite path aliases — if you already have vite.config.ts with aliases, Vitest inherits them automatically.",
+  },
+  {
+    question: "Should I use globals: true or explicit imports in Vitest?",
+    answer: "Explicit imports (import { describe, expect, vi } from 'vitest') are the recommended approach for new projects — they're more explicit and TypeScript-friendly without extra tsconfig setup. However, if you're migrating a large codebase from Jest, enable globals: true temporarily to avoid touching every test file, then gradually migrate to explicit imports as you update each file.",
+  },
+];
+---
+
+<BaseLayout
+  title="Jest to Vitest Migrator — Convert Jest Config to Vitest Instantly"
+  description="Automatically convert your Jest configuration and syntax to Vitest. Paste your jest.config.js or test file and get the equivalent vitest.config.ts output with jest.fn → vi.fn replacements. Free, runs in your browser."
+  tool="Jest to Vitest Migrator, Jest Vitest Migration, jest.config to vitest.config, jest.fn to vi.fn, Migrate from Jest to Vitest"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Jest to Vitest Migrator",
+    "url": "https://devplaybook.cc/tools/jest-to-vitest-migrator",
+    "description": "Convert Jest configuration and test syntax to Vitest automatically. Handles jest.config.js, moduleNameMapper, jest.fn(), jest.mock() and more.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Jest to Vitest Migrator</h1>
+  <p class="text-text-muted mb-4">
+    Paste your <code class="text-primary font-mono">jest.config.js</code> or test file — get the Vitest equivalent instantly.
+    Converts config structure, <code class="text-primary font-mono">jest.fn()</code> → <code class="text-primary font-mono">vi.fn()</code>,
+    <code class="text-primary font-mono">moduleNameMapper</code> → <code class="text-primary font-mono">resolve.alias</code>, and more.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> jest.config.js → vitest.config.ts</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> jest.fn / jest.mock / jest.spyOn → vi.*</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> moduleNameMapper → resolve.alias</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Transform config cleanup</span>
+  </div>
+
+  <div class="flex gap-2 mb-4">
+    <button id="mode-config" class="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-white transition-colors">Config File</button>
+    <button id="mode-test" class="px-4 py-2 rounded-lg text-sm font-medium bg-bg-card border border-border text-text transition-colors">Test File</button>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="flex flex-col gap-2">
+      <label class="text-sm font-medium text-text-muted uppercase tracking-wide">Jest Input</label>
+      <textarea
+        id="jest-input"
+        rows="20"
+        class="w-full px-3 py-2 rounded-lg bg-bg border border-border text-text text-sm font-mono focus:outline-none focus:border-accent transition-colors resize-none"
+        placeholder="Paste your jest.config.js or test file here..."
+      ></textarea>
+    </div>
+    <div class="flex flex-col gap-2">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium text-text-muted uppercase tracking-wide">Vitest Output</label>
+        <button id="copy-btn" class="px-3 py-1 rounded text-xs bg-bg-card border border-border text-text-muted hover:text-text transition-colors">Copy</button>
+      </div>
+      <textarea
+        id="vitest-output"
+        rows="20"
+        readonly
+        class="w-full px-3 py-2 rounded-lg bg-bg border border-border text-text text-sm font-mono focus:outline-none resize-none opacity-80"
+        placeholder="Vitest equivalent will appear here..."
+      ></textarea>
+    </div>
+  </div>
+
+  <div id="migration-notes" class="mt-4 hidden">
+    <h3 class="text-sm font-semibold mb-2">Migration Notes</h3>
+    <ul id="notes-list" class="text-sm text-text-muted space-y-1 list-disc list-inside"></ul>
+  </div>
+
+  <div class="mt-6 bg-bg-card border border-border rounded-xl p-4">
+    <h3 class="font-semibold text-sm mb-3">Quick Reference: Common Replacements</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm font-mono">
+      <div class="flex gap-2 items-center"><span class="text-red-400">jest.fn()</span><span class="text-text-muted">→</span><span class="text-green-400">vi.fn()</span></div>
+      <div class="flex gap-2 items-center"><span class="text-red-400">jest.mock()</span><span class="text-text-muted">→</span><span class="text-green-400">vi.mock()</span></div>
+      <div class="flex gap-2 items-center"><span class="text-red-400">jest.spyOn()</span><span class="text-text-muted">→</span><span class="text-green-400">vi.spyOn()</span></div>
+      <div class="flex gap-2 items-center"><span class="text-red-400">jest.useFakeTimers()</span><span class="text-text-muted">→</span><span class="text-green-400">vi.useFakeTimers()</span></div>
+      <div class="flex gap-2 items-center"><span class="text-red-400">jest.clearAllMocks()</span><span class="text-text-muted">→</span><span class="text-green-400">vi.clearAllMocks()</span></div>
+      <div class="flex gap-2 items-center"><span class="text-red-400">jest.resetAllMocks()</span><span class="text-text-muted">→</span><span class="text-green-400">vi.resetAllMocks()</span></div>
+      <div class="flex gap-2 items-center"><span class="text-red-400">jest.restoreAllMocks()</span><span class="text-text-muted">→</span><span class="text-green-400">vi.restoreAllMocks()</span></div>
+      <div class="flex gap-2 items-center"><span class="text-red-400">jest.setTimeout()</span><span class="text-text-muted">→</span><span class="text-green-400">vi.setConfig({ testTimeout })</span></div>
+    </div>
+  </div>
+
+  <script>
+    let currentMode = 'config';
+
+    const jestConfigSample = `/** @type {import('jest').Config} */
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  globals: {
+    'ts-jest': {
+      tsconfig: './tsconfig.json',
+    },
+  },
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^~/(.*)$': '<rootDir>/src/$1',
+  },
+  transform: {
+    '^.+\\.(ts|tsx)$': 'ts-jest',
+  },
+  testMatch: ['**/__tests__/**/*.ts', '**/*.spec.ts', '**/*.test.ts'],
+  coverageDirectory: 'coverage',
+  collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts'],
+  coverageReporters: ['text', 'lcov', 'html'],
+  coverageThreshold: {
+    global: {
+      lines: 80,
+      functions: 80,
+      branches: 70,
+      statements: 80,
+    },
+  },
+  setupFilesAfterFramework: ['./jest.setup.ts'],
+};`;
+
+    const jestTestSample = `import { myFunc, myClass } from './myModule';
+
+jest.mock('./dependency', () => ({
+  fetchData: jest.fn().mockResolvedValue({ data: 'mocked' }),
+}));
+
+describe('myFunc', () => {
+  let mockCallback: jest.Mock;
+
+  beforeEach(() => {
+    mockCallback = jest.fn();
+    jest.clearAllMocks();
+  });
+
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('should call callback with result', async () => {
+    const spy = jest.spyOn(myClass, 'method').mockReturnValue('value');
+    jest.useFakeTimers();
+
+    const result = await myFunc(mockCallback);
+
+    expect(result).toBeDefined();
+    expect(mockCallback).toHaveBeenCalledWith(expect.any(String));
+    expect(spy).toHaveBeenCalledTimes(1);
+    jest.runAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('should handle errors', () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => myFunc(null as any)).toThrow();
+    consoleSpy.mockRestore();
+  });
+});`;
+
+    function migrateConfig(input: string): { output: string; notes: string[] } {
+      const notes: string[] = [];
+      let output = input;
+
+      // Header comment
+      output = `import { defineConfig } from 'vitest/config'\nimport path from 'path'\n\nexport default defineConfig({\n  test: {\n`;
+
+      // Parse preset
+      if (input.includes("preset: 'ts-jest'") || input.includes('preset: "ts-jest"')) {
+        notes.push('Removed ts-jest preset — Vitest handles TypeScript natively via esbuild');
+      }
+      if (input.includes("preset: 'babel-jest'") || input.includes("@babel/preset")) {
+        notes.push('Removed Babel transform — Vitest uses esbuild for faster transpilation');
+      }
+
+      // Test environment
+      const envMatch = input.match(/testEnvironment:\s*['"](\w+)['"]/);
+      const env = envMatch ? envMatch[1] : 'node';
+      const vitestEnv = env === 'jsdom' ? 'jsdom' : env === 'node' ? 'node' : env;
+      if (vitestEnv !== 'node') output += `    environment: '${vitestEnv}',\n`;
+
+      // Globals
+      if (input.includes('globals: true')) {
+        output += `    globals: true,\n`;
+        notes.push('globals: true means describe/it/expect are injected globally — add @types/vitest to tsconfig if needed');
+      }
+
+      // Setup files
+      const setupMatch = input.match(/setupFilesAfterFramework:\s*\[([^\]]+)\]/);
+      const setupMatch2 = input.match(/setupFilesAfterFramework:\s*\[([^\]]+)\]/);
+      const setupMatch3 = input.match(/setupFiles(?:AfterFramework)?:\s*\['([^']+)'\]/);
+      if (setupMatch3) {
+        output += `    setupFiles: ['${setupMatch3[1]}'],\n`;
+      }
+
+      // Test match
+      const matchLine = input.match(/testMatch:\s*\[([^\]]+)\]/);
+      if (matchLine) {
+        output += `    include: [${matchLine[1]}],\n`;
+      }
+
+      // Coverage
+      const hasCoverage = input.includes('coverage') || input.includes('Coverage');
+      if (hasCoverage) {
+        output += `    coverage: {\n`;
+        output += `      provider: 'v8',\n`;
+
+        const collectFromMatch = input.match(/collectCoverageFrom:\s*\[([^\]]+)\]/s);
+        if (collectFromMatch) {
+          output += `      include: [${collectFromMatch[1].trim()}],\n`;
+        }
+
+        const reportersMatch = input.match(/coverageReporters:\s*\[([^\]]+)\]/);
+        if (reportersMatch) {
+          output += `      reporter: [${reportersMatch[1]}],\n`;
+        }
+
+        const thresholdMatch = input.match(/global:\s*\{([^}]+)\}/s);
+        if (thresholdMatch) {
+          const linesMatch = thresholdMatch[1].match(/lines:\s*(\d+)/);
+          const branchesMatch = thresholdMatch[1].match(/branches:\s*(\d+)/);
+          const funcsMatch = thresholdMatch[1].match(/functions:\s*(\d+)/);
+          if (linesMatch || branchesMatch || funcsMatch) {
+            output += `      thresholds: {\n`;
+            if (linesMatch) output += `        lines: ${linesMatch[1]},\n`;
+            if (branchesMatch) output += `        branches: ${branchesMatch[1]},\n`;
+            if (funcsMatch) output += `        functions: ${funcsMatch[1]},\n`;
+            output += `      },\n`;
+          }
+        }
+
+        output += `    },\n`;
+        notes.push('Install @vitest/coverage-v8: npm i -D @vitest/coverage-v8');
+      }
+
+      output += `  },\n`;
+
+      // Module name mapper → resolve.alias
+      const mapperMatch = input.match(/moduleNameMapper:\s*\{([^}]+)\}/s);
+      if (mapperMatch) {
+        output += `  resolve: {\n    alias: {\n`;
+        const mapperContent = mapperMatch[1];
+        const entries = mapperContent.match(/['"]([^'"]+)['"]:\s*['"]([^'"]+)['"]/g);
+        if (entries) {
+          entries.forEach(entry => {
+            const parts = entry.match(/['"]([^'"]+)['"]:\s*['"]([^'"]+)['"]/);
+            if (parts) {
+              const key = parts[1].replace('^', '').replace('/(.*)$', '').replace('\\(', '(');
+              const val = parts[2].replace('<rootDir>/', './').replace('(.*)$', '');
+              output += `      '${key}': path.resolve(__dirname, '${val}'),\n`;
+            }
+          });
+        }
+        output += `    },\n  },\n`;
+        notes.push('moduleNameMapper converted to resolve.alias — verify path patterns match your project structure');
+      }
+
+      output += `})\n`;
+
+      if (input.includes('ts-jest') || input.includes('transform')) {
+        notes.push('Removed transform config — uninstall ts-jest and @types/jest, install vitest');
+        notes.push('Run: npm remove ts-jest jest @types/jest && npm i -D vitest');
+      }
+
+      return { output, notes };
+    }
+
+    function migrateTestFile(input: string): { output: string; notes: string[] } {
+      const notes: string[] = [];
+      let output = input;
+
+      // Add vitest import if needed
+      const needsVi = /jest\.(fn|mock|spyOn|clearAllMocks|resetAllMocks|restoreAllMocks|useFakeTimers|useRealTimers|runAllTimers|advanceTimersByTime|setTimeout)/.test(input);
+      if (needsVi && !input.includes("from 'vitest'")) {
+        const functions = ['vi'];
+        if (input.includes('describe') || input.includes('it(') || input.includes('test(')) {
+          functions.push('describe', 'it', 'test', 'expect', 'beforeEach', 'afterEach', 'beforeAll', 'afterAll');
+        }
+        output = `import { ${functions.join(', ')} } from 'vitest'\n` + output;
+        notes.push('Added vitest imports — or use globals: true in vitest.config.ts to skip imports');
+      }
+
+      // Replace jest.* with vi.*
+      const replacements: [RegExp, string][] = [
+        [/jest\.fn\(/g, 'vi.fn('],
+        [/jest\.mock\(/g, 'vi.mock('],
+        [/jest\.spyOn\(/g, 'vi.spyOn('],
+        [/jest\.clearAllMocks\(/g, 'vi.clearAllMocks('],
+        [/jest\.resetAllMocks\(/g, 'vi.resetAllMocks('],
+        [/jest\.restoreAllMocks\(/g, 'vi.restoreAllMocks('],
+        [/jest\.useFakeTimers\(/g, 'vi.useFakeTimers('],
+        [/jest\.useRealTimers\(/g, 'vi.useRealTimers('],
+        [/jest\.runAllTimers\(/g, 'vi.runAllTimers('],
+        [/jest\.advanceTimersByTime\(/g, 'vi.advanceTimersByTime('],
+        [/jest\.setTimeout\((\d+)\)/g, 'vi.setConfig({ testTimeout: $1 })'],
+        [/: jest\.Mock/g, ': ReturnType<typeof vi.fn>'],
+        [/jest\.Mocked</g, 'vi.Mocked<'],
+      ];
+
+      replacements.forEach(([pattern, replacement]) => {
+        if (pattern.test(output)) {
+          notes.push(`Replaced ${String(pattern)} → ${replacement}`);
+        }
+        output = output.replace(pattern, replacement);
+      });
+
+      if (notes.some(n => n.includes('Replaced'))) {
+        notes.splice(notes.findIndex(n => n.includes('Replaced')), notes.filter(n => n.includes('Replaced')).length, 'Replaced all jest.* global calls with vi.* equivalents');
+      }
+
+      return { output, notes };
+    }
+
+    function migrate() {
+      const input = (document.getElementById('jest-input') as HTMLTextAreaElement).value.trim();
+      if (!input) {
+        (document.getElementById('vitest-output') as HTMLTextAreaElement).value = '';
+        (document.getElementById('migration-notes') as HTMLElement).classList.add('hidden');
+        return;
+      }
+
+      const result = currentMode === 'config' ? migrateConfig(input) : migrateTestFile(input);
+      (document.getElementById('vitest-output') as HTMLTextAreaElement).value = result.output;
+
+      const notesList = document.getElementById('notes-list') as HTMLUListElement;
+      const notesContainer = document.getElementById('migration-notes') as HTMLElement;
+      if (result.notes.length > 0) {
+        notesList.innerHTML = result.notes.map(n => `<li>${n}</li>`).join('');
+        notesContainer.classList.remove('hidden');
+      } else {
+        notesContainer.classList.add('hidden');
+      }
+    }
+
+    function setMode(mode: string) {
+      currentMode = mode;
+      const configBtn = document.getElementById('mode-config') as HTMLButtonElement;
+      const testBtn = document.getElementById('mode-test') as HTMLButtonElement;
+      if (mode === 'config') {
+        configBtn.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-accent text-white transition-colors';
+        testBtn.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-bg-card border border-border text-text transition-colors';
+        (document.getElementById('jest-input') as HTMLTextAreaElement).placeholder = 'Paste your jest.config.js here...\n\nOr click to load a sample config.';
+      } else {
+        testBtn.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-accent text-white transition-colors';
+        configBtn.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-bg-card border border-border text-text transition-colors';
+        (document.getElementById('jest-input') as HTMLTextAreaElement).placeholder = 'Paste your Jest test file here...\n\nOr click to load a sample test.';
+      }
+      const input = (document.getElementById('jest-input') as HTMLTextAreaElement).value;
+      if (!input) loadSample();
+      else migrate();
+    }
+
+    function loadSample() {
+      (document.getElementById('jest-input') as HTMLTextAreaElement).value = currentMode === 'config' ? jestConfigSample : jestTestSample;
+      migrate();
+    }
+
+    document.getElementById('mode-config')!.addEventListener('click', () => setMode('config'));
+    document.getElementById('mode-test')!.addEventListener('click', () => setMode('test'));
+    document.getElementById('jest-input')!.addEventListener('input', migrate);
+    document.getElementById('copy-btn')!.addEventListener('click', () => {
+      const val = (document.getElementById('vitest-output') as HTMLTextAreaElement).value;
+      if (val) {
+        navigator.clipboard.writeText(val).then(() => {
+          const btn = document.getElementById('copy-btn') as HTMLButtonElement;
+          btn.textContent = 'Copied!';
+          setTimeout(() => btn.textContent = 'Copy', 2000);
+        });
+      }
+    });
+
+    loadSample();
+  </script>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Jest to Vitest Migrator" relatedTags={['testing', 'vitest', 'jest', 'typescript', 'migration', 'developer-tools']} />
+</BaseLayout>

@@ -1,0 +1,350 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is API response mocking and why is it useful?",
+    answer: "API response mocking means creating fake API responses that look exactly like real ones, allowing you to develop and test UI components without a running backend. It's useful for: (1) frontend development before the API is ready, (2) testing error states and edge cases that are hard to trigger in real APIs, (3) CI/CD testing without external dependencies, (4) demoing features without live data.",
+  },
+  {
+    question: "How do I use the generated mock response in Playwright tests?",
+    answer: "Use page.route() to intercept requests: await page.route('**/api/users', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(yourMockData) })). Set up the route before page.goto(). You can also use route.abort() to simulate network failures or route.continue() to pass through to the real API selectively.",
+  },
+  {
+    question: "How do I use this with MSW (Mock Service Worker)?",
+    answer: "Copy the generated response body and use it in your MSW handler: import { http, HttpResponse } from 'msw'; export const handlers = [http.get('/api/users', () => HttpResponse.json(yourMockData))]. MSW intercepts at the service worker level, working for both unit tests (with msw/node) and browser testing. It's the recommended approach for React/Next.js projects.",
+  },
+  {
+    question: "What HTTP status codes should I mock for error testing?",
+    answer: "Critical error scenarios to mock: 400 Bad Request (validation errors), 401 Unauthorized (expired/missing token), 403 Forbidden (insufficient permissions), 404 Not Found (resource missing), 409 Conflict (duplicate resource), 422 Unprocessable Entity (business logic error), 429 Too Many Requests (rate limiting), 500 Internal Server Error (unexpected backend failure), 503 Service Unavailable (backend down). Each should return a consistent error envelope your frontend can handle.",
+  },
+  {
+    question: "What is a standard API response envelope?",
+    answer: "An API envelope wraps your data in a consistent structure: { success: true, data: {...}, meta: { page, total } } for success responses, and { success: false, error: { code, message, details } } for errors. Using a consistent envelope means your frontend only needs one error-handling pattern regardless of the endpoint. This tool generates responses following this convention.",
+  },
+  {
+    question: "How do I simulate pagination in mock responses?",
+    answer: "Include a meta object with page, perPage, total, and totalPages fields. For a paginated list: { data: [...items], meta: { page: 1, perPage: 20, total: 150, totalPages: 8, hasNextPage: true } }. In your Playwright or MSW setup, you can parameterize the handler to return different pages based on query params: const page = parseInt(url.searchParams.get('page') || '1').",
+  },
+];
+---
+
+<BaseLayout
+  title="API Response Mocker — Create Mock API Endpoint Responses in JSON"
+  description="Build mock API endpoint responses in JSON format. Select HTTP status, choose a response template (success, error, paginated, auth), customize the body, and copy ready-to-use mock responses for Playwright, MSW, and fetch mocking. Free, runs in your browser."
+  tool="API Response Mocker, Mock API Response Generator, HTTP Response Mock, API Mock JSON, Playwright Route Mock, MSW Handler Generator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "API Response Mocker",
+    "url": "https://devplaybook.cc/tools/api-response-mocker",
+    "description": "Build mock API endpoint responses in JSON. Configure status codes, response templates, headers, and get Playwright/MSW/fetch code snippets for your mocks.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">API Response Mocker</h1>
+  <p class="text-text-muted mb-4">
+    Design mock API endpoint responses in JSON. Pick a status code, select a template,
+    customize the body, and get ready-to-copy mock code for
+    <code class="text-primary font-mono">page.route()</code>,
+    <code class="text-primary font-mono">MSW</code>, or plain
+    <code class="text-primary font-mono">fetch</code> mocking.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 15+ status code templates</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Success, error, paginated, auth patterns</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Playwright / MSW / fetch snippets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Editable response body</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Config Panel -->
+    <div class="flex flex-col gap-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold text-sm uppercase tracking-wide text-text-muted mb-4">Endpoint Config</h2>
+
+        <div class="flex flex-col gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1" for="endpoint-url">Endpoint URL Pattern</label>
+            <input id="endpoint-url" type="text" value="/api/users" class="w-full px-3 py-2 rounded-lg bg-bg border border-border text-text text-sm font-mono focus:outline-none focus:border-accent transition-colors" placeholder="/api/users" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1" for="http-method">HTTP Method</label>
+            <select id="http-method" class="w-full px-3 py-2 rounded-lg bg-bg border border-border text-text text-sm focus:outline-none focus:border-accent transition-colors">
+              <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1" for="status-code">Status Code</label>
+            <select id="status-code" class="w-full px-3 py-2 rounded-lg bg-bg border border-border text-text text-sm focus:outline-none focus:border-accent transition-colors">
+              <option value="200">200 OK</option>
+              <option value="201">201 Created</option>
+              <option value="204">204 No Content</option>
+              <option value="400">400 Bad Request</option>
+              <option value="401">401 Unauthorized</option>
+              <option value="403">403 Forbidden</option>
+              <option value="404">404 Not Found</option>
+              <option value="409">409 Conflict</option>
+              <option value="422">422 Unprocessable Entity</option>
+              <option value="429">429 Too Many Requests</option>
+              <option value="500">500 Internal Server Error</option>
+              <option value="502">502 Bad Gateway</option>
+              <option value="503">503 Service Unavailable</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1">Template</label>
+            <div class="grid grid-cols-2 gap-2">
+              {['success','paginated','created','error-validation','error-auth','error-rate-limit','error-server','empty'].map(t => (
+                <button class="template-btn px-3 py-2 rounded-lg text-xs border border-border bg-bg text-text-muted hover:border-accent hover:text-text transition-colors text-left" data-template={t}>{t}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1" for="delay-ms">Simulated Delay (ms)</label>
+            <input id="delay-ms" type="number" value="0" min="0" max="10000" step="100" class="w-full px-3 py-2 rounded-lg bg-bg border border-border text-text text-sm focus:outline-none focus:border-accent transition-colors" />
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold text-sm uppercase tracking-wide text-text-muted mb-3">Response Body (JSON)</h2>
+        <textarea id="response-body" rows="12" class="w-full px-3 py-2 rounded-lg bg-bg border border-border text-text text-xs font-mono focus:outline-none focus:border-accent transition-colors resize-none"></textarea>
+        <p id="json-error" class="text-xs text-red-400 mt-1 hidden">Invalid JSON</p>
+      </div>
+    </div>
+
+    <!-- Code Output -->
+    <div class="flex flex-col gap-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-sm uppercase tracking-wide text-text-muted">Code Snippet</h2>
+          <div class="flex gap-1.5">
+            <button id="snip-playwright" class="px-3 py-1 rounded text-xs bg-accent text-white">Playwright</button>
+            <button id="snip-msw" class="px-3 py-1 rounded text-xs bg-bg border border-border text-text-muted">MSW</button>
+            <button id="snip-fetch" class="px-3 py-1 rounded text-xs bg-bg border border-border text-text-muted">fetch mock</button>
+            <button id="copy-snippet" class="px-3 py-1 rounded text-xs bg-bg border border-border text-text-muted hover:text-text transition-colors">Copy</button>
+          </div>
+        </div>
+        <pre id="snippet-output" class="text-xs font-mono bg-bg rounded-lg p-3 overflow-auto max-h-72 text-text whitespace-pre-wrap"></pre>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold text-sm uppercase tracking-wide text-text-muted mb-3">Response Preview</h2>
+        <div class="flex items-center gap-3 mb-3">
+          <span id="status-badge" class="px-3 py-1 rounded-full text-xs font-bold font-mono"></span>
+          <span id="content-type-badge" class="px-2 py-1 rounded text-xs bg-bg border border-border text-text-muted font-mono">application/json</span>
+          <span id="size-badge" class="px-2 py-1 rounded text-xs bg-bg border border-border text-text-muted"></span>
+        </div>
+        <pre id="preview-output" class="text-xs font-mono bg-bg rounded-lg p-3 overflow-auto max-h-48 text-text"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let snippetMode = 'playwright';
+
+    const templates: Record<string, { status: number; body: object }> = {
+      success: {
+        status: 200,
+        body: { success: true, data: { id: '550e8400-e29b-41d4-a716-446655440000', name: 'Alice Johnson', email: 'alice.johnson@example.com', role: 'admin', createdAt: '2024-03-15T10:30:00.000Z' }, meta: { requestId: 'req_abc123' } }
+      },
+      paginated: {
+        status: 200,
+        body: { success: true, data: [{ id: '1', name: 'Alice Johnson', email: 'alice@example.com' }, { id: '2', name: 'Bob Smith', email: 'bob@example.com' }, { id: '3', name: 'Carol White', email: 'carol@example.com' }], meta: { page: 1, perPage: 20, total: 142, totalPages: 8, hasNextPage: true, hasPrevPage: false } }
+      },
+      created: {
+        status: 201,
+        body: { success: true, data: { id: '7f3a9b2c-4d5e-6f7a-8b9c-0d1e2f3a4b5c', name: 'New Resource', status: 'active', createdAt: new Date().toISOString() }, message: 'Resource created successfully' }
+      },
+      'error-validation': {
+        status: 422,
+        body: { success: false, error: { code: 'VALIDATION_ERROR', message: 'Request validation failed', details: [{ field: 'email', message: 'Invalid email format', value: 'not-an-email' }, { field: 'name', message: 'Name must be at least 2 characters', value: 'A' }] } }
+      },
+      'error-auth': {
+        status: 401,
+        body: { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required. Provide a valid Bearer token in the Authorization header.' } }
+      },
+      'error-rate-limit': {
+        status: 429,
+        body: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Please retry after 60 seconds.', retryAfter: 60, limit: 100, remaining: 0, resetAt: new Date(Date.now() + 60000).toISOString() } }
+      },
+      'error-server': {
+        status: 500,
+        body: { success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred. Please try again later.', requestId: 'req_xyz789' } }
+      },
+      empty: {
+        status: 204,
+        body: {}
+      },
+    };
+
+    const STATUS_LABELS: Record<number, string> = {
+      200:'OK', 201:'Created', 204:'No Content', 400:'Bad Request', 401:'Unauthorized', 403:'Forbidden', 404:'Not Found', 409:'Conflict', 422:'Unprocessable Entity', 429:'Too Many Requests', 500:'Internal Server Error', 502:'Bad Gateway', 503:'Service Unavailable'
+    };
+
+    function getValues() {
+      const url = (document.getElementById('endpoint-url') as HTMLInputElement).value || '/api/endpoint';
+      const method = (document.getElementById('http-method') as HTMLSelectElement).value;
+      const status = parseInt((document.getElementById('status-code') as HTMLSelectElement).value);
+      const delayMs = parseInt((document.getElementById('delay-ms') as HTMLInputElement).value) || 0;
+      let body: object = {};
+      try {
+        const raw = (document.getElementById('response-body') as HTMLTextAreaElement).value;
+        body = raw ? JSON.parse(raw) : {};
+        (document.getElementById('json-error') as HTMLElement).classList.add('hidden');
+      } catch {
+        (document.getElementById('json-error') as HTMLElement).classList.remove('hidden');
+      }
+      return { url, method, status, delayMs, body };
+    }
+
+    function generateSnippet(url: string, method: string, status: number, body: object, delayMs: number): string {
+      const bodyStr = JSON.stringify(body, null, 4).split('\n').map((l, i) => i === 0 ? l : '      ' + l).join('\n');
+      const delayCode = delayMs > 0 ? `\n      await new Promise(r => setTimeout(r, ${delayMs}));` : '';
+
+      if (snippetMode === 'playwright') {
+        return `// Playwright page.route() mock
+await page.route('**${url}', async (route) => {${delayCode}
+  if (route.request().method() === '${method}') {
+    await route.fulfill({
+      status: ${status},
+      contentType: 'application/json',
+      body: JSON.stringify(${bodyStr.trimStart()}),
+    });
+  } else {
+    await route.continue();
+  }
+});
+
+// Then navigate or interact
+await page.goto('/your-page');`;
+      }
+
+      if (snippetMode === 'msw') {
+        const mswMethod = method.toLowerCase();
+        const handlerBody = status === 204 ? 'new HttpResponse(null, { status: 204 })' : `HttpResponse.json(${bodyStr.trimStart()}, { status: ${status} })`;
+        return `// MSW v2 handler
+import { http, HttpResponse } from 'msw';
+
+export const handlers = [
+  http.${mswMethod}('${url}', async ({ request }) => {${delayMs > 0 ? `\n    await new Promise(r => setTimeout(r, ${delayMs}));` : ''}
+    return ${handlerBody};
+  }),
+];
+
+// In your test setup (msw/node):
+// import { setupServer } from 'msw/node';
+// const server = setupServer(...handlers);
+// beforeAll(() => server.listen());
+// afterEach(() => server.resetHandlers());
+// afterAll(() => server.close());`;
+      }
+
+      // fetch mock
+      return `// Jest/Vitest fetch mock
+global.fetch = vi.fn().mockImplementation(async (url: string) => {
+  if (url.includes('${url}')) {${delayCode}
+    return {
+      ok: ${status >= 200 && status < 300},
+      status: ${status},
+      statusText: '${STATUS_LABELS[status] || 'Unknown'}',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => (${bodyStr.trimStart()}),
+      text: async () => JSON.stringify(${JSON.stringify(body)}),
+    } as Response;
+  }
+  return fetch(url); // pass through
+});
+
+// Usage in test:
+// const result = await yourApiCall();
+// expect(fetch).toHaveBeenCalledWith(expect.stringContaining('${url}'));`;
+    }
+
+    function update() {
+      const { url, method, status, delayMs, body } = getValues();
+
+      // Status badge
+      const badge = document.getElementById('status-badge') as HTMLElement;
+      badge.textContent = `${status} ${STATUS_LABELS[status] || ''}`;
+      badge.className = `px-3 py-1 rounded-full text-xs font-bold font-mono ${status < 300 ? 'bg-green-500/20 text-green-400' : status < 500 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`;
+
+      // Size badge
+      const bodyJson = JSON.stringify(body);
+      const bytes = new TextEncoder().encode(bodyJson).length;
+      (document.getElementById('size-badge') as HTMLElement).textContent = bytes > 1024 ? `${(bytes/1024).toFixed(1)}KB` : `${bytes}B`;
+
+      // Preview
+      (document.getElementById('preview-output') as HTMLPreElement).textContent = status === 204 ? '(empty body)' : JSON.stringify(body, null, 2);
+
+      // Snippet
+      (document.getElementById('snippet-output') as HTMLPreElement).textContent = generateSnippet(url, method, status, body, delayMs);
+    }
+
+    function loadTemplate(name: string) {
+      const tpl = templates[name];
+      if (!tpl) return;
+      (document.getElementById('status-code') as HTMLSelectElement).value = String(tpl.status);
+      (document.getElementById('response-body') as HTMLTextAreaElement).value = tpl.status === 204 ? '' : JSON.stringify(tpl.body, null, 2);
+      update();
+    }
+
+    document.querySelectorAll('.template-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.template-btn').forEach(b => b.classList.remove('border-accent', 'text-text'));
+        btn.classList.add('border-accent', 'text-text');
+        loadTemplate((btn as HTMLElement).dataset.template!);
+      });
+    });
+
+    ['endpoint-url','http-method','status-code','delay-ms'].forEach(id => {
+      document.getElementById(id)!.addEventListener('change', update);
+      document.getElementById(id)!.addEventListener('input', update);
+    });
+    document.getElementById('response-body')!.addEventListener('input', update);
+
+    function setSnipMode(mode: string) {
+      snippetMode = mode;
+      ['playwright','msw','fetch'].forEach(m => {
+        const btn = document.getElementById(`snip-${m}`) as HTMLButtonElement;
+        btn.className = m === mode
+          ? 'px-3 py-1 rounded text-xs bg-accent text-white'
+          : 'px-3 py-1 rounded text-xs bg-bg border border-border text-text-muted';
+      });
+      update();
+    }
+
+    document.getElementById('snip-playwright')!.addEventListener('click', () => setSnipMode('playwright'));
+    document.getElementById('snip-msw')!.addEventListener('click', () => setSnipMode('msw'));
+    document.getElementById('snip-fetch')!.addEventListener('click', () => setSnipMode('fetch'));
+
+    document.getElementById('copy-snippet')!.addEventListener('click', () => {
+      const text = (document.getElementById('snippet-output') as HTMLPreElement).textContent || '';
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copy-snippet') as HTMLButtonElement;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    });
+
+    // Init
+    loadTemplate('success');
+    document.querySelector('[data-template="success"]')?.classList.add('border-accent', 'text-text');
+  </script>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="API Response Mocker" relatedTags={['testing', 'api', 'mock', 'playwright', 'msw', 'developer-tools']} />
+</BaseLayout>
