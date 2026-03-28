@@ -1,0 +1,262 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const installExample = `# Install MSW
+npm install msw --save-dev
+
+# Initialize the Service Worker file for browser usage
+npx msw init public/ --save
+
+# The above copies mockServiceWorker.js into your public directory
+# Add "workerDirectory": "public" to package.json msw config if needed`;
+
+const restHandlerExample = `// src/mocks/handlers.ts
+import { http, HttpResponse } from 'msw';
+
+export const handlers = [
+  // GET /api/users — return a list of users
+  http.get('/api/users', () => {
+    return HttpResponse.json([
+      { id: 1, name: 'Alice', email: 'alice@example.com' },
+      { id: 2, name: 'Bob',   email: 'bob@example.com'   },
+    ]);
+  }),
+
+  // POST /api/users — create a user and echo it back
+  http.post('/api/users', async ({ request }) => {
+    const body = await request.json() as { name: string; email: string };
+    return HttpResponse.json(
+      { id: Date.now(), ...body },
+      { status: 201 }
+    );
+  }),
+
+  // Simulate a 404 for a missing resource
+  http.get('/api/users/:id', ({ params }) => {
+    if (Number(params.id) > 100) {
+      return new HttpResponse(null, { status: 404 });
+    }
+    return HttpResponse.json({ id: params.id, name: 'Alice' });
+  }),
+];`;
+
+const browserSetupExample = `// src/mocks/browser.ts — browser setup
+import { setupWorker } from 'msw/browser';
+import { handlers } from './handlers';
+
+export const worker = setupWorker(...handlers);
+
+// src/main.tsx (or index.tsx) — start the worker in development
+async function enableMocking() {
+  if (process.env.NODE_ENV !== 'development') return;
+
+  const { worker } = await import('./mocks/browser');
+  // Start the Service Worker; onUnhandledRequest warns about missing handlers
+  return worker.start({ onUnhandledRequest: 'warn' });
+}
+
+enableMocking().then(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
+});`;
+
+const nodeSetupExample = `// src/mocks/node.ts — Node.js setup (for tests)
+import { setupServer } from 'msw/node';
+import { handlers } from './handlers';
+
+export const server = setupServer(...handlers);
+
+// vitest.setup.ts or jest.setup.ts
+import { server } from './src/mocks/node';
+import { afterAll, afterEach, beforeAll } from 'vitest';
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers());  // reset overrides between tests
+afterAll(() => server.close());`;
+
+const overrideExample = `// One-time handler override inside a specific test
+import { http, HttpResponse } from 'msw';
+import { server } from '../mocks/node';
+import { render, screen, waitFor } from '@testing-library/react';
+import UserList from './UserList';
+
+test('shows an error when the API fails', async () => {
+  // Override for this test only — resets after the test via afterEach
+  server.use(
+    http.get('/api/users', () => {
+      return new HttpResponse(null, { status: 500 });
+    })
+  );
+
+  render(<UserList />);
+
+  await waitFor(() => {
+    expect(screen.getByText('Failed to load users')).toBeInTheDocument();
+  });
+});`;
+
+const graphqlHandlerExample = `// GraphQL handler with MSW
+import { graphql, HttpResponse } from 'msw';
+
+export const graphqlHandlers = [
+  graphql.query('GetUser', ({ variables }) => {
+    return HttpResponse.json({
+      data: {
+        user: {
+          id: variables.id,
+          name: 'Alice',
+          email: 'alice@example.com',
+        },
+      },
+    });
+  }),
+
+  graphql.mutation('CreateUser', ({ variables }) => {
+    return HttpResponse.json({
+      data: {
+        createUser: { id: '99', ...variables.input },
+      },
+    });
+  }),
+];`;
+
+const faq = [
+  {
+    question: "What is Mock Service Worker (MSW)?",
+    answer: "Mock Service Worker is an API mocking library that intercepts outgoing network requests using a Service Worker (in the browser) or a Node.js interceptor layer (in tests). It lets you define request handlers that return mock responses, without modifying your application code or using a proxy server. This means your app code runs unchanged — MSW intercepts at the network layer."
+  },
+  {
+    question: "How does MSW differ from mocking fetch or axios directly?",
+    answer: "Direct mocking (jest.mock('axios') or vi.spyOn(window, 'fetch')) replaces the underlying HTTP function with a mock, which ties your test to the implementation detail of which HTTP library is used. MSW intercepts at the network level, so it works regardless of whether your app uses fetch, axios, ky, or any other client. Switching your app from fetch to axios does not break any MSW handlers."
+  },
+  {
+    question: "Do I need to configure anything different for browser vs Node.js?",
+    answer: "Yes. For browsers, MSW uses a Service Worker (mockServiceWorker.js) that you serve from your public directory. Initialize it with npx msw init public/ and start it with worker.start() in development. For Node.js (tests, SSR), MSW uses a request interception layer without a Service Worker. Set up a server with setupServer() from msw/node and start it in your test setup file. Both use the same handlers."
+  },
+  {
+    question: "How do I handle one-time response overrides in tests?",
+    answer: "Use server.use() inside a test to add a temporary handler that takes priority over the default handlers. This override is active only for that test — the afterEach(() => server.resetHandlers()) call in your setup file removes it after each test, restoring the default handlers. This pattern is ideal for testing error states, empty states, or edge cases without changing the default mock data."
+  },
+  {
+    question: "Does MSW support GraphQL?",
+    answer: "Yes. Import the graphql object from msw and define handlers with graphql.query() and graphql.mutation(). MSW matches GraphQL requests by operation name (extracted from the request body). Response shape follows the standard GraphQL format with a data key. This works for both REST-over-HTTP GraphQL endpoints and Apollo Client setups."
+  },
+  {
+    question: "Can MSW be used in production or only in development and tests?",
+    answer: "MSW is primarily a development and testing tool. The recommended pattern is to conditionally start the Service Worker only when NODE_ENV is 'development', so it never activates in production builds. In test environments, the Node.js server is started in setup files and torn down after all tests complete. Running MSW in production would intercept real API calls, which is almost never desired."
+  },
+];
+---
+
+<BaseLayout
+  title="MSW — Mock Service Worker for API Mocking"
+  description="Mock Service Worker (MSW) intercepts network requests using Service Workers in the browser and a Node.js layer in tests. Define REST and GraphQL handlers that work across fetch, axios, and any HTTP client."
+  tool="msw, mock service worker, api mocking, network mocking, rest mock, graphql mock, testing, vitest, jest"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "MSW — Mock Service Worker for API Mocking",
+    "url": "https://devplaybook.cc/tools/msw",
+    "description": "Mock Service Worker (MSW) intercepts network requests at the Service Worker level in browsers and via a Node.js interceptor in tests, providing realistic API mocking for development and testing.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">MSW (Mock Service Worker)</h1>
+  <p class="text-text-muted mb-6">
+    An API mocking library that intercepts network requests at the Service Worker level in browsers
+    and via a Node.js interception layer in tests. Define request handlers once and use them
+    across your browser dev environment, Jest, and Vitest test suites — no application code changes needed.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Browser + Node.js</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> REST and GraphQL</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Works with any HTTP client</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> One-time response overrides</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> No proxy server needed</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> TypeScript native</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is MSW?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Mock Service Worker is an API mocking library that sits at the network layer rather than patching your HTTP client. In the browser, it registers a Service Worker that intercepts outgoing requests before they leave the browser tab. In Node.js environments (Jest, Vitest, server-side rendering), it uses a lower-level HTTP interception layer with the same API.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    The key advantage is that your application code is unaware of the mocking. Whether your app uses <code class="bg-bg-card px-1 rounded text-xs">fetch</code>, <code class="bg-bg-card px-1 rounded text-xs">axios</code>, <code class="bg-bg-card px-1 rounded text-xs">ky</code>, or any other library, MSW handlers intercept the requests transparently. This makes MSW mocks more realistic — the app goes through the same code path as it would with a real API.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Network-level interception</strong> — intercepts at the Service Worker or Node.js HTTP level, not by patching fetch/axios</li>
+    <li><strong>Shared handlers</strong> — define handlers once in a handlers.ts file; use the same handlers in browser dev and Node.js tests</li>
+    <li><strong>REST and GraphQL</strong> — first-class support for both REST (http.get, http.post, etc.) and GraphQL (graphql.query, graphql.mutation)</li>
+    <li><strong>One-time overrides</strong> — use server.use() inside a test to override a handler for that test only; automatically cleaned up after</li>
+    <li><strong>Request passthrough</strong> — use passthrough() to let certain requests reach the real API while mocking others</li>
+    <li><strong>Response streaming</strong> — simulate streamed responses (e.g., SSE, chunked transfers) with ReadableStream bodies</li>
+    <li><strong>TypeScript native</strong> — full TypeScript support for request body types, route params, and response types</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={installExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Defining REST Handlers</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Define handlers using <code class="bg-bg-card px-1 rounded text-xs">http.get()</code>, <code class="bg-bg-card px-1 rounded text-xs">http.post()</code>, and other HTTP method helpers. Return <code class="bg-bg-card px-1 rounded text-xs">HttpResponse.json()</code> for JSON responses or construct a custom <code class="bg-bg-card px-1 rounded text-xs">HttpResponse</code> for other status codes.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={restHandlerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Browser Setup</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Set up the Service Worker with <code class="bg-bg-card px-1 rounded text-xs">setupWorker()</code> from <code class="bg-bg-card px-1 rounded text-xs">msw/browser</code>. Start it conditionally in development so it never activates in production builds.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={browserSetupExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Node.js Setup (Tests)</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    For tests, use <code class="bg-bg-card px-1 rounded text-xs">setupServer()</code> from <code class="bg-bg-card px-1 rounded text-xs">msw/node</code>. Start, reset, and stop the server in your test setup file. Call <code class="bg-bg-card px-1 rounded text-xs">server.resetHandlers()</code> after each test to remove any per-test overrides.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={nodeSetupExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">One-Time Handler Overrides</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Use <code class="bg-bg-card px-1 rounded text-xs">server.use()</code> inside a test to temporarily override a handler for that test only. This is the standard pattern for testing error states, empty responses, and edge cases.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={overrideExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">GraphQL Handlers</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Import <code class="bg-bg-card px-1 rounded text-xs">graphql</code> from msw and define handlers by operation name. Works for any GraphQL client — Apollo, urql, or raw fetch.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={graphqlHandlerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros and Cons</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✓ Works at network level — agnostic to HTTP client library</li>
+        <li>✓ Same handlers used in browser dev and Node.js tests</li>
+        <li>✓ Realistic mock behavior — app runs the same code path</li>
+        <li>✓ First-class TypeScript support</li>
+        <li>✓ One-time overrides per test without global state pollution</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✗ Requires serving mockServiceWorker.js from your public directory</li>
+        <li>✗ Service Worker requires HTTPS or localhost (no arbitrary domains)</li>
+        <li>✗ v2 API has breaking changes from v1 — migration required for older codebases</li>
+        <li>✗ Not suitable for mocking WebSocket connections (use a different tool)</li>
+        <li>✗ Slight overhead in test setup compared to in-module mocking</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="msw" relatedTags={['testing', 'mocking', 'api', 'rest', 'graphql', 'vitest', 'jest']} />
+</BaseLayout>

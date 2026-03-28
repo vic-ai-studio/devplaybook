@@ -1,0 +1,319 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const installExample = `# Install supertest and types
+npm install --save-dev supertest @types/supertest
+
+# Supertest works with any Node.js HTTP server:
+# Express, Fastify (via http adapter), Koa, Hapi, NestJS, etc.
+
+# Common test runner pairings:
+npm install --save-dev vitest           # modern, fast
+npm install --save-dev jest @types/jest # classic`;
+
+const basicExample = `// app.ts — a minimal Express app to test
+import express from 'express';
+const app = express();
+app.use(express.json());
+
+app.get('/api/users', (req, res) => {
+  res.json([
+    { id: 1, name: 'Alice' },
+    { id: 2, name: 'Bob'   },
+  ]);
+});
+
+app.post('/api/users', (req, res) => {
+  const { name, email } = req.body;
+  if (!name || !email) {
+    return res.status(400).json({ error: 'name and email are required' });
+  }
+  res.status(201).json({ id: 3, name, email });
+});
+
+export default app; // export without .listen() — supertest handles binding`;
+
+const testExample = `// tests/users.test.ts
+import request from 'supertest';
+import app from '../src/app';
+
+describe('GET /api/users', () => {
+  it('returns a list of users', async () => {
+    const res = await request(app)
+      .get('/api/users')
+      .expect('Content-Type', /json/)
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0]).toMatchObject({ id: 1, name: 'Alice' });
+  });
+});
+
+describe('POST /api/users', () => {
+  it('creates a user with valid data', async () => {
+    const res = await request(app)
+      .post('/api/users')
+      .send({ name: 'Carol', email: 'carol@example.com' })
+      .expect(201);
+
+    expect(res.body).toMatchObject({ name: 'Carol', email: 'carol@example.com' });
+    expect(res.body.id).toBeDefined();
+  });
+
+  it('returns 400 when required fields are missing', async () => {
+    const res = await request(app)
+      .post('/api/users')
+      .send({ name: 'Carol' }) // missing email
+      .expect(400);
+
+    expect(res.body.error).toBe('name and email are required');
+  });
+});`;
+
+const authExample = `// Testing authenticated endpoints
+import request from 'supertest';
+import app from '../src/app';
+import { generateToken } from '../src/auth/jwt';
+
+describe('Protected routes', () => {
+  let authToken: string;
+
+  beforeAll(() => {
+    // Generate a real JWT (or a test-specific one)
+    authToken = generateToken({ id: 1, role: 'admin' });
+  });
+
+  it('returns 401 without a token', async () => {
+    await request(app)
+      .get('/api/admin/users')
+      .expect(401);
+  });
+
+  it('returns 200 with a valid Bearer token', async () => {
+    const res = await request(app)
+      .get('/api/admin/users')
+      .set('Authorization', "Bearer " + authToken)
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('returns 403 for insufficient role', async () => {
+    const userToken = generateToken({ id: 2, role: 'user' });
+    await request(app)
+      .delete('/api/admin/users/1')
+      .set('Authorization', "Bearer " + userToken)
+      .expect(403);
+  });
+});`;
+
+const fileUploadExample = `// Testing file uploads with multipart/form-data
+import request from 'supertest';
+import path from 'path';
+import app from '../src/app';
+
+describe('POST /api/upload', () => {
+  it('uploads a file successfully', async () => {
+    const res = await request(app)
+      .post('/api/upload')
+      .attach('file', path.join(__dirname, 'fixtures/test-image.png'))
+      .field('description', 'Test upload')
+      .set('Authorization', 'Bearer test-token')
+      .expect(200);
+
+    expect(res.body.filename).toBeDefined();
+    expect(res.body.size).toBeGreaterThan(0);
+  });
+
+  it('rejects files that are too large', async () => {
+    await request(app)
+      .post('/api/upload')
+      .attach('file', path.join(__dirname, 'fixtures/large-file.zip'))
+      .expect(413); // Payload Too Large
+  });
+});`;
+
+const agentExample = `// Persisting cookies across requests with supertest agent
+import request from 'supertest';
+import app from '../src/app';
+
+describe('Session-based auth', () => {
+  it('maintains session cookies across requests', async () => {
+    // Create an agent that persists cookies
+    const agent = request.agent(app);
+
+    // Log in — the agent stores the session cookie
+    await agent
+      .post('/api/login')
+      .send({ email: 'user@example.com', password: 's3cret' })
+      .expect(200);
+
+    // Subsequent requests automatically send the stored cookie
+    const profile = await agent
+      .get('/api/me')
+      .expect(200);
+
+    expect(profile.body.email).toBe('user@example.com');
+
+    // Log out
+    await agent.post('/api/logout').expect(200);
+  });
+});`;
+
+const faq = [
+  {
+    question: "What is Supertest?",
+    answer: "Supertest is a Node.js library for testing HTTP servers. It wraps the SuperAgent HTTP client and lets you make HTTP assertions against an Express, Fastify, Koa, NestJS, or any Node.js http.Server without starting a real server — Supertest binds the server to an ephemeral port internally. Tests are typically integration tests that exercise routes, middleware, and database interactions together."
+  },
+  {
+    question: "Does Supertest start a real HTTP server?",
+    answer: "Supertest handles server binding internally. When you pass your Express app (before calling .listen()) to request(app), Supertest creates an ephemeral server on a random free port, runs the request, and closes the server. You do not need to call app.listen() or manage ports yourself. If you prefer to keep a server running across tests for performance, you can start it manually and pass the server instance to request(server)."
+  },
+  {
+    question: "How does Supertest work with Jest or Vitest?",
+    answer: "Supertest is a test-framework-agnostic library — it works with Jest, Vitest, Mocha, or any test runner that supports async/await. Import request from supertest, wrap your assertions in a test() or it() block, and await the request chain. Supertest returns a Promise when you await it, making async/await syntax clean. Pair it with a beforeAll/afterAll database setup for integration tests."
+  },
+  {
+    question: "How do I test routes that require authentication?",
+    answer: "Use .set('Authorization', 'Bearer <token>') to inject auth headers on each request. Generate a real JWT using your actual token generation function (with a test secret) so middleware validation passes correctly. For session-based auth using cookies, use request.agent(app) which persists cookies across multiple requests within the same agent instance."
+  },
+  {
+    question: "What is the difference between request(app) and request.agent(app)?",
+    answer: "request(app) creates a one-off request and does not persist any state (cookies, sessions) between calls. request.agent(app) creates a persistent agent that stores cookies returned by the server and sends them on subsequent requests — the same behavior as a browser session. Use the agent when testing login/logout flows or any scenario that relies on session cookies being maintained."
+  },
+  {
+    question: "How do I test file uploads with Supertest?",
+    answer: "Use .attach('fieldName', filePath) to attach a file to a multipart/form-data POST request. Add additional form fields with .field('key', 'value'). Supertest internally sets the Content-Type to multipart/form-data with the correct boundary. Combine .attach() with .set() for headers (authorization, custom headers) as needed."
+  },
+];
+---
+
+<BaseLayout
+  title="Supertest — HTTP Integration Testing for Node.js"
+  description="Supertest is a Node.js library for HTTP integration testing. Test Express, Fastify, Koa, and NestJS routes with fluent request chaining, auth headers, file uploads, and cookie session support."
+  tool="supertest, node.js testing, express testing, http testing, integration testing, api testing, jest supertest, vitest supertest"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Supertest — HTTP Integration Testing for Node.js",
+    "url": "https://devplaybook.cc/tools/supertest",
+    "description": "Supertest is a Node.js HTTP assertion library for integration testing Express, Fastify, Koa, and NestJS routes with fluent chaining, auth headers, and cookie session support.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Supertest</h1>
+  <p class="text-text-muted mb-6">
+    A Node.js library for HTTP integration testing. Write fluent request chains against
+    Express, Fastify, Koa, or NestJS apps — with assertions on status codes, response
+    bodies, and headers — without spinning up a real server.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> No server setup required</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Fluent assertion chaining</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auth header and cookie support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> File upload testing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Works with Jest and Vitest</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> TypeScript types included</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Supertest?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Supertest is a Node.js HTTP integration testing library built on top of SuperAgent. It accepts a Node.js HTTP application (Express, Fastify via an HTTP adapter, Koa, NestJS) and makes it easy to send HTTP requests and assert on the responses — all without calling <code class="bg-bg-card px-1 rounded text-xs">app.listen()</code> or managing ports yourself.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Supertest is ideal for integration tests that cover the full request lifecycle: routing, middleware, validation, business logic, and database interactions together. Because tests hit real route handlers (not mocks), they provide high confidence that your API contracts are correct. Pair Supertest with an in-memory database or transaction rollback for fast, isolated integration tests.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>No server management</strong> — pass your app directly to request(app); Supertest binds it to an ephemeral port automatically</li>
+    <li><strong>Fluent chaining</strong> — chain .get(), .post(), .set(), .send(), .expect(), .attach() in a single readable expression</li>
+    <li><strong>Built-in assertions</strong> — assert on status code, response body, and headers with .expect() without a separate assertion library</li>
+    <li><strong>Auth support</strong> — set headers with .set('Authorization', 'Bearer token') for JWT or API key authentication</li>
+    <li><strong>Cookie sessions</strong> — use request.agent(app) to persist cookies across multiple requests in a test</li>
+    <li><strong>File uploads</strong> — test multipart/form-data routes with .attach(fieldName, filePath)</li>
+    <li><strong>Works with any test runner</strong> — Jest, Vitest, Mocha, node:test — Supertest returns a Promise</li>
+    <li><strong>TypeScript</strong> — full types available via @types/supertest</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={installExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Basic Route Tests</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Export your app without calling <code class="bg-bg-card px-1 rounded text-xs">app.listen()</code>. Pass it to <code class="bg-bg-card px-1 rounded text-xs">request(app)</code> in your tests — Supertest handles the server binding internally.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={basicExample}></pre>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={testExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Testing Authentication</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Use <code class="bg-bg-card px-1 rounded text-xs">.set('Authorization', ...)</code> to inject tokens. Generate real JWTs using your own token helper so middleware validation exercises the actual auth logic.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={authExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">File Upload Testing</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Test file upload endpoints using <code class="bg-bg-card px-1 rounded text-xs">.attach(fieldName, filePath)</code>. Supertest automatically sets the multipart/form-data content type and boundary.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={fileUploadExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Persistent Sessions with request.agent()</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Use <code class="bg-bg-card px-1 rounded text-xs">request.agent(app)</code> to create a stateful agent that persists cookies across requests. Essential for testing login/logout flows and session-based authentication.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={agentExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Supertest vs Other Approaches</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Approach</th>
+          <th class="border border-border px-3 py-2 text-left">Description</th>
+          <th class="border border-border px-3 py-2 text-left">Best for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2 font-medium">Supertest</td><td class="border border-border px-3 py-2">HTTP integration test against real route handlers</td><td class="border border-border px-3 py-2">API integration tests</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 font-medium">MSW</td><td class="border border-border px-3 py-2">Intercept network at Service Worker / Node.js level</td><td class="border border-border px-3 py-2">Frontend / component tests</td></tr>
+        <tr><td class="border border-border px-3 py-2 font-medium">jest.mock()</td><td class="border border-border px-3 py-2">Mock HTTP client functions directly</td><td class="border border-border px-3 py-2">Unit tests, fast isolation</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 font-medium">Real HTTP</td><td class="border border-border px-3 py-2">Call a running server via fetch/axios</td><td class="border border-border px-3 py-2">E2E / contract tests</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros and Cons</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✓ No server setup — pass the app object directly</li>
+        <li>✓ Fluent API that reads like an HTTP call</li>
+        <li>✓ Tests real route handlers with all middleware active</li>
+        <li>✓ Cookie persistence via request.agent()</li>
+        <li>✓ Framework-agnostic (Express, Fastify, Koa, NestJS, etc.)</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✗ Slower than pure unit tests — hits real middleware and (optionally) database</li>
+        <li>✗ Requires app to be exported before .listen() is called</li>
+        <li>✗ Fastify requires wrapping with an HTTP adapter or calling .ready()</li>
+        <li>✗ No built-in test runner — needs Jest, Vitest, or Mocha</li>
+        <li>✗ Not suitable for browser-side or frontend testing</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="supertest" relatedTags={['testing', 'node', 'express', 'api', 'integration-testing', 'jest', 'vitest']} />
+</BaseLayout>
