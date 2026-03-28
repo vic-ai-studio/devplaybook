@@ -1,7 +1,7 @@
 ---
 title: "Deno 2.0 vs Node.js 2026: Runtime Comparison Guide"
 description: "Compare Deno 2.0 and Node.js in 2026: npm compatibility, performance benchmarks, security model, and when to choose each runtime for your next project."
-pubDate: "2026-03-28"
+date: "2026-03-28"
 author: "DevPlaybook Team"
 tags: ["deno", "nodejs", "javascript", "runtime", "backend", "typescript", "performance"]
 readingTime: "10 min read"

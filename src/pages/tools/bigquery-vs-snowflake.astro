@@ -1,0 +1,197 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is BigQuery's serverless pricing model?",
+    answer: "BigQuery charges for query processing (on-demand: $6.25/TB scanned) and storage (active: $0.02/GB/month, long-term: $0.01/GB/month). There is no charge for idle compute — you pay only when queries run. Alternatively, BigQuery Editions (Flex, Standard, Enterprise) offer slot-based committed capacity. The serverless model is excellent for sporadic workloads but can become expensive if queries scan full tables without proper partitioning and clustering. Best practice: always partition by date and cluster by high-cardinality filter columns to reduce scanned bytes by 80–99%."
+  },
+  {
+    question: "How does Snowflake's virtual warehouse model work?",
+    answer: "Snowflake separates compute from storage. Virtual warehouses are clusters of compute nodes that you start and stop on demand. You pay per second of warehouse runtime (minimum 60 seconds). An X-Small warehouse costs ~$2/credit, and larger sizes double the cost and speed. Storage is $23/TB/month flat. The key advantage: multiple teams can query the same data simultaneously using separate warehouses with zero contention. The risk: warehouses left running idle burn credits. Snowflake Serverless Tasks and Snowpark Container Services add additional billing dimensions. Auto-suspend (15–60 seconds) is essential for cost control."
+  },
+  {
+    question: "When should I choose Databricks over BigQuery or Snowflake?",
+    answer: "Choose Databricks when you need to blend SQL analytics with machine learning and data engineering in a single platform. Databricks Unity Catalog provides unified governance across structured, semi-structured, and unstructured data. Delta Lake (open format) avoids vendor lock-in. Databricks SQL warehouses compete directly with BigQuery and Snowflake for BI workloads, while Databricks Machine Learning handles feature engineering, model training, and MLflow tracking. The tradeoff is higher platform complexity and a steeper learning curve. Best for: companies building lakehouse architectures, teams that already use Apache Spark, or organizations with heavy ML workloads alongside analytics."
+  },
+  {
+    question: "Can I use BigQuery, Snowflake, and Databricks together?",
+    answer: "Yes, many large organizations use multiple platforms. A common pattern: BigQuery as the primary analytics warehouse (cheap storage, fast ad-hoc queries), Snowflake for secure data sharing with partners (Snowflake's native data sharing is industry-leading), and Databricks for ML pipelines that write results back to BigQuery or Snowflake. The cost of maintaining multiple platforms includes data egress fees, tooling complexity, and engineering overhead. For most companies, picking one primary warehouse and using it for 90% of workloads is more cost-effective than multi-platform sprawl."
+  },
+];
+---
+
+<BaseLayout
+  title="BigQuery vs Snowflake vs Databricks: Data Warehouse Comparison 2026"
+  description="Compare BigQuery, Snowflake, and Databricks with an interactive cost estimator. Input your TB processed and stored to see realistic price comparisons across all three platforms."
+  tool="BigQuery vs Snowflake, Databricks comparison, data warehouse cost estimator, cloud data warehouse comparison, BigQuery pricing calculator, Snowflake vs Databricks"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">BigQuery vs Snowflake vs Databricks</h1>
+  <p class="text-text-muted mb-4">The three dominant cloud data warehouses compared. Use the interactive cost estimator to see realistic pricing for your workload, then compare features and use cases.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Interactive cost estimator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Feature comparison table</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Use-case recommender</span>
+  </div>
+
+  <!-- Cost Estimator -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-1">Interactive Cost Estimator</h2>
+    <p class="text-xs text-text-muted mb-4">Estimates are illustrative and use 2026 list prices. Actual costs vary with optimization, discounts, and usage patterns.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+      <div>
+        <label class="text-xs font-medium block mb-1.5">TB processed/month (queries)</label>
+        <input type="number" id="tb-processed" value="10" min="0" max="10000" step="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="text-xs font-medium block mb-1.5">TB stored (active)</label>
+        <input type="number" id="tb-stored" value="5" min="0" max="100000" step="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="text-xs font-medium block mb-1.5">Active compute hours/day</label>
+        <input type="number" id="compute-hours" value="4" min="0" max="24" step="0.5"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+    <button id="calc-btn" class="w-full sm:w-auto px-6 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/80 transition-colors mb-4">
+      Calculate Estimated Cost
+    </button>
+
+    <div id="cost-results" class="grid grid-cols-1 sm:grid-cols-3 gap-4 hidden">
+      <div class="border border-border rounded-lg p-4 text-center">
+        <p class="text-xs text-text-muted mb-1">BigQuery (on-demand)</p>
+        <p class="text-2xl font-bold text-primary" id="bq-cost">—</p>
+        <p class="text-xs text-text-muted">/month est.</p>
+        <p class="text-xs text-text-muted mt-2" id="bq-breakdown"></p>
+      </div>
+      <div class="border border-border rounded-lg p-4 text-center">
+        <p class="text-xs text-text-muted mb-1">Snowflake (Standard)</p>
+        <p class="text-2xl font-bold text-primary" id="sf-cost">—</p>
+        <p class="text-xs text-text-muted">/month est.</p>
+        <p class="text-xs text-text-muted mt-2" id="sf-breakdown"></p>
+      </div>
+      <div class="border border-border rounded-lg p-4 text-center">
+        <p class="text-xs text-text-muted mb-1">Databricks (SQL Serverless)</p>
+        <p class="text-2xl font-bold text-primary" id="db-cost">—</p>
+        <p class="text-xs text-text-muted">/month est.</p>
+        <p class="text-xs text-text-muted mt-2" id="db-breakdown"></p>
+      </div>
+    </div>
+    <p id="cost-recommendation" class="hidden text-xs text-text-muted mt-3 bg-primary/5 border border-primary/20 rounded-lg p-3"></p>
+  </div>
+
+  <!-- Feature Table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6 overflow-x-auto">
+    <h2 class="text-base font-semibold mb-4">Feature Comparison</h2>
+    <table class="w-full text-sm min-w-[600px]">
+      <thead>
+        <tr class="text-text-muted text-xs border-b border-border">
+          <th class="text-left pb-3 font-medium w-52">Feature</th>
+          <th class="text-center pb-3 font-medium">BigQuery</th>
+          <th class="text-center pb-3 font-medium">Snowflake</th>
+          <th class="text-center pb-3 font-medium">Databricks</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border text-xs">
+        <tr><td class="py-2.5 text-text-muted font-medium">Serverless compute</td><td class="py-2.5 text-center text-green-500">✓ Native</td><td class="py-2.5 text-center text-yellow-500">Partial (tasks)</td><td class="py-2.5 text-center text-green-500">✓ SQL Serverless</td></tr>
+        <tr><td class="py-2.5 text-text-muted font-medium">Storage format</td><td class="py-2.5 text-center">Capacitor (proprietary)</td><td class="py-2.5 text-center">Proprietary</td><td class="py-2.5 text-center text-green-500">Delta Lake (open)</td></tr>
+        <tr><td class="py-2.5 text-text-muted font-medium">ML / AI integration</td><td class="py-2.5 text-center">BigQuery ML + Vertex AI</td><td class="py-2.5 text-center">Snowpark ML</td><td class="py-2.5 text-center text-green-500">Best-in-class</td></tr>
+        <tr><td class="py-2.5 text-text-muted font-medium">Data sharing</td><td class="py-2.5 text-center">Analytics Hub</td><td class="py-2.5 text-center text-green-500">Best-in-class</td><td class="py-2.5 text-center">Delta Sharing</td></tr>
+        <tr><td class="py-2.5 text-text-muted font-medium">Multi-cloud</td><td class="py-2.5 text-center text-yellow-500">GCP + BigQuery Omni</td><td class="py-2.5 text-center text-green-500">AWS / Azure / GCP</td><td class="py-2.5 text-center text-green-500">AWS / Azure / GCP</td></tr>
+        <tr><td class="py-2.5 text-text-muted font-medium">Free tier</td><td class="py-2.5 text-center text-green-500">1 TB query/mo free</td><td class="py-2.5 text-center text-yellow-500">$400 trial credits</td><td class="py-2.5 text-center text-yellow-500">Community Edition</td></tr>
+        <tr><td class="py-2.5 text-text-muted font-medium">Streaming ingestion</td><td class="py-2.5 text-center text-green-500">✓ Native</td><td class="py-2.5 text-center text-yellow-500">Snowpipe (batch)</td><td class="py-2.5 text-center text-green-500">Structured Streaming</td></tr>
+        <tr><td class="py-2.5 text-text-muted font-medium">Semi-structured data (JSON)</td><td class="py-2.5 text-center text-green-500">✓ JSON / ARRAY</td><td class="py-2.5 text-center text-green-500">✓ VARIANT type</td><td class="py-2.5 text-center text-green-500">✓ Delta + schemaless</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Use-case Recommender -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">Use-Case Recommender</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+      <div class="border border-border rounded-lg p-4">
+        <p class="font-semibold text-sm mb-2">Choose BigQuery if…</p>
+        <ul class="space-y-1.5 text-text-muted">
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Already on Google Cloud / GCP</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Sporadic, variable query volume</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Want zero infrastructure management</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Need Looker / Vertex AI tight integration</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Geospatial or time-series analytics</li>
+        </ul>
+      </div>
+      <div class="border border-border rounded-lg p-4">
+        <p class="font-semibold text-sm mb-2">Choose Snowflake if…</p>
+        <ul class="space-y-1.5 text-text-muted">
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Multi-cloud or AWS/Azure primary</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Need to share data with external partners</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Multiple teams, need compute isolation</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>High concurrency BI workloads</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Financial services / regulated industries</li>
+        </ul>
+      </div>
+      <div class="border border-border rounded-lg p-4">
+        <p class="font-semibold text-sm mb-2">Choose Databricks if…</p>
+        <ul class="space-y-1.5 text-text-muted">
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Heavy ML / AI workloads alongside SQL</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Existing Apache Spark investment</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Want open table formats (Delta Lake)</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Streaming + batch unified processing</li>
+          <li class="flex items-start gap-1.5"><span class="text-green-500 mt-0.5">✓</span>Building a lakehouse architecture</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="BigQuery vs Snowflake vs Databricks" relatedTags={['bigquery', 'snowflake', 'databricks', 'data-warehouse', 'data-engineering', 'cloud', 'sql', 'analytics']} />
+</BaseLayout>
+
+<script>
+  document.getElementById('calc-btn')!.addEventListener('click', () => {
+    const tbProcessed = parseFloat((document.getElementById('tb-processed') as HTMLInputElement).value) || 0;
+    const tbStored = parseFloat((document.getElementById('tb-stored') as HTMLInputElement).value) || 0;
+    const computeHours = parseFloat((document.getElementById('compute-hours') as HTMLInputElement).value) || 0;
+    const daysPerMonth = 30;
+
+    // BigQuery on-demand: $6.25/TB scanned, storage $0.02/GB active
+    const bqQuery = tbProcessed * 6.25;
+    const bqStorage = tbStored * 1024 * 0.02; // TB to GB * $/GB
+    const bqTotal = bqQuery + bqStorage;
+
+    // Snowflake Standard: ~$2/credit, XS warehouse = 1 credit/hr, storage $23/TB
+    const sfCredits = computeHours * daysPerMonth * 1; // XS = 1 credit/hr
+    const sfCompute = sfCredits * 2;
+    const sfStorage = tbStored * 23;
+    const sfTotal = sfCompute + sfStorage;
+
+    // Databricks SQL Serverless: ~$0.07/DBU, ~10 DBU/hr for small cluster, storage $0.023/GB
+    const dbDBUs = computeHours * daysPerMonth * 10 * 0.07;
+    const dbStorage = tbStored * 1024 * 0.023;
+    const dbTotal = dbDBUs + dbStorage;
+
+    const fmt = (n: number) => '$' + Math.round(n).toLocaleString();
+
+    document.getElementById('bq-cost')!.textContent = fmt(bqTotal);
+    document.getElementById('bq-breakdown')!.textContent = `Query: ${fmt(bqQuery)} + Storage: ${fmt(bqStorage)}`;
+
+    document.getElementById('sf-cost')!.textContent = fmt(sfTotal);
+    document.getElementById('sf-breakdown')!.textContent = `Compute: ${fmt(sfCompute)} + Storage: ${fmt(sfStorage)}`;
+
+    document.getElementById('db-cost')!.textContent = fmt(dbTotal);
+    document.getElementById('db-breakdown')!.textContent = `DBUs: ${fmt(dbDBUs)} + Storage: ${fmt(dbStorage)}`;
+
+    document.getElementById('cost-results')!.classList.remove('hidden');
+
+    const minCost = Math.min(bqTotal, sfTotal, dbTotal);
+    const winner = minCost === bqTotal ? 'BigQuery' : minCost === sfTotal ? 'Snowflake' : 'Databricks';
+    const recEl = document.getElementById('cost-recommendation')!;
+    recEl.classList.remove('hidden');
+    recEl.textContent = `At this workload size, ${winner} has the lowest estimated cost. Note: real costs depend heavily on query optimization, caching, and negotiated discounts. BigQuery benefits most from partitioning/clustering. Snowflake benefits from warehouse auto-suspend. Databricks benefits from Delta caching.`;
+  });
+</script>
