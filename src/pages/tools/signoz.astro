@@ -1,0 +1,133 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const dockerInstall = `# SigNoz — Docker Compose install
+git clone -b main https://github.com/SigNoz/signoz.git
+cd signoz/deploy/
+docker compose -f docker/clickhouse-setup/docker-compose.yaml up -d
+
+# Services started:
+# - SigNoz UI:          http://localhost:3301
+# - OTLP gRPC:          :4317
+# - OTLP HTTP:          :4318
+# - Query service:      :8080
+# - ClickHouse:         :9000
+
+# Default login: admin@signoz.io / password`;
+
+const otelNodejs = `// Node.js — send traces to SigNoz
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+
+const sdk = new NodeSDK({
+  traceExporter: new OTLPTraceExporter({
+    url: 'http://signoz-otel-collector:4318/v1/traces',
+    headers: {
+      // SigNoz Cloud requires the ingestion key
+      // 'signoz-ingestion-key': process.env.SIGNOZ_INGESTION_KEY,
+    },
+  }),
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+sdk.start();`;
+
+const pythonExample = `# Python — OpenTelemetry + SigNoz
+pip install opentelemetry-sdk \
+  opentelemetry-exporter-otlp \
+  opentelemetry-instrumentation-fastapi \
+  opentelemetry-instrumentation-sqlalchemy
+
+# main.py
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+trace.set_tracer_provider(TracerProvider())
+trace.get_tracer_provider().add_span_processor(
+    BatchSpanProcessor(OTLPSpanExporter(
+        endpoint="http://signoz-otel-collector:4318/v1/traces"
+    ))
+)
+FastAPIInstrumentor.instrument_app(app)  # auto-instrument FastAPI`;
+
+const alertExample = `# SigNoz alert rule (YAML format for API / import)
+{
+  "alert": "HighP99Latency",
+  "expr": "histogram_quantile(0.99, sum(rate(signoz_latency_bucket{service_name='payment-service'}[5m])) by (le)) > 2",
+  "for": "5m",
+  "labels": {
+    "severity": "critical",
+    "team": "backend"
+  },
+  "annotations": {
+    "summary": "P99 latency above 2s for payment-service",
+    "runbook": "https://wiki.internal/runbooks/payment-latency"
+  }
+}`;
+
+const faq = [
+  { question: "What is SigNoz?", answer: "SigNoz is an open-source application performance monitoring (APM) and observability platform that provides traces, metrics, and logs in a single unified interface. It is built natively on OpenTelemetry and uses ClickHouse as its storage backend (instead of Elasticsearch or Cassandra), which gives it exceptional query performance for trace search. SigNoz is designed as a self-hosted alternative to Datadog, New Relic, and Dynatrace — with full data ownership and no per-seat pricing." },
+  { question: "Why does SigNoz use ClickHouse?", answer: "ClickHouse is a column-oriented OLAP database optimized for analytical queries on large datasets. For observability data (traces, logs, metrics), most queries involve aggregations — P99 latency, error rates, service maps — rather than row-level lookups. ClickHouse handles these aggregations 10-100x faster than row-oriented databases. SigNoz ingests spans into ClickHouse and uses it for both storage and query, eliminating the need for a separate Elasticsearch cluster and reducing operational complexity." },
+  { question: "How does SigNoz compare to Grafana + Jaeger + Prometheus?", answer: "The Grafana + Jaeger + Prometheus stack requires running and integrating 3+ separate tools. SigNoz provides traces, metrics, and logs in a single UI with native correlation — click a spike in a metric chart and jump directly to related traces from the same time window. SigNoz requires less infrastructure (one ClickHouse cluster instead of separate Elasticsearch + Prometheus TSDB) and provides built-in dashboards, alerts, and service dependency maps out of the box. The trade-off is less ecosystem flexibility than the modular Grafana stack." },
+  { question: "What is SigNoz Cloud vs self-hosted?", answer: "SigNoz is available as a fully managed cloud service (SigNoz Cloud) or self-hosted. Self-hosted is free and open-source (Apache 2.0 for most components). SigNoz Cloud offers a free tier (200GB ingest/month) and paid plans based on data volume. Self-hosted is ideal for compliance requirements, cost control at scale, or organizations that already operate Kubernetes. SigNoz Cloud is ideal for teams that want zero operational overhead — you just configure OTLP export to their endpoint." },
+  { question: "What metrics does SigNoz provide out of the box?", answer: "SigNoz automatically computes RED (Rate, Errors, Duration) metrics from incoming traces for every service: requests per second, error rate, P50/P90/P99 latency. It builds a real-time service dependency map showing which services call which, with latency and error rates on each edge. Infrastructure metrics (CPU, memory, disk) require adding the OTel Collector with host metrics receiver. Database metrics (query time, slow queries) are captured automatically by OTel auto-instrumentation." },
+  { question: "How do I set up alerts in SigNoz?", answer: "SigNoz has a built-in alert manager with a UI for creating threshold, anomaly, and composite alerts on metrics, traces, and logs. Alerts can be routed to Slack, PagerDuty, OpsGenie, or any webhook. For metrics alerts, write PromQL-compatible queries against SigNoz's metrics. For trace alerts, filter by service, operation, and attribute values. Alert rules can be exported/imported as JSON and version-controlled in your repository." },
+];
+---
+
+<BaseLayout
+  title="SigNoz — Open-Source APM and Observability Platform"
+  description="SigNoz is an open-source Datadog alternative with traces, metrics, and logs in one UI. Built on OpenTelemetry and ClickHouse — self-host for full data ownership."
+  tool="SigNoz, open-source APM, distributed tracing, OpenTelemetry, ClickHouse observability, Datadog alternative, metrics logs traces, self-hosted monitoring"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "SigNoz — Open-Source APM and Observability Platform",
+    "url": "https://devplaybook.cc/tools/signoz",
+    "description": "SigNoz is an open-source Datadog alternative with traces, metrics, and logs in one unified UI. Built on OpenTelemetry and ClickHouse for self-hosted observability.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">SigNoz</h1>
+  <p class="text-text-muted mb-6">
+    An <strong>open-source APM and observability platform</strong> — a self-hosted alternative to Datadog,
+    New Relic, and Dynatrace. SigNoz unifies traces, metrics, and logs in a single UI built natively on
+    OpenTelemetry, using ClickHouse for high-performance analytical queries.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Traces + metrics + logs in one UI</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OpenTelemetry native</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> ClickHouse storage</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Open source (Apache 2.0)</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is SigNoz?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    SigNoz was founded in 2021 as a fully open-source alternative to commercial APM tools. The key architectural decision is using <strong>ClickHouse</strong> — a columnar OLAP database — as the unified storage for traces, metrics, and logs. This enables sub-second query performance for analytical queries like "show me all traces for the payment service with P99 latency above 2 seconds in the last hour" across billions of spans.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Unlike the Grafana + Jaeger + Prometheus stack, SigNoz provides native correlation: click a latency spike on a metrics chart and instantly see the related traces. Click a trace to see the correlated logs from the same service and time window. This "three-signal correlation" eliminates the context-switching that makes debugging slow in modular stacks.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Start (Docker Compose)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerInstall}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Node.js Instrumentation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={otelNodejs}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Python / FastAPI Instrumentation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={pythonExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Alert Rules</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={alertExample}></pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

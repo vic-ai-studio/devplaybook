@@ -1,0 +1,145 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const dockerExample = `# Single-node VictoriaMetrics
+docker run -d --name vm \
+  -p 8428:8428 \
+  -v /path/to/data:/victoria-metrics-data \
+  victoriametrics/victoria-metrics:latest \
+  -retentionPeriod=12   # 12 months retention
+
+# Access:
+# - HTTP API:          http://localhost:8428
+# - Prometheus UI:     http://localhost:8428/vmui
+# - Write endpoint:    http://localhost:8428/api/v1/write  (Prometheus remote write)
+# - MetricsQL query:   http://localhost:8428/api/v1/query`;
+
+const prometheusRemoteWrite = `# prometheus.yml — remote_write to VictoriaMetrics
+global:
+  scrape_interval: 15s
+
+remote_write:
+  - url: http://victoria-metrics:8428/api/v1/write
+    queue_config:
+      max_samples_per_send: 10000
+      max_shards: 30
+
+# Or replace Prometheus entirely with vmagent (lighter scraper)
+# vmagent.yaml
+scrapeConfigs:
+  - job_name: node-exporter
+    static_configs:
+      - targets: ['node-exporter:9100']
+remoteWrite:
+  - url: http://victoria-metrics:8428/api/v1/write`;
+
+const metricsQLExample = `# MetricsQL — compatible with PromQL, plus extensions
+
+# Standard PromQL (works in VictoriaMetrics)
+rate(http_requests_total[5m])
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+
+# MetricsQL extensions
+# Default rollup (auto-selects rate/avg/last based on metric type)
+http_requests_total
+
+# median_over_time (missing in PromQL)
+median_over_time(response_time_ms[1h])
+
+# share_gt_over_time — what % of time value was above threshold
+share_gt_over_time(cpu_usage[24h], 0.8)
+
+# Running average with outlier removal
+smooth(rate(http_requests_total[5m]), 0.05)
+
+# Aggregate by multiple labels with label_values
+sort_by_label(sum by (service, env) (rate(errors_total[5m])), "service")`;
+
+const clusterExample = `# docker-compose — VictoriaMetrics cluster
+services:
+  vmstorage:
+    image: victoriametrics/vmstorage:latest
+    ports: ["8482:8482", "8400:8400", "8401:8401"]
+    volumes: ["vmstorage-data:/storage"]
+    command: -storageDataPath=/storage -retentionPeriod=6
+
+  vminsert:
+    image: victoriametrics/vminsert:latest
+    ports: ["8480:8480"]
+    command: -storageNode=vmstorage:8400
+
+  vmselect:
+    image: victoriametrics/vmselect:latest
+    ports: ["8481:8481"]
+    command: -storageNode=vmstorage:8401
+
+  vmagent:
+    image: victoriametrics/vmagent:latest
+    volumes: ["./vmagent.yaml:/etc/vmagent.yaml"]
+    command: -promscrape.config=/etc/vmagent.yaml
+             -remoteWrite.url=http://vminsert:8480/insert/0/prometheus/api/v1/write`;
+
+const faq = [
+  { question: "What is VictoriaMetrics?", answer: "VictoriaMetrics is an open-source time-series database and monitoring solution designed as a high-performance, cost-efficient alternative to Prometheus. It is fully compatible with the Prometheus ecosystem (remote_write, PromQL, Grafana data source) but offers significantly better compression (10-30x less disk space than Prometheus TSDB), lower CPU and memory usage, and the ability to scale to billions of time series. It also introduces MetricsQL — an extended query language that is a superset of PromQL." },
+  { question: "How does VictoriaMetrics compare to Prometheus?", answer: "VictoriaMetrics is not a replacement for Prometheus scraping — it is a long-term storage backend. Prometheus (or vmagent) still handles service discovery and scraping; VictoriaMetrics receives the data via remote_write. Key advantages: 10-30x better compression than Prometheus TSDB, handles cardinality much better (100M+ time series), faster ingestion and query performance at scale, built-in deduplication for HA setups, and native multi-tenancy in the cluster version. Prometheus wins on ecosystem maturity and alerting (Alertmanager integration)." },
+  { question: "What is vmagent?", answer: "vmagent is a lightweight scraper that replaces Prometheus for the collection side. It supports the same scrape configurations as Prometheus, uses much less memory (100MB vs 1-2GB for Prometheus at scale), supports persistent queuing to survive network outages, and can replicate data to multiple remote_write endpoints simultaneously. vmagent is ideal when you want VictoriaMetrics for storage but find Prometheus too resource-heavy for your scraping needs." },
+  { question: "What is MetricsQL?", answer: "MetricsQL is VictoriaMetrics's query language, a superset of PromQL that adds useful missing functions. Key extensions: median_over_time(), share_le_over_time() and share_gt_over_time() (time-above-threshold percentages), outlier removal functions, implicit rollup functions that auto-select the right aggregation (rate for counters, last for gauges). All valid PromQL queries are also valid MetricsQL, so existing Grafana dashboards and alerts work without changes." },
+  { question: "What is the difference between single-node and cluster VictoriaMetrics?", answer: "Single-node VictoriaMetrics runs as one process and handles ingestion, storage, and queries. It scales to 10M+ active time series on a single machine and supports retention up to years. The cluster version splits into vminsert (write path), vmstorage (persistent storage), and vmselect (query path), each independently scalable. Use single-node for most deployments up to ~50GB/day ingestion; use cluster when you need horizontal scaling, multi-tenancy, or high availability across multiple storage nodes." },
+  { question: "How do I achieve high availability with VictoriaMetrics?", answer: "For single-node HA: run two instances with the same remote_write targets and configure vmselect with deduplication (-dedup.minScrapeInterval=15s). For cluster HA: run multiple vmstorage nodes with replicationFactor=2 on vminsert — data is written to N nodes, and vmselect can query any available nodes. VictoriaMetrics also includes vmbackup for S3/GCS/AzureBlob backups with incremental snapshots, enabling point-in-time recovery." },
+];
+---
+
+<BaseLayout
+  title="VictoriaMetrics — High-Performance Time Series Database"
+  description="VictoriaMetrics is a fast, cost-efficient time series database compatible with Prometheus. 10-30x better compression, MetricsQL extensions, and horizontal scaling for billions of metrics."
+  tool="VictoriaMetrics, time series database, Prometheus alternative, MetricsQL, vmagent, remote write, VictoriaMetrics cluster, metrics storage, observability"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "VictoriaMetrics — High-Performance Time Series Database",
+    "url": "https://devplaybook.cc/tools/victoria-metrics",
+    "description": "VictoriaMetrics is a fast, cost-efficient time series database compatible with Prometheus. 10-30x better compression, MetricsQL extensions, and cluster mode for scale.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">VictoriaMetrics</h1>
+  <p class="text-text-muted mb-6">
+    A <strong>high-performance open-source time series database</strong> fully compatible with Prometheus.
+    VictoriaMetrics stores metrics data with 10-30x better compression than Prometheus TSDB, supports
+    ingestion via Prometheus <code class="bg-bg-card px-1 rounded text-xs">remote_write</code>, queries via
+    MetricsQL (a PromQL superset), and scales from a single node to a distributed cluster.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Prometheus remote_write compatible</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 10-30x better compression</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> MetricsQL (PromQL superset)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cluster mode for scale</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is VictoriaMetrics?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    VictoriaMetrics is a time-series database designed to replace Prometheus's built-in TSDB as a long-term metrics store. It accepts data via Prometheus <code class="bg-bg-card px-1 rounded text-xs">remote_write</code>, Graphite, InfluxDB, and OpenTelemetry — and queries are made using MetricsQL, a superset of PromQL that adds useful functions missing from the Prometheus query language.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    The key advantage over plain Prometheus storage is efficiency: VictoriaMetrics uses a custom compression algorithm (up to 30x better than Prometheus TSDB) and handles <strong>high cardinality</strong> gracefully — where Prometheus can struggle with tens of millions of unique label combinations, VictoriaMetrics handles hundreds of millions. This makes it ideal for Kubernetes multi-tenant environments with dynamic pod IPs and labels.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Start (Single-Node Docker)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Prometheus remote_write Integration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={prometheusRemoteWrite}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">MetricsQL Examples</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={metricsQLExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cluster Deployment (Docker Compose)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={clusterExample}></pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

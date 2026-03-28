@@ -1,0 +1,140 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const dockerExample = `# Keycloak — development mode
+docker run -p 8080:8080 \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+  -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+  quay.io/keycloak/keycloak:latest start-dev
+
+# Production mode with PostgreSQL
+docker run -p 8443:8443 \
+  -e KC_DB=postgres \
+  -e KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak \
+  -e KC_DB_USERNAME=keycloak \
+  -e KC_DB_PASSWORD=secret \
+  -e KC_HOSTNAME=auth.yourdomain.com \
+  -e KC_HTTPS_CERTIFICATE_FILE=/opt/keycloak/certs/cert.pem \
+  -e KC_HTTPS_CERTIFICATE_KEY_FILE=/opt/keycloak/certs/key.pem \
+  quay.io/keycloak/keycloak:latest start
+
+# Admin UI: http://localhost:8080`;
+
+const nextjsExample = `// Next.js — Keycloak via NextAuth.js
+// app/api/auth/[...nextauth]/route.ts
+import NextAuth from 'next-auth';
+import KeycloakProvider from 'next-auth/providers/keycloak';
+
+const handler = NextAuth({
+  providers: [
+    KeycloakProvider({
+      clientId: process.env.KEYCLOAK_CLIENT_ID!,
+      clientSecret: process.env.KEYCLOAK_CLIENT_SECRET!,
+      issuer: process.env.KEYCLOAK_ISSUER,
+      // e.g.: https://auth.example.com/realms/myrealm
+    }),
+  ],
+  callbacks: {
+    async jwt({ token, account }) {
+      if (account) {
+        token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      session.accessToken = token.accessToken as string;
+      return session;
+    },
+  },
+});
+
+export { handler as GET, handler as POST };`;
+
+const kcAdminExample = `# Keycloak Admin REST API
+# Get admin token
+TOKEN=$(curl -s -X POST \
+  "http://keycloak:8080/realms/master/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=admin&password=admin&grant_type=password&client_id=admin-cli" \
+  | jq -r .access_token)
+
+# Create a realm
+curl -X POST "http://keycloak:8080/admin/realms" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"realm":"myrealm","enabled":true,"displayName":"My App"}'
+
+# Create a client
+curl -X POST "http://keycloak:8080/admin/realms/myrealm/clients" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "clientId": "web-app",
+    "secret": "client-secret",
+    "redirectUris": ["https://app.example.com/*"],
+    "webOrigins": ["https://app.example.com"],
+    "publicClient": false,
+    "standardFlowEnabled": true
+  }'`;
+
+const faq = [
+  { question: "What is Keycloak?", answer: "Keycloak is an open-source Identity and Access Management (IAM) solution that provides Single Sign-On (SSO), user federation, identity brokering, and social login. It implements standard protocols: OpenID Connect (OIDC), OAuth 2.0, and SAML 2.0. Organizations use Keycloak as a centralized authentication server — users log in once to Keycloak and get access to all connected applications without re-authenticating. It is backed by Red Hat and is the upstream project for Red Hat SSO." },
+  { question: "What is a Keycloak realm?", answer: "A realm is an isolated namespace in Keycloak — think of it as a separate tenant or environment. Each realm has its own users, clients, roles, groups, and identity providers. The master realm is the admin realm (manage Keycloak itself). You create separate realms for each environment (dev/staging/prod) or each product. Clients in one realm cannot access users in another realm without federation. This isolation makes realms ideal for multi-tenant SaaS applications." },
+  { question: "What is the difference between confidential and public clients?", answer: "A confidential client has a client secret (a server-side app that can keep secrets secure — Node.js API, Spring Boot backend). It uses the Authorization Code Flow with a client secret. A public client has no secret (a browser-based SPA or mobile app where secrets can't be kept confidential). Public clients use PKCE (Proof Key for Code Exchange) to prevent authorization code interception. Never use a confidential client in frontend JavaScript — the secret would be exposed in source code." },
+  { question: "How does Keycloak handle social login?", answer: "Keycloak supports identity brokering — delegating authentication to external providers like Google, GitHub, Facebook, Apple, Microsoft, and any OIDC/SAML provider. Configure a social provider in the realm's Identity Providers section with your OAuth app credentials. Users clicking 'Sign in with Google' are redirected to Google, authenticate there, and returned to Keycloak which creates (or links) a local user account. Custom OIDC and SAML providers let you integrate with enterprise identity systems like Okta, Azure AD, or Ping Identity." },
+  { question: "What is User Federation in Keycloak?", answer: "User Federation lets Keycloak authenticate against an external user store rather than its own database. LDAP federation connects to Active Directory or OpenLDAP — Keycloak queries the LDAP server for authentication and can sync users to its local database for performance. Kerberos integration supports single sign-on for Windows domain users. Custom User Storage SPIs allow integration with any existing user database. This is how enterprises migrate to Keycloak without moving all users to a new database." },
+  { question: "How do I deploy Keycloak in production?", answer: "Production Keycloak requires a relational database (PostgreSQL recommended), a reverse proxy (nginx or Traefik) for TLS termination, and proper hostname configuration. For high availability: run multiple Keycloak instances with shared database and distributed caching (Infinispan cluster mode — enabled by default in production mode). Use the Keycloak Operator for Kubernetes deployments — it manages rolling updates, cluster formation, and PostgreSQL connection pooling via pgBouncer. Enable the start command (not start-dev) to enforce TLS and production defaults." },
+];
+---
+
+<BaseLayout
+  title="Keycloak — Open-Source Identity and Access Management"
+  description="Keycloak provides SSO, OAuth 2.0, OIDC, and SAML for enterprise applications. Centralize authentication with social login, LDAP federation, and multi-realm multi-tenancy."
+  tool="Keycloak, identity access management, SSO single sign-on, OpenID Connect, OAuth 2.0, SAML, Keycloak realm, user federation LDAP, social login"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Keycloak — Open-Source Identity and Access Management",
+    "url": "https://devplaybook.cc/tools/keycloak",
+    "description": "Keycloak provides SSO, OIDC, OAuth 2.0, and SAML with social login, LDAP federation, and multi-tenant realms for enterprise identity management.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Keycloak</h1>
+  <p class="text-text-muted mb-6">
+    An <strong>open-source Identity and Access Management (IAM) platform</strong> backed by Red Hat. Keycloak
+    centralizes authentication with SSO, OAuth 2.0, OIDC, and SAML — supporting social login (Google,
+    GitHub), enterprise LDAP/Active Directory federation, and multi-tenant realms for SaaS applications.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SSO with OIDC + SAML</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Social login (Google, GitHub...)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> LDAP / Active Directory federation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-tenant realms</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Keycloak?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Keycloak is the open-source upstream of Red Hat SSO and is one of the most deployed self-hosted identity platforms. It handles the entire authentication and authorization lifecycle: users log in once to Keycloak and receive JWT tokens (OpenID Connect ID token + access token) that applications validate. Applications never see user passwords — they only see tokens from Keycloak.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    The <strong>realm</strong> is Keycloak's unit of isolation — each realm has independent users, clients, roles, and identity providers. For multi-tenant SaaS, each customer gets their own realm with their own SSO configuration. For internal tools, one realm serves all internal applications with role-based access control per application.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Start (Docker)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Next.js Integration (NextAuth.js)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={nextjsExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Admin REST API</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={kcAdminExample}></pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

@@ -1,0 +1,163 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const dockerExample = `# ZITADEL — self-hosted with PostgreSQL
+docker run --rm -d \
+  --name zitadel \
+  -p 8080:8080 \
+  -e ZITADEL_MASTERKEY="MasterkeyNeedsToHave32Characters" \
+  -e ZITADEL_DATABASE_POSTGRES_HOST=postgres \
+  -e ZITADEL_DATABASE_POSTGRES_PORT=5432 \
+  -e ZITADEL_DATABASE_POSTGRES_DATABASE=zitadel \
+  -e ZITADEL_DATABASE_POSTGRES_USER_USERNAME=zitadel \
+  -e ZITADEL_DATABASE_POSTGRES_USER_PASSWORD=zitadel \
+  -e ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE=disable \
+  -e ZITADEL_EXTERNALDOMAIN=localhost \
+  ghcr.io/zitadel/zitadel:latest start-from-init
+
+# Admin UI: http://localhost:8080
+# First-time setup wizard included`;
+
+const pkceFlow = `// PKCE Authorization Code Flow (React SPA)
+import { ZITADELAuth } from '@zitadel/react';
+
+const zitadel = ZITADELAuth({
+  issuer: 'https://issuer.zitadel.cloud', // or your self-hosted instance
+  clientId: 'your-client-id',
+  redirectUri: 'https://app.example.com/callback',
+  scope: 'openid profile email',
+});
+
+// Trigger login
+await zitadel.authorize();
+
+// Get user info
+const userInfo = await zitadel.userInfo();`;
+
+const nodeExample = `// Node.js backend — validate ZITADEL JWT
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+
+const JWKS = createRemoteJWKSet(
+  new URL('https://issuer.zitadel.cloud/oauth/v2/keys')
+);
+
+async function validateToken(token: string) {
+  const { payload } = await jwtVerify(token, JWKS, {
+    issuer: 'https://issuer.zitadel.cloud',
+    audience: 'your-api-resource-id',
+  });
+
+  // payload.sub = user ID
+  // payload['urn:zitadel:iam:org:project:roles'] = role map
+  return payload;
+}
+
+// Express middleware
+app.use(async (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  req.user = await validateToken(token);
+  next();
+});`;
+
+const terraformExample = `# ZITADEL Terraform Provider — Infrastructure as Code
+terraform {
+  required_providers {
+    zitadel = {
+      source  = "zitadel/zitadel"
+      version = "~> 2.0"
+    }
+  }
+}
+
+provider "zitadel" {
+  domain           = "issuer.zitadel.cloud"
+  insecure         = false
+  port             = "443"
+  jwt_profile_file = "service-account.json"
+}
+
+resource "zitadel_project" "my_project" {
+  name   = "My App"
+  org_id = data.zitadel_org.default.id
+  project_role_assertion        = true
+  project_role_check            = true
+  has_project_check             = true
+}
+
+resource "zitadel_application_oidc" "spa" {
+  project_id              = zitadel_project.my_project.id
+  org_id                  = data.zitadel_org.default.id
+  name                    = "SPA"
+  redirect_uris           = ["https://app.example.com/callback"]
+  response_types          = ["OIDC_RESPONSE_TYPE_CODE"]
+  grant_types             = ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"]
+  app_type                = "OIDC_APP_TYPE_USER_AGENT"
+  auth_method_type        = "OIDC_AUTH_METHOD_TYPE_NONE"  # PKCE
+  dev_mode                = false
+}`;
+
+const faq = [
+  { question: "What is ZITADEL?", answer: "ZITADEL is an open-source cloud-native Identity and Access Management platform that provides authentication, authorization, and user management. It is designed for modern cloud environments with first-class Kubernetes support, an event-sourced architecture for auditability, and a Terraform provider for infrastructure-as-code identity management. ZITADEL supports OIDC, OAuth 2.0, SAML, and passkeys, and is available as a fully managed cloud service or self-hosted." },
+  { question: "How does ZITADEL compare to Keycloak?", answer: "Both are open-source IAM platforms with similar feature sets. Key differences: ZITADEL is written in Go (Keycloak in Java), making it more resource-efficient and faster to start. ZITADEL has a native cloud-ready architecture built on CockroachDB or PostgreSQL with event sourcing; Keycloak uses a relational model with Infinispan caching. ZITADEL has a Terraform provider for GitOps identity management; Keycloak has Terraform support via community providers. ZITADEL's UI is more modern; Keycloak has a larger existing enterprise user base. ZITADEL Cloud makes it easy to start without self-hosting." },
+  { question: "What is ZITADEL's organization model?", answer: "ZITADEL's multi-tenancy model uses Organizations, Instances, and Projects. An Instance is the top-level ZITADEL deployment. Organizations are tenants within an instance (e.g., each customer gets their own org with their own users, branding, and SSO settings). Projects hold your applications (OIDC/SAML clients) and API resources. Roles are defined at the project level and granted to users or groups within an org. This hierarchy enables B2B SaaS where each enterprise customer manages their own users and SSO independently." },
+  { question: "What is event sourcing in ZITADEL?", answer: "ZITADEL uses an event-sourced architecture: instead of storing the current state, it stores a sequence of events (UserCreated, PasswordChanged, RoleAssigned). The current state is derived by replaying events. This provides a complete immutable audit trail — you can see every action ever taken on any resource, with the user who triggered it and when. For compliance requirements (SOC2, HIPAA, GDPR), this built-in audit log is a significant advantage over systems that overwrite state." },
+  { question: "How does ZITADEL handle machine-to-machine authentication?", answer: "ZITADEL supports JWT Profile (RFC 7523) for M2M auth: create a service account, download a private key JSON file, sign a JWT assertion with it, and exchange it for an access token. This is more secure than client credentials (client ID + secret) because the private key never leaves your server and assertions are time-limited. ZITADEL also supports standard OAuth 2.0 client credentials flow for simpler M2M scenarios. Service accounts can be assigned project roles for fine-grained API authorization." },
+  { question: "How do I configure ZITADEL for B2B SaaS?", answer: "For B2B SaaS, create one Organization per customer tenant. Each org can have its own SSO provider (customer's Okta, Azure AD, or Google Workspace). Customers manage their own users within their org via the ZITADEL customer portal. Your application receives an access token with the org ID and user's project roles, letting you enforce tenant isolation in your backend. ZITADEL's delegated management model means customers can self-manage users without your support team's involvement." },
+];
+---
+
+<BaseLayout
+  title="ZITADEL — Cloud-Native Identity Management Platform"
+  description="ZITADEL is an open-source IAM platform with event sourcing, Terraform provider, and multi-tenant org model. Built for B2B SaaS with OIDC, passkeys, and self-hosted or cloud deployment."
+  tool="ZITADEL identity management, IAM cloud-native, OIDC OAuth ZITADEL, ZITADEL Terraform, B2B SaaS identity, event sourcing IAM, ZITADEL self-hosted"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "ZITADEL — Cloud-Native Identity Management Platform",
+    "url": "https://devplaybook.cc/tools/zitadel",
+    "description": "ZITADEL is an open-source cloud-native IAM platform with event sourcing, Terraform provider, and a multi-tenant org model designed for B2B SaaS.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">ZITADEL</h1>
+  <p class="text-text-muted mb-6">
+    A <strong>cloud-native open-source Identity and Access Management platform</strong> built in Go.
+    ZITADEL features event-sourced architecture for complete audit trails, a Terraform provider for
+    GitOps identity management, and a multi-tenant Organization model ideal for B2B SaaS — available
+    self-hosted or as a managed cloud service.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Event-sourced audit log</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Terraform provider</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> B2B multi-tenant orgs</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Passkeys + OIDC + SAML</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is ZITADEL?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    ZITADEL is a modern alternative to Keycloak and Auth0, designed for cloud-native and Kubernetes-first environments. Written in Go, it starts in seconds and uses significantly less memory than Java-based IAM platforms. The event-sourced data model means every state change produces an immutable event — your audit log is built-in, not bolted on.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    For B2B SaaS, ZITADEL's <strong>Organization model</strong> is its killer feature: each of your enterprise customers gets their own org with independent SSO configuration, branding, and user management. Your app receives the customer's org ID in every token, making tenant isolation trivial to implement.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Start (Docker)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">React SPA — PKCE Flow</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={pkceFlow}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Node.js JWT Validation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={nodeExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Terraform Provider</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={terraformExample}></pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

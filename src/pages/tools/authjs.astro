@@ -1,0 +1,157 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const nextjsSetup = `# Install Auth.js (Next.js)
+npm install next-auth@beta
+
+# .env.local
+AUTH_SECRET=your-32-char-secret-here  # openssl rand -hex 32
+AUTH_GITHUB_ID=your-github-client-id
+AUTH_GITHUB_SECRET=your-github-client-secret
+AUTH_GOOGLE_ID=your-google-client-id
+AUTH_GOOGLE_SECRET=your-google-client-secret`;
+
+const authConfig = `// auth.ts — Auth.js v5 configuration
+import NextAuth from 'next-auth';
+import GitHub from 'next-auth/providers/github';
+import Google from 'next-auth/providers/google';
+import Credentials from 'next-auth/providers/credentials';
+import { PrismaAdapter } from '@auth/prisma-adapter';
+import { prisma } from './lib/prisma';
+import bcrypt from 'bcryptjs';
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    GitHub,
+    Google,
+    Credentials({
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email as string },
+        });
+        if (!user?.passwordHash) return null;
+        const valid = await bcrypt.compare(credentials.password as string, user.passwordHash);
+        return valid ? user : null;
+      },
+    }),
+  ],
+  callbacks: {
+    authorized({ auth, request: { nextUrl } }) {
+      const isLoggedIn = !!auth?.user;
+      const isOnDashboard = nextUrl.pathname.startsWith('/dashboard');
+      if (isOnDashboard) return isLoggedIn;
+      return true;
+    },
+    session({ session, user }) {
+      session.user.id = user.id;
+      return session;
+    },
+  },
+  pages: {
+    signIn: '/auth/signin',
+    error: '/auth/error',
+  },
+});`;
+
+const routeHandler = `// app/api/auth/[...nextauth]/route.ts
+import { handlers } from '@/auth';
+export const { GET, POST } = handlers;
+
+// middleware.ts — protect routes
+export { auth as middleware } from '@/auth';
+export const config = {
+  matcher: ['/dashboard/:path*', '/api/protected/:path*'],
+};`;
+
+const serverComponents = `// Server Component — access session
+import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
+
+export default async function DashboardPage() {
+  const session = await auth();
+  if (!session) redirect('/auth/signin');
+  return <div>Hello, {session.user?.name}</div>;
+}
+
+// Client Component
+'use client';
+import { useSession, signIn, signOut } from 'next-auth/react';
+
+export function AuthButton() {
+  const { data: session, status } = useSession();
+  if (status === 'loading') return <span>Loading...</span>;
+  if (session) return (
+    <button onClick={() => signOut()}>Sign out ({session.user?.email})</button>
+  );
+  return <button onClick={() => signIn('github')}>Sign in with GitHub</button>;
+}`;
+
+const faq = [
+  { question: "What is Auth.js?", answer: "Auth.js (formerly NextAuth.js) is an open-source authentication library for web applications, with first-class support for Next.js and adapters for SvelteKit, SolidStart, and Express. It handles the complexity of OAuth 2.0 / OIDC flows, session management, CSRF protection, and database persistence. You configure providers (GitHub, Google, Credentials, etc.) and Auth.js handles all the redirects, token exchange, and session storage. Auth.js v5 (beta) is a major rewrite with Edge Runtime support and a unified API across frameworks." },
+  { question: "What is the difference between Auth.js v4 (NextAuth.js) and v5?", answer: "Auth.js v5 is a full rewrite. Key changes: universal config file (auth.ts at the root instead of pages/api/auth/[...nextauth].ts), Edge Runtime compatible (runs in Vercel Edge, Cloudflare Workers), new middleware-first approach for route protection, simplified callbacks (no more split jwt/session callbacks confusion), and TypeScript improvements with better inference. The core concepts (providers, adapters, callbacks) are the same. v4 remains stable and maintained; v5 is the recommended path for new projects using Next.js 14+ App Router." },
+  { question: "What are Auth.js adapters?", answer: "Adapters connect Auth.js to a database for persisting users, sessions, and accounts across requests. Official adapters: Prisma, Drizzle, TypeORM, MongoDB, Supabase, PlanetScale, Neon, Turso, and more. Without an adapter, Auth.js uses JWT-only sessions stored in cookies (stateless). With an adapter, sessions are stored in the database (stateful) and you can store additional user data, implement multi-session management, and link multiple OAuth providers to one account. JWT sessions are simpler; database sessions are more flexible." },
+  { question: "How does Auth.js protect routes?", answer: "In Next.js App Router (v5): export auth as middleware from auth.ts and configure matcher in middleware.ts to specify which routes require authentication. When an unauthenticated user hits a protected route, Auth.js redirects them to the signIn page. For fine-grained control, use the authorized callback to check roles or subscription status. In Server Components, call auth() to get the session and redirect() if null. In API routes, call auth() and return a 401 if no session." },
+  { question: "How do I add custom fields to the session?", answer: "Use the session callback to extend the session object with data from the database. First, declare the extended types in a types/next-auth.d.ts file (TypeScript): declare module 'next-auth' { interface Session { user: { id: string; role: string } } }. Then in the session callback, attach the data: session.user.id = user.id; session.user.role = user.role. For JWT sessions, extend the token in the jwt callback first, then forward to session. Always type the extension to avoid runtime surprises." },
+  { question: "What providers does Auth.js support?", answer: "Auth.js supports 80+ OAuth providers including GitHub, Google, Apple, Microsoft, Discord, Slack, Spotify, Twitch, Twitter/X, LinkedIn, Okta, Auth0, Keycloak, and more. It also has built-in Credentials provider for username/password login, Email provider for magic link passwordless login (requires email adapter), Passkey provider (WebAuthn) for biometric login, and LDAP support. Custom OIDC providers work with any OpenID Connect-compliant identity server by providing the issuer URL." },
+];
+---
+
+<BaseLayout
+  title="Auth.js — Authentication for Web Applications"
+  description="Auth.js (NextAuth.js) is the open-source authentication library for Next.js and beyond. 80+ OAuth providers, database adapters, Edge Runtime support, and passwordless login."
+  tool="Auth.js NextAuth.js authentication, Next.js OAuth, GitHub Google login, Auth.js Prisma adapter, session management, passwordless login, OIDC providers"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Auth.js — Authentication for Web Applications",
+    "url": "https://devplaybook.cc/tools/authjs",
+    "description": "Auth.js (NextAuth.js) provides authentication for Next.js and other frameworks. 80+ OAuth providers, database adapters, and Edge Runtime support.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Auth.js</h1>
+  <p class="text-text-muted mb-6">
+    The <strong>open-source authentication library for modern web apps</strong>, formerly known as
+    NextAuth.js. Auth.js handles OAuth 2.0, OIDC, Credentials, Email magic links, and WebAuthn
+    passkeys — with 80+ built-in providers, database adapters for all major ORMs, and
+    Edge Runtime support.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 80+ OAuth providers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Database adapters (Prisma, Drizzle...)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Edge Runtime compatible</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Next.js App Router first-class</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Auth.js?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Auth.js (v5, beta) is the rewrite of NextAuth.js — the most popular authentication library for Next.js with over 24,000 GitHub stars. It abstracts the complexity of OAuth 2.0 flows, CSRF tokens, session cookies, and token refresh cycles behind a clean API. The v5 rewrite adds a universal config file at the project root, full Edge Runtime compatibility (runs on Vercel Edge and Cloudflare Workers), and first-class support for the Next.js App Router.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Auth.js is not just for OAuth. The Credentials provider handles traditional email/password login, the Email provider sends magic links for passwordless authentication, and the Passkey provider uses WebAuthn for biometric/hardware key login. All providers work with the same session and adapter API.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={nextjsSetup}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Auth.js v5 Configuration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={authConfig}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Route Handler + Middleware</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={routeHandler}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Server + Client Components</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={serverComponents}></pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

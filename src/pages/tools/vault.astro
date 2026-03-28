@@ -1,0 +1,163 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const dockerExample = `# Development server (in-memory, no persistence)
+docker run --cap-add=IPC_LOCK -p 8200:8200 hashicorp/vault server -dev
+
+# Production (file storage)
+docker run --cap-add=IPC_LOCK \
+  -p 8200:8200 \
+  -v vault-config:/vault/config \
+  -v vault-data:/vault/data \
+  hashicorp/vault server
+
+# Access UI at http://localhost:8200
+# Dev mode root token: printed in container logs`;
+
+const policyExample = `# Vault policy (HCL)
+# web-app-policy.hcl
+path "secret/data/web-app/*" {
+  capabilities = ["read", "list"]
+}
+
+path "database/creds/web-app-role" {
+  capabilities = ["read"]
+}
+
+path "pki/issue/web-app-cert" {
+  capabilities = ["create", "update"]
+}
+
+# Apply policy
+vault policy write web-app web-app-policy.hcl
+
+# Write a secret
+vault kv put secret/web-app/database \
+  username=appuser \
+  password=s3cr3t
+
+# Read a secret
+vault kv get secret/web-app/database
+
+# Enable dynamic database secrets
+vault secrets enable database
+vault write database/config/postgres \
+  plugin_name=postgresql-database-plugin \
+  connection_url="postgresql://{{username}}:{{password}}@postgres:5432/app" \
+  allowed_roles="web-app-role" \
+  username=vaultadmin \
+  password=vaultpass`;
+
+const nodeExample = `// Node.js — fetch secrets from Vault
+import vault from 'node-vault';
+
+const client = vault({
+  apiVersion: 'v1',
+  endpoint: process.env.VAULT_ADDR,
+  token: process.env.VAULT_TOKEN,
+});
+
+// KV v2 — read secret
+const { data } = await client.read('secret/data/web-app/database');
+const { username, password } = data.data;
+
+// AppRole auth (recommended for apps)
+const { auth } = await client.approleLogin({
+  role_id: process.env.VAULT_ROLE_ID,
+  secret_id: process.env.VAULT_SECRET_ID,
+});
+client.token = auth.client_token;
+
+// Dynamic database credentials (short-lived, rotated)
+const dbCreds = await client.read('database/creds/web-app-role');
+// dbCreds.data.username and dbCreds.data.password are ephemeral`;
+
+const kubernetesExample = `# Vault Agent Injector — auto-inject secrets into Pods
+# Install via Helm
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm install vault hashicorp/vault \
+  --set "injector.enabled=true" \
+  --namespace vault --create-namespace
+
+# Annotate deployment to inject secrets
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+spec:
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "web-app"
+        vault.hashicorp.com/agent-inject-secret-db: "secret/data/web-app/database"
+        vault.hashicorp.com/agent-inject-template-db: |
+          {{- with secret "secret/data/web-app/database" -}}
+          export DB_USER="{{ .Data.data.username }}"
+          export DB_PASS="{{ .Data.data.password }}"
+          {{- end }}`;
+
+const faq = [
+  { question: "What is HashiCorp Vault?", answer: "HashiCorp Vault is an open-source tool for securely storing and accessing secrets — API keys, passwords, certificates, tokens, and database credentials. It provides a unified interface to any secret with tight access control, audit logging, and automatic rotation. Vault is not just a key-value store: its most powerful feature is dynamic secrets — Vault generates short-lived credentials on demand (e.g., a Postgres username/password valid for 1 hour) so applications never store long-lived credentials." },
+  { question: "What are Vault auth methods?", answer: "Auth methods are how Vault verifies identity. Common methods: Token (simple, built-in), AppRole (machine-to-machine — role ID + secret ID pair, recommended for CI/CD), Kubernetes (pods authenticate using their service account JWT, no credentials to manage), LDAP/OIDC (for human users integrating with your identity provider), AWS/GCP/Azure (cloud IAM roles authenticate against Vault automatically). Each auth method issues a Vault token with policies that define what secrets the client can access." },
+  { question: "What are dynamic secrets?", answer: "Dynamic secrets are credentials generated on-demand by Vault for a specific caller, valid for a short time period (TTL), and automatically revoked when they expire or the lease is revoked. Supported backends: databases (Postgres, MySQL, MongoDB — Vault creates a real database user), AWS (temporary IAM credentials via STS), SSH (signed certificates), PKI (x.509 certificates). Dynamic secrets eliminate long-lived credentials from your codebase — there are no static database passwords to rotate or leak." },
+  { question: "How do I use Vault in Kubernetes?", answer: "Two main patterns: Vault Agent Injector (sidecar) and Vault Secrets Operator. The Injector automatically injects secrets into pods as files or environment variables using annotations — the agent sidecar handles authentication and secret renewal transparently. The Secrets Operator (newer) creates native Kubernetes Secrets objects synced from Vault, integrating with existing tooling. For new deployments, the Secrets Operator is recommended; for apps expecting environment variables, the Agent Injector is simpler." },
+  { question: "What is the KV secrets engine?", answer: "The KV (Key-Value) secrets engine is Vault's simplest secrets storage. KV v1 stores static key-value pairs. KV v2 adds versioning (keep last N versions), metadata, and check-and-set operations to prevent concurrent writes. Write a secret with vault kv put secret/myapp/database password=s3cr3t; read it with vault kv get secret/myapp/database. In API calls, KV v2 paths use data/ and metadata/ prefixes: the read path is secret/data/myapp/database." },
+  { question: "What is Vault's audit log?", answer: "Vault's audit system logs every request and response — who requested a secret, when, with what token, and what the result was. Audit logs are write-ahead: if no audit device is enabled or all devices fail to write, Vault returns an error rather than allowing the operation. This prevents auditing gaps. Audit devices include file (write to disk), syslog, and socket. Log entries are HMAC-hashed by default to prevent accidental exposure of secret values in audit logs." },
+];
+---
+
+<BaseLayout
+  title="HashiCorp Vault — Secrets Management and Dynamic Credentials"
+  description="HashiCorp Vault secures, stores, and tightly controls access to secrets. Dynamic secrets generate short-lived credentials on demand — database passwords, AWS keys, and TLS certificates."
+  tool="HashiCorp Vault, secrets management, dynamic secrets, Vault AppRole, Vault Kubernetes, KV secrets engine, Vault PKI, database secrets rotation"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "HashiCorp Vault — Secrets Management and Dynamic Credentials",
+    "url": "https://devplaybook.cc/tools/vault",
+    "description": "HashiCorp Vault secures secrets and generates short-lived dynamic credentials. AppRole auth, Kubernetes integration, and automatic rotation for database passwords and cloud keys.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">HashiCorp Vault</h1>
+  <p class="text-text-muted mb-6">
+    The <strong>industry-standard secrets management platform</strong> for securing API keys, passwords,
+    certificates, and database credentials. Vault's most powerful feature: <em>dynamic secrets</em> —
+    on-demand, short-lived credentials for databases, AWS, and PKI that are automatically revoked, eliminating
+    long-lived credential leaks.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dynamic database credentials</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Kubernetes Agent Injector</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Full audit logging</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> AppRole + OIDC auth</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is HashiCorp Vault?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Vault is more than a secret store — it is a <strong>secret lifecycle management platform</strong>. Where environment variables or AWS Secrets Manager store static credentials, Vault generates ephemeral credentials on demand. When your app requests a Postgres credential, Vault creates a real database user with a 1-hour TTL, returns the username and password, and revokes both when the lease expires. The database never has long-lived app credentials.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Vault's policy system (HCL) controls exactly which paths each token can access and with which operations (read, write, list, delete). Every request is logged in the immutable audit log. Integration with Kubernetes via the Agent Injector or Secrets Operator makes it the standard choice for secret management in cloud-native environments.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Start (Docker)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Policies and Dynamic Secrets</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={policyExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Node.js Integration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={nodeExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Kubernetes Agent Injector</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={kubernetesExample}></pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

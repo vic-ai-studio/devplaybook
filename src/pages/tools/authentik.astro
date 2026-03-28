@@ -1,0 +1,146 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const dockerExample = `# authentik — docker-compose setup
+# 1. Download official compose file
+curl -O https://goauthentik.io/docker-compose.yml
+
+# 2. Generate secret key and admin password
+echo "AUTHENTIK_SECRET_KEY=$(openssl rand -base64 36)" >> .env
+echo "AUTHENTIK_BOOTSTRAP_PASSWORD=your-admin-password" >> .env
+echo "AUTHENTIK_BOOTSTRAP_TOKEN=your-api-token" >> .env
+
+# Optional: email config for invites and MFA
+cat >> .env << 'EOF'
+AUTHENTIK_EMAIL__HOST=smtp.gmail.com
+AUTHENTIK_EMAIL__PORT=587
+AUTHENTIK_EMAIL__USERNAME=your@gmail.com
+AUTHENTIK_EMAIL__PASSWORD=app-password
+AUTHENTIK_EMAIL__FROM=noreply@yourdomain.com
+EOF
+
+# 3. Start
+docker compose up -d
+
+# Access: http://localhost:9000/if/flow/initial-setup/`;
+
+const providerSetup = `# authentik Provider types
+# Available via Admin UI → Applications → Providers
+
+# OIDC/OAuth2 Provider
+- Protocol: OpenID Connect / OAuth2
+- Client ID: (auto-generated or custom)
+- Client Secret: (auto-generated)
+- Redirect URIs: https://app.example.com/callback
+- Scopes: openid, email, profile, groups
+
+# SAML Provider (for enterprise SSO)
+- SSO URL: https://auth.example.com/application/saml/myapp/sso/binding/post/
+- Entity ID: https://app.example.com/saml/metadata
+
+# Proxy Provider (forward auth for nginx/Traefik)
+- Internal host: http://myapp:3000
+- External host: https://app.example.com
+- Authentik handles auth; proxies valid requests`;
+
+const flowExample = `# authentik Flows — customize the login experience
+# Flows are the building blocks of the auth UX
+
+Default flow order:
+1. Identification Stage  → ask for username or email
+2. Password Stage        → check password
+3. MFA Stage             → TOTP / WebAuthn / SMS (if enrolled)
+4. User Login Stage      → create session
+
+Custom flow examples:
+- Passwordless: Identification → WebAuthn → Login
+- Invite-only: Email Verification → Password Set → Login
+- B2B SSO: Source redirect → SAML assertion → Login
+
+# Policies (Python expressions) control flow branching:
+# "Show MFA only if user is in 'admin' group"
+return ak_is_group_member(request.user, name="admins")
+
+# "Block login from certain IPs"
+from netaddr import IPNetwork, IPAddress
+return IPAddress(request.context["remote_ip"]) not in IPNetwork("10.0.0.0/8")`;
+
+const outpostExample = `# authentik Outpost — forward auth for nginx/Traefik
+
+# Traefik labels
+labels:
+  - traefik.http.middlewares.authentik.forwardauth.address=http://authentik-outpost:9000/outpost.goauthentik.io/auth/traefik
+  - traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true
+  - traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-uid,X-authentik-groups
+
+# Nginx location block
+location / {
+  auth_request /outpost.goauthentik.io/auth/nginx;
+  error_page 401 = @goauthentik_proxy_signin;
+  auth_request_set $authentik_status $upstream_status;
+}`;
+
+const faq = [
+  { question: "What is authentik?", answer: "authentik is an open-source Identity Provider (IdP) that covers the full range of IAM needs: SSO with OIDC, OAuth 2.0, and SAML; forward authentication (protect any app without code changes via nginx/Traefik proxy); user lifecycle management with invite flows; and enterprise directory sync via LDAP and SCIM. It is written in Django (Python) + TypeScript and is notable for its Flow Engine — a visual, fully customizable authentication workflow builder." },
+  { question: "What are authentik Flows?", answer: "Flows are authentik's visual authentication pipeline builder. A flow is a sequence of stages (Identification, Password, MFA, Consent, Email Verification, etc.) with policies controlling which stages appear for which users. This lets you build custom login experiences: passwordless WebAuthn flows for internal users, invite-only registration flows, step-up authentication for sensitive operations, or B2B SSO flows that redirect corporate users to their SAML provider. Flows are configured in the UI without writing code." },
+  { question: "What is an authentik Outpost?", answer: "An Outpost is authentik's forward-authentication component. Deploy it as a sidecar or separate container, configure nginx or Traefik to use it for auth_request, and any app behind that proxy is automatically protected with authentik authentication — no code changes to the app required. The outpost also supports the embedded outpost mode where a built-in reverse proxy handles routing. This makes authentik an excellent choice for protecting internal dashboards, admin UIs, and legacy apps that can't be modified." },
+  { question: "How does authentik handle enterprise SSO?", answer: "authentik supports SAML 2.0 as both an IdP (your apps use authentik as the SSO provider) and as a Service Provider (users log in via their corporate Okta, Azure AD, or Google Workspace SAML IdP). The SCIM 2.0 provider lets you sync authentik users to downstream applications automatically when users are added or deprovisioned. LDAP outpost exposes authentik as an LDAP directory, so legacy apps that only speak LDAP can authenticate against authentik's modern user database." },
+  { question: "What is the authentik embedded outpost?", answer: "The embedded outpost is a built-in reverse proxy included in the authentik server. Instead of deploying a separate outpost container, enable the embedded outpost and configure it to forward traffic to your internal apps. This simplifies deployment for small teams. For production, the separate outpost container is recommended because it can be scaled independently and updated without restarting the main authentik server." },
+  { question: "How do I migrate users to authentik?", answer: "authentik supports bulk user import via the API (POST /api/v3/core/users/ with JSON bodies) or via CSV import in the Admin UI. For LDAP migrations, configure an LDAP Source to sync users from Active Directory — users are imported into authentik and can then use authentik's full feature set (MFA, passkeys, OIDC). Passwords from LDAP are not imported (they stay in LDAP); authentik uses LDAP bind for verification until users set an authentik password." },
+];
+---
+
+<BaseLayout
+  title="authentik — Open-Source Identity Provider with Flow Engine"
+  description="authentik is an open-source IdP with OIDC, SAML, forward auth, and a visual Flow Engine for custom login experiences. Protect any app without code changes via Traefik/nginx proxy."
+  tool="authentik identity provider, open-source SSO, forward authentication, authentik flows, OIDC SAML authentik, authentik Outpost Traefik, enterprise IAM self-hosted"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "authentik — Open-Source Identity Provider with Flow Engine",
+    "url": "https://devplaybook.cc/tools/authentik",
+    "description": "authentik is an open-source IdP with OIDC, SAML, forward auth proxy, and a visual Flow Engine for custom login experiences without code changes.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">authentik</h1>
+  <p class="text-text-muted mb-6">
+    An <strong>open-source Identity Provider</strong> with a unique visual Flow Engine for custom
+    authentication pipelines. authentik supports OIDC, OAuth 2.0, SAML, forward authentication (protect
+    any app via nginx/Traefik without code changes), and enterprise LDAP/SCIM — all configurable from
+    a rich admin UI.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual Flow Engine</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Forward auth (no code changes)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OIDC + SAML + LDAP + SCIM</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Open source (MIT)</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is authentik?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    authentik's defining feature is its <strong>Flow Engine</strong>: authentication is a sequence of configurable Stages (identification, password check, MFA, consent, email verification) with Python expression Policies controlling which stages activate for which users. This visual pipeline lets non-engineers customize the entire login experience — add invite-only registration, require MFA for admin users, or redirect enterprise users to their SAML provider — all from the admin UI.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    The <strong>Outpost</strong> system is authentik's other standout feature: deploy an authentik Outpost as a Traefik or nginx forward-auth middleware, and any app behind the proxy gets SSO protection without changes to the app itself. This makes authentik ideal for protecting internal tools, dashboards, and legacy applications that can't be instrumented.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Start (Docker Compose)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Provider Types</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={providerSetup}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Flow Engine Examples</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={flowExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Forward Auth (Traefik/nginx)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={outpostExample}></pre>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>
