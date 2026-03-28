@@ -1,0 +1,286 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const installExample = `# Install Size Limit and a preset for your bundler
+npm add -D size-limit @size-limit/preset-small-lib
+
+# Other common presets:
+# @size-limit/preset-app          — for web apps (uses esbuild)
+# @size-limit/preset-big-lib      — for larger libraries
+# @size-limit/preset-small-lib    — for small libraries (no peer deps)
+
+# Run Size Limit
+npx size-limit
+
+# Run with JSON output (useful for CI comparisons)
+npx size-limit --json`;
+
+const packageJsonExample = `// package.json — add a size-limit config section and a script
+{
+  "name": "my-ui-library",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsup src/index.ts",
+    "size": "npm run build && size-limit",
+    "analyze": "npm run build && size-limit --why"
+  },
+  "size-limit": [
+    {
+      "path": "dist/index.js",
+      "limit": "10 kB"
+    },
+    {
+      "path": "dist/index.esm.js",
+      "limit": "10 kB"
+    }
+  ]
+}
+
+// Running: npm run size
+//
+// Package size: dist/index.js
+//
+//   Size limit:  10 kB
+//   Size:         8.1 kB with all dependencies, minified and gzipped
+//
+//   Time limit:   50 ms
+//   Time:         32 ms   on slow 3G
+//
+// Package size: dist/index.esm.js
+//
+//   Size limit:  10 kB
+//   Size:         7.9 kB with all dependencies, minified and gzipped`;
+
+const multiEntryExample = `// size-limit config for a library with multiple entry points
+// .size-limit.json
+[
+  {
+    "name": "Core module",
+    "path": "dist/core.js",
+    "limit": "5 kB",
+    "import": "{ createStore }"
+  },
+  {
+    "name": "Full bundle",
+    "path": "dist/index.js",
+    "limit": "20 kB"
+  },
+  {
+    "name": "React bindings",
+    "path": "dist/react.js",
+    "limit": "3 kB",
+    "import": "{ useStore }",
+    "peerDependencies": false
+  }
+]
+
+// The "import" field measures the size of just that named export
+// after tree shaking — useful for libraries that allow partial imports.`;
+
+const ciExample = `# .github/workflows/size-limit.yml
+# Uses the Size Limit Action to post a comment on every PR
+# showing the bundle size delta (before vs after your changes).
+
+name: Size Limit Check
+
+on:
+  pull_request:
+
+jobs:
+  size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Size Limit Report
+        uses: andresz1/size-limit-action@v1
+        with:
+          github_token: secrets.GITHUB_TOKEN
+          # The action builds your project, compares sizes to the base
+          # branch, and posts a comment table like:
+          #
+          # | Path           | Size    | Change  | Limit  |
+          # |----------------|---------|---------|--------|
+          # | dist/index.js  | 8.1 kB  | +0.2 kB | 10 kB  | OK
+          # | dist/react.js  | 2.8 kB  | -0.1 kB |  3 kB  | OK`;
+
+const whyExample = `# Use --why to open a bundle analyzer and see what is inside
+npm run build && npx size-limit --why
+
+# Size Limit integrates with:
+# - Webpack Bundle Analyzer (if using Webpack preset)
+# - esbuild Bundle Analyzer (if using esbuild preset)
+#
+# This shows a treemap of every module contributing to the final bundle,
+# helping you identify large dependencies worth replacing or lazy-loading.
+#
+# Common findings:
+#   - date-fns pulling in all locales instead of just one
+#   - lodash imported as a full bundle instead of individual methods
+#   - a polyfill included unnecessarily for a modern target
+#   - duplicate packages at different versions (e.g. two copies of React)`;
+
+const faq = [
+  {
+    question: "What is Size Limit?",
+    answer: "Size Limit is a performance budget tool for JavaScript libraries and applications. You define size limits in your project config, and Size Limit measures the real bundle size — after minification and gzip/brotli compression — then fails your build or CI check if any limit is exceeded. It also shows JavaScript execution time impact, helping you catch performance regressions before they ship to users."
+  },
+  {
+    question: "How does Size Limit measure bundle size?",
+    answer: "Size Limit does not simply report file size on disk. It runs your output through a real bundler (Webpack, Rollup, or esbuild depending on the preset), applies tree shaking to remove unreachable code, minifies the result, and then compresses it with gzip or brotli. This produces a number that closely matches what a user's browser actually downloads, making it a much more accurate performance signal than raw file size."
+  },
+  {
+    question: "How do I set up size budgets?",
+    answer: "Add a size-limit array to your package.json (or a .size-limit.json file). Each entry has a path glob matching your build output and a limit string like '10 kB'. When you run npx size-limit, it builds your project and measures each entry. If any entry exceeds its limit, the process exits with a non-zero code, blocking CI merges. You can also use the import field to measure the cost of importing just a specific named export after tree shaking."
+  },
+  {
+    question: "How does CI integration work?",
+    answer: "Size Limit exits with a non-zero exit code when a limit is exceeded, so any CI pipeline running npx size-limit as a step will fail automatically. For pull request workflows, the andresz1/size-limit-action GitHub Action takes this further: it builds both the base branch and the PR branch, compares the sizes, and posts a comment table on the PR showing the size delta for each entry point. This gives reviewers immediate visibility into bundle size changes without any manual work."
+  },
+  {
+    question: "What is the GitHub PR bot?",
+    answer: "The Size Limit GitHub Action (andresz1/size-limit-action) posts an automated comment on every pull request that shows a table comparing bundle sizes between the base branch and the PR branch. Each row shows the path, current size, size change (with a + or - delta), and whether the limit is still met. This makes bundle size a visible part of every code review without requiring developers to run anything locally."
+  },
+  {
+    question: "How does Size Limit compare to Bundlephobia?",
+    answer: "Size Limit and Bundlephobia serve different purposes. Size Limit is a local CLI tool you add to your project's build pipeline to enforce size budgets on your own code — it measures your output files and blocks CI if limits are exceeded. Bundlephobia is a public online service for checking the bundle cost of third-party npm packages before you install them. Use Bundlephobia when evaluating a new dependency, and use Size Limit to continuously enforce the total size of what you ship."
+  },
+];
+---
+
+<BaseLayout
+  title="Size Limit — JavaScript Performance Budget Tool"
+  description="Size Limit measures the real gzip/brotli bundle size of your JavaScript library or app, enforces size budgets in CI, and posts a PR bot comment showing size changes on every pull request."
+  tool="size-limit, bundle size, performance budget, javascript, ci-cd, webpack, esbuild, rollup, tree shaking"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Size Limit — JavaScript Performance Budget Tool",
+    "url": "https://devplaybook.cc/tools/size-limit",
+    "description": "Size Limit measures real gzip/brotli bundle size, enforces size budgets in CI, and posts a PR comment showing size deltas on every pull request.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Size Limit</h1>
+  <p class="text-text-muted mb-6">
+    Performance budget tool for JavaScript. Measures the real minified and gzipped bundle size
+    of your library or app, blocks CI when limits are exceeded, and posts an automated
+    size delta comment on every pull request via the GitHub bot.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real gzip/brotli size</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Size budgets in config</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CI blocking</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Webpack / esbuild / Rollup</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GitHub PR bot</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Execution time impact</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Size Limit?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Size Limit is an open-source tool created by Andrey Sitnik (the author of PostCSS and Nano ID) that brings performance budgets to JavaScript projects. It integrates into your build pipeline, measures each output file's real compressed size, and fails the process if any file exceeds its configured limit. This turns bundle size from a metric you check occasionally into a hard constraint enforced on every commit.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Unlike tools that just report file size on disk, Size Limit runs your output through a bundler, applies tree shaking, minifies the result, and compresses it — matching what a browser actually downloads. It also estimates JavaScript execution time on a slow 3G connection, surfacing the full performance cost of shipping more code.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Real bundle size measurement</strong> — runs bundler + minifier + gzip/brotli, not raw file size on disk</li>
+    <li><strong>Size budgets</strong> — define limits per output file in <code class="bg-bg-card px-1 rounded text-xs">package.json</code> or <code class="bg-bg-card px-1 rounded text-xs">.size-limit.json</code>; process fails when exceeded</li>
+    <li><strong>CI blocking</strong> — non-zero exit code on limit violation blocks merges in any CI pipeline</li>
+    <li><strong>Bundler integrations</strong> — presets for Webpack, Rollup, esbuild, and Vite; pick the bundler that matches your stack</li>
+    <li><strong>Execution time reporting</strong> — estimates JS parse and execution time impact on slow hardware</li>
+    <li><strong>Multiple entry points</strong> — measure core, full bundle, and framework bindings separately with individual limits</li>
+    <li><strong>Named export measurement</strong> — use the <code class="bg-bg-card px-1 rounded text-xs">import</code> field to measure the cost of importing just one function after tree shaking</li>
+    <li><strong>GitHub PR bot</strong> — the Size Limit Action posts a size delta table comment on every pull request automatically</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={installExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Setting Up Size Budgets</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Add a <code class="bg-bg-card px-1 rounded text-xs">size-limit</code> array to <code class="bg-bg-card px-1 rounded text-xs">package.json</code> with a <code class="bg-bg-card px-1 rounded text-xs">path</code> and <code class="bg-bg-card px-1 rounded text-xs">limit</code> per output file. Run <code class="bg-bg-card px-1 rounded text-xs">npx size-limit</code> after your build step.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={packageJsonExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Multiple Entry Points</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    Libraries with separate entry points can define individual limits for each. The <code class="bg-bg-card px-1 rounded text-xs">import</code> field lets you measure the tree-shaken cost of importing only a specific named export.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={multiEntryExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">CI Integration and GitHub PR Bot</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    The Size Limit GitHub Action automatically builds both the base branch and the PR branch, compares sizes, and posts a comment table showing the delta for each entry point. No manual steps needed from developers — size changes are visible in every PR review.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={ciExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Analyzing What's Inside</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">
+    When Size Limit reports a size you do not expect, use <code class="bg-bg-card px-1 rounded text-xs">--why</code> to open an interactive bundle analyzer treemap showing which modules contribute most to the final size.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={whyExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Size Limit vs Bundlephobia vs bundlesize</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Size Limit</th>
+          <th class="border border-border px-3 py-2 text-left">Bundlephobia</th>
+          <th class="border border-border px-3 py-2 text-left">bundlesize</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Measures your own output</td><td class="border border-border px-3 py-2 text-green-400">Yes</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2 text-green-400">Yes</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Checks npm packages</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2 text-green-400">Yes</td><td class="border border-border px-3 py-2">No</td></tr>
+        <tr><td class="border border-border px-3 py-2">Real tree-shaken measurement</td><td class="border border-border px-3 py-2 text-green-400">Yes</td><td class="border border-border px-3 py-2">Partial</td><td class="border border-border px-3 py-2">No</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">GitHub PR bot</td><td class="border border-border px-3 py-2 text-green-400">Yes (Action)</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2 text-green-400">Yes</td></tr>
+        <tr><td class="border border-border px-3 py-2">Execution time estimate</td><td class="border border-border px-3 py-2 text-green-400">Yes</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2">No</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">No install needed</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2 text-green-400">Yes (online)</td><td class="border border-border px-3 py-2">No</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros and Cons</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✓ Measures real compressed size, not misleading raw file size</li>
+        <li>✓ Hard CI blocking prevents accidental size regressions from shipping</li>
+        <li>✓ GitHub PR bot makes size visible in every code review automatically</li>
+        <li>✓ Supports Webpack, esbuild, Rollup, and Vite via swappable presets</li>
+        <li>✓ Named export measurement shows tree-shaken cost of individual functions</li>
+        <li>✓ --why opens bundle analyzer to pinpoint large dependencies</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✗ Requires a build step before measuring — not instant feedback</li>
+        <li>✗ Preset selection can be confusing for projects not using a standard bundler</li>
+        <li>✗ Only measures output files you configure — easy to miss a new entry point</li>
+        <li>✗ CI build time increases (builds project twice for PR delta comparisons)</li>
+        <li>✗ Does not check third-party npm package costs (use Bundlephobia for that)</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="size-limit" relatedTags={['bundle-size', 'performance', 'javascript', 'ci-cd', 'budgets']} />
+</BaseLayout>
