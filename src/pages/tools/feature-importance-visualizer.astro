@@ -1,0 +1,410 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is feature importance and how is it calculated?",
+    answer: "Feature importance is a score that measures how much each input feature contributes to a model's predictions. Calculation methods vary by algorithm: tree-based models (Random Forest, XGBoost) use impurity reduction (how much each split reduces Gini impurity or entropy), while linear models use coefficient magnitudes. Permutation importance — shuffling each feature and measuring performance drop — is model-agnostic and often more reliable because it measures actual predictive contribution rather than how frequently a feature is used for splits."
+  },
+  {
+    question: "What is the difference between SHAP and permutation importance?",
+    answer: "Permutation importance measures performance loss when a single feature is randomly shuffled, making all other features unchanged. It is fast but can underestimate features that are correlated with others. SHAP (SHapley Additive exPlanations) uses game theory to assign each feature a Shapley value — the average marginal contribution across all possible feature subsets. SHAP is more theoretically principled, handles correlated features better, and provides local (per-sample) explanations, but is computationally expensive for large datasets. For quick global feature ranking, permutation importance is usually sufficient; for regulatory compliance or detailed model auditing, SHAP is preferred."
+  },
+  {
+    question: "How does multicollinearity affect feature importance scores?",
+    answer: "Multicollinearity (high correlation between features) can severely distort importance scores. When two features carry similar information, tree-based models may arbitrarily split importance between them, making each look less important than it actually is. Linear model coefficients become unstable and hard to interpret. Mitigation strategies: (1) compute Variance Inflation Factor (VIF) and remove features with VIF > 10, (2) use SHAP which handles correlation better than split-based importance, (3) cluster correlated features and select one representative per cluster, (4) use regularization (Lasso/Ridge) to let the model choose among correlated features."
+  },
+  {
+    question: "How do I use feature importance for feature selection?",
+    answer: "A practical workflow: (1) Train a baseline model on all features and compute importance. (2) Sort features by importance descending and compute cumulative importance. (3) Keep the minimum set of features that explain 80–95% of cumulative importance (this tool highlights that threshold). (4) Retrain with the reduced feature set and compare cross-validation scores — if performance is within 1–2%, the reduction is successful. (5) Watch for data leakage: features with suspiciously high importance (>50%) often indicate target leakage. Recursive Feature Elimination (RFE) automates this iteratively and is more robust for small datasets."
+  },
+  {
+    question: "What are common pitfalls when interpreting feature importance?",
+    answer: "Key pitfalls to avoid: (1) Confusing importance with causation — a feature can be important for prediction but not a cause of the outcome. (2) High-cardinality categorical features (many unique values) are artificially inflated in tree-based importance because they offer more split points. (3) Scale sensitivity — some algorithms are sensitive to feature scale, so always normalize before comparison. (4) Importance is dataset-specific: a feature important on your training set may not generalize. Always validate importance estimates on a held-out set. (5) Ignoring interactions — two features may each seem unimportant individually but interact to be critical together; interaction terms or SHAP interaction values can reveal this."
+  },
+];
+---
+
+<BaseLayout
+  title="Feature Importance Visualizer — ML Feature Ranking, 80% Variance Coverage, Cumulative Chart"
+  description="Visualize and analyze machine learning feature importance scores. Rank features, identify top contributors, find the minimum feature set for 80% and 95% variance coverage, and detect redundant features."
+  tool="feature importance visualizer, ML feature ranking, permutation importance chart, feature selection tool, cumulative importance, SHAP visualization"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Feature Importance Visualizer</h1>
+  <p class="text-text-muted mb-4">Paste your feature names and importance scores to instantly visualize rankings, cumulative coverage, and identify the minimum feature set that explains 80% of model variance.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Horizontal bar chart</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 80% / 95% coverage threshold</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cumulative importance</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Redundancy detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Normalize &amp; sort options</span>
+  </div>
+
+  <!-- Input Section -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+    <div class="lg:col-span-2 bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Feature Data Input</h2>
+        <button id="load-example" class="text-xs text-primary hover:underline">Load Example</button>
+      </div>
+      <p class="text-xs text-text-muted mb-3">One feature per line: <code class="bg-bg-card border border-border px-1 rounded">feature_name, score</code> — or paste comma-separated pairs.</p>
+      <textarea
+        id="feature-input"
+        rows="12"
+        placeholder="age, 0.245&#10;income, 0.198&#10;education_years, 0.134&#10;..."
+        class="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-primary resize-y placeholder-text-muted"
+      ></textarea>
+      <div id="parse-error" class="mt-2 text-xs text-red-500 hidden"></div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-xl p-5 space-y-4">
+      <h2 class="text-base font-semibold">Options</h2>
+
+      <div>
+        <label class="block text-xs font-medium text-text-muted mb-1.5">Sort Order</label>
+        <select id="sort-order" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="desc">Descending (highest first)</option>
+          <option value="asc">Ascending (lowest first)</option>
+          <option value="original">Original order</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-text-muted mb-1.5">Score Display</label>
+        <select id="normalize-mode" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="raw">Raw scores</option>
+          <option value="normalized" selected>Normalize to 100%</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-text-muted mb-1.5">Coverage Threshold</label>
+        <select id="coverage-threshold" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="0.80" selected>80% variance</option>
+          <option value="0.90">90% variance</option>
+          <option value="0.95">95% variance</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-text-muted mb-1.5">Bar Color Theme</label>
+        <select id="color-theme" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="blue">Blue (default)</option>
+          <option value="green">Green</option>
+          <option value="purple">Purple</option>
+          <option value="gradient">Importance gradient</option>
+        </select>
+      </div>
+
+      <button id="visualize-btn" class="w-full bg-primary text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors">
+        Visualize
+      </button>
+    </div>
+  </div>
+
+  <!-- Summary Stats -->
+  <div id="summary-cards" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5 hidden">
+    <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+      <div id="stat-total" class="text-2xl font-bold text-primary mb-1">—</div>
+      <div class="text-xs text-text-muted">Total Features</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+      <div id="stat-80" class="text-2xl font-bold text-yellow-500 mb-1">—</div>
+      <div class="text-xs text-text-muted" id="stat-80-label">Features for 80%</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+      <div id="stat-95" class="text-2xl font-bold text-orange-500 mb-1">—</div>
+      <div class="text-xs text-text-muted">Features for 95%</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+      <div id="stat-redundant" class="text-2xl font-bold text-red-400 mb-1">—</div>
+      <div class="text-xs text-text-muted">Likely Redundant (&lt;1%)</div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div id="chart-section" class="bg-bg-card border border-border rounded-xl p-5 mb-5 hidden">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-semibold">Feature Importance Chart</h2>
+      <div class="flex items-center gap-4 text-xs text-text-muted">
+        <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-yellow-400"></span> Top features (≥80% threshold)</span>
+        <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-slate-400"></span> Remaining features</span>
+      </div>
+    </div>
+    <div id="chart-container" class="space-y-1.5"></div>
+  </div>
+
+  <!-- Table -->
+  <div id="table-section" class="bg-bg-card border border-border rounded-xl p-5 mb-5 hidden">
+    <h2 class="text-base font-semibold mb-4">Detailed Rankings</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[560px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-3 w-10">Rank</th>
+            <th class="text-left pb-2 pr-3">Feature</th>
+            <th class="text-right pb-2 pr-3">Score</th>
+            <th class="text-right pb-2 pr-3">% of Total</th>
+            <th class="text-right pb-2">Cumulative %</th>
+          </tr>
+        </thead>
+        <tbody id="table-body" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Interpretation Guide -->
+  <div id="interpretation-section" class="bg-bg-card border border-border rounded-xl p-5 mb-6 hidden">
+    <h2 class="text-base font-semibold mb-3">Interpretation Guide</h2>
+    <div id="interpretation-content" class="space-y-3 text-sm"></div>
+  </div>
+
+  <AdUnit />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Feature Importance Visualizer" relatedTags={['ml', 'machine-learning', 'ai', 'data-science', 'feature-selection', 'visualization']} />
+</BaseLayout>
+
+<script>
+  const EXAMPLE_DATA = `age, 0.245
+income, 0.198
+education_years, 0.134
+credit_score, 0.112
+employment_length, 0.089
+debt_to_income, 0.067
+num_accounts, 0.045
+loan_amount, 0.038
+home_ownership, 0.031
+num_late_payments, 0.041`;
+
+  const COLOR_THEMES: Record<string, { top: string; rest: string }> = {
+    blue:     { top: 'bg-blue-500',   rest: 'bg-blue-300' },
+    green:    { top: 'bg-green-500',  rest: 'bg-green-300' },
+    purple:   { top: 'bg-purple-500', rest: 'bg-purple-300' },
+    gradient: { top: 'bg-yellow-500', rest: 'bg-slate-400' },
+  };
+
+  interface Feature {
+    name: string;
+    rawScore: number;
+    normalizedScore: number;
+    pct: number;
+    cumulative: number;
+    rank: number;
+  }
+
+  function parseInput(text: string): { name: string; rawScore: number }[] | null {
+    const lines = text.trim().split('\n').filter(l => l.trim());
+    const features: { name: string; rawScore: number }[] = [];
+    for (const line of lines) {
+      const parts = line.split(',');
+      if (parts.length < 2) {
+        showError(`Cannot parse line: "${line.trim()}" — expected "feature_name, score"`);
+        return null;
+      }
+      const name = parts.slice(0, -1).join(',').trim();
+      const score = parseFloat(parts[parts.length - 1].trim());
+      if (!name || isNaN(score)) {
+        showError(`Invalid line: "${line.trim()}" — score must be a number`);
+        return null;
+      }
+      if (score < 0) {
+        showError(`Negative score on "${name}" — use absolute values for importance scores`);
+        return null;
+      }
+      features.push({ name, rawScore: score });
+    }
+    if (features.length < 2) {
+      showError('Please enter at least 2 features');
+      return null;
+    }
+    return features;
+  }
+
+  function showError(msg: string) {
+    const el = document.getElementById('parse-error')!;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  function clearError() {
+    document.getElementById('parse-error')!.classList.add('hidden');
+  }
+
+  function getSelectVal(id: string): string {
+    return (document.getElementById(id) as HTMLSelectElement).value;
+  }
+
+  function visualize() {
+    clearError();
+    const raw = (document.getElementById('feature-input') as HTMLTextAreaElement).value;
+    const parsed = parseInput(raw);
+    if (!parsed) return;
+
+    const sortOrder = getSelectVal('sort-order');
+    const normalizeMode = getSelectVal('normalize-mode');
+    const threshold = parseFloat(getSelectVal('coverage-threshold'));
+    const colorTheme = getSelectVal('color-theme');
+
+    // Sort
+    let sorted = [...parsed];
+    if (sortOrder === 'desc') sorted.sort((a, b) => b.rawScore - a.rawScore);
+    else if (sortOrder === 'asc') sorted.sort((a, b) => a.rawScore - b.rawScore);
+
+    const total = sorted.reduce((s, f) => s + f.rawScore, 0);
+    const maxScore = Math.max(...sorted.map(f => f.rawScore));
+
+    // For display, when descending order compute cumulative correctly
+    // Cumulative should always be based on importance rank (highest first)
+    const descSorted = [...parsed].sort((a, b) => b.rawScore - a.rawScore);
+    const cumulativeMap = new Map<string, number>();
+    let cum = 0;
+    descSorted.forEach((f, i) => {
+      cum += f.rawScore / total;
+      cumulativeMap.set(f.name + '|' + f.rawScore, Math.min(cum * 100, 100));
+    });
+
+    const rankMap = new Map<string, number>();
+    descSorted.forEach((f, i) => rankMap.set(f.name + '|' + f.rawScore, i + 1));
+
+    // Build feature objects
+    const features: Feature[] = sorted.map(f => {
+      const key = f.name + '|' + f.rawScore;
+      return {
+        name: f.name,
+        rawScore: f.rawScore,
+        normalizedScore: normalizeMode === 'normalized' ? (f.rawScore / total) * 100 : f.rawScore,
+        pct: (f.rawScore / total) * 100,
+        cumulative: cumulativeMap.get(key) ?? 0,
+        rank: rankMap.get(key) ?? 0,
+      };
+    });
+
+    // Coverage counts (always descending order)
+    const descFeatures = [...features].sort((a, b) => b.rawScore - a.rawScore);
+    let count80 = 0, count95 = 0, cumAcc = 0;
+    for (const f of descFeatures) {
+      cumAcc += f.pct;
+      if (count80 === 0 && cumAcc >= threshold * 100) count80 = descFeatures.indexOf(f) + 1;
+      if (count95 === 0 && cumAcc >= 95) count95 = descFeatures.indexOf(f) + 1;
+    }
+    if (!count80) count80 = features.length;
+    if (!count95) count95 = features.length;
+    const redundant = features.filter(f => f.pct < 1).length;
+
+    // Determine which features are "top" (within threshold)
+    const topRanks = new Set(descFeatures.slice(0, count80).map(f => f.rank));
+
+    // Render summary
+    document.getElementById('summary-cards')!.classList.remove('hidden');
+    document.getElementById('stat-total')!.textContent = String(features.length);
+    document.getElementById('stat-80')!.textContent = String(count80);
+    document.getElementById('stat-80-label')!.textContent = `Features for ${Math.round(threshold * 100)}%`;
+    document.getElementById('stat-95')!.textContent = String(count95);
+    document.getElementById('stat-redundant')!.textContent = String(redundant);
+
+    // Render chart
+    document.getElementById('chart-section')!.classList.remove('hidden');
+    const colors = COLOR_THEMES[colorTheme] ?? COLOR_THEMES.blue;
+    const chartMax = normalizeMode === 'normalized' ? 100 : maxScore;
+    const displayLabel = normalizeMode === 'normalized' ? '%' : '';
+
+    const chartEl = document.getElementById('chart-container')!;
+    chartEl.innerHTML = features.map(f => {
+      const isTop = topRanks.has(f.rank);
+      const barPct = chartMax > 0 ? (f.normalizedScore / chartMax) * 100 : 0;
+      const barColor = isTop ? colors.top : colors.rest;
+      const topBadge = isTop
+        ? `<span class="inline-block ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-yellow-400/20 text-yellow-600 font-medium">Top</span>`
+        : '';
+      const displayVal = normalizeMode === 'normalized'
+        ? f.pct.toFixed(2) + '%'
+        : f.rawScore.toFixed(4);
+
+      return `
+        <div class="flex items-center gap-3 group">
+          <div class="w-5 text-right text-xs text-text-muted font-mono shrink-0">${f.rank}</div>
+          <div class="w-40 md:w-52 shrink-0 flex items-center">
+            <span class="text-sm truncate" title="${f.name}">${f.name}</span>${topBadge}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="w-full bg-border/40 rounded-full h-5 relative overflow-hidden">
+              <div class="${barColor} h-full rounded-full transition-all duration-300" style="width:${barPct.toFixed(2)}%"></div>
+            </div>
+          </div>
+          <div class="w-20 text-right text-xs font-mono text-text-muted shrink-0">${displayVal}</div>
+        </div>`;
+    }).join('');
+
+    // Render table
+    document.getElementById('table-section')!.classList.remove('hidden');
+    const tbody = document.getElementById('table-body')!;
+    tbody.innerHTML = descFeatures.map((f, i) => {
+      const rowClass = i < count80 ? 'bg-yellow-400/5' : '';
+      const cumClass = f.cumulative <= threshold * 100 ? 'text-yellow-500 font-semibold' : 'text-text-muted';
+      return `<tr class="${rowClass}">
+        <td class="py-2 pr-3 text-text-muted font-mono text-xs">#${f.rank}</td>
+        <td class="py-2 pr-3 font-medium text-sm">${f.name}</td>
+        <td class="py-2 pr-3 text-right font-mono text-xs">${f.rawScore.toFixed(4)}</td>
+        <td class="py-2 pr-3 text-right font-mono text-xs">${f.pct.toFixed(2)}%</td>
+        <td class="py-2 text-right font-mono text-xs ${cumClass}">${f.cumulative.toFixed(1)}%</td>
+      </tr>`;
+    }).join('');
+
+    // Interpretation
+    document.getElementById('interpretation-section')!.classList.remove('hidden');
+    const topFeature = descFeatures[0];
+    const bottomFeatures = descFeatures.filter(f => f.pct < 1);
+    const dominanceWarning = topFeature.pct > 50
+      ? `<div class="flex gap-2.5 p-3 rounded-lg bg-red-500/10 border border-red-500/20"><span class="text-red-400 shrink-0">⚠</span><span><strong class="text-red-400">"${topFeature.name}"</strong> contributes <strong>${topFeature.pct.toFixed(1)}%</strong> alone — this may indicate target leakage or data quality issues. Investigate this feature carefully before deploying.</span></div>`
+      : '';
+
+    document.getElementById('interpretation-content')!.innerHTML = `
+      ${dominanceWarning}
+      <div class="flex gap-2.5 p-3 rounded-lg bg-yellow-400/10 border border-yellow-400/20">
+        <span class="text-yellow-500 shrink-0">★</span>
+        <span><strong>${count80} out of ${features.length} features</strong> explain <strong>${Math.round(threshold * 100)}%</strong> of total importance. Consider training a leaner model with just these features to reduce complexity and overfitting risk.</span>
+      </div>
+      <div class="flex gap-2.5 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+        <span class="text-blue-400 shrink-0">◉</span>
+        <span><strong>${count95} features</strong> are needed for <strong>95% coverage</strong>. The gap between your ${Math.round(threshold * 100)}% set (${count80}) and the 95% set (${count95}) represents features with moderate, non-negligible contributions.</span>
+      </div>
+      ${bottomFeatures.length > 0 ? `
+      <div class="flex gap-2.5 p-3 rounded-lg bg-slate-500/10 border border-slate-500/20">
+        <span class="text-slate-400 shrink-0">✗</span>
+        <span><strong>${bottomFeatures.length} feature${bottomFeatures.length > 1 ? 's' : ''}</strong> contribute less than 1% each (${bottomFeatures.map(f => `"${f.name}"`).join(', ')}). These are likely redundant or noisy — removing them should not hurt model performance and will simplify the pipeline.</span>
+      </div>` : ''}
+      <div class="flex gap-2.5 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+        <span class="text-green-400 shrink-0">✓</span>
+        <span>Next steps: (1) Retrain with top-${count80} features and compare cross-validation AUC/RMSE. (2) Check top features for multicollinearity using VIF analysis. (3) Validate importance scores on a held-out test set to detect overfitting to training data splits.</span>
+      </div>
+    `;
+  }
+
+  document.getElementById('load-example')!.addEventListener('click', () => {
+    (document.getElementById('feature-input') as HTMLTextAreaElement).value = EXAMPLE_DATA;
+    visualize();
+  });
+
+  document.getElementById('visualize-btn')!.addEventListener('click', visualize);
+
+  document.getElementById('feature-input')!.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) visualize();
+  });
+
+  // Auto-visualize on option change if there's already data
+  ['sort-order', 'normalize-mode', 'coverage-threshold', 'color-theme'].forEach(id => {
+    document.getElementById(id)!.addEventListener('change', () => {
+      const val = (document.getElementById('feature-input') as HTMLTextAreaElement).value.trim();
+      if (val) visualize();
+    });
+  });
+
+  // Load example on page load
+  (document.getElementById('feature-input') as HTMLTextAreaElement).value = EXAMPLE_DATA;
+  visualize();
+</script>

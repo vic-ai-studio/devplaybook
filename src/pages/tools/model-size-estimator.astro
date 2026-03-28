@@ -1,0 +1,537 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "How is the number of parameters in a Transformer model calculated?",
+    answer: "A Transformer's parameters come from several components: embedding tables (vocab_size × hidden_dim), attention projections (4 × hidden_dim² per layer for Q/K/V/O), feed-forward layers (2 × hidden_dim × ffn_dim per layer), and layer normalization weights. For GPT-style models, the total is roughly: (vocab_size × d_model) + num_layers × (4 × d_model² + 2 × d_model × ffn_dim + small_norms). Larger hidden dimensions and more layers scale quadratically and linearly respectively, so doubling hidden_dim quadruples attention cost."
+  },
+  {
+    question: "What does quantization do to model memory?",
+    answer: "Quantization reduces the bit-width of each parameter weight: FP32 uses 4 bytes/param, FP16/BF16 uses 2 bytes/param, INT8 uses 1 byte/param, and INT4 uses 0.5 bytes/param. A 7B parameter model needs ~28 GB at FP32, ~14 GB at FP16, ~7 GB at INT8, and ~3.5 GB at INT4. However, quantization can hurt accuracy (especially INT4 for small models), and activations during inference are often kept in higher precision internally. BF16 is generally preferred over FP16 for training stability on modern hardware."
+  },
+  {
+    question: "Why is training memory so much larger than inference memory?",
+    answer: "Training requires storing three things beyond the model weights: (1) Gradients — one gradient tensor per parameter, equal in size to the model weights. (2) Optimizer states — Adam stores two additional tensors per parameter (first and second moment estimates), so 2× model size. Combined, AdamW needs roughly 4× the model's weight size in FP32, or 16 bytes per parameter. Mixed-precision training (AMP) stores a FP32 master copy plus FP16 weights and gradients, totaling ~18 bytes/param. (3) Activation checkpointing can reduce activation memory at the cost of extra compute."
+  },
+  {
+    question: "What is the difference between model VRAM and inference VRAM?",
+    answer: "Model VRAM is just the memory needed to hold the weight tensors. Inference VRAM also includes: activation tensors (intermediate outputs at each layer, proportional to batch size × sequence length × hidden_dim), KV cache for autoregressive generation (2 × num_layers × num_heads × head_dim × sequence_length × batch_size × bytes_per_element), and a small framework overhead (~0.5–1 GB). For batch inference with long sequences, the KV cache can easily exceed the model weights, so always add headroom when sizing GPU memory."
+  },
+  {
+    question: "Which GPU should I choose for my model?",
+    answer: "A practical rule: ensure the GPU VRAM is at least 1.2× your estimated inference memory (for safety headroom). For inference with FP16, a 7B model (~14 GB) fits on a single RTX 4090 (24 GB) or A10G (24 GB). A 13B model (~26 GB) needs at least an A100 40 GB or two RTX 4090s. A 70B model (~140 GB at FP16) requires 2–4× A100 80 GB cards. Quantized INT4 versions of 70B models (~35 GB) can fit on two A100 40 GB cards. For training, multiply the inference requirement by 4–6× to account for gradients and optimizer states."
+  },
+];
+---
+
+<BaseLayout
+  title="ML Model Memory & Storage Estimator — Parameter Count, VRAM Calculator, Training Memory"
+  description="Calculate the memory footprint of any ML model. Estimate parameter count, model size in MB/GB, inference VRAM, training memory requirements, and get GPU recommendations for Transformer, CNN, RNN, and Dense architectures."
+  tool="ML model memory estimator, parameter count calculator, VRAM calculator, training memory estimator, model size estimator, GPU memory recommendation, transformer parameter count, quantization memory"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">ML Model Memory &amp; Storage Estimator</h1>
+  <p class="text-text-muted mb-4">Estimate the parameter count, storage footprint, inference VRAM, and training memory for any ML model architecture. Get GPU fit recommendations across common hardware tiers.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Transformer / CNN / RNN / Dense</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> FP32 / FP16 / INT8 / INT4</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Training memory (gradients + optimizer)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GPU VRAM fit checker</span>
+  </div>
+
+  <!-- Model Type Selector -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Model Architecture</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-4" id="arch-tabs">
+      <button data-arch="transformer" class="arch-tab active px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors bg-primary text-white border-primary">Transformer / LLM</button>
+      <button data-arch="cnn" class="arch-tab px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors bg-bg-card border-border text-text-muted hover:border-primary hover:text-text">CNN</button>
+      <button data-arch="rnn" class="arch-tab px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors bg-bg-card border-border text-text-muted hover:border-primary hover:text-text">RNN / LSTM</button>
+      <button data-arch="dense" class="arch-tab px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors bg-bg-card border-border text-text-muted hover:border-primary hover:text-text">Dense / MLP</button>
+      <button data-arch="custom" class="arch-tab px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors bg-bg-card border-border text-text-muted hover:border-primary hover:text-text">Custom</button>
+    </div>
+
+    <!-- Transformer Params -->
+    <div id="params-transformer" class="arch-params grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Layers</label>
+        <input id="tf-layers" type="number" value="32" min="1" max="256"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">GPT-3: 96, LLaMA-7B: 32, BERT-base: 12</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Hidden Dimension (d_model)</label>
+        <input id="tf-hidden" type="number" value="4096" min="64" max="65536" step="64"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">LLaMA-7B: 4096, GPT-3: 12288</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Attention Heads</label>
+        <input id="tf-heads" type="number" value="32" min="1" max="256"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Must divide d_model evenly</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">FFN Multiplier</label>
+        <input id="tf-ffn" type="number" value="4" min="1" max="16" step="0.5"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">FFN hidden = d_model × multiplier (typical: 4)</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Vocabulary Size</label>
+        <input id="tf-vocab" type="number" value="32000" min="256" max="256000" step="256"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">GPT-2: 50257, LLaMA: 32000, GPT-4: ~100K</p>
+      </div>
+    </div>
+
+    <!-- CNN Params -->
+    <div id="params-cnn" class="arch-params hidden grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Conv Layers</label>
+        <input id="cnn-layers" type="number" value="16" min="1" max="512"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">ResNet-18: 18, VGG-16: 16, EfficientNet-B0: 9</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Base Channels</label>
+        <input id="cnn-channels" type="number" value="64" min="1" max="2048"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Channels typically double each stage</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Input Size (px)</label>
+        <input id="cnn-input" type="number" value="224" min="1" max="4096"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Standard: 224 (ImageNet), 512 (detection)</p>
+      </div>
+    </div>
+
+    <!-- RNN/LSTM Params -->
+    <div id="params-rnn" class="arch-params hidden grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Layers</label>
+        <input id="rnn-layers" type="number" value="4" min="1" max="64"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Hidden Size</label>
+        <input id="rnn-hidden" type="number" value="512" min="16" max="8192" step="16"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Input Size</label>
+        <input id="rnn-input" type="number" value="256" min="1" max="8192"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Cell Type</label>
+        <select id="rnn-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="lstm">LSTM (4 gates)</option>
+          <option value="gru">GRU (3 gates)</option>
+          <option value="rnn">Vanilla RNN (1 gate)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Dense/MLP Params -->
+    <div id="params-dense" class="arch-params hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Layer Sizes (comma-separated)</label>
+        <input id="dense-layers" type="text" value="784,512,256,128,10" placeholder="e.g. 784,512,256,10"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">First = input size, Last = output size. Each layer connects to next.</p>
+      </div>
+    </div>
+
+    <!-- Custom Params -->
+    <div id="params-custom" class="arch-params hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Total Parameters (manual)</label>
+        <input id="custom-params" type="number" value="7000000000" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Enter the exact parameter count (e.g. 7B = 7000000000)</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Precision & Inference Config -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Precision &amp; Inference Config</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Precision</label>
+        <select id="precision" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="4">FP32 (4 bytes/param)</option>
+          <option value="2" selected>FP16 / BF16 (2 bytes/param)</option>
+          <option value="1">INT8 (1 byte/param)</option>
+          <option value="0.5">INT4 (0.5 bytes/param)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Batch Size (inference)</label>
+        <input id="batch-size" type="number" value="1" min="1" max="1024"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Sequence Length (tokens)</label>
+        <input id="seq-len" type="number" value="2048" min="1" max="131072"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">For Transformer / RNN models</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Optimizer (training)</label>
+        <select id="optimizer" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="adam" selected>AdamW (2 moments, FP32)</option>
+          <option value="sgd">SGD with momentum (1 state)</option>
+          <option value="8bit">8-bit Adam (bitsandbytes)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Estimation Results</h2>
+    <div id="results-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <!-- Filled by JS -->
+    </div>
+
+    <!-- Memory breakdown bars -->
+    <div id="memory-bars" class="space-y-3 mb-5"></div>
+
+    <!-- Training memory breakdown -->
+    <div id="training-breakdown" class="bg-bg-card border border-border rounded-lg p-4 text-sm"></div>
+  </div>
+
+  <AdUnit />
+
+  <!-- GPU VRAM Reference Table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-1">GPU VRAM Fit Checker</h2>
+    <p class="text-xs text-text-muted mb-4">Based on your inference VRAM estimate. Green = fits comfortably, Yellow = tight fit, Red = does not fit.</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[560px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">GPU</th>
+            <th class="text-right pb-2 pr-4">VRAM</th>
+            <th class="text-right pb-2 pr-4">Tier</th>
+            <th class="text-right pb-2">Inference Fit</th>
+            <th class="text-right pb-2 pl-4">Training Fit</th>
+          </tr>
+        </thead>
+        <tbody id="gpu-table" class="divide-y divide-border">
+          <!-- Filled by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="ML Model Memory Estimator" relatedTags={['ml', 'ai', 'gpu', 'transformer', 'llm', 'memory', 'training']} />
+</BaseLayout>
+
+<script>
+  // ── GPU reference table ──────────────────────────────────────────────────────
+  const GPUS = [
+    { name: 'RTX 3060', vram: 12, tier: 'Consumer' },
+    { name: 'RTX 3090', vram: 24, tier: 'Consumer' },
+    { name: 'RTX 4070 Ti', vram: 12, tier: 'Consumer' },
+    { name: 'RTX 4090', vram: 24, tier: 'Consumer' },
+    { name: 'RTX 6000 Ada', vram: 48, tier: 'Workstation' },
+    { name: 'A10G', vram: 24, tier: 'Cloud' },
+    { name: 'A30', vram: 24, tier: 'Data Center' },
+    { name: 'A100 40GB', vram: 40, tier: 'Data Center' },
+    { name: 'A100 80GB', vram: 80, tier: 'Data Center' },
+    { name: 'H100 80GB', vram: 80, tier: 'Data Center' },
+    { name: 'H100 NVL 94GB', vram: 94, tier: 'Data Center' },
+    { name: 'L4', vram: 24, tier: 'Cloud' },
+    { name: 'L40S', vram: 48, tier: 'Cloud' },
+  ];
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  function getVal(id: string): number {
+    const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement;
+    return parseFloat(el?.value ?? '0') || 0;
+  }
+  function getStr(id: string): string {
+    const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement;
+    return el?.value ?? '';
+  }
+
+  function fmtBytes(bytes: number): string {
+    if (bytes < 1024) return bytes.toFixed(1) + ' B';
+    if (bytes < 1024 ** 2) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 ** 3) return (bytes / 1024 ** 2).toFixed(1) + ' MB';
+    return (bytes / 1024 ** 3).toFixed(2) + ' GB';
+  }
+  function fmtParams(p: number): string {
+    if (p >= 1e12) return (p / 1e12).toFixed(2) + 'T';
+    if (p >= 1e9) return (p / 1e9).toFixed(2) + 'B';
+    if (p >= 1e6) return (p / 1e6).toFixed(2) + 'M';
+    if (p >= 1e3) return (p / 1e3).toFixed(1) + 'K';
+    return p.toFixed(0);
+  }
+  function gbSize(bytes: number): number { return bytes / 1024 ** 3; }
+
+  // ── Parameter count estimators ───────────────────────────────────────────────
+  function estimateTransformer(): number {
+    const L = getVal('tf-layers');
+    const d = getVal('tf-hidden');
+    const ffnMult = getVal('tf-ffn');
+    const V = getVal('tf-vocab');
+    const ffnDim = d * ffnMult;
+
+    // Embedding: vocab × d
+    const embedParams = V * d;
+    // Attention per layer: 4 × d²  (Q, K, V, O projections, ignoring bias)
+    const attnPerLayer = 4 * d * d;
+    // FFN per layer: 2 × d × ffnDim (two linear layers)
+    const ffnPerLayer = 2 * d * ffnDim;
+    // Layer norm per layer: 2 × 2d (two LN per layer, each has weight+bias = 2d)
+    const lnPerLayer = 4 * d;
+
+    const layerParams = L * (attnPerLayer + ffnPerLayer + lnPerLayer);
+    // Final LN + output projection (often tied with embedding — count once)
+    const finalParams = 2 * d;
+
+    return embedParams + layerParams + finalParams;
+  }
+
+  function estimateCNN(): number {
+    const L = getVal('cnn-layers');
+    const baseC = getVal('cnn-channels');
+    // Rough model: stages double channels every 4 layers, 3×3 conv dominant
+    // params per conv layer ≈ 3×3 × in_c × out_c
+    let total = 0;
+    let inC = 3; // RGB input
+    const numStages = Math.ceil(L / 4);
+    for (let s = 0; s < numStages; s++) {
+      const outC = baseC * Math.pow(2, s);
+      const layersInStage = Math.min(4, L - s * 4);
+      for (let i = 0; i < layersInStage; i++) {
+        total += 9 * inC * outC; // 3×3 conv
+        inC = outC;
+      }
+    }
+    // Add a simple classifier head: avgpool → 512 → num_classes(1000)
+    total += inC * 512 + 512 * 1000;
+    return total;
+  }
+
+  function estimateRNN(): number {
+    const L = getVal('rnn-layers');
+    const H = getVal('rnn-hidden');
+    const I = getVal('rnn-input');
+    const type = getStr('rnn-type');
+    // Gates: LSTM=4, GRU=3, RNN=1
+    const gates = type === 'lstm' ? 4 : type === 'gru' ? 3 : 1;
+    // First layer: input→hidden. Subsequent: hidden→hidden
+    const firstLayer = gates * (I * H + H * H + H); // weights + bias
+    const otherLayers = (L - 1) * gates * (H * H + H * H + H);
+    return firstLayer + otherLayers;
+  }
+
+  function estimateDense(): number {
+    const raw = getStr('dense-layers').split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0);
+    if (raw.length < 2) return 0;
+    let total = 0;
+    for (let i = 0; i < raw.length - 1; i++) {
+      total += raw[i] * raw[i + 1] + raw[i + 1]; // weights + bias
+    }
+    return total;
+  }
+
+  function estimateCustom(): number {
+    return getVal('custom-params');
+  }
+
+  function getActiveArch(): string {
+    return (document.querySelector('.arch-tab.active') as HTMLElement)?.dataset.arch ?? 'transformer';
+  }
+
+  // ── Main calculation ─────────────────────────────────────────────────────────
+  function calculate() {
+    const arch = getActiveArch();
+    let params = 0;
+    if (arch === 'transformer') params = estimateTransformer();
+    else if (arch === 'cnn') params = estimateCNN();
+    else if (arch === 'rnn') params = estimateRNN();
+    else if (arch === 'dense') params = estimateDense();
+    else params = estimateCustom();
+
+    const bytesPerParam = getVal('precision');
+    const batchSize = Math.max(1, getVal('batch-size'));
+    const seqLen = Math.max(1, getVal('seq-len'));
+    const optimizer = getStr('optimizer');
+
+    // Model weights
+    const modelBytes = params * bytesPerParam;
+
+    // Activation memory (inference): rough estimate
+    // Each layer produces batchSize × seqLen × hiddenDim activations
+    // Use hidden dim from transformer if available, else estimate
+    let hiddenDim = 512;
+    if (arch === 'transformer') hiddenDim = getVal('tf-hidden');
+    else if (arch === 'rnn') hiddenDim = getVal('rnn-hidden');
+    else if (arch === 'dense') {
+      const raw = getStr('dense-layers').split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0);
+      hiddenDim = raw.length > 1 ? Math.max(...raw.slice(1, -1), raw[0]) : 512;
+    }
+    const numLayers = arch === 'transformer' ? getVal('tf-layers') : arch === 'rnn' ? getVal('rnn-layers') : arch === 'cnn' ? getVal('cnn-layers') : 4;
+    const activationBytes = numLayers * batchSize * seqLen * hiddenDim * bytesPerParam;
+
+    // KV cache (transformer only)
+    let kvCacheBytes = 0;
+    if (arch === 'transformer') {
+      const heads = getVal('tf-heads');
+      const headDim = hiddenDim / Math.max(heads, 1);
+      // 2 (K+V) × layers × heads × head_dim × seqLen × batch × bytes
+      kvCacheBytes = 2 * numLayers * heads * headDim * seqLen * batchSize * bytesPerParam;
+    }
+
+    const inferenceBytes = modelBytes + activationBytes + kvCacheBytes + 0.75 * 1024 ** 3; // 0.75 GB framework overhead
+
+    // Training memory
+    // Gradients: same as model weights (FP32 for mixed precision)
+    const gradBytes = params * 4; // always FP32 for gradients
+    // Optimizer states
+    let optimBytes = 0;
+    if (optimizer === 'adam') optimBytes = params * 4 * 2; // two FP32 moments
+    else if (optimizer === 'sgd') optimBytes = params * 4; // one momentum state
+    else if (optimizer === '8bit') optimBytes = params * 1; // 8-bit quantized states
+
+    // Master weights for mixed precision: store FP32 copy
+    const masterWeightsBytes = params * 4;
+    // Activations for backprop (larger than inference — all layers kept)
+    const trainActivationBytes = activationBytes * 2; // rough 2× for backprop
+
+    const trainingBytes = modelBytes + gradBytes + optimBytes + masterWeightsBytes + trainActivationBytes;
+
+    // ── Render results cards ───────────────────────────────────────────────────
+    const cards = [
+      { label: 'Parameters', value: fmtParams(params), sub: params.toLocaleString(), color: 'text-primary' },
+      { label: 'Model Size', value: fmtBytes(modelBytes), sub: `at ${bytesPerParam} bytes/param`, color: 'text-blue-400' },
+      { label: 'Inference VRAM', value: fmtBytes(inferenceBytes), sub: `batch ${batchSize}, seq ${seqLen}`, color: 'text-purple-400' },
+      { label: 'Training VRAM', value: fmtBytes(trainingBytes), sub: optimizer === 'adam' ? 'AdamW + FP32 master' : optimizer === 'sgd' ? 'SGD + momentum' : '8-bit Adam', color: 'text-orange-400' },
+    ];
+
+    const gridEl = document.getElementById('results-grid')!;
+    gridEl.innerHTML = cards.map(c => `
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold ${c.color} mb-1">${c.value}</div>
+        <div class="text-xs font-medium mb-0.5">${c.label}</div>
+        <div class="text-xs text-text-muted">${c.sub}</div>
+      </div>
+    `).join('');
+
+    // ── Memory breakdown bars ──────────────────────────────────────────────────
+    const bars = [
+      { label: 'Model Weights', bytes: modelBytes, color: 'bg-blue-500' },
+      { label: 'Activations (inference)', bytes: activationBytes, color: 'bg-purple-500' },
+      { label: 'KV Cache', bytes: kvCacheBytes, color: 'bg-green-500' },
+      { label: 'Framework Overhead', bytes: 0.75 * 1024 ** 3, color: 'bg-gray-500' },
+    ].filter(b => b.bytes > 0);
+
+    const maxBytes = Math.max(...bars.map(b => b.bytes));
+    const barsEl = document.getElementById('memory-bars')!;
+    barsEl.innerHTML = `<p class="text-xs font-medium text-text-muted uppercase mb-2">Inference Memory Breakdown</p>` + bars.map(b => {
+      const pct = maxBytes > 0 ? (b.bytes / maxBytes) * 100 : 0;
+      return `<div>
+        <div class="flex justify-between text-xs mb-1">
+          <span class="text-text-muted">${b.label}</span>
+          <span class="font-mono">${fmtBytes(b.bytes)}</span>
+        </div>
+        <div class="w-full bg-bg-card border border-border rounded-full h-2">
+          <div class="${b.color} h-full rounded-full" style="width:${pct.toFixed(1)}%"></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // ── Training breakdown ─────────────────────────────────────────────────────
+    const tdEl = document.getElementById('training-breakdown')!;
+    const tdRows = [
+      { label: 'Model weights (quantized)', bytes: modelBytes },
+      { label: 'Gradient tensors (FP32)', bytes: gradBytes },
+      { label: 'Optimizer states', bytes: optimBytes },
+      { label: 'FP32 master weights (mixed precision)', bytes: masterWeightsBytes },
+      { label: 'Activation storage (backprop)', bytes: trainActivationBytes },
+    ];
+    tdEl.innerHTML = `<p class="text-xs font-medium text-text-muted uppercase mb-3">Training Memory Breakdown</p>
+      <div class="space-y-1.5">${tdRows.map(r => `
+        <div class="flex justify-between">
+          <span class="text-text-muted">${r.label}</span>
+          <span class="font-mono font-medium">${fmtBytes(r.bytes)}</span>
+        </div>`).join('')}
+        <div class="flex justify-between pt-2 border-t border-border font-semibold">
+          <span>Total estimated training VRAM</span>
+          <span class="font-mono text-orange-400">${fmtBytes(trainingBytes)}</span>
+        </div>
+      </div>`;
+
+    // ── GPU table ──────────────────────────────────────────────────────────────
+    const inferGB = gbSize(inferenceBytes);
+    const trainGB = gbSize(trainingBytes);
+
+    const gpuTableEl = document.getElementById('gpu-table')!;
+    gpuTableEl.innerHTML = GPUS.map(gpu => {
+      const vram = gpu.vram;
+      // Inference fit
+      let infFit: string, infClass: string;
+      if (inferGB <= vram * 0.8) { infFit = 'Fits'; infClass = 'text-green-400'; }
+      else if (inferGB <= vram) { infFit = 'Tight'; infClass = 'text-yellow-400'; }
+      else { infFit = 'Too small'; infClass = 'text-red-400'; }
+      // Training fit
+      let trainFit: string, trainClass: string;
+      if (trainGB <= vram * 0.8) { trainFit = 'Fits'; trainClass = 'text-green-400'; }
+      else if (trainGB <= vram) { trainFit = 'Tight'; trainClass = 'text-yellow-400'; }
+      else { trainFit = 'Too small'; trainClass = 'text-red-400'; }
+
+      const tierBadge =
+        gpu.tier === 'Consumer' ? 'bg-blue-500/10 text-blue-400' :
+        gpu.tier === 'Workstation' ? 'bg-purple-500/10 text-purple-400' :
+        gpu.tier === 'Cloud' ? 'bg-green-500/10 text-green-400' :
+        'bg-orange-500/10 text-orange-400';
+
+      return `<tr>
+        <td class="py-2.5 pr-4 font-medium">${gpu.name}</td>
+        <td class="py-2.5 pr-4 text-right font-mono">${vram} GB</td>
+        <td class="py-2.5 pr-4 text-right"><span class="inline-block px-2 py-0.5 rounded text-xs font-medium ${tierBadge}">${gpu.tier}</span></td>
+        <td class="py-2.5 text-right font-semibold ${infClass}">${infFit}</td>
+        <td class="py-2.5 pl-4 text-right font-semibold ${trainClass}">${trainFit}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Architecture tab switching ───────────────────────────────────────────────
+  document.querySelectorAll('.arch-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.arch-tab').forEach(b => {
+        b.classList.remove('active', 'bg-primary', 'text-white', 'border-primary');
+        b.classList.add('bg-bg-card', 'border-border', 'text-text-muted');
+      });
+      btn.classList.add('active', 'bg-primary', 'text-white', 'border-primary');
+      btn.classList.remove('bg-bg-card', 'border-border', 'text-text-muted');
+
+      const arch = (btn as HTMLElement).dataset.arch!;
+      document.querySelectorAll('.arch-params').forEach(p => p.classList.add('hidden'));
+      document.getElementById(`params-${arch}`)?.classList.remove('hidden');
+
+      calculate();
+    });
+  });
+
+  // ── Live recalculation ───────────────────────────────────────────────────────
+  document.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', calculate);
+    el.addEventListener('change', calculate);
+  });
+
+  // Initial render
+  calculate();
+</script>
