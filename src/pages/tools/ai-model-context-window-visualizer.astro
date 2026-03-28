@@ -1,0 +1,189 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AffiliateSection from '../../components/AffiliateSection.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a context window in LLMs?", answer: "A context window is the maximum amount of text (measured in tokens) an LLM can process in a single request — including both input (your prompt + conversation history) and output (the model's response). If your input exceeds the context window, the model will either refuse the request or truncate older content. Larger context windows allow processing of entire codebases, books, or long conversation threads." },
+  { question: "Why does Gemini 1.5 Pro have such a large context window?", answer: "Google's Gemini 1.5 Pro achieves a 1 million token context window (extendable to 2M in preview) through a sparse attention mechanism called MQA (Multi-Query Attention) and architectural improvements that reduce the quadratic complexity of standard attention. This enables processing ~750,000 words or roughly 700 pages of text in a single API call — useful for large document analysis, video processing, and entire repository comprehension." },
+  { question: "Does a larger context window mean better performance?", answer: "Not necessarily. While a larger context window allows more input, models can suffer from 'lost in the middle' degradation where information in the middle of very long prompts receives less attention than text near the beginning or end. Research shows retrieval accuracy drops for many models with very long contexts. Always test your specific use case rather than assuming more context equals better performance." },
+  { question: "How do I calculate how many tokens my text uses?", answer: "The standard approximation is 1 token ≈ 4 characters for English text, or roughly 0.75 words per token. A page of typical English text (250 words) ≈ 333 tokens. For code, the ratio varies by language — Python and JavaScript are often denser per token. Use our OpenAI Token Counter tool for more precise estimates, or use the tiktoken library in Python for exact GPT counts." },
+];
+---
+
+<BaseLayout
+  title="AI Model Context Window Visualizer — Compare LLM Context Windows"
+  description="Visually compare context window sizes across GPT-4o, Claude 3.5 Sonnet, Gemini 1.5 Pro, Llama 3, and more. Enter text to see which models can fit your prompt. Free, browser-based."
+  tool="LLM context window comparison, AI model context size, GPT-4o context window, Claude context window, Gemini 1M context"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "AI Model Context Window Visualizer",
+    "url": "https://devplaybook.cc/tools/ai-model-context-window-visualizer",
+    "description": "Compare context window sizes across major AI models with a visual bar chart. Enter text to see which models can fit your prompt.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">AI Model Context Window Visualizer</h1>
+  <p class="text-text-muted mb-4">
+    Compare context window sizes across the major LLM providers.
+    Paste your text to see which models can fit it and what percentage of each window it fills.
+    Runs entirely in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 8 models compared</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual bar chart (pure CSS)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Color-coded by provider</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Fits-check for your text</span>
+  </div>
+
+  <!-- Text input for fit check -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-8">
+    <div class="flex items-center justify-between mb-3">
+      <label class="font-semibold text-sm" for="ctx-input">Paste Text to Check Fit (optional)</label>
+      <button id="ctx-clear" class="text-xs text-text-muted hover:text-red-400 transition-colors">Clear</button>
+    </div>
+    <textarea id="ctx-input" rows="4"
+      placeholder="Paste your prompt, document, or code here to see which models can fit it..."
+      class="w-full bg-bg border border-border rounded-lg px-3 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"></textarea>
+    <div class="flex items-center gap-4 mt-2 text-xs text-text-muted">
+      <span id="ctx-chars">0 characters</span>
+      <span id="ctx-tokens" class="font-semibold text-primary">~0 tokens</span>
+    </div>
+  </div>
+
+  <!-- Bar chart -->
+  <div class="bg-bg-card border border-border rounded-xl p-6 mb-8">
+    <h2 class="font-bold text-sm uppercase tracking-wide text-text-muted mb-6">Context Window Comparison</h2>
+
+    <!-- Provider legend -->
+    <div class="flex flex-wrap gap-4 mb-6 text-xs text-text-muted">
+      <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-green-500"></span>OpenAI</span>
+      <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-orange-500"></span>Anthropic</span>
+      <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-blue-500"></span>Google</span>
+      <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-purple-500"></span>Meta / Open Source</span>
+      <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-yellow-500"></span>Mistral AI</span>
+      <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-pink-500"></span>Cohere</span>
+    </div>
+
+    <div id="bar-chart" class="space-y-4">
+      <!-- filled by JS -->
+    </div>
+  </div>
+
+  <!-- Data table -->
+  <div class="bg-bg-card border border-border rounded-xl p-6 mb-8 overflow-x-auto">
+    <h2 class="font-bold text-sm uppercase tracking-wide text-text-muted mb-4">Model Specifications</h2>
+    <table class="w-full text-sm min-w-[500px]">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 text-text-muted font-medium">Model</th>
+          <th class="text-left py-2 pr-4 text-text-muted font-medium">Provider</th>
+          <th class="text-right py-2 pr-4 text-text-muted font-medium">Context Window</th>
+          <th class="text-right py-2 text-text-muted font-medium" id="fit-header">Fits Your Text?</th>
+        </tr>
+      </thead>
+      <tbody id="model-table" class="text-xs">
+        <!-- filled by JS -->
+      </tbody>
+    </table>
+  </div>
+
+  <AffiliateSection />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Model Context Window Visualizer" relatedTags={['llm', 'context-window', 'gpt', 'claude', 'gemini', 'ai']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var MODELS = [
+    { name: 'Gemini 1.5 Pro',    provider: 'Google',     ctx: 1000000, color: 'bg-blue-500',   text: 'text-blue-400' },
+    { name: 'Gemini 1.5 Flash',  provider: 'Google',     ctx: 1000000, color: 'bg-blue-400',   text: 'text-blue-300' },
+    { name: 'Claude 3.5 Sonnet', provider: 'Anthropic',  ctx: 200000,  color: 'bg-orange-500', text: 'text-orange-400' },
+    { name: 'GPT-4o',            provider: 'OpenAI',     ctx: 128000,  color: 'bg-green-500',  text: 'text-green-400' },
+    { name: 'Command R+',        provider: 'Cohere',     ctx: 128000,  color: 'bg-pink-500',   text: 'text-pink-400' },
+    { name: 'Mistral 32k',       provider: 'Mistral AI', ctx: 32000,   color: 'bg-yellow-500', text: 'text-yellow-400' },
+    { name: 'GPT-4 (32k)',       provider: 'OpenAI',     ctx: 32768,   color: 'bg-green-400',  text: 'text-green-300' },
+    { name: 'Llama 3 (8k)',      provider: 'Meta',       ctx: 8192,    color: 'bg-purple-500', text: 'text-purple-400' },
+  ];
+
+  var MAX_CTX = 1000000;
+
+  function formatCtx(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(0) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(0) + 'k';
+    return n.toLocaleString();
+  }
+
+  function estimateTokens(text) {
+    if (!text) return 0;
+    return Math.ceil(text.length / 4);
+  }
+
+  function buildChart(userTokens) {
+    var chartEl = document.getElementById('bar-chart');
+    var tableEl = document.getElementById('model-table');
+    chartEl.innerHTML = '';
+    tableEl.innerHTML = '';
+
+    MODELS.forEach(function (m) {
+      var barPct = (m.ctx / MAX_CTX * 100).toFixed(4);
+      var fits = userTokens > 0 ? userTokens <= m.ctx : null;
+      var userBarPct = userTokens > 0 ? Math.min((userTokens / m.ctx) * 100, 100).toFixed(2) : 0;
+      var userBarColor = userTokens > 0 ? (userTokens > m.ctx ? 'bg-red-500' : 'bg-white/30') : '';
+
+      // Bar chart row
+      var fitBadge = '';
+      if (fits === true) fitBadge = '<span class="ml-2 text-xs text-green-400">✓ fits</span>';
+      if (fits === false) fitBadge = '<span class="ml-2 text-xs text-red-400">✗ exceeds</span>';
+
+      var row = document.createElement('div');
+      row.className = 'flex items-center gap-3';
+      row.innerHTML = '<div class="w-40 text-xs text-text-muted text-right shrink-0">'
+        + m.name + fitBadge
+        + '</div>'
+        + '<div class="flex-1 relative bg-bg rounded-full h-5 overflow-hidden">'
+        + '<div class="h-5 rounded-full ' + m.color + ' opacity-80 transition-all duration-500" style="width:' + barPct + '%"></div>'
+        + (userTokens > 0 ? '<div class="absolute top-0 left-0 h-5 rounded-full ' + userBarColor + ' transition-all duration-500" style="width:' + userBarPct + '%"></div>' : '')
+        + '</div>'
+        + '<div class="w-20 text-xs text-text-muted shrink-0">' + formatCtx(m.ctx) + ' tokens</div>';
+      chartEl.appendChild(row);
+
+      // Table row
+      var fitCell = fits === null
+        ? '<span class="text-text-muted">—</span>'
+        : fits
+          ? '<span class="text-green-400">✓ Yes (' + (userTokens / m.ctx * 100).toFixed(1) + '% used)</span>'
+          : '<span class="text-red-400">✗ No (exceeds by ' + formatCtx(userTokens - m.ctx) + ')</span>';
+
+      tableEl.innerHTML += '<tr class="border-b border-border/50">'
+        + '<td class="py-2.5 pr-4 text-text font-medium">' + m.name + '</td>'
+        + '<td class="pr-4 text-text-muted">' + m.provider + '</td>'
+        + '<td class="text-right pr-4 font-mono ' + m.text + '">' + m.ctx.toLocaleString() + '</td>'
+        + '<td class="text-right">' + fitCell + '</td>'
+        + '</tr>';
+    });
+  }
+
+  function update() {
+    var text = document.getElementById('ctx-input').value;
+    var tokens = estimateTokens(text);
+    document.getElementById('ctx-chars').textContent = text.length.toLocaleString() + ' characters';
+    document.getElementById('ctx-tokens').textContent = '~' + tokens.toLocaleString() + ' tokens';
+    buildChart(tokens);
+  }
+
+  document.getElementById('ctx-input').addEventListener('input', update);
+  document.getElementById('ctx-clear').addEventListener('click', function () {
+    document.getElementById('ctx-input').value = '';
+    update();
+  });
+
+  buildChart(0);
+})();
+</script>
