@@ -1,0 +1,238 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is chunking in RAG systems?", answer: "Chunking splits documents into smaller pieces that get embedded and stored in a vector database. When a user queries the system, only the most relevant chunks are retrieved and added to the LLM context. The chunk size determines how much text is retrieved per result, affecting both retrieval precision and context quality." },
+  { question: "How does chunk size affect retrieval quality?", answer: "Smaller chunks (128-256 tokens) provide precise retrieval and reduce noise, but may miss surrounding context needed to answer questions. Larger chunks (512-1024 tokens) provide more context per retrieval but may include irrelevant text. Most production systems use 256-512 tokens with 10-20% overlap." },
+  { question: "What is chunk overlap?", answer: "Overlap duplicates a percentage of text between adjacent chunks to ensure concepts that span chunk boundaries aren't lost. With 20% overlap on 512-token chunks, consecutive chunks share ~100 tokens. This improves retrieval coherence but increases storage and embedding costs." },
+  { question: "How many chunks should I retrieve (top-K)?", answer: "Typical values are 3-10 chunks. More chunks provide more context but consume more tokens in the LLM prompt, increasing cost. Start with 5, then tune based on your context window budget and retrieval quality. For 512-token chunks, 5 chunks = ~2,560 tokens, which is manageable in most models." },
+  { question: "How do I choose between fixed-size and semantic chunking?", answer: "Fixed-size chunking splits at exact token counts — simple, predictable, and fast. Semantic chunking uses sentence/paragraph boundaries for more natural splits. For code, split by functions/classes. For prose, split by paragraphs. For structured data (CSV, JSON), split by rows/objects. Semantic chunking usually gives better retrieval but is slower." },
+];
+---
+
+<BaseLayout
+  title="RAG Chunking Calculator — Optimal Chunk Size for Vector Retrieval"
+  description="Calculate optimal RAG chunk sizes for your vector database. Estimate total chunks, embedding costs, retrieval token usage, and compare chunking strategies for LLM RAG pipelines."
+  tool="RAG Chunking Calculator, Vector Database Chunk Size, RAG Retrieval Optimizer, Embedding Cost Calculator, LLM RAG Pipeline"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">RAG Chunking Calculator</h1>
+  <p class="text-text-muted mb-4">Find the optimal chunk size for your RAG system. Calculate total chunks, embedding costs, retrieval token budgets, and compare strategies.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Chunk count estimator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Embedding cost calculator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Retrieval token budget</span>
+  </div>
+
+  <!-- Document config -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Document Corpus Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Total documents</label>
+        <input id="total-docs" type="number" value="500" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Avg words per document</label>
+        <input id="words-per-doc" type="number" value="2000" min="100"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Document type</label>
+        <select id="doc-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="1.3">Technical docs / Code (1.3 tok/word)</option>
+          <option value="0.75" selected>English prose (0.75 tok/word)</option>
+          <option value="0.6">Dense legal / academic (0.6 tok/word)</option>
+          <option value="2.0">Code-heavy (2.0 tok/word)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chunking strategy -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Chunking Strategy</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Chunk size (tokens): <span id="chunk-size-label" class="text-primary">512</span></label>
+          <input id="chunk-size" type="range" min="64" max="2048" step="64" value="512"
+            class="w-full accent-primary" />
+          <div class="flex justify-between text-xs text-text-muted mt-1">
+            <span>64</span><span>256</span><span>512</span><span>1024</span><span>2048</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Overlap %: <span id="overlap-label" class="text-primary">15%</span></label>
+          <input id="chunk-overlap" type="range" min="0" max="50" step="5" value="15"
+            class="w-full accent-primary" />
+          <div class="flex justify-between text-xs text-text-muted mt-1">
+            <span>0%</span><span>10%</span><span>25%</span><span>50%</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Top-K retrieved per query</label>
+          <input id="top-k" type="number" value="5" min="1" max="50"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Queries per day</label>
+          <input id="queries-per-day" type="number" value="1000" min="1"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+      </div>
+      <div id="result-cards" class="grid grid-cols-2 gap-3 content-start"></div>
+    </div>
+  </div>
+
+  <!-- Embedding model config -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Embedding Model & Cost</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Embedding model</label>
+        <select id="embed-model" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="0.02,1536">OpenAI text-embedding-3-small ($0.02/1M)</option>
+          <option value="0.13,3072">OpenAI text-embedding-3-large ($0.13/1M)</option>
+          <option value="0.10,1536">OpenAI ada-002 ($0.10/1M)</option>
+          <option value="0,384">sentence-transformers/all-MiniLM (free/local)</option>
+          <option value="0,768">BAAI/bge-base (free/local)</option>
+          <option value="0,1536">Cohere embed-english (custom)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Re-indexing frequency</label>
+        <select id="reindex-freq" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="1">Once (static corpus)</option>
+          <option value="7">Weekly updates</option>
+          <option value="30" selected>Monthly updates</option>
+          <option value="365">Yearly</option>
+        </select>
+      </div>
+    </div>
+    <div id="cost-breakdown" class="overflow-x-auto"></div>
+  </div>
+
+  <!-- Strategy comparison -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">Chunk Size Strategy Comparison</h2>
+    <div id="strategy-comparison" class="overflow-x-auto"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="RAG Chunking Calculator" relatedTags={['rag', 'vector', 'embedding', 'llm', 'ai', 'chunking', 'retrieval']} />
+</BaseLayout>
+
+<script>
+  function getVal(id: string): number {
+    const el = document.getElementById(id);
+    if (!el) return 0;
+    if (el.tagName === 'SELECT') return parseFloat((el as HTMLSelectElement).value.split(',')[0]) || 0;
+    return parseFloat((el as HTMLInputElement).value) || 0;
+  }
+
+  function calculate() {
+    const totalDocs = getVal('total-docs');
+    const wordsPerDoc = getVal('words-per-doc');
+    const tokPerWord = parseFloat((document.getElementById('doc-type') as HTMLSelectElement).value) || 0.75;
+    const chunkSize = getVal('chunk-size');
+    const overlapPct = getVal('chunk-overlap') / 100;
+    const topK = getVal('top-k');
+    const queriesPerDay = getVal('queries-per-day');
+
+    (document.getElementById('chunk-size-label') as HTMLElement).textContent = chunkSize.toString();
+    (document.getElementById('overlap-label') as HTMLElement).textContent = `${getVal('chunk-overlap')}%`;
+
+    const totalTokens = totalDocs * wordsPerDoc * tokPerWord;
+    const effectiveStep = chunkSize * (1 - overlapPct);
+    const totalChunks = Math.ceil(totalTokens / effectiveStep);
+    const retrievedTokensPerQuery = topK * chunkSize;
+
+    const embedModelVal = (document.getElementById('embed-model') as HTMLSelectElement).value.split(',');
+    const embedCostPer1M = parseFloat(embedModelVal[0]);
+    const totalEmbedCost = (totalChunks * chunkSize / 1e6) * embedCostPer1M;
+
+    const reindexFreq = getVal('reindex-freq');
+    const annualEmbedCost = totalEmbedCost * (365 / reindexFreq);
+
+    const cards = [
+      { label: 'Total Tokens', value: (totalTokens / 1000).toFixed(0) + 'K' },
+      { label: 'Total Chunks', value: totalChunks.toLocaleString() },
+      { label: 'Tokens/Query', value: retrievedTokensPerQuery.toLocaleString() },
+      { label: 'Embed Cost', value: `$${totalEmbedCost.toFixed(3)}` },
+    ];
+
+    document.getElementById('result-cards')!.innerHTML = cards.map(c => `
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div class="text-xl font-bold text-primary">${c.value}</div>
+        <div class="text-xs text-text-muted mt-0.5">${c.label}</div>
+      </div>
+    `).join('');
+
+    // Cost breakdown
+    const monthlyQueryTokens = retrievedTokensPerQuery * queriesPerDay * 30;
+    const llmInputCost = 3.0; // Claude 3.5 Sonnet as reference
+    const monthlyLlmInputCost = (monthlyQueryTokens / 1e6) * llmInputCost;
+    const monthlyCost = annualEmbedCost / 12;
+
+    document.getElementById('cost-breakdown')!.innerHTML = `
+      <table class="w-full text-sm min-w-[400px]">
+        <thead><tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-2 pr-4">Cost Item</th>
+          <th class="text-right pb-2 pr-4">One-time</th>
+          <th class="text-right pb-2">Monthly</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">
+          <tr><td class="py-2 pr-4">Initial embedding</td><td class="py-2 pr-4 text-right font-mono">$${totalEmbedCost.toFixed(3)}</td><td class="py-2 text-right font-mono text-text-muted">—</td></tr>
+          <tr><td class="py-2 pr-4">Re-indexing cost</td><td class="py-2 pr-4 text-right font-mono text-text-muted">—</td><td class="py-2 text-right font-mono">$${monthlyCost.toFixed(3)}</td></tr>
+          <tr><td class="py-2 pr-4">LLM retrieval input (${queriesPerDay.toLocaleString()} q/day)</td><td class="py-2 pr-4 text-right font-mono text-text-muted">—</td><td class="py-2 text-right font-mono">$${monthlyLlmInputCost.toFixed(2)}</td></tr>
+          <tr class="font-semibold"><td class="py-2 pr-4">Total monthly est.</td><td class="py-2 pr-4 text-right font-mono text-text-muted">—</td><td class="py-2 text-right font-mono text-primary">$${(monthlyCost + monthlyLlmInputCost).toFixed(2)}</td></tr>
+        </tbody>
+      </table>
+    `;
+
+    // Strategy comparison
+    const strategies = [64, 256, 512, 1024, 2048].map(cs => {
+      const chunks = Math.ceil(totalTokens / (cs * (1 - overlapPct)));
+      const embedCost = (chunks * cs / 1e6) * embedCostPer1M;
+      const tokPerQuery = topK * cs;
+      return { cs, chunks, embedCost, tokPerQuery };
+    });
+
+    document.getElementById('strategy-comparison')!.innerHTML = `
+      <table class="w-full text-sm min-w-[500px]">
+        <thead><tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-2 pr-4">Chunk Size</th>
+          <th class="text-right pb-2 pr-4">Total Chunks</th>
+          <th class="text-right pb-2 pr-4">Embed Cost</th>
+          <th class="text-right pb-2 pr-4">Tok/Query</th>
+          <th class="text-left pb-2">Best For</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">
+          ${strategies.map(s => {
+            const isActive = s.cs === chunkSize;
+            const bestFor = s.cs <= 128 ? 'Precise QA' : s.cs <= 256 ? 'FAQs, facts' : s.cs <= 512 ? 'Balanced (recommended)' : s.cs <= 1024 ? 'Long-form context' : 'Full sections';
+            return `<tr class="${isActive ? 'bg-primary/5 font-semibold' : ''}">
+              <td class="py-2 pr-4">${s.cs} tok${isActive ? ' ← current' : ''}</td>
+              <td class="py-2 pr-4 text-right font-mono">${s.chunks.toLocaleString()}</td>
+              <td class="py-2 pr-4 text-right font-mono">$${s.embedCost.toFixed(3)}</td>
+              <td class="py-2 pr-4 text-right font-mono">${s.tokPerQuery.toLocaleString()}</td>
+              <td class="py-2 text-xs text-text-muted">${bestFor}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  document.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', calculate);
+    el.addEventListener('change', calculate);
+  });
+
+  calculate();
+</script>

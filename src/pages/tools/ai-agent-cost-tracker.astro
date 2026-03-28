@@ -1,0 +1,224 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How are AI agent run costs calculated?", answer: "Agent run costs accumulate from multiple LLM calls: initial planning, tool calls, retries, and the final response. Each call has input tokens (context + history + tool results) and output tokens. Total cost = sum of all individual call costs. Agents typically make 3-10+ LLM calls per task, so cost per run can be 5-20x a single completion." },
+  { question: "What is the biggest cost driver in AI agents?", answer: "Input tokens grow with each step because agents carry conversation history, tool results, and context. A 5-step agent where each step adds 1000 tokens to context will have quadratic token growth. The final steps are the most expensive. This is why context compression and summarization are important cost controls." },
+  { question: "How can I reduce agent costs?", answer: "Key strategies: (1) Use cheaper models for simple steps (GPT-4o mini for classification, GPT-4o for reasoning), (2) Compress/summarize conversation history, (3) Limit tool output size — truncate long results, (4) Cache repeated tool calls, (5) Use streaming to stop generation early if goal met, (6) Design tasks to minimize steps." },
+  { question: "What is a good cost per agent run?", answer: "It depends on use case and value delivered. Simple Q&A agents: $0.001-$0.01. Research/analysis agents: $0.05-$0.50. Complex multi-step agents: $0.50-$5.00. Compare against the value delivered (employee time saved, revenue generated) to assess ROI. Track median and p95 costs to catch outliers." },
+  { question: "How do I track agent costs in production?", answer: "Use LLM providers' usage APIs or middleware like LiteLLM, Langfuse, or Helicone. Log input/output tokens per call with trace IDs. Aggregate by agent_id, task_type, and user. Set budget alerts at 80% of monthly limits. Most providers offer per-minute rate limits that can cap runaway costs." },
+];
+---
+
+<BaseLayout
+  title="AI Agent Cost Tracker — Multi-Step Agent Run Cost Calculator"
+  description="Calculate the real cost of multi-step AI agent runs. Model each LLM call, accumulate token costs across steps, compare model strategies, and estimate monthly agent budgets."
+  tool="AI Agent Cost Tracker, Multi-Step Agent Calculator, LLM Agent Budget Estimator, Agent Run Cost, AI Workflow Cost"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Agent Run Cost Tracker</h1>
+  <p class="text-text-muted mb-4">Model your multi-step agent pipeline and calculate real costs across all LLM calls. Add steps, track token accumulation, and compare model strategies.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Step-by-step cost breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Token accumulation tracker</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Monthly budget projection</span>
+  </div>
+
+  <!-- Pipeline builder -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-semibold">Agent Pipeline Steps</h2>
+      <button id="add-step" class="text-xs px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors">+ Add Step</button>
+    </div>
+    <div id="steps-list" class="space-y-3"></div>
+  </div>
+
+  <!-- Summary cards -->
+  <div id="summary-cards" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5"></div>
+
+  <!-- Cost breakdown table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Per-Step Cost Breakdown</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[600px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-3">Step</th>
+            <th class="text-right pb-2 pr-3">Input Tok</th>
+            <th class="text-right pb-2 pr-3">Output Tok</th>
+            <th class="text-right pb-2 pr-3">Cumulative</th>
+            <th class="text-right pb-2 pr-3">Step Cost</th>
+            <th class="text-right pb-2">Cumul. Cost</th>
+          </tr>
+        </thead>
+        <tbody id="breakdown-table" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Monthly projection -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-4">Monthly Budget Projection</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">Agent runs per day</label>
+        <input id="runs-per-day" type="number" value="100" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Days per month</label>
+        <input id="days-month" type="number" value="30" min="1" max="31"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div class="flex items-end">
+        <div id="monthly-cost" class="bg-bg-card border border-primary/30 rounded-lg p-3 w-full text-center">
+          <div class="text-2xl font-bold text-primary" id="monthly-value">$0.00</div>
+          <div class="text-xs text-text-muted">Estimated monthly cost</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Agent Cost Tracker" relatedTags={['ai', 'agent', 'llm', 'cost', 'budget', 'openai', 'claude']} />
+</BaseLayout>
+
+<script>
+  interface Step {
+    id: string;
+    name: string;
+    model: string;
+    inputPrice: number;
+    outputPrice: number;
+    newInput: number;
+    output: number;
+    includesHistory: boolean;
+  }
+
+  const MODELS: Record<string, { input: number; output: number }> = {
+    'GPT-4o': { input: 5.00, output: 15.00 },
+    'GPT-4o mini': { input: 0.15, output: 0.60 },
+    'Claude 3.5 Sonnet': { input: 3.00, output: 15.00 },
+    'Claude 3.5 Haiku': { input: 0.80, output: 4.00 },
+    'Claude 3 Opus': { input: 15.00, output: 75.00 },
+    'Gemini 1.5 Flash': { input: 0.075, output: 0.30 },
+    'Gemini 1.5 Pro': { input: 3.50, output: 10.50 },
+    'Custom': { input: 1.00, output: 3.00 },
+  };
+
+  let steps: Step[] = [
+    { id: '1', name: 'Initial Planning', model: 'Claude 3.5 Sonnet', inputPrice: 3.00, outputPrice: 15.00, newInput: 800, output: 400, includesHistory: false },
+    { id: '2', name: 'Tool Call (Search)', model: 'Claude 3.5 Sonnet', inputPrice: 3.00, outputPrice: 15.00, newInput: 200, output: 150, includesHistory: true },
+    { id: '3', name: 'Tool Call (Execute)', model: 'Claude 3.5 Haiku', inputPrice: 0.80, outputPrice: 4.00, newInput: 500, output: 200, includesHistory: true },
+    { id: '4', name: 'Final Response', model: 'Claude 3.5 Sonnet', inputPrice: 3.00, outputPrice: 15.00, newInput: 100, output: 600, includesHistory: true },
+  ];
+
+  function renderSteps() {
+    const list = document.getElementById('steps-list')!;
+    list.innerHTML = steps.map((s, idx) => `
+      <div class="step-row border border-border rounded-lg p-3 bg-bg-card" data-id="${s.id}">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-xs font-mono text-text-muted w-6">${idx + 1}.</span>
+          <input type="text" value="${s.name}" class="step-name flex-1 bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-medium" />
+          <select class="step-model bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary">
+            ${Object.keys(MODELS).map(m => `<option ${m===s.model?'selected':''}>${m}</option>`).join('')}
+          </select>
+          <button class="remove-step text-xs text-red-400 hover:text-red-300 px-2">✕</button>
+        </div>
+        <div class="grid grid-cols-3 gap-2 ml-8">
+          <div>
+            <label class="block text-xs text-text-muted mb-1">New input tokens</label>
+            <input type="number" value="${s.newInput}" min="0" class="step-input w-full bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Output tokens</label>
+            <input type="number" value="${s.output}" min="0" class="step-output w-full bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-mono" />
+          </div>
+          <div class="flex items-end pb-1">
+            <label class="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
+              <input type="checkbox" class="step-history" ${s.includesHistory?'checked':''} />
+              <span>Include history</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.step-row').forEach(row => {
+      const id = row.getAttribute('data-id')!;
+      const step = steps.find(s => s.id === id)!;
+
+      row.querySelector('.step-name')!.addEventListener('input', (e) => { step.name = (e.target as HTMLInputElement).value; updateOutput(); });
+      row.querySelector('.step-model')!.addEventListener('change', (e) => {
+        const m = (e.target as HTMLSelectElement).value;
+        step.model = m;
+        if (MODELS[m]) { step.inputPrice = MODELS[m].input; step.outputPrice = MODELS[m].output; }
+        updateOutput();
+      });
+      row.querySelector('.step-input')!.addEventListener('input', (e) => { step.newInput = parseInt((e.target as HTMLInputElement).value) || 0; updateOutput(); });
+      row.querySelector('.step-output')!.addEventListener('input', (e) => { step.output = parseInt((e.target as HTMLInputElement).value) || 0; updateOutput(); });
+      row.querySelector('.step-history')!.addEventListener('change', (e) => { step.includesHistory = (e.target as HTMLInputElement).checked; updateOutput(); });
+      row.querySelector('.remove-step')!.addEventListener('click', () => { steps = steps.filter(s => s.id !== id); renderSteps(); updateOutput(); });
+    });
+  }
+
+  function updateOutput() {
+    let cumulativeTokens = 0;
+    let totalCost = 0;
+    const rows: string[] = [];
+
+    steps.forEach((s, idx) => {
+      const historyTokens = s.includesHistory ? cumulativeTokens : 0;
+      const totalInput = s.newInput + historyTokens;
+      const stepCost = (totalInput / 1e6 * s.inputPrice) + (s.output / 1e6 * s.outputPrice);
+      totalCost += stepCost;
+      cumulativeTokens += s.newInput + s.output;
+
+      rows.push(`<tr>
+        <td class="py-2.5 pr-3"><span class="text-xs text-text-muted mr-1">${idx+1}.</span>${s.name}<br/><span class="text-xs text-text-muted">${s.model}</span></td>
+        <td class="py-2.5 pr-3 text-right font-mono text-xs">${totalInput.toLocaleString()}</td>
+        <td class="py-2.5 pr-3 text-right font-mono text-xs">${s.output.toLocaleString()}</td>
+        <td class="py-2.5 pr-3 text-right font-mono text-xs">${cumulativeTokens.toLocaleString()}</td>
+        <td class="py-2.5 pr-3 text-right font-mono text-xs">$${stepCost.toFixed(5)}</td>
+        <td class="py-2.5 text-right font-mono text-xs font-semibold">$${totalCost.toFixed(5)}</td>
+      </tr>`);
+    });
+
+    document.getElementById('breakdown-table')!.innerHTML = rows.join('');
+
+    const runsPerDay = parseInt((document.getElementById('runs-per-day') as HTMLInputElement).value) || 100;
+    const daysMonth = parseInt((document.getElementById('days-month') as HTMLInputElement).value) || 30;
+    const monthlyCost = totalCost * runsPerDay * daysMonth;
+
+    document.getElementById('monthly-value')!.textContent = `$${monthlyCost.toFixed(2)}`;
+
+    const cards = [
+      { label: 'Total Steps', value: steps.length.toString() },
+      { label: 'Total Tokens', value: cumulativeTokens.toLocaleString() },
+      { label: 'Cost per Run', value: `$${totalCost.toFixed(5)}` },
+      { label: 'Monthly (100/day)', value: `$${(totalCost * 100 * 30).toFixed(2)}` },
+    ];
+    document.getElementById('summary-cards')!.innerHTML = cards.map(c => `
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold text-primary mb-1">${c.value}</div>
+        <div class="text-xs text-text-muted">${c.label}</div>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('add-step')!.addEventListener('click', () => {
+    steps.push({ id: Date.now().toString(), name: `Step ${steps.length + 1}`, model: 'GPT-4o mini', inputPrice: 0.15, outputPrice: 0.60, newInput: 300, output: 200, includesHistory: true });
+    renderSteps();
+    updateOutput();
+  });
+
+  ['runs-per-day', 'days-month'].forEach(id => {
+    document.getElementById(id)!.addEventListener('input', updateOutput);
+  });
+
+  renderSteps();
+  updateOutput();
+</script>

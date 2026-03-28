@@ -1,0 +1,310 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is structured output in LLMs?", answer: "Structured output forces LLMs to return data in a specific JSON format rather than free-form text. OpenAI's JSON mode and Anthropic's tool use feature guarantee the response is valid JSON matching a defined schema. This is essential for building reliable pipelines, data extraction systems, and agent tools." },
+  { question: "What is JSON Schema?", answer: "JSON Schema is a vocabulary that allows you to annotate and validate JSON documents. It defines the structure of JSON data: field names, types (string, number, boolean, array, object), required fields, enums, and validation constraints. LLM APIs use JSON Schema to define the expected output format." },
+  { question: "How do I use this with OpenAI's structured output?", answer: "Pass the generated JSON Schema to OpenAI's response_format parameter: `response_format: { type: 'json_schema', json_schema: { name: 'YourSchema', schema: <your-schema>, strict: true } }`. For older JSON mode, just set `response_format: { type: 'json_object' }` and describe the format in your prompt." },
+  { question: "How do I use this with Anthropic Claude?", answer: "For Claude, use the tools feature: define a tool with your JSON Schema as the input_schema. Prompt Claude to use that tool. Claude will return a tool_use block with the structured data. This is the most reliable way to get structured output from Claude." },
+  { question: "What is 'strict mode' in OpenAI structured output?", answer: "Strict mode (available on GPT-4o and later) guarantees 100% adherence to the schema. All object properties must be listed in 'required', additionalProperties must be false, and nested schemas must also be strict. It eliminates hallucinated fields but requires a more complete schema definition." },
+];
+---
+
+<BaseLayout
+  title="LLM JSON Schema Builder — Structured Output Generator for OpenAI & Claude"
+  description="Build JSON Schema definitions for LLM structured output. Generate OpenAI response_format, Claude tool definitions, and Zod validators. Visual schema editor with live preview."
+  tool="LLM Structured Output Builder, JSON Schema Generator, OpenAI JSON Mode, Claude Tool Definition, Zod Schema Generator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">LLM JSON Schema Builder</h1>
+  <p class="text-text-muted mb-4">Build JSON schemas for LLM structured output. Generate OpenAI response_format, Claude tool definitions, and Zod validators from a visual field editor.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual field editor</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OpenAI + Claude output</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Zod schema export</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Left: Schema editor -->
+    <div>
+      <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold">Schema Fields</h2>
+          <button id="add-field" class="text-xs px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors">+ Add Field</button>
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs text-text-muted mb-1">Schema Name</label>
+          <input id="schema-name" type="text" value="ExtractedData" placeholder="MySchema"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs text-text-muted mb-1">Description (optional)</label>
+          <input id="schema-desc" type="text" value="Structured data extracted from user input"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div id="fields-list" class="space-y-2"></div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Quick Templates</h2>
+        <div class="flex flex-wrap gap-2">
+          <button class="template-btn text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-template="sentiment">Sentiment Analysis</button>
+          <button class="template-btn text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-template="extract">Entity Extraction</button>
+          <button class="template-btn text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-template="classify">Document Classifier</button>
+          <button class="template-btn text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary transition-all" data-template="action">Agent Action</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Generated code -->
+    <div class="space-y-4">
+      <div class="flex gap-2 mb-1">
+        <button class="output-tab active text-xs px-3 py-1.5 bg-primary text-white rounded-lg" data-tab="openai">OpenAI</button>
+        <button class="output-tab text-xs px-3 py-1.5 border border-border text-text-muted rounded-lg hover:border-primary" data-tab="claude">Claude</button>
+        <button class="output-tab text-xs px-3 py-1.5 border border-border text-text-muted rounded-lg hover:border-primary" data-tab="zod">Zod</button>
+        <button class="output-tab text-xs px-3 py-1.5 border border-border text-text-muted rounded-lg hover:border-primary" data-tab="schema">Raw Schema</button>
+      </div>
+      <div class="relative">
+        <button id="copy-btn" class="absolute top-3 right-3 text-xs px-2 py-1 bg-bg-card border border-border rounded hover:border-primary text-text-muted hover:text-primary transition-all z-10">Copy</button>
+        <pre id="output-code" class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap min-h-[300px] max-h-[500px] overflow-y-auto"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="LLM JSON Schema Builder" relatedTags={['ai', 'llm', 'json', 'schema', 'openai', 'claude', 'structured-output']} />
+</BaseLayout>
+
+<script>
+  interface Field {
+    id: string;
+    name: string;
+    type: string;
+    description: string;
+    required: boolean;
+    enumValues: string;
+  }
+
+  let fields: Field[] = [
+    { id: '1', name: 'summary', type: 'string', description: 'A brief summary of the content', required: true, enumValues: '' },
+    { id: '2', name: 'sentiment', type: 'enum', description: 'Detected sentiment', required: true, enumValues: 'positive,negative,neutral' },
+    { id: '3', name: 'confidence', type: 'number', description: 'Confidence score 0-1', required: true, enumValues: '' },
+    { id: '4', name: 'tags', type: 'array', description: 'Relevant topic tags', required: false, enumValues: '' },
+  ];
+
+  let activeTab = 'openai';
+
+  const TEMPLATES: Record<string, { name: string; desc: string; fields: Omit<Field, 'id'>[] }> = {
+    sentiment: {
+      name: 'SentimentResult',
+      desc: 'Sentiment analysis result',
+      fields: [
+        { name: 'sentiment', type: 'enum', description: 'Overall sentiment', required: true, enumValues: 'positive,negative,neutral,mixed' },
+        { name: 'score', type: 'number', description: 'Sentiment score from -1 to 1', required: true, enumValues: '' },
+        { name: 'reasoning', type: 'string', description: 'Brief explanation', required: true, enumValues: '' },
+      ]
+    },
+    extract: {
+      name: 'EntityExtraction',
+      desc: 'Named entity extraction',
+      fields: [
+        { name: 'people', type: 'array', description: 'Person names mentioned', required: true, enumValues: '' },
+        { name: 'organizations', type: 'array', description: 'Organization names', required: true, enumValues: '' },
+        { name: 'locations', type: 'array', description: 'Location names', required: true, enumValues: '' },
+        { name: 'dates', type: 'array', description: 'Date references', required: false, enumValues: '' },
+      ]
+    },
+    classify: {
+      name: 'DocumentClassification',
+      desc: 'Document category classification',
+      fields: [
+        { name: 'category', type: 'enum', description: 'Primary category', required: true, enumValues: 'technical,business,legal,marketing,other' },
+        { name: 'subcategory', type: 'string', description: 'More specific category', required: false, enumValues: '' },
+        { name: 'confidence', type: 'number', description: 'Confidence 0-1', required: true, enumValues: '' },
+        { name: 'keywords', type: 'array', description: 'Key terms found', required: true, enumValues: '' },
+      ]
+    },
+    action: {
+      name: 'AgentAction',
+      desc: 'Structured agent action decision',
+      fields: [
+        { name: 'action', type: 'enum', description: 'Action to take', required: true, enumValues: 'search,respond,escalate,clarify,complete' },
+        { name: 'reasoning', type: 'string', description: 'Why this action was chosen', required: true, enumValues: '' },
+        { name: 'parameters', type: 'object', description: 'Action parameters', required: false, enumValues: '' },
+        { name: 'confidence', type: 'number', description: 'Decision confidence 0-1', required: true, enumValues: '' },
+      ]
+    }
+  };
+
+  function renderFields() {
+    const list = document.getElementById('fields-list')!;
+    list.innerHTML = fields.map(f => `
+      <div class="field-row bg-bg-card border border-border rounded-lg p-3" data-id="${f.id}">
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <input type="text" placeholder="field_name" value="${f.name}" class="field-name bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-mono" />
+          <select class="field-type bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary">
+            ${['string','number','boolean','array','object','enum'].map(t => `<option ${t===f.type?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <input type="text" placeholder="description..." value="${f.description}" class="field-desc w-full bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary mb-2" />
+        ${f.type === 'enum' ? `<input type="text" placeholder="val1,val2,val3" value="${f.enumValues}" class="field-enum w-full bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary mb-2 font-mono" />` : ''}
+        <div class="flex items-center justify-between">
+          <label class="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
+            <input type="checkbox" class="field-required" ${f.required ? 'checked' : ''} /> Required
+          </label>
+          <button class="remove-field text-xs text-red-400 hover:text-red-300" data-id="${f.id}">Remove</button>
+        </div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.field-row').forEach(row => {
+      const id = row.getAttribute('data-id')!;
+      const field = fields.find(f => f.id === id)!;
+
+      row.querySelector('.field-name')!.addEventListener('input', (e) => { field.name = (e.target as HTMLInputElement).value; updateOutput(); });
+      row.querySelector('.field-type')!.addEventListener('change', (e) => { field.type = (e.target as HTMLSelectElement).value; renderFields(); updateOutput(); });
+      row.querySelector('.field-desc')!.addEventListener('input', (e) => { field.description = (e.target as HTMLInputElement).value; updateOutput(); });
+      row.querySelector('.field-required')!.addEventListener('change', (e) => { field.required = (e.target as HTMLInputElement).checked; updateOutput(); });
+      const enumInput = row.querySelector('.field-enum');
+      if (enumInput) enumInput.addEventListener('input', (e) => { field.enumValues = (e.target as HTMLInputElement).value; updateOutput(); });
+      row.querySelector('.remove-field')!.addEventListener('click', () => { fields = fields.filter(f => f.id !== id); renderFields(); updateOutput(); });
+    });
+  }
+
+  function buildSchema(): object {
+    const required = fields.filter(f => f.required).map(f => f.name);
+    const properties: Record<string, object> = {};
+
+    fields.forEach(f => {
+      if (f.type === 'enum') {
+        const vals = f.enumValues.split(',').map(v => v.trim()).filter(Boolean);
+        properties[f.name] = { type: 'string', enum: vals, description: f.description };
+      } else if (f.type === 'array') {
+        properties[f.name] = { type: 'array', items: { type: 'string' }, description: f.description };
+      } else if (f.type === 'object') {
+        properties[f.name] = { type: 'object', description: f.description };
+      } else {
+        properties[f.name] = { type: f.type, description: f.description };
+      }
+    });
+
+    return {
+      type: 'object',
+      description: (document.getElementById('schema-desc') as HTMLInputElement).value,
+      properties,
+      required,
+      additionalProperties: false,
+    };
+  }
+
+  function generateZod(): string {
+    const lines = fields.map(f => {
+      let zodType = '';
+      if (f.type === 'enum') {
+        const vals = f.enumValues.split(',').map(v => `"${v.trim()}"`).filter(Boolean);
+        zodType = `z.enum([${vals.join(', ')}])`;
+      } else if (f.type === 'array') {
+        zodType = 'z.array(z.string())';
+      } else if (f.type === 'object') {
+        zodType = 'z.object({})';
+      } else if (f.type === 'number') {
+        zodType = 'z.number()';
+      } else if (f.type === 'boolean') {
+        zodType = 'z.boolean()';
+      } else {
+        zodType = 'z.string()';
+      }
+      if (!f.required) zodType += '.optional()';
+      if (f.description) zodType += `.describe("${f.description}")`;
+      return `  ${f.name}: ${zodType},`;
+    });
+
+    const schemaName = (document.getElementById('schema-name') as HTMLInputElement).value || 'MySchema';
+    return `import { z } from "zod";\n\nconst ${schemaName}Schema = z.object({\n${lines.join('\n')}\n});\n\ntype ${schemaName} = z.infer<typeof ${schemaName}Schema>;\nexport { ${schemaName}Schema, type ${schemaName} };`;
+  }
+
+  function updateOutput() {
+    const schema = buildSchema();
+    const schemaName = (document.getElementById('schema-name') as HTMLInputElement).value || 'MySchema';
+    let code = '';
+
+    if (activeTab === 'openai') {
+      code = JSON.stringify({
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: schemaName,
+            strict: true,
+            schema
+          }
+        }
+      }, null, 2);
+    } else if (activeTab === 'claude') {
+      code = JSON.stringify({
+        tools: [{
+          name: schemaName,
+          description: (document.getElementById('schema-desc') as HTMLInputElement).value,
+          input_schema: schema
+        }],
+        tool_choice: { type: 'tool', name: schemaName }
+      }, null, 2);
+    } else if (activeTab === 'zod') {
+      code = generateZod();
+    } else {
+      code = JSON.stringify(schema, null, 2);
+    }
+
+    document.getElementById('output-code')!.textContent = code;
+  }
+
+  document.getElementById('add-field')!.addEventListener('click', () => {
+    fields.push({ id: Date.now().toString(), name: 'new_field', type: 'string', description: '', required: true, enumValues: '' });
+    renderFields();
+    updateOutput();
+  });
+
+  document.querySelectorAll('.output-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTab = btn.getAttribute('data-tab')!;
+      document.querySelectorAll('.output-tab').forEach(b => {
+        b.classList.remove('bg-primary', 'text-white');
+        b.classList.add('border', 'border-border', 'text-text-muted');
+      });
+      btn.classList.add('bg-primary', 'text-white');
+      btn.classList.remove('border', 'border-border', 'text-text-muted');
+      updateOutput();
+    });
+  });
+
+  document.querySelectorAll('.template-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-template')!;
+      const tpl = TEMPLATES[key];
+      if (!tpl) return;
+      (document.getElementById('schema-name') as HTMLInputElement).value = tpl.name;
+      (document.getElementById('schema-desc') as HTMLInputElement).value = tpl.desc;
+      fields = tpl.fields.map((f, i) => ({ ...f, id: String(i + 1) }));
+      renderFields();
+      updateOutput();
+    });
+  });
+
+  document.getElementById('copy-btn')!.addEventListener('click', () => {
+    const code = document.getElementById('output-code')!.textContent || '';
+    navigator.clipboard.writeText(code).then(() => {
+      const btn = document.getElementById('copy-btn')!;
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  });
+
+  ['schema-name', 'schema-desc'].forEach(id => {
+    document.getElementById(id)!.addEventListener('input', updateOutput);
+  });
+
+  renderFields();
+  updateOutput();
+</script>
