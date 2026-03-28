@@ -1,0 +1,381 @@
+---
+title: "Monorepo Guide 2025: Turborepo, Nx & Lerna Compared"
+description: "A comprehensive comparison of the top monorepo tools in 2025 — Turborepo, Nx, and Lerna. Learn setup, caching, CI optimization, and workspace management to pick the right tool for your team."
+pubDate: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["monorepo", "turborepo", "nx", "lerna", "build-tools", "javascript", "typescript", "ci-cd"]
+readingTime: "14 min read"
+---
+
+Managing multiple packages, apps, and libraries in a single repository is no longer just for big tech. Monorepos have become the default choice for full-stack teams that want to share code without the coordination overhead of polyrepos. But with several mature tools on the market, picking the right one matters.
+
+This guide compares the three most widely adopted monorepo tools — **Turborepo**, **Nx**, and **Lerna** — across setup, caching, CI optimization, and workspace management. By the end, you'll know which tool fits your team's size, stack, and priorities.
+
+---
+
+## Why Monorepos?
+
+Before comparing tools, understand what problem they solve.
+
+A polyrepo approach (one package per repository) creates friction:
+
+- **Version hell**: packages diverge independently, creating incompatibility bugs
+- **Code duplication**: shared utilities get copy-pasted instead of extracted
+- **Cross-repo PRs**: a change that touches multiple packages requires coordinating multiple PRs
+- **Inconsistent tooling**: each repo grows its own lint config, test setup, and CI pipeline
+
+A monorepo collapses all packages into one repository. All code shares the same dependency tree, CI pipeline, and tooling. The tradeoff is build performance — running the full build for hundreds of packages on every commit doesn't scale.
+
+That's exactly what monorepo build tools solve.
+
+---
+
+## The Three Contenders
+
+### Turborepo
+
+Turborepo was acquired by Vercel in 2021 and has since become the fastest-growing monorepo tool. It focuses narrowly on **build performance**: incremental computation, local caching, remote caching, and parallel execution.
+
+Turborepo is package-manager-agnostic — it works on top of npm, pnpm, or Yarn workspaces. You keep your existing workspace setup and add Turborepo as a build orchestrator.
+
+**Key strengths:**
+- Simple configuration (`turbo.json`)
+- Best-in-class remote caching (Vercel's infrastructure or self-hosted)
+- Minimal abstraction — you're still running your own scripts
+- Fast cold-start performance
+
+**Ideal for:** Teams that already use npm/pnpm workspaces and want faster CI without changing their workflow.
+
+---
+
+### Nx
+
+Nx (by Nrwl) is the most feature-rich monorepo platform. It includes:
+
+- A project graph that understands dependencies between apps and libs
+- Generators (code scaffolding) for popular frameworks
+- Executors (pre-built tasks) for building, testing, linting
+- First-class support for Angular, React, Next.js, NestJS, and more
+- An optional cloud caching service (Nx Cloud)
+
+Nx goes beyond build caching — it manages the entire developer workflow, from generating new components to running distributed task execution across CI agents.
+
+**Key strengths:**
+- Deep framework integrations
+- Powerful `affected` commands (only run tasks for changed packages)
+- Extensible plugin system
+- Enterprise support from Nrwl
+
+**Ideal for:** Large teams with diverse stacks who want a managed developer platform, not just a build tool.
+
+---
+
+### Lerna
+
+Lerna is the original JavaScript monorepo tool, first released in 2015. It pioneered the `packages/` pattern and versioning workflows. After a period of decline, Lerna was adopted by Nrwl in 2022 and integrated with Nx's task runner for performance.
+
+Modern Lerna (v7+) is best understood as a **version and publish manager** that uses Nx under the hood for task execution.
+
+**Key strengths:**
+- Mature versioning and publish workflows (`lerna version`, `lerna publish`)
+- Independent or fixed versioning modes
+- Well-understood by the ecosystem (widely documented)
+- Now backed by Nx's fast task runner
+
+**Ideal for:** Teams that need sophisticated package versioning and npm publishing workflows (OSS projects, design systems, component libraries).
+
+---
+
+## Setup Comparison
+
+### Turborepo Setup
+
+```bash
+# New project
+npx create-turbo@latest
+
+# Add to existing workspace
+npm install turbo --save-dev
+```
+
+`turbo.json` minimal config:
+
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "dist/**"]
+    },
+    "test": {
+      "dependsOn": ["build"]
+    },
+    "lint": {}
+  }
+}
+```
+
+Run tasks:
+
+```bash
+turbo run build          # build all packages
+turbo run build --filter=@myapp/web  # build one package and its deps
+```
+
+Turborepo reads your `package.json` workspaces and builds a dependency graph automatically. No additional config needed for basic use.
+
+---
+
+### Nx Setup
+
+```bash
+# New workspace
+npx create-nx-workspace@latest
+
+# Add to existing repo
+npx nx@latest init
+```
+
+`nx.json` config:
+
+```json
+{
+  "tasksRunnerOptions": {
+    "default": {
+      "runner": "nx/tasks-runners/default",
+      "options": {
+        "cacheableOperations": ["build", "test", "lint"]
+      }
+    }
+  },
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build"]
+    }
+  }
+}
+```
+
+Run tasks:
+
+```bash
+nx run-many --target=build        # build all
+nx affected --target=test         # test only changed packages
+nx run @myapp/web:build           # build one project
+```
+
+Nx creates a `project.json` per project, which gives fine-grained task control per package.
+
+---
+
+### Lerna Setup
+
+```bash
+# New project
+npx lerna init
+
+# Upgrade existing Lerna project
+npx lerna@latest init
+```
+
+`lerna.json`:
+
+```json
+{
+  "version": "independent",
+  "npmClient": "pnpm",
+  "packages": ["packages/*"]
+}
+```
+
+Lerna commands:
+
+```bash
+lerna run build          # run build in all packages
+lerna version            # bump versions interactively
+lerna publish            # publish changed packages to npm
+```
+
+Modern Lerna delegates task execution to Nx, so you get caching automatically.
+
+---
+
+## Caching: How Each Tool Handles It
+
+Caching is the single biggest factor in CI build time. All three tools support local caching — skipping tasks whose inputs haven't changed. The difference is in remote caching.
+
+### Local Cache
+
+All three tools hash the inputs (source files, environment variables, config) for each task. If the hash matches a previous run, the output is restored from cache instead of re-running.
+
+```
+# Turborepo cache hit example
+$ turbo run build
+• Packages in scope: @myapp/ui, @myapp/web, @myapp/api
+• Running build in 3 packages
+@myapp/ui:build: cache hit, replaying output...
+@myapp/web:build: cache hit, replaying output...
+@myapp/api:build: cache hit, replaying output...
+```
+
+### Remote Cache
+
+| Tool | Remote Cache Provider | Self-Hosted? | Free Tier? |
+|---|---|---|---|
+| Turborepo | Vercel Remote Cache | Yes (open-source) | Yes (Vercel hobby) |
+| Nx | Nx Cloud | Yes (Nx Cloud Enterprise) | Limited |
+| Lerna | Via Nx Cloud | Same as Nx | Same as Nx |
+
+Turborepo's remote cache is simpler to configure if you're already on Vercel. Nx Cloud offers more features (distributed task execution, task history, analytics) but the free tier is limited.
+
+For self-hosted remote caching, Turborepo has [ducktape](https://github.com/ducktape-dev/ducktape-cache) and other community solutions. Nx has [Nx Cloud Community Edition](https://github.com/nrwl/nx-cloud-helm).
+
+---
+
+## CI Optimization
+
+### Turborepo CI
+
+```yaml
+# GitHub Actions
+- name: Build
+  run: turbo run build test lint --cache-dir=.turbo
+
+- name: Cache
+  uses: actions/cache@v3
+  with:
+    path: .turbo
+    key: ${{ runner.os }}-turbo-${{ github.sha }}
+    restore-keys: ${{ runner.os }}-turbo-
+```
+
+Turborepo supports `--filter` with git refs for affected-only builds:
+
+```bash
+turbo run build --filter=...[HEAD^1]  # only packages changed since last commit
+```
+
+### Nx CI
+
+```yaml
+- name: Affected Build
+  run: npx nx affected --target=build --base=origin/main
+```
+
+Nx's `affected` command is more powerful — it understands the full dependency graph and can determine exactly which downstream packages are affected by a change.
+
+```bash
+# Only run tests for packages affected by changes in libs/auth
+nx affected --target=test --base=main --head=feature/auth-refactor
+```
+
+Nx Cloud also supports **distributed task execution**: splitting tasks across multiple CI agents automatically, with shared cache.
+
+---
+
+## Workspace Management
+
+### Dependencies
+
+All three tools rely on the package manager for dependency management. The recommended approach is **pnpm workspaces** for all three:
+
+```yaml
+# pnpm-workspace.yaml
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'libs/*'
+```
+
+Internal dependencies use workspace protocol:
+
+```json
+{
+  "dependencies": {
+    "@myapp/ui": "workspace:*"
+  }
+}
+```
+
+### Code Generation
+
+This is where Nx stands apart. Nx ships generators for scaffolding components, libraries, services, and full applications:
+
+```bash
+nx g @nx/react:library my-ui-lib        # create a React library
+nx g @nx/next:app my-next-app            # create a Next.js app
+nx g @nx/react:component Button --project=my-ui-lib
+```
+
+Turborepo and Lerna do not include code generation — you'd use Plop, Hygen, or custom scripts for that.
+
+---
+
+## Feature Comparison Matrix
+
+| Feature | Turborepo | Nx | Lerna |
+|---|---|---|---|
+| Local caching | ✅ | ✅ | ✅ (via Nx) |
+| Remote caching | ✅ | ✅ | ✅ (via Nx Cloud) |
+| Affected builds | ✅ (basic) | ✅ (advanced) | ✅ (via Nx) |
+| Code generators | ❌ | ✅ | ❌ |
+| Distributed CI | ❌ | ✅ | ❌ |
+| Versioning/publish | ❌ | ❌ | ✅ |
+| Framework plugins | ❌ | ✅ | ❌ |
+| Config complexity | Low | High | Medium |
+| Learning curve | Low | High | Medium |
+
+---
+
+## When to Choose Each Tool
+
+### Choose Turborepo when:
+
+- You want faster builds with minimal config changes
+- Your team already uses npm/pnpm workspaces
+- You deploy on Vercel (remote cache is free)
+- You want a thin, non-opinionated build layer
+- Team size: 2–20 engineers
+
+### Choose Nx when:
+
+- You need framework-specific tooling (Angular, NestJS, React Native)
+- You want distributed CI task execution
+- Your monorepo has 20+ packages and complex interdependencies
+- You want one tool to manage builds, tests, scaffolding, and CI
+- Team size: 10–200+ engineers
+
+### Choose Lerna when:
+
+- You maintain an open-source project with multiple published packages
+- You need independent versioning per package
+- You want a standard `npm publish` workflow across the monorepo
+- You're comfortable with Nx under the hood for task execution
+- Use case: UI component libraries, SDK packages, design systems
+
+---
+
+## Practical Advice
+
+**Don't over-engineer early.** If you're starting a new project, pnpm workspaces + Turborepo is the right default. The setup takes 15 minutes and you get 80% of the benefit.
+
+**Migrate incrementally.** Nx migrations from an existing Turborepo or Lerna setup are supported but non-trivial. Only migrate when you hit genuine pain points.
+
+**Combine Lerna + Turborepo or Lerna + Nx.** For OSS projects, use Lerna for versioning/publishing and Turborepo or Nx for build execution. Modern Lerna v7 does this automatically.
+
+**Benchmark your own codebase.** Cache hit rates vary dramatically by project. Measure before assuming one tool is faster than another for your specific builds.
+
+---
+
+## Summary
+
+Turborepo, Nx, and Lerna solve different parts of the monorepo problem:
+
+- **Turborepo** = fast builds with minimal config
+- **Nx** = full developer platform with advanced analysis
+- **Lerna** = versioning and publishing workflows
+
+For most teams starting in 2025, Turborepo is the right entry point. Reach for Nx when your monorepo scales beyond simple build caching. Use Lerna when package publishing is your primary concern.
+
+The good news: all three interoperate, and migrating between them is possible as your needs evolve.

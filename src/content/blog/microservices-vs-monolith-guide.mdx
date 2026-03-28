@@ -1,0 +1,269 @@
+---
+title: "Microservices vs Monolith: When to Use Each Architecture"
+description: "A practical decision framework for choosing between microservices and monolith architecture. Covers tradeoffs, migration patterns, real-world examples, and the right questions to ask before splitting your app."
+pubDate: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["microservices", "monolith", "architecture", "system-design", "backend", "devops", "distributed-systems"]
+readingTime: "15 min read"
+---
+
+The microservices vs monolith debate has been running for over a decade. Engineers have declared monoliths dead, then declared microservices dead. The reality is simpler: both architectures solve real problems, and the right choice depends on factors most teams don't evaluate clearly enough.
+
+This guide gives you a practical decision framework — not a philosophy lecture. By the end, you'll know when a monolith is the right answer, when microservices make sense, and how to migrate between them if your requirements change.
+
+---
+
+## What We're Actually Comparing
+
+**Monolith**: A single deployable unit where all application functionality runs in one process. The database, business logic, and API surface are tightly coupled. One build, one deploy, one process.
+
+**Microservices**: The application is split into independent services, each responsible for a bounded piece of functionality. Services communicate over the network (HTTP, gRPC, message queues). Each service is independently deployable and scalable.
+
+There's also a spectrum between them: **modular monolith** (single deployment, module boundaries enforced in code) and **mini-services** (services split along coarse-grained domains, not every function). Most real systems land somewhere in the middle.
+
+---
+
+## The Case for the Monolith
+
+Monoliths have an undeserved reputation. For most teams and most stages of a product, a monolith is the correct choice.
+
+### Advantages
+
+**Simpler development.** In a monolith, calling a function from another module is just... calling a function. No HTTP clients, no serialization, no retry logic, no distributed tracing. New engineers can understand the codebase in days, not weeks.
+
+**Easier debugging.** When something breaks, you look at one stack trace in one process. You have one log stream. You can reproduce the issue locally by running one process.
+
+**Atomic transactions.** In a relational monolith, a user registration, payment, and email notification can live in a single database transaction. If anything fails, everything rolls back. In microservices, achieving the same consistency requires distributed transactions or eventual consistency — both of which are hard.
+
+**Faster iteration.** Shipping a new feature that touches the user profile, billing, and notification systems takes one PR in a monolith. In microservices, it can require coordinating three separate services, three deployments, and version compatibility between them.
+
+**Lower operational overhead.** One service = one CI pipeline, one deployment target, one set of infrastructure configs. Microservices multiply this by the number of services.
+
+### When a Monolith Wins
+
+- Early stage products (pre-product-market fit)
+- Teams smaller than 10 engineers
+- Products where the domain is not yet understood well enough to define service boundaries
+- Applications with complex cross-cutting transactions (financial systems, inventory management)
+- Teams without dedicated DevOps/platform engineering capacity
+
+> "Don't start with microservices." — Sam Newman, author of *Building Microservices*
+
+---
+
+## The Case for Microservices
+
+Microservices solve problems that don't exist at small scale. As organizations and products grow, the constraints of a monolith become genuine bottlenecks.
+
+### Advantages
+
+**Independent scaling.** If your image processing service handles 10x the load of your user service, you can scale just that service. In a monolith, you scale everything together.
+
+**Independent deployments.** Teams can ship their service without coordinating with every other team. At Netflix, Amazon, or Uber, hundreds of services ship independently every day. This is impossible in a shared monolith.
+
+**Technology diversity.** Each service can use the right tool for the job — a Python service for ML inference, a Go service for high-throughput APIs, a Node service for WebSocket connections.
+
+**Fault isolation.** A crash or memory leak in one service doesn't take down the entire application. Circuit breakers and retries contain failures.
+
+**Team autonomy.** Conway's Law says your architecture will mirror your org structure. Microservices let teams own their full stack vertically — from database to API — without blocking on other teams.
+
+### When Microservices Win
+
+- Large organizations (multiple product teams)
+- High-scale systems where different components have wildly different load profiles
+- Teams with strong DevOps/platform engineering maturity
+- Products with well-understood domain boundaries
+- When engineering velocity is genuinely blocked by deployment coupling
+
+---
+
+## The Real Cost of Microservices
+
+Teams underestimate what microservices require. Here's an honest list of what you're signing up for:
+
+### Network Complexity
+
+Function calls become HTTP requests or message queue operations. Every call can fail, time out, or return a partial response. You need:
+
+- Retry logic with backoff
+- Circuit breakers
+- Timeout configuration
+- Bulkheads to isolate failures
+
+```go
+// What was a function call in a monolith...
+user := userService.GetUser(ctx, userID)
+
+// ...becomes an HTTP call with error handling
+resp, err := httpClient.Get(fmt.Sprintf("%s/users/%s", userServiceURL, userID))
+if err != nil {
+    return nil, fmt.Errorf("user service unavailable: %w", err)
+}
+if resp.StatusCode != 200 {
+    return nil, fmt.Errorf("user not found: %d", resp.StatusCode)
+}
+```
+
+### Distributed Data
+
+Each service typically owns its own database. Joining data across services requires either:
+
+- API composition (fetch from multiple services and merge in the gateway)
+- Event-driven denormalization (sync copies of data via events)
+- Distributed transactions (Sagas, two-phase commit)
+
+None of these are as simple as a SQL JOIN.
+
+### Observability
+
+In a monolith, a single log line shows you what happened. In microservices, a single user action might touch 10 services. Without distributed tracing, you cannot follow a request end-to-end.
+
+You need:
+- Distributed tracing (Jaeger, Zipkin, OpenTelemetry)
+- Centralized logging (ELK stack, Datadog, Grafana Loki)
+- Service mesh or correlation IDs to link traces across services
+- Per-service metrics and alerting
+
+### Testing Complexity
+
+Unit tests and integration tests work at the service level. But end-to-end tests span services. You need:
+
+- Contract tests to verify service API compatibility
+- Staging environments that mirror production topology
+- Consumer-driven contract testing (Pact)
+
+---
+
+## The Decision Framework
+
+Use this checklist to evaluate your situation:
+
+### Size and Team Questions
+
+| Question | Monolith | Microservices |
+|---|---|---|
+| How many engineers work on the codebase? | < 10 | 20+ |
+| Do different teams own different features? | No | Yes |
+| Do teams block each other deploying? | No | Yes (→ split) |
+| Do you have dedicated platform/DevOps engineers? | No | Yes |
+
+### Technical Questions
+
+| Question | Monolith | Microservices |
+|---|---|---|
+| Do components have wildly different scaling needs? | No | Yes |
+| Do different components need different tech stacks? | No | Yes |
+| Are domain boundaries well-understood? | Unclear | Clear |
+| Can you tolerate eventual consistency? | No | Yes |
+
+### Operational Questions
+
+| Question | Monolith | Microservices |
+|---|---|---|
+| Do you have container orchestration (Kubernetes)? | No | Yes (required) |
+| Do you have distributed tracing in place? | No | Yes (required) |
+| Can you manage 10+ deployment pipelines? | No | Yes |
+
+**Score it**: If you answered "Monolith" more than "Microservices", the monolith is the right choice — at least for now.
+
+---
+
+## Real-World Examples
+
+### Amazon: Monolith → Microservices (Right Move)
+
+Amazon famously started as a monolith. By the early 2000s, the engineering org had grown to hundreds of teams, and deployments required coordinating across the entire codebase. The monolith became a bottleneck on engineering velocity.
+
+The migration to services (which eventually became AWS) enabled teams to deploy independently and scale individual services. At Amazon's scale and org size, microservices were clearly correct.
+
+### Segment: Microservices → Monolith (Right Move)
+
+Segment's engineering blog documented their move from microservices back to a monolith in 2020. With a small team (~130 engineers) and relatively low scale, the overhead of managing 140+ microservices was killing productivity. Debugging across services took hours. Deploying a simple feature required coordinating multiple service teams.
+
+They merged services into a single codebase. Deployment time dropped from 40 minutes to 15 minutes. Developer experience improved dramatically.
+
+The lesson: microservices don't make sense when your team size and scale don't justify the overhead.
+
+---
+
+## The Modular Monolith: The Best of Both?
+
+A modular monolith is often the pragmatic middle ground. The application deploys as one unit, but the internal structure enforces clear module boundaries.
+
+```
+src/
+  users/          # user module - owns its DB tables, services, controllers
+  payments/       # payment module - no direct imports from users/
+  notifications/  # notification module - event-driven, not called directly
+  shared/         # shared types and utilities only
+```
+
+Rules:
+- Modules do not import from sibling modules directly (use interfaces or events)
+- Each module has a public API (a set of exported functions/classes)
+- Modules can own their own DB schema sections or separate schemas
+
+This gives you:
+- Easy local development (one process)
+- Clear ownership boundaries (each module is a team's domain)
+- Extractable services later (when a module needs independent scaling)
+
+Many teams start with a modular monolith and extract services only when there's a concrete performance or team-scaling reason.
+
+---
+
+## Migration Strategies
+
+### Monolith to Microservices: The Strangler Fig
+
+Don't try to rewrite the monolith all at once. Use the **Strangler Fig pattern**: incrementally extract services from the edges of the monolith while the core continues to run.
+
+1. Identify a bounded context that can be cleanly extracted (e.g., the notification service)
+2. Create the new service with its own database
+3. Route traffic to the new service for the extracted functionality
+4. Remove the old code from the monolith once the new service is stable
+
+```
+Before:
+  monolith → [user logic] [payment logic] [notification logic]
+
+After extraction:
+  monolith → [user logic] [payment logic]
+  notification-service → [notification logic]
+  API gateway → routes notification traffic to new service
+```
+
+### Microservices to Monolith: The Merge
+
+Identify services that are frequently changed together and have high coupling. Merge them into a single service or modular monolith.
+
+Tools like Nx or Turborepo make managing the merged codebase easier.
+
+---
+
+## Checklist Before You Split
+
+Before extracting your first service, confirm:
+
+- [ ] The domain boundary is stable and well-understood
+- [ ] You have container orchestration (Kubernetes or ECS)
+- [ ] You have distributed tracing configured
+- [ ] You have centralized logging
+- [ ] You have service-level CI/CD pipelines
+- [ ] You've defined the service's API contract
+- [ ] You've planned how data will be migrated or synced
+- [ ] The team understands eventual consistency implications
+
+Missing more than 2–3 of these? The monolith isn't your problem yet.
+
+---
+
+## Summary
+
+**Default to a monolith.** The complexity cost of microservices is real. Most teams and most products don't need it.
+
+**Consider a modular monolith first.** Enforce boundaries in code before you enforce them with the network.
+
+**Migrate to microservices when you have concrete evidence of need**: teams blocking each other on deployments, genuinely different scaling profiles, or clear domain ownership.
+
+**The right architecture is the one your team can operate.** A poorly run microservices system is worse than a well-run monolith every time.

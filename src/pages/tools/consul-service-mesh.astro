@@ -1,0 +1,290 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Consul and what problems does it solve?", answer: "Consul is a multi-networking tool by HashiCorp that solves three interconnected problems in distributed systems: service discovery (how do services find each other?), health checking (which instances are healthy right now?), and service mesh networking (how do services communicate securely?). Without Consul, teams hardcode service addresses, manage health monitoring separately, and struggle to enforce network policies between microservices. Consul provides a single control plane that handles all three, with a distributed, highly available architecture that works across data centers and clouds." },
+  { question: "How does Consul service discovery work?", answer: "Services register themselves with Consul either via a JSON service definition file (static registration) or via the Consul API (dynamic registration). Consul stores the registration and continuously runs health checks. Consumers discover services via DNS (my-service.service.consul resolves to healthy instance IPs) or the HTTP API (GET /v1/catalog/service/my-service). Consul automatically filters out unhealthy instances from DNS responses, so clients always get a list of healthy endpoints. This eliminates hardcoded service addresses and enables zero-config service discovery in dynamic environments." },
+  { question: "What are Consul intentions and how do they implement zero-trust networking?", answer: "Intentions define which services are allowed to communicate with each other in the service mesh. An intention is a source-destination policy: 'web can call api', 'api can call database', 'external DENY all'. By default in a new Consul deployment, all traffic is denied unless explicitly allowed. Intentions are enforced by Envoy sidecars using mTLS — the sidecar on the receiving service checks the client's certificate identity (SPIFFE ID) against intentions. This implements zero-trust: services cannot communicate just because they're in the same network; they must have an explicit allow intention." },
+  { question: "What is Consul Connect and how does the Envoy sidecar work?", answer: "Consul Connect is the service mesh feature. Each service instance gets an Envoy proxy sidecar that Consul configures automatically. Outbound traffic from the service goes to the local Envoy proxy, which looks up the destination service in Consul's catalog, gets its address, establishes a mTLS connection to the destination's Envoy sidecar, and forwards the request. The application only connects to localhost — it never needs to know service addresses or manage TLS certificates. Consul issues short-lived mTLS certificates via its built-in CA, rotating them automatically." },
+  { question: "How does Consul KV store differ from other distributed KV stores?", answer: "Consul's KV store is a distributed, consistent key-value store built on Raft consensus. Unlike Redis (designed for caching, eventual consistency) or etcd (Kubernetes-focused), Consul KV is designed for configuration management and coordination in service-oriented architectures. It integrates natively with Consul watches (react to KV changes in real time), ACL policies, and Consul Template (render config files from KV values). It is not designed for high-throughput or large values — use it for configuration data, feature flags, and distributed coordination, not large blob storage." },
+  { question: "What is Consul Template and when should I use it?", answer: "Consul Template is a daemon that watches Consul's KV store and service catalog for changes, then renders templates to files and optionally runs a command when they change. For example: watch for changes to the list of healthy backend servers, render an nginx upstream config file, then reload nginx. This eliminates the need to restart services to pick up configuration changes. Consul Template is most useful for legacy applications that read config from files rather than the Consul API, or for generating load balancer configurations dynamically." },
+];
+---
+
+<BaseLayout
+  title="Consul Service Mesh Guide — Service Discovery, mTLS, and Zero-Trust Networking"
+  description="Complete HashiCorp Consul guide: service registration, health checks, intentions, mTLS service mesh, KV store, Envoy sidecar, and comparison with Istio, Linkerd, and AWS App Mesh."
+  tool="Consul, HashiCorp Consul, service mesh, service discovery, Consul Connect, mTLS, Envoy sidecar, zero-trust"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Consul Service Mesh Guide — Service Discovery, mTLS, and Zero-Trust Networking",
+    "url": "https://devplaybook.cc/tools/consul-service-mesh",
+    "description": "Complete HashiCorp Consul guide: service registration, health checks, intentions, mTLS service mesh, KV store, Envoy sidecar, and comparison with Istio, Linkerd, and AWS App Mesh.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Consul — Service Mesh &amp; Service Discovery Guide</h1>
+  <p class="text-text-muted mb-6">
+    Discover services, enforce health checks, and secure inter-service communication with
+    <strong>mTLS zero-trust networking</strong> — HashiCorp Consul runs anywhere from bare metal to Kubernetes.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Service discovery (DNS + API)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> mTLS service mesh (Envoy)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Intentions (zero-trust)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Distributed KV store</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is HashiCorp Consul?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    HashiCorp Consul is a distributed systems tool that provides service discovery, health checking, key-value storage, and service mesh networking in a single unified platform. Released in 2014, Consul was designed from the ground up for dynamic, large-scale distributed environments where services come and go constantly. Unlike static load balancers or DNS with long TTLs, Consul provides real-time service registries that immediately reflect the actual state of your infrastructure.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Consul agents run on every node in your infrastructure — either as servers (which form the consensus cluster and hold state) or clients (which register local services, run health checks, and forward queries to servers). The recommended production setup is 3 or 5 server nodes for high availability via Raft consensus, with client agents on every host. Consul clusters can be federated across data centers, enabling multi-region service discovery and network segmentation.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Service Registry</strong> — real-time catalog of services with tags, metadata, and addresses</li>
+    <li><strong>Health Checks</strong> — HTTP, TCP, gRPC, script, and TTL checks; unhealthy instances filtered from DNS</li>
+    <li><strong>DNS Interface</strong> — service-name.service.consul resolves to healthy instance IPs, zero client changes</li>
+    <li><strong>HTTP API</strong> — query catalog, KV store, and agent programmatically from any language</li>
+    <li><strong>Intentions</strong> — declarative access control between services, enforced by Envoy mTLS</li>
+    <li><strong>Envoy Sidecar (Connect)</strong> — transparent L7 proxy with automatic mTLS, observability, and retries</li>
+    <li><strong>KV Store</strong> — distributed, consistent key-value storage for configuration and coordination</li>
+    <li><strong>Multi-datacenter</strong> — federate clusters across regions with WAN gossip protocol</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Service Registration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># /etc/consul.d/web-api.json
+{
+  "service": {
+    "id": "web-api-1",
+    "name": "web-api",
+    "tags": ["v2", "primary"],
+    "address": "10.0.1.10",
+    "port": 8080,
+    "meta": {
+      "version": "2.1.0",
+      "environment": "production"
+    },
+    "checks": [
+      {
+        "id": "api-http",
+        "name": "HTTP health check",
+        "http": "http://localhost:8080/health",
+        "interval": "10s",
+        "timeout": "2s"
+      },
+      {
+        "id": "api-tcp",
+        "name": "TCP connectivity",
+        "tcp": "localhost:8080",
+        "interval": "30s"
+      }
+    ],
+    "connect": {
+      "sidecar_service": {
+        "proxy": {
+          "upstreams": [
+            {
+              "destination_name": "postgres",
+              "local_bind_port": 5432
+            },
+            {
+              "destination_name": "redis",
+              "local_bind_port": 6379
+            }
+          ]
+        }
+      }
+    }
+  }
+}</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Service Discovery CLI &amp; DNS</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Query healthy service instances via API
+curl http://127.0.0.1:8500/v1/catalog/service/web-api?passing=true
+
+# DNS lookup — resolves to healthy instance IPs
+dig @127.0.0.1 -p 8600 web-api.service.consul
+
+# Filter by tag
+dig @127.0.0.1 -p 8600 v2.web-api.service.consul
+
+# Query a specific datacenter
+dig @127.0.0.1 -p 8600 web-api.service.us-east-1.consul
+
+# Register a service dynamically via API
+curl -X PUT http://127.0.0.1:8500/v1/agent/service/register \
+  -d '{"Name":"my-service","Port":9000,"Check":{"HTTP":"http://localhost:9000/health","Interval":"10s"}}'
+
+# List all registered services
+consul catalog services
+
+# Watch for changes (long-poll, returns on any change)
+consul watch -type=service -service=web-api cat</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Service Mesh Intentions</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Allow web frontend to call the API service
+consul intention create web-frontend web-api
+
+# Allow API to call the database
+consul intention create web-api postgres
+
+# Deny all traffic from external services (default deny is preferred)
+consul intention create -deny '*' postgres
+
+# List all intentions
+consul intention list
+
+# Intentions via config entry (declarative, version-controlled)
+# intentions.hcl
+Kind = "service-intentions"
+Name = "web-api"
+Sources = [
+  {
+    Name       = "web-frontend"
+    Action     = "allow"
+  },
+  {
+    Name   = "*"
+    Action = "deny"
+  }
+]
+
+consul config write intentions.hcl</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">KV Store Operations</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Write and read key-value pairs
+consul kv put config/myapp/db_host postgres.service.consul
+consul kv put config/myapp/max_connections 100
+consul kv get config/myapp/db_host
+
+# Get with metadata (ModifyIndex for CAS operations)
+consul kv get -detailed config/myapp/db_host
+
+# List all keys under a prefix
+consul kv get -recurse config/myapp/
+
+# Delete a key
+consul kv delete config/myapp/old_key
+
+# Watch for changes (blocks until key changes)
+consul watch -type=key -key=config/myapp/db_host cat
+
+# Atomic compare-and-swap (CAS) — only update if ModifyIndex matches
+consul kv put -cas -modify-index=42 config/myapp/db_host new-value</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Consul vs Service Mesh Alternatives</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Consul</th>
+          <th class="border border-border px-3 py-2 text-left">Istio</th>
+          <th class="border border-border px-3 py-2 text-left">Linkerd</th>
+          <th class="border border-border px-3 py-2 text-left">AWS App Mesh</th>
+          <th class="border border-border px-3 py-2 text-left">Cilium</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Platform</td>
+          <td class="border border-border px-3 py-2">Any (VMs, K8s, bare metal)</td>
+          <td class="border border-border px-3 py-2">Kubernetes-focused</td>
+          <td class="border border-border px-3 py-2">Kubernetes only</td>
+          <td class="border border-border px-3 py-2">AWS / EKS</td>
+          <td class="border border-border px-3 py-2">Kubernetes (eBPF)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Service discovery</td>
+          <td class="border border-border px-3 py-2">Yes (DNS + API)</td>
+          <td class="border border-border px-3 py-2">K8s DNS + Istio</td>
+          <td class="border border-border px-3 py-2">K8s DNS</td>
+          <td class="border border-border px-3 py-2">Cloud Map</td>
+          <td class="border border-border px-3 py-2">K8s DNS</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Data plane</td>
+          <td class="border border-border px-3 py-2">Envoy</td>
+          <td class="border border-border px-3 py-2">Envoy</td>
+          <td class="border border-border px-3 py-2">Linkerd2-proxy (Rust)</td>
+          <td class="border border-border px-3 py-2">Envoy</td>
+          <td class="border border-border px-3 py-2">eBPF (no sidecar)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Complexity</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2">High</td>
+          <td class="border border-border px-3 py-2">Low-Medium</td>
+          <td class="border border-border px-3 py-2">Low (managed)</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">KV store</td>
+          <td class="border border-border px-3 py-2">Yes (built-in)</td>
+          <td class="border border-border px-3 py-2">No</td>
+          <td class="border border-border px-3 py-2">No</td>
+          <td class="border border-border px-3 py-2">No</td>
+          <td class="border border-border px-3 py-2">No</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Multi-datacenter</td>
+          <td class="border border-border px-3 py-2">Yes (native WAN)</td>
+          <td class="border border-border px-3 py-2">Yes (complex)</td>
+          <td class="border border-border px-3 py-2">Limited</td>
+          <td class="border border-border px-3 py-2">AWS regions</td>
+          <td class="border border-border px-3 py-2">Cluster mesh</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Use Cases</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Microservices architectures where services need to discover each other dynamically without hardcoded IPs</li>
+    <li>Hybrid cloud / multi-datacenter environments running both VMs and Kubernetes</li>
+    <li>Zero-trust network segmentation — enforce which services can communicate via intentions</li>
+    <li>Service mesh for organizations not yet fully on Kubernetes (Consul works on bare metal and VMs)</li>
+    <li>Configuration distribution via KV store with Consul Template for dynamic config file generation</li>
+    <li>Replacing static load balancer configs with real-time service-health-aware routing</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros and Cons</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✓ Works on VMs, bare metal, and Kubernetes — not K8s-only</li>
+        <li>✓ Batteries included: discovery + health + mesh + KV in one tool</li>
+        <li>✓ Native multi-datacenter and multi-region federation</li>
+        <li>✓ DNS interface requires zero application changes for discovery</li>
+        <li>✓ Simpler than Istio for most microservices use cases</li>
+        <li>✓ HashiCorp ecosystem integration: Vault, Terraform, Nomad</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✗ Requires running and operating Consul server cluster</li>
+        <li>✗ Less L7 traffic management features than Istio</li>
+        <li>✗ Consul Enterprise needed for advanced features (namespaces, audit)</li>
+        <li>✗ Envoy sidecar adds resource overhead per service instance</li>
+        <li>✗ Raft consensus requires careful sizing (3 or 5 server nodes)</li>
+        <li>✗ Learning curve for ACLs, intentions, and config entries</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Consul Service Mesh Guide" relatedTags={['consul', 'service-mesh', 'devops', 'infrastructure', 'hashicorp']} />
+</BaseLayout>

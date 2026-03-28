@@ -1,0 +1,277 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Cypress and what makes it different from other E2E testing tools?", answer: "Cypress is a JavaScript end-to-end testing framework that runs directly inside the browser rather than controlling it from outside (as Selenium and Playwright do). This architecture gives Cypress native access to the DOM, network layer, and application code. Its standout features are time-travel debugging (see the DOM state at every command), automatic retries, real-time reloading, and an interactive test runner with screenshot and video recording built in." },
+  { question: "What is the difference between Cypress E2E testing and Cypress Component Testing?", answer: "Cypress E2E tests navigate to a running web server URL and test the full application stack. Cypress Component Testing mounts individual components in isolation inside a real browser without a dev server, making it faster than E2E for UI-level unit tests. Component Testing supports React, Vue, Angular, Svelte, and Next.js, and shares the same cy.get/cy.contains API — making it a natural companion to E2E tests in a single tool." },
+  { question: "How does cy.intercept() work?", answer: "cy.intercept() registers a network handler that intercepts HTTP requests matching a URL pattern or method before they leave the browser. You can let the real request through, stub it with a fixture, modify request/response headers, or simulate network failures. Unlike Playwright's page.route(), Cypress intercepts happen at the XHR/Fetch layer rather than the OS network layer, meaning the app's JavaScript sees the stubbed response as if it came from the real server." },
+  { question: "How do I write reusable Cypress custom commands?", answer: "Add custom commands to cypress/support/commands.ts using Cypress.Commands.add(). A common pattern is a cy.login() command that programmatically sets a session token without going through the UI — dramatically faster than filling the login form on every test. Declare the TypeScript type in cypress/support/index.d.ts to get autocomplete. Use cy.session() to cache and restore session state across tests for even faster authentication." },
+  { question: "Why do Cypress tests sometimes fail intermittently (flakiness)?", answer: "Cypress retries most assertions automatically for up to 4 seconds, but flakiness can occur when: (1) an assertion checks a value that updates after an async operation not tracked by Cypress; (2) tests share state via the DOM or application store between runs; (3) cy.wait() is used with a hard-coded duration instead of waiting for a specific network alias. Fix flakiness by using cy.intercept() aliases and cy.wait('@alias'), avoiding fixed waits, and clearing application state in beforeEach." },
+  { question: "What is Cypress Cloud (formerly Cypress Dashboard)?", answer: "Cypress Cloud is the commercial SaaS platform for storing test recordings, screenshots, and videos from CI runs. It provides parallelization (distribute tests across multiple CI machines automatically), flake detection, test analytics, and GitHub/GitLab integrations for PR status checks. The Cypress open-source runner works without Cypress Cloud, but Cloud adds observability and parallelization for large test suites." },
+];
+---
+
+<BaseLayout
+  title="Cypress Testing Guide — Frontend E2E & Component Testing Reference"
+  description="Complete Cypress guide covering cy.visit, cy.get, cy.intercept, custom commands, component testing, and Cypress Cloud. Compare Cypress vs Playwright vs Selenium. Free developer reference."
+  tool="Cypress testing guide, Cypress component testing, cy.intercept, Cypress custom commands, E2E testing, frontend testing"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Cypress Frontend Testing Guide",
+    "url": "https://devplaybook.cc/tools/cypress-testing",
+    "description": "Complete guide to Cypress — the developer-friendly E2E and component testing framework. Covers cy.get, cy.intercept, custom commands, component testing, and Cypress Cloud.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Cypress Testing Guide</h1>
+  <p class="text-text-muted mb-6">
+    The complete reference for <strong>Cypress</strong> — the developer-first frontend testing framework. Covers E2E tests, component testing, network interception, custom commands, and CI integration.
+  </p>
+
+  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Time-travel debugging</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Component testing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Network stubbing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real browser execution</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auto-retry assertions</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Cypress?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Cypress is a JavaScript testing framework built specifically for the modern web. Unlike Selenium-era tools that drive browsers through WebDriver, Cypress runs directly inside the browser alongside your application. This architecture enables unique features: time-travel debugging (hover over any command in the runner to see the DOM state at that moment), real-time test reloading, direct access to application code and network requests, and automatic retries on assertions.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Cypress unified E2E and component testing under one API. With Component Testing mode, you can mount a React or Vue component directly in Cypress without a full app running, test it with the same <code class="bg-bg-card px-1 rounded text-sm">cy.get()</code> and <code class="bg-bg-card px-1 rounded text-sm">cy.contains()</code> commands, and get screenshots and video. This makes Cypress the only tool that covers both granular component tests and full user journey tests in a single runner.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install Cypress
+npm install --save-dev cypress
+
+# Open interactive runner
+npx cypress open
+
+# Run headlessly (CI)
+npx cypress run
+
+# cypress.config.ts
+import { defineConfig } from 'cypress';
+
+export default defineConfig({
+  e2e: {
+    baseUrl: 'http://localhost:3000',
+    specPattern: 'cypress/e2e/**/*.cy.ts',
+    supportFile: 'cypress/support/e2e.ts',
+    video: false,               // Enable for CI
+    screenshotOnRunFailure: true,
+  },
+  component: {
+    devServer: { framework: 'react', bundler: 'vite' },
+  },
+});</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Basic E2E Test: cy.visit, cy.get, cy.contains</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// cypress/e2e/login.cy.ts
+describe('Login flow', () => {
+  beforeEach(() => {
+    cy.visit('/login');
+  });
+
+  it('logs in with valid credentials', () => {
+    cy.get('[data-testid="email"]').type('user@example.com');
+    cy.get('[data-testid="password"]').type('secret{enter}');
+
+    cy.url().should('include', '/dashboard');
+    cy.contains('h1', 'Dashboard').should('be.visible');
+  });
+
+  it('shows error for wrong password', () => {
+    cy.get('[data-testid="email"]').type('user@example.com');
+    cy.get('[data-testid="password"]').type('wrong');
+    cy.get('button[type="submit"]').click();
+
+    cy.get('[role="alert"]').should('contain', 'Invalid credentials');
+  });
+});</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Network Stubbing with cy.intercept()</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">describe('Products page', () => {
+  it('shows products from API', () => {
+    // Stub the API response
+    cy.intercept('GET', '/api/products', {
+      statusCode: 200,
+      body: [
+        { id: 1, name: 'Widget', price: 9.99 },
+        { id: 2, name: 'Gadget', price: 19.99 },
+      ],
+    }).as('getProducts');
+
+    cy.visit('/products');
+    cy.wait('@getProducts');
+
+    cy.contains('Widget').should('be.visible');
+    cy.contains('Gadget').should('be.visible');
+  });
+
+  it('shows empty state when API returns empty array', () => {
+    cy.intercept('GET', '/api/products', { body: [] }).as('getProducts');
+    cy.visit('/products');
+    cy.wait('@getProducts');
+    cy.contains('No products found').should('be.visible');
+  });
+
+  it('handles API error', () => {
+    cy.intercept('GET', '/api/products', { statusCode: 500 }).as('getProducts');
+    cy.visit('/products');
+    cy.wait('@getProducts');
+    cy.contains('Something went wrong').should('be.visible');
+  });
+});</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Custom Commands</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// cypress/support/commands.ts
+Cypress.Commands.add('login', (email: string, password: string) => {
+  // Programmatic login via API — much faster than UI login
+  cy.request('POST', '/api/auth/login', { email, password })
+    .then(({ body }) => {
+      window.localStorage.setItem('token', body.token);
+    });
+});
+
+// Use cy.session() to cache login across tests
+Cypress.Commands.add('loginAs', (role: 'admin' | 'user') => {
+  cy.session(role, () => {
+    const creds = { admin: ['admin@test.com', 'admin'], user: ['user@test.com', 'user'] };
+    cy.request('POST', '/api/auth/login', {
+      email: creds[role][0], password: creds[role][1],
+    }).then(({ body }) => {
+      window.localStorage.setItem('token', body.token);
+    });
+  });
+});
+
+// In tests:
+// cy.login('user@example.com', 'password');
+// cy.loginAs('admin');</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Component Testing</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// cypress/component/Button.cy.tsx
+import Button from '../../src/components/Button';
+
+describe('Button component', () => {
+  it('renders with correct label', () => {
+    cy.mount(&lt;Button label="Click me" onClick={cy.stub()} /&gt;);
+    cy.contains('Click me').should('be.visible');
+  });
+
+  it('calls onClick when clicked', () => {
+    const onClick = cy.stub().as('onClick');
+    cy.mount(&lt;Button label="Submit" onClick={onClick} /&gt;);
+    cy.get('button').click();
+    cy.get('@onClick').should('have.been.calledOnce');
+  });
+
+  it('is disabled when disabled prop is true', () => {
+    cy.mount(&lt;Button label="Disabled" onClick={cy.stub()} disabled /&gt;);
+    cy.get('button').should('be.disabled');
+  });
+});</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Time-travel debugging</strong> — hover any command in the runner to inspect the DOM at that moment</li>
+    <li><strong>Automatic retry</strong> — assertions retry for up to 4 seconds before failing</li>
+    <li><strong>Real browser</strong> — runs in Chrome, Firefox, or Edge (not a headless simulation)</li>
+    <li><strong>Component testing</strong> — mount React/Vue/Angular components without a full app</li>
+    <li><strong>cy.intercept()</strong> — stub, spy on, or modify any HTTP request/response</li>
+    <li><strong>cy.session()</strong> — cache and restore login state for fast test setup</li>
+    <li><strong>Screenshots and video</strong> — automatic capture on failure, configurable</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Comparison: Cypress vs Alternatives</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Cypress</th>
+          <th class="border border-border px-3 py-2 text-left">Playwright</th>
+          <th class="border border-border px-3 py-2 text-left">Selenium</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Architecture</td>
+          <td class="border border-border px-3 py-2 text-green-400">In-browser</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">External protocol</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">WebDriver</td>
+        </tr>
+        <tr class="bg-bg-card/50">
+          <td class="border border-border px-3 py-2">Browser support</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">Chrome/FF/Edge</td>
+          <td class="border border-border px-3 py-2 text-green-400">Chrome/FF/Safari</td>
+          <td class="border border-border px-3 py-2 text-green-400">All browsers</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Component testing</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+        </tr>
+        <tr class="bg-bg-card/50">
+          <td class="border border-border px-3 py-2">Time-travel debug</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">Trace Viewer</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Multi-tab support</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+        </tr>
+        <tr class="bg-bg-card/50">
+          <td class="border border-border px-3 py-2">Developer experience</td>
+          <td class="border border-border px-3 py-2 text-green-400">Excellent</td>
+          <td class="border border-border px-3 py-2 text-green-400">Excellent</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">Moderate</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros &amp; Cons</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="list-disc list-inside text-text-muted space-y-1 text-sm">
+        <li>Best-in-class developer experience and interactive runner</li>
+        <li>Time-travel debugging eliminates most debugging effort</li>
+        <li>Component testing covers UI unit tests too</li>
+        <li>cy.intercept() makes network stubbing effortless</li>
+        <li>Runs in a real browser, not a simulation</li>
+        <li>Excellent documentation and community</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="list-disc list-inside text-text-muted space-y-1 text-sm">
+        <li>No Safari/WebKit support (no real iOS browser testing)</li>
+        <li>Cannot open multiple tabs in a single test</li>
+        <li>JavaScript/TypeScript only (no Python, Java, etc.)</li>
+        <li>Can be slow for large suites without Cloud parallelization</li>
+        <li>Same-origin restrictions on cross-domain navigation</li>
+        <li>Cypress Cloud required for CI parallelization</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Cypress Testing Guide" relatedTags={['cypress', 'e2e-testing', 'testing', 'javascript', 'developer-tools']} />
+</BaseLayout>

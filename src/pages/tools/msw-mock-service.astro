@@ -1,0 +1,298 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Mock Service Worker (MSW) and how does it work?", answer: "Mock Service Worker is an API mocking library that intercepts network requests at the Service Worker level in browsers, and at the Node.js http module level in test environments. Unlike traditional mocking approaches that patch fetch or axios directly, MSW intercepts at the network level — your application code makes real HTTP requests that are intercepted by MSW before reaching the server. This means the same handler code works in browser development, browser tests, and Node.js tests." },
+  { question: "What is the difference between setupWorker and setupServer?", answer: "setupWorker is for browser environments — it registers a Service Worker at the root scope that intercepts outgoing requests. Call worker.start() and worker.stop() to control it. setupServer is for Node.js environments (Jest, Vitest, Playwright) — it uses node-intercept to patch the native http/https module. Both share the same request handler syntax (http.get, http.post) so you can reuse handlers across environments by importing them from a shared handlers.ts file." },
+  { question: "How do MSW request handlers work?", answer: "Handlers are created with http.get(url, resolver) or http.post(url, resolver) where the resolver is an async function that receives request info and returns an HttpResponse. The URL can be an absolute URL, a relative path, or a glob pattern. The resolver receives a RequestContext with request (the Request object), params (URL params), and cookies. Return HttpResponse.json(data) for JSON, HttpResponse.text(body) for plain text, or HttpResponse.error() to simulate a network failure." },
+  { question: "Can MSW mock GraphQL APIs?", answer: "Yes. MSW has a graphql namespace alongside http. Use graphql.query('GetUser', resolver) to handle a specific query by operation name, or graphql.operation(resolver) to handle all GraphQL operations. The resolver receives the query, variables, and request. This lets you mock GraphQL APIs with the same colocation approach as REST — one handlers.ts file used across development and tests. MSW's GraphQL support works with Apollo Client, URQL, and any fetch-based client." },
+  { question: "How do I test different API states (loading, error, empty) with MSW?", answer: "Override handlers at the test level using server.use(). Call server.use(http.get('/api/users', () => HttpResponse.json([], { status: 200 }))) before the test that needs an empty state, or HttpResponse.json({ message: 'Not found' }, { status: 404 }) for error states. Call server.resetHandlers() in afterEach to restore the default handlers defined in setupServer(). This pattern makes it trivial to test every network state without any special test helpers." },
+  { question: "Is MSW a replacement for unit test mocks like jest.mock()?", answer: "MSW and jest.mock() serve different layers. jest.mock() replaces JavaScript modules — useful for mocking utility functions, third-party libraries, or anything that doesn't involve HTTP. MSW intercepts HTTP requests — ideal for any code that calls fetch, axios, or any HTTP client. In a well-structured app, service layer functions make HTTP calls; mock those calls with MSW and leave the service function un-mocked. This tests the full request/response serialization path, not just the business logic." },
+];
+---
+
+<BaseLayout
+  title="MSW (Mock Service Worker) Guide — API Mocking Reference"
+  description="Complete MSW guide covering request handlers, setupWorker, setupServer, GraphQL mocking, and testing different API states. Compare MSW vs axios-mock-adapter vs nock. Free developer reference."
+  tool="MSW mock service worker guide, MSW request handlers, MSW setupServer, API mocking testing, network mocking JavaScript"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "MSW Mock Service Worker Guide",
+    "url": "https://devplaybook.cc/tools/msw-mock-service",
+    "description": "Complete guide to Mock Service Worker (MSW) — network-level API mocking for browser and Node.js. Covers request handlers, setupWorker, setupServer, GraphQL, and testing patterns.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">MSW (Mock Service Worker) Guide</h1>
+  <p class="text-text-muted mb-6">
+    The complete reference for <strong>Mock Service Worker (MSW)</strong> — the network-level API mocking library trusted by the React, Testing Library, and Storybook communities. Covers handlers, browser and Node.js setup, GraphQL mocking, and testing strategies.
+  </p>
+
+  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Network-level interception</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Browser + Node.js support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> REST &amp; GraphQL</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Reuse handlers across environments</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Works with any HTTP client</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Mock Service Worker?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Mock Service Worker (MSW) is an API mocking library that operates at the network layer rather than patching JavaScript modules. Traditional mocking libraries replace <code class="bg-bg-card px-1 rounded text-sm">fetch</code> or <code class="bg-bg-card px-1 rounded text-sm">axios</code> with a mock implementation — which means your tests use a different code path than your production app. MSW takes a different approach: your application code calls <code class="bg-bg-card px-1 rounded text-sm">fetch('/api/users')</code> normally, and MSW intercepts that real HTTP request before it reaches the network.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    In the browser, MSW registers a Service Worker that intercepts outgoing requests. In Node.js (Jest, Vitest), it patches the built-in <code class="bg-bg-card px-1 rounded text-sm">http</code> module. Crucially, both environments use the same handler syntax — define your mock API once in a <code class="bg-bg-card px-1 rounded text-sm">handlers.ts</code> file and reuse it in development (browser), unit tests (Vitest/Jest), and integration tests (Playwright). This eliminates the drift between test mocks and production behaviour.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install MSW
+npm install msw --save-dev
+
+# Initialize the service worker file (browser)
+npx msw init public/ --save
+
+# Verify the service worker is in public/
+ls public/mockServiceWorker.js</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Defining Request Handlers</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Handlers are the heart of MSW. Define them in a shared file so they can be imported by both the browser worker and the Node.js server.
+  </p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// src/mocks/handlers.ts
+import { http, HttpResponse, delay } from 'msw';
+
+export const handlers = [
+  // GET request — return JSON
+  http.get('/api/users', () => {
+    return HttpResponse.json([
+      { id: 1, name: 'Alice', role: 'admin' },
+      { id: 2, name: 'Bob', role: 'user' },
+    ]);
+  }),
+
+  // GET with URL params
+  http.get('/api/users/:id', ({ params }) => {
+    const { id } = params;
+    if (id === '999') {
+      return HttpResponse.json({ message: 'User not found' }, { status: 404 });
+    }
+    return HttpResponse.json({ id: Number(id), name: 'Alice' });
+  }),
+
+  // POST — read request body
+  http.post('/api/users', async ({ request }) => {
+    const body = await request.json() as { name: string; email: string };
+    return HttpResponse.json({ id: 3, ...body }, { status: 201 });
+  }),
+
+  // Simulate slow API
+  http.get('/api/slow-endpoint', async () => {
+    await delay(2000);
+    return HttpResponse.json({ data: 'delayed response' });
+  }),
+
+  // Simulate network failure
+  http.get('/api/broken', () => {
+    return HttpResponse.error();
+  }),
+];</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Browser Setup: setupWorker</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// src/mocks/browser.ts
+import { setupWorker } from 'msw/browser';
+import { handlers } from './handlers';
+
+export const worker = setupWorker(...handlers);
+
+// src/main.tsx — start only in development
+async function enableMocking() {
+  if (process.env.NODE_ENV !== 'development') return;
+  const { worker } = await import('./mocks/browser');
+  return worker.start({
+    onUnhandledRequest: 'warn', // Warn on unmocked requests
+  });
+}
+
+enableMocking().then(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(&lt;App /&gt;);
+});</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Node.js Setup: setupServer (Jest/Vitest)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// src/mocks/server.ts
+import { setupServer } from 'msw/node';
+import { handlers } from './handlers';
+
+export const server = setupServer(...handlers);
+
+// tests/setup.ts — configure in vitest.config.ts or jest.config.ts
+import { server } from '../src/mocks/server';
+import { afterAll, afterEach, beforeAll } from 'vitest'; // or jest
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers()); // Reset per-test overrides
+afterAll(() => server.close());</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Testing Different API States</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">import { render, screen, waitFor } from '@testing-library/react';
+import { server } from '../mocks/server';
+import { http, HttpResponse } from 'msw';
+import { UserList } from './UserList';
+
+describe('UserList', () => {
+  it('displays users from API', async () => {
+    render(&lt;UserList /&gt;);
+    await waitFor(() => {
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+      expect(screen.getByText('Bob')).toBeInTheDocument();
+    });
+  });
+
+  it('shows empty state when no users', async () => {
+    // Override handler for this specific test
+    server.use(
+      http.get('/api/users', () => HttpResponse.json([]))
+    );
+    render(&lt;UserList /&gt;);
+    await waitFor(() => {
+      expect(screen.getByText('No users found')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error state on server failure', async () => {
+    server.use(
+      http.get('/api/users', () =>
+        HttpResponse.json({ message: 'Server error' }, { status: 500 })
+      )
+    );
+    render(&lt;UserList /&gt;);
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+  });
+});</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">GraphQL Mocking</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">import { graphql, HttpResponse } from 'msw';
+
+export const handlers = [
+  graphql.query('GetUser', ({ variables }) => {
+    return HttpResponse.json({
+      data: {
+        user: { id: variables.id, name: 'Alice', email: 'alice@example.com' },
+      },
+    });
+  }),
+
+  graphql.mutation('CreateUser', ({ variables }) => {
+    return HttpResponse.json({
+      data: {
+        createUser: { id: '99', ...variables.input },
+      },
+    });
+  }),
+];</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Network-level interception</strong> — works with any HTTP client: fetch, axios, ky, SWR, React Query</li>
+    <li><strong>Unified handler syntax</strong> — same handlers.ts used in browser dev and Node.js tests</li>
+    <li><strong>REST and GraphQL</strong> — first-class support for both API styles</li>
+    <li><strong>Response utilities</strong> — HttpResponse.json(), delay(), error(), network simulation</li>
+    <li><strong>Per-test overrides</strong> — server.use() overrides specific handlers for edge case tests</li>
+    <li><strong>TypeScript first</strong> — fully typed request params, body, and response</li>
+    <li><strong>Storybook integration</strong> — use MSW handlers as mock API in stories</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Comparison: MSW vs Alternatives</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">MSW</th>
+          <th class="border border-border px-3 py-2 text-left">axios-mock-adapter</th>
+          <th class="border border-border px-3 py-2 text-left">nock</th>
+          <th class="border border-border px-3 py-2 text-left">fetch-mock</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Network level</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes (Service Worker)</td>
+          <td class="border border-border px-3 py-2 text-red-400">No (patches axios)</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">Node.js http only</td>
+          <td class="border border-border px-3 py-2 text-red-400">No (patches fetch)</td>
+        </tr>
+        <tr class="bg-bg-card/50">
+          <td class="border border-border px-3 py-2">Browser support</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">With axios</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Node.js support</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">With axios</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+        </tr>
+        <tr class="bg-bg-card/50">
+          <td class="border border-border px-3 py-2">GraphQL support</td>
+          <td class="border border-border px-3 py-2 text-green-400">Built-in</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">HTTP client agnostic</td>
+          <td class="border border-border px-3 py-2 text-green-400">Yes</td>
+          <td class="border border-border px-3 py-2 text-red-400">axios only</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">Node http only</td>
+          <td class="border border-border px-3 py-2 text-yellow-400">fetch only</td>
+        </tr>
+        <tr class="bg-bg-card/50">
+          <td class="border border-border px-3 py-2">Storybook integration</td>
+          <td class="border border-border px-3 py-2 text-green-400">msw-storybook-addon</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+          <td class="border border-border px-3 py-2 text-red-400">No</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros &amp; Cons</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="list-disc list-inside text-text-muted space-y-1 text-sm">
+        <li>Intercepts at network level — no patching of fetch/axios</li>
+        <li>Same handlers work in browser, Vitest, Jest, and Storybook</li>
+        <li>Works with any HTTP client without configuration</li>
+        <li>First-class GraphQL support with operation name matching</li>
+        <li>Endorsed by Testing Library and React Query communities</li>
+        <li>TypeScript-first with excellent type inference</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="list-disc list-inside text-text-muted space-y-1 text-sm">
+        <li>Service Worker setup required for browser (one-time)</li>
+        <li>MSW v2 has breaking API changes from v1</li>
+        <li>More setup than simple jest.mock() for simple cases</li>
+        <li>Browser worker requires HTTPS in some environments</li>
+        <li>Cannot inspect request count without custom logging</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="MSW Mock Service Worker Guide" relatedTags={['msw', 'mocking', 'testing', 'api', 'developer-tools']} />
+</BaseLayout>

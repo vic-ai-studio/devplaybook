@@ -1,0 +1,265 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Packer and what problem does it solve?", answer: "Packer is an open-source tool by HashiCorp that automates the creation of identical machine images for multiple platforms from a single configuration. Without Packer, teams create AMIs or VM images manually — clicking through console UIs, running ad-hoc scripts, and struggling to reproduce images consistently. Packer codifies the image build process: start a base VM, run provisioners (shell scripts, Ansible, Chef), capture the result as an immutable image. The same Packer template can build an AWS AMI, a VMware OVA, a Google Cloud image, and a Docker image simultaneously." },
+  { question: "What is the difference between Packer JSON and HCL2 templates?", answer: "Packer originally used JSON templates (.json). Starting with Packer 1.7+, HashiCorp introduced HCL2 (.pkr.hcl) as the preferred format, aligning with Terraform's configuration language. HCL2 offers significant advantages: variables can be defined with types and validation, multiple builds are cleaner, the for_each meta-argument enables build matrices, and error messages are much more readable. New projects should use HCL2. The packer hcl2_upgrade command can automatically convert JSON templates to HCL2." },
+  { question: "How does Packer integrate with Ansible?", answer: "Packer's ansible provisioner runs an Ansible playbook against the machine being built. Unlike using the shell provisioner to run ansible-playbook, Packer's ansible provisioner starts a local SSH proxy and connects to the build machine automatically — you don't need Ansible installed on the build VM. Specify the playbook_file and optional roles_path, extra_arguments, and ansible_env_vars. This is the most common pattern for teams that already use Ansible for configuration management and want the same playbooks for both ongoing config and image builds." },
+  { question: "What is immutable infrastructure and why does Packer enable it?", answer: "Immutable infrastructure is the practice of never modifying running servers in place. Instead, you build a new machine image with the required changes, deploy new instances from that image, and decommission the old instances. Packer is central to this pattern because it produces versioned, tested, golden images that contain the OS, runtime, and application pre-installed. Benefits include: faster auto-scaling (no bootstrap time), consistent environments, easy rollbacks (deploy previous AMI version), and elimination of configuration drift over time." },
+  { question: "How do I pass variables to a Packer build?", answer: "Packer supports several variable input methods. In HCL2, declare variables with the variable block and set defaults, types, and descriptions. Pass values via: -var 'key=value' CLI flag, -var-file=prod.pkrvars.hcl (an HCL file of key=value pairs), or PKR_VAR_key environment variables. For sensitive values like AWS credentials, use environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) which Packer inherits from the shell — never hardcode credentials in templates." },
+  { question: "What are Packer post-processors and when should I use them?", answer: "Post-processors run after builders and provisioners complete to transform or upload the artifact. Common post-processors: manifest (write build artifacts to a JSON file for use in CI/CD), compress (zip the artifact), shell-local (run a local script after build), and amazon-import (import a VMware OVA to AWS as an AMI). For multi-step pipelines, you can chain post-processors: build an image, compress it, then upload it — all in one Packer run. The manifest post-processor is especially useful for passing AMI IDs to Terraform or Ansible for deployment." },
+];
+---
+
+<BaseLayout
+  title="Packer Image Builder Guide — Immutable Machine Images for AWS, GCP, and Azure"
+  description="Complete HashiCorp Packer guide: HCL2 templates, AWS AMI builders, Ansible provisioners, post-processors, and immutable infrastructure patterns. Compare Packer vs Docker and EC2 Image Builder."
+  tool="Packer, HashiCorp Packer, machine image builder, AWS AMI, immutable infrastructure, Packer HCL2, Packer Ansible"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Packer Image Builder Guide — Immutable Machine Images for AWS, GCP, and Azure",
+    "url": "https://devplaybook.cc/tools/packer-image-builder",
+    "description": "Complete HashiCorp Packer guide: HCL2 templates, AWS AMI builders, Ansible provisioners, post-processors, and immutable infrastructure patterns.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Packer — Machine Image Builder Guide</h1>
+  <p class="text-text-muted mb-6">
+    Build <strong>identical, immutable machine images</strong> for AWS, GCP, Azure, VMware, and Docker
+    from a single HCL2 template. HashiCorp Packer codifies your golden image pipeline.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-cloud builders</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HCL2 templates</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Ansible / Shell provisioners</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Immutable image pipelines</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Packer?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    HashiCorp Packer is an open-source tool that automates the creation of machine images across multiple platforms. Given a single template, Packer can build an AWS AMI, a GCP Image, an Azure Managed Image, and a VMware OVA simultaneously — all from the same provisioning code. Released in 2013 by Mitchell Hashimoto (co-founder of HashiCorp), Packer is a cornerstone of immutable infrastructure pipelines used by engineering teams worldwide.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    The workflow is simple: Packer launches a temporary VM (or container) using a base image, runs provisioners (shell scripts, Ansible playbooks, Chef recipes) to install software and configure the OS, then captures a snapshot as an immutable image. The temporary VM is destroyed. The resulting image becomes your golden artifact — versioned, tested, and ready to deploy to auto-scaling groups or Kubernetes nodes without any post-boot configuration.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key Features</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Multi-builder</strong> — build for AWS, GCP, Azure, VMware, VirtualBox, QEMU, Docker in parallel</li>
+    <li><strong>HCL2 templates</strong> — typed variables, for_each build matrices, better error messages</li>
+    <li><strong>Provisioners</strong> — shell, Ansible, Chef, Puppet, Salt, PowerShell, Windows shell</li>
+    <li><strong>Post-processors</strong> — manifest, compress, shell-local, amazon-import, Vagrant box</li>
+    <li><strong>packer validate</strong> — catch template errors before starting expensive cloud builds</li>
+    <li><strong>packer fmt</strong> — format HCL2 templates consistently (like terraform fmt)</li>
+    <li><strong>Variable files</strong> — .pkrvars.hcl files for per-environment configuration</li>
+    <li><strong>Plugin system</strong> — first-class and community-maintained builder/provisioner plugins</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">HCL2 Template: AWS AMI with Ansible</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># ubuntu-web.pkr.hcl
+packer {
+  required_version = ">= 1.9.0"
+  required_plugins {
+    amazon = {
+      version = ">= 1.3.0"
+      source  = "github.com/hashicorp/amazon"
+    }
+    ansible = {
+      version = ">= 1.1.0"
+      source  = "github.com/hashicorp/ansible"
+    }
+  }
+}
+
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
+}
+
+variable "ami_name_prefix" {
+  type    = string
+  default = "my-app"
+}
+
+variable "app_version" {
+  type    = string
+  description = "Application version tag to embed in the image"
+}
+
+locals {
+  timestamp = regex_replace(timestamp(), "[: TZ]", "")
+  ami_name  = "${var.ami_name_prefix}-${var.app_version}-${local.timestamp}"
+}
+
+source "amazon-ebs" "ubuntu" {
+  region        = var.aws_region
+  instance_type = "t3.medium"
+  ami_name      = local.ami_name
+
+  source_ami_filter {
+    filters = {
+      name                = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
+      root-device-type    = "ebs"
+      virtualization-type = "hvm"
+    }
+    most_recent = true
+    owners      = ["099720109477"] # Canonical
+  }
+
+  ssh_username = "ubuntu"
+
+  tags = {
+    Name        = local.ami_name
+    AppVersion  = var.app_version
+    BuildTime   = local.timestamp
+    ManagedBy   = "Packer"
+  }
+
+  launch_block_device_mappings {
+    device_name           = "/dev/sda1"
+    volume_size           = 20
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+}
+
+build {
+  name    = "ubuntu-web-server"
+  sources = ["source.amazon-ebs.ubuntu"]
+
+  # Shell provisioner for initial setup
+  provisioner "shell" {
+    inline = [
+      "sudo apt-get update -y",
+      "sudo apt-get install -y python3 python3-pip",
+      "sudo apt-get clean",
+    ]
+  }
+
+  # Ansible provisioner for full configuration
+  provisioner "ansible" {
+    playbook_file   = "./ansible/site.yml"
+    roles_path      = "./ansible/roles"
+    extra_arguments = [
+      "--extra-vars", "app_version=${var.app_version}",
+      "--become",
+    ]
+  }
+
+  # Write AMI ID to manifest file for downstream use
+  post-processor "manifest" {
+    output     = "manifest.json"
+    strip_path = true
+  }
+
+  # Run local script after build (e.g., update Terraform variable)
+  post-processor "shell-local" {
+    inline = ["echo 'Build complete. AMI ID written to manifest.json'"]
+  }
+}</pre>
+
+  <p class="text-text-muted mb-3 leading-relaxed">Validate, format, and build:</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">packer init .                                           # download plugins
+packer fmt .                                            # format templates
+packer validate -var 'app_version=1.2.3' .             # validate before build
+packer build -var 'app_version=1.2.3' ubuntu-web.pkr.hcl  # run the build
+cat manifest.json | jq '.builds[-1].artifact_id'       # extract AMI ID</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Packer vs Alternatives</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Packer</th>
+          <th class="border border-border px-3 py-2 text-left">Docker</th>
+          <th class="border border-border px-3 py-2 text-left">EC2 Image Builder</th>
+          <th class="border border-border px-3 py-2 text-left">Manual AMI</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Output formats</td>
+          <td class="border border-border px-3 py-2">AMI, GCP, Azure, VMware, Docker, QEMU</td>
+          <td class="border border-border px-3 py-2">OCI container images</td>
+          <td class="border border-border px-3 py-2">AWS AMI only</td>
+          <td class="border border-border px-3 py-2">AWS AMI only</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Reproducibility</td>
+          <td class="border border-border px-3 py-2">Excellent (code-defined)</td>
+          <td class="border border-border px-3 py-2">Excellent (Dockerfile)</td>
+          <td class="border border-border px-3 py-2">Good</td>
+          <td class="border border-border px-3 py-2">Poor (manual steps)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Multi-cloud</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+          <td class="border border-border px-3 py-2">Yes (registries)</td>
+          <td class="border border-border px-3 py-2">No (AWS only)</td>
+          <td class="border border-border px-3 py-2">No</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Boot time</td>
+          <td class="border border-border px-3 py-2">Fast (pre-baked)</td>
+          <td class="border border-border px-3 py-2">Very fast (container)</td>
+          <td class="border border-border px-3 py-2">Fast</td>
+          <td class="border border-border px-3 py-2">Slow (userdata bootstrap)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Use case</td>
+          <td class="border border-border px-3 py-2">VM images, EC2 auto-scaling</td>
+          <td class="border border-border px-3 py-2">Containerized apps</td>
+          <td class="border border-border px-3 py-2">AWS-native pipelines</td>
+          <td class="border border-border px-3 py-2">One-off images</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Use Cases</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Building golden AMIs for EC2 Auto Scaling Groups — pre-baked images start in seconds instead of minutes</li>
+    <li>Immutable infrastructure pipelines where every deploy creates new instances from a fresh image</li>
+    <li>Multi-cloud image distribution — build once for AWS and GCP from the same Packer template</li>
+    <li>Security baseline images with hardened OS configurations, compliance agents, and monitoring pre-installed</li>
+    <li>Kubernetes node images with custom container runtimes, kernel parameters, and tooling</li>
+    <li>CI/CD integration — Packer builds triggered by git tags, new AMI IDs fed to Terraform for deployment</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros and Cons</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-green-400 mb-2">Pros</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✓ Codified, reproducible image builds — no more snowflake AMIs</li>
+        <li>✓ Multi-platform: one template builds for multiple clouds</li>
+        <li>✓ Integrates with Ansible, Chef, shell — use existing provisioning code</li>
+        <li>✓ Enables immutable infrastructure and fast auto-scaling</li>
+        <li>✓ packer validate catches errors before costly cloud builds</li>
+        <li>✓ HCL2 format is consistent with Terraform knowledge</li>
+      </ul>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <h3 class="font-semibold text-red-400 mb-2">Cons</h3>
+      <ul class="text-text-muted text-sm space-y-1">
+        <li>✗ Build times can be long (10-30 min for cloud AMIs)</li>
+        <li>✗ Each image update requires a full rebuild and new deploy</li>
+        <li>✗ Costs money — cloud builder instances run during build</li>
+        <li>✗ AMI cleanup requires separate tooling (old images accumulate)</li>
+        <li>✗ Debugging failed builds requires checking cloud console logs</li>
+        <li>✗ Not suitable for containerized apps (Docker is better there)</li>
+      </ul>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Packer Image Builder Guide" relatedTags={['packer', 'image-builder', 'devops', 'infrastructure', 'hashicorp']} />
+</BaseLayout>
