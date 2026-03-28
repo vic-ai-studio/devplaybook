@@ -1,8 +1,9 @@
 ---
 title: "TanStack Form 1.0: Type-Safe Forms in React 2026"
 description: "TanStack Form 1.0 brings headless, type-safe, framework-agnostic form management to React. Compare with react-hook-form and Formik, with Zod validation examples."
-pubDate: 2026-03-28
-tags: ["tanstack-form", "react", "forms", "typescript", "zod"]
+date: "2026-03-28"
+tags: [tanstack-form, react, forms, typescript, zod]
+readingTime: "12 min read"
 ---
 
 Forms are one of the most common and most painful parts of building web applications. For years, the React ecosystem cycled through Formik and react-hook-form as the dominant solutions. Both solve real problems. Both also carry real limitations that become visible as your forms grow in complexity or your TypeScript strictness increases. TanStack Form 1.0 is a ground-up rethink of what a form library should be in 2026.

@@ -1,8 +1,9 @@
 ---
 title: "React Compiler 2026: Auto-Memoization and the End of useMemo"
 description: "React Compiler (React Forget) automatically memoizes your components. Learn what it does, how it compares to manual useMemo/useCallback, and how to migrate from React 18."
-pubDate: 2026-03-28
-tags: ["react", "react-compiler", "performance", "memoization", "react-19"]
+date: "2026-03-28"
+tags: [react, react-compiler, performance, memoization, react-19]
+readingTime: "11 min read"
 ---
 
 Manual memoization has been one of React's most error-prone patterns since hooks arrived. You add `useMemo`, miss a dependency, ship a stale bug. You add `useCallback` everywhere defensively, inflate bundle size, and still wonder if you got it right. React Compiler — originally developed under the codename React Forget — ends this cycle by doing the work automatically, correctly, and at compile time.

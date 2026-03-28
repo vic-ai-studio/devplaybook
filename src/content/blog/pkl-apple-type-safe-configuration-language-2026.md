@@ -1,8 +1,9 @@
 ---
 title: "PKL: Apple's Type-Safe Configuration Language for Developers 2026"
 description: "PKL by Apple solves YAML/JSON/TOML pain points with a type-safe, composable config language. Learn PKL features, CLI usage, Kubernetes examples, and how it compares to CUE, Dhall, and Jsonnet."
-pubDate: 2026-03-28
-tags: ["pkl", "configuration", "apple", "type-safe", "kubernetes"]
+date: "2026-03-28"
+tags: [pkl, configuration, apple, type-safe, kubernetes]
+readingTime: "11 min read"
 ---
 
 Configuration management is one of those problems that doesn't announce itself loudly — it accumulates quietly until a mistyped YAML key ships a broken deployment to production, or a missing required field only surfaces at runtime. Apple's PKL (pronounced "pickle") is a purpose-built configuration language designed to replace the ad-hoc YAML/JSON/TOML ecosystem with something that has actual types, validation, and composability baked in.

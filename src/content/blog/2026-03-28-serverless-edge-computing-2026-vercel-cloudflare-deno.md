@@ -1,8 +1,9 @@
 ---
 title: "Serverless Edge Computing 2026: Vercel, Cloudflare Workers, Deno Deploy Compared"
 description: "Compare Vercel Edge Functions, Cloudflare Workers, and Deno Deploy for 2026. Performance benchmarks, pricing, and when to use each platform."
-pubDate: 2026-03-28
-tags: ["edge", "serverless", "cloudflare-workers", "vercel", "deno-deploy"]
+date: "2026-03-28"
+tags: [edge, serverless, cloudflare-workers, vercel, deno-deploy]
+readingTime: "12 min read"
 ---
 
 Edge computing has moved from a niche optimization trick to a mainstream deployment strategy. In 2026, the three dominant platforms — Vercel Edge Functions, Cloudflare Workers, and Deno Deploy — each offer distinct tradeoffs around performance, pricing, ecosystem, and developer experience. This guide cuts through the marketing to show you exactly what each platform does well, where it falls short, and how to choose.

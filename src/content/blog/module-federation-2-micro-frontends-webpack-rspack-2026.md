@@ -1,8 +1,9 @@
 ---
 title: "Module Federation 2.0: Micro-Frontends with Webpack 5 and Rspack 2026"
 description: "Build scalable micro-frontend architectures with Module Federation 2.0. Setup host/remote apps with Webpack 5, Rspack, Next.js 15, and Vite for fast independent deployments."
-pubDate: 2026-03-28
-tags: ["module-federation", "micro-frontends", "webpack", "rspack", "architecture"]
+date: "2026-03-28"
+tags: [module-federation, micro-frontends, webpack, rspack, architecture]
+readingTime: "12 min read"
 ---
 
 Micro-frontends solve a real problem: large frontend codebases become slow to build, hard to coordinate across teams, and painful to deploy independently. Module Federation, introduced in Webpack 5 and now at version 2.0, is the most mature solution for sharing code between independently deployed frontend applications at runtime — without npm packages, without monorepos forcing lockstep releases.
