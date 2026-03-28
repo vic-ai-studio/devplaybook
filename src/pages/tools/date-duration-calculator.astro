@@ -1,0 +1,154 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How is date duration calculated?", answer: "Date duration is calculated as the difference between two dates in milliseconds (using Date.getTime()), then converted to years, months, days. The days component uses Math.floor on total milliseconds divided by 86400000 (ms per day). For exact calendar-aware breakdown (years + months + remaining days), month boundaries must be handled carefully since months have 28-31 days and leap years add a day to February." },
+  { question: "What is a business day calculator?", answer: "Business days (working days) exclude weekends (Saturday and Sunday) and optionally public holidays. Calculating business days between two dates requires iterating through each day and checking if it falls on a weekend. A faster algorithm calculates the full weeks (each with 5 business days) plus the remaining days, then adjusts for weekday boundaries. Business day calculators are used for SLA calculations, project deadlines, invoice payment terms, and legal notice periods." },
+  { question: "How does adding days to a date work?", answer: "Adding days to a date involves converting the date to milliseconds (Date.getTime()), adding the number of days in milliseconds (days × 86400000), and converting back. This automatically handles month boundaries, year boundaries, and leap years. Adding calendar days is straightforward. Adding business days requires skipping weekends — add the days one at a time, skipping Saturday and Sunday, or use the batch week calculation method." },
+  { question: "What is an ISO 8601 date duration?", answer: "ISO 8601 duration format uses P[n]Y[n]M[n]DT[n]H[n]M[n]S. Examples: P1Y2M3D = 1 year, 2 months, 3 days. PT2H30M = 2 hours, 30 minutes. P1Y6M = 18 months. This format is used in APIs, iCalendar events, and HTML time elements. The T separates date and time components. All components are optional: P3D = 3 days, PT1H = 1 hour." },
+];
+---
+
+<BaseLayout
+  title="Date Duration Calculator — Days Between Dates and Date Math"
+  description="Calculate the duration between two dates in years, months, and days. Add or subtract days from a date. Find business days between dates."
+  tool="date duration calculator, days between dates, add days to date, business days calculator, date difference, ISO 8601 duration"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Date Duration Calculator",
+    "url": "https://devplaybook.cc/tools/date-duration-calculator",
+    "description": "Calculate duration between dates, add/subtract days from a date, and find business days between two dates.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Date Duration Calculator</h1>
+  <p class="text-text-muted mb-6">
+    Calculate the <strong>duration between two dates</strong> in years, months, and days. Add or subtract
+    days from a date. Find the number of business days between two dates.
+  </p>
+
+  <!-- Duration between dates -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
+    <h3 class="font-semibold mb-4">Duration Between Two Dates</h3>
+    <div class="flex items-center gap-3 flex-wrap mb-4">
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Start date</label>
+        <input type="date" id="startDate" class="bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+      </div>
+      <span class="text-text-muted mt-4">→</span>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">End date</label>
+        <input type="date" id="endDate" class="bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+      </div>
+    </div>
+    <div id="durationResult" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+  </div>
+
+  <!-- Add/subtract days -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
+    <h3 class="font-semibold mb-4">Add / Subtract Days from a Date</h3>
+    <div class="flex items-center gap-3 flex-wrap mb-4">
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Date</label>
+        <input type="date" id="baseDate" class="bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+      </div>
+      <select id="addSubDir" class="mt-4 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none">
+        <option value="add">+ Add</option>
+        <option value="sub">− Subtract</option>
+      </select>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Days</label>
+        <input type="number" id="addDays" value="30" min="0" class="w-24 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+      </div>
+    </div>
+    <div id="addResult" class="text-text-muted text-sm"></div>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>
+
+<script>
+function today(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function parseDate(s: string): Date { return new Date(s + 'T00:00:00'); }
+
+function diffDates(start: Date, end: Date) {
+  const ms = end.getTime() - start.getTime();
+  const totalDays = Math.round(ms / 86400000);
+  const absDays = Math.abs(totalDays);
+  const sign = ms < 0 ? -1 : 1;
+
+  let y = end.getFullYear() - start.getFullYear();
+  let m = end.getMonth() - start.getMonth();
+  let d = end.getDate() - start.getDate();
+  if (d < 0) { m--; const prev = new Date(end.getFullYear(), end.getMonth(), 0); d += prev.getDate(); }
+  if (m < 0) { y--; m += 12; }
+  if (ms < 0) { y = -y; m = -m; d = -d; }
+
+  // Business days
+  let bizDays = 0;
+  const cur = new Date(start);
+  const dir = ms >= 0 ? 1 : -1;
+  let iters = absDays;
+  while (iters-- > 0) {
+    cur.setDate(cur.getDate() + dir);
+    const dow = cur.getDay();
+    if (dow !== 0 && dow !== 6) bizDays++;
+  }
+
+  return { totalDays, y, m, d, bizDays, weeks: Math.floor(absDays / 7), remainDays: absDays % 7, sign };
+}
+
+function formatDateLong(d: Date): string {
+  return d.toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+}
+
+function updateDuration() {
+  const s = (document.getElementById('startDate') as HTMLInputElement).value;
+  const e = (document.getElementById('endDate') as HTMLInputElement).value;
+  const el = document.getElementById('durationResult')!;
+  if (!s || !e) { el.innerHTML = '<span class="text-text-muted text-sm col-span-4">Select both dates</span>'; return; }
+  const { totalDays, y, m, d, bizDays, weeks, remainDays, sign } = diffDates(parseDate(s), parseDate(e));
+  const cards = [
+    { label: 'Total days', value: String(totalDays) },
+    { label: 'Calendar breakdown', value: `${Math.abs(y)}y ${Math.abs(m)}m ${Math.abs(d)}d` },
+    { label: 'Weeks + days', value: `${weeks}w ${remainDays}d` },
+    { label: 'Business days', value: String(sign >= 0 ? bizDays : -bizDays) },
+  ];
+  el.innerHTML = cards.map(c => `
+    <div class="bg-bg-card border border-border rounded-xl p-3 text-center">
+      <div class="text-xl font-bold text-primary">${c.value}</div>
+      <div class="text-xs text-text-muted mt-1">${c.label}</div>
+    </div>`).join('');
+}
+
+function updateAdd() {
+  const base = (document.getElementById('baseDate') as HTMLInputElement).value;
+  const dir = (document.getElementById('addSubDir') as HTMLSelectElement).value;
+  const days = parseInt((document.getElementById('addDays') as HTMLInputElement).value) || 0;
+  const el = document.getElementById('addResult')!;
+  if (!base) { el.textContent = 'Select a base date'; return; }
+  const d = parseDate(base);
+  d.setDate(d.getDate() + (dir === 'add' ? days : -days));
+  el.innerHTML = `Result: <strong class="text-primary">${formatDateLong(d)}</strong> <span class="font-mono text-xs text-text-muted">(${d.toISOString().split('T')[0]})</span>`;
+}
+
+// init with today and 30 days ago
+const t = today();
+const t30 = new Date(); t30.setDate(t30.getDate() - 30);
+(document.getElementById('startDate') as HTMLInputElement).value = t30.toISOString().split('T')[0];
+(document.getElementById('endDate') as HTMLInputElement).value = t;
+(document.getElementById('baseDate') as HTMLInputElement).value = t;
+
+['startDate','endDate'].forEach(id => document.getElementById(id)?.addEventListener('change', updateDuration));
+['baseDate','addSubDir','addDays'].forEach(id => { document.getElementById(id)?.addEventListener('change', updateAdd); document.getElementById(id)?.addEventListener('input', updateAdd); });
+
+updateDuration(); updateAdd();
+</script>
