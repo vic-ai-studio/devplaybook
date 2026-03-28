@@ -1,0 +1,550 @@
+---
+title: "OWASP Top 10 2025: The Developer's Security Guide"
+description: "Complete developer guide to the OWASP Top 10 vulnerabilities in 2025. Understand each vulnerability with real attack examples and Node.js/Express prevention code."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["owasp", "web-security", "security", "node-js", "express", "vulnerabilities", "injection", "authentication"]
+readingTime: "18 min read"
+---
+
+The OWASP Top 10 is the closest thing to a standard curriculum in web application security. Published by the Open Web Application Security Project, it represents the ten most critical security risks facing web applications — ranked by frequency, exploitability, and impact.
+
+If you're building web applications and you haven't internalized this list, your apps have security vulnerabilities. This guide covers each category with a real attack scenario, why it works, and concrete Node.js/Express prevention code.
+
+---
+
+## A01: Broken Access Control
+
+**The most prevalent category in 2023/2025.** Broken access control happens when users can act outside their intended permissions — accessing other users' data, viewing admin functions, or modifying records they don't own.
+
+### Attack Scenario
+
+```
+GET /api/users/profile?userId=1234
+// Attacker changes 1234 to 1235 → sees another user's profile
+// This is called IDOR (Insecure Direct Object Reference)
+```
+
+### Prevention
+
+```javascript
+// VULNERABLE: trusting user-supplied IDs
+app.get('/api/profile/:userId', async (req, res) => {
+  const profile = await db.users.findById(req.params.userId);
+  res.json(profile);
+});
+
+// SECURE: always scope queries to the authenticated user
+app.get('/api/profile', requireAuth, async (req, res) => {
+  // Use req.user.id from the verified JWT — not from the URL
+  const profile = await db.users.findById(req.user.id);
+  res.json(profile);
+});
+
+// For admin views of other users, verify authorization explicitly:
+app.get('/api/admin/users/:userId', requireAuth, requireRole('admin'), async (req, res) => {
+  const profile = await db.users.findById(req.params.userId);
+  if (!profile) return res.status(404).json({ error: 'User not found' });
+  res.json(profile);
+});
+
+// Middleware to check role
+function requireRole(role) {
+  return (req, res, next) => {
+    if (req.user.role !== role) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    next();
+  };
+}
+```
+
+**Key principle:** Deny by default. If you haven't explicitly granted access, the answer is no.
+
+---
+
+## A02: Cryptographic Failures
+
+Previously called "Sensitive Data Exposure." Failures include transmitting data in cleartext, using weak algorithms, or storing secrets insecurely.
+
+### Attack Scenario
+
+A database breach exposes MD5-hashed passwords. Since MD5 is fast and unsalted, attackers crack millions of passwords in minutes using rainbow tables.
+
+### Prevention
+
+```javascript
+import bcrypt from 'bcrypt';
+import crypto from 'crypto';
+
+// Password storage: bcrypt, not MD5/SHA1/SHA256
+async function hashPassword(plaintext) {
+  return bcrypt.hash(plaintext, 12); // Cost factor 12 = ~250ms on modern hardware
+}
+
+// Data encryption at rest (for PII, tokens, secrets)
+const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex'); // 32 bytes
+
+function encrypt(text) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+
+  const authTag = cipher.getAuthTag().toString('hex');
+  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+function decrypt(encryptedData) {
+  const [ivHex, authTagHex, encrypted] = encryptedData.split(':');
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+  decipher.setAuthTag(authTag);
+
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+// Generate encryption key: openssl rand -hex 32
+```
+
+**Checklist:**
+- [ ] HTTPS everywhere (no data in cleartext transit)
+- [ ] bcrypt/scrypt/argon2 for passwords (never MD5/SHA1)
+- [ ] AES-256-GCM for sensitive data at rest
+- [ ] Secrets in environment variables, not source code
+- [ ] `npm audit` to catch known vulnerable dependencies
+
+---
+
+## A03: Injection
+
+Injection attacks (SQL, NoSQL, OS command, LDAP) send hostile data to an interpreter. When user input is treated as code instead of data, the attacker controls execution.
+
+### SQL Injection
+
+```javascript
+// VULNERABLE
+const query = `SELECT * FROM users WHERE email = '${req.body.email}'`;
+// Input: ' OR '1'='1' -- → dumps entire users table
+
+// SECURE: parameterized queries
+const result = await db.query(
+  'SELECT * FROM users WHERE email = $1',
+  [req.body.email]
+);
+```
+
+### NoSQL Injection (MongoDB)
+
+```javascript
+// VULNERABLE
+const user = await User.findOne({
+  username: req.body.username,
+  password: req.body.password  // If password is {$ne: null}, this matches ANY user
+});
+
+// SECURE: validate and sanitize input
+import { z } from 'zod';
+
+const LoginSchema = z.object({
+  username: z.string().max(100),
+  password: z.string().max(200),
+});
+
+app.post('/login', async (req, res) => {
+  const { username, password } = LoginSchema.parse(req.body);
+  // Now username and password are guaranteed to be strings
+  const user = await User.findOne({ username });
+  if (!user || !await bcrypt.compare(password, user.passwordHash)) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+});
+```
+
+### Command Injection
+
+```javascript
+import { exec } from 'child_process';
+import { execFile } from 'child_process';
+
+// VULNERABLE
+exec(`ping -c 1 ${req.query.host}`, callback);
+// Input: google.com; cat /etc/passwd → executes both commands
+
+// SECURE: use execFile with array arguments (never shell expansion)
+execFile('ping', ['-c', '1', req.query.host], callback);
+
+// Or validate input first
+const HOSTNAME_REGEX = /^[a-zA-Z0-9.-]+$/;
+if (!HOSTNAME_REGEX.test(req.query.host)) {
+  return res.status(400).json({ error: 'Invalid hostname' });
+}
+```
+
+---
+
+## A04: Insecure Design
+
+Design flaws that can't be patched after the fact — missing rate limiting, no account lockout, insecure password reset flows.
+
+### Attack Scenario
+
+A password reset flow sends a 4-digit PIN via email. No rate limiting means an attacker can try all 10,000 combinations.
+
+### Prevention
+
+```javascript
+import rateLimit from 'express-rate-limit';
+import crypto from 'crypto';
+
+// Rate limiting on sensitive flows
+const resetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // 3 reset attempts per hour per IP
+});
+
+app.post('/api/auth/forgot-password', resetLimiter, async (req, res) => {
+  const { email } = req.body;
+
+  // Use cryptographically secure token (not a 4-digit PIN)
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+  await db.users.update(
+    { email },
+    {
+      passwordResetToken: hashedToken,
+      passwordResetExpires: new Date(Date.now() + 60 * 60 * 1000), // 1 hour expiry
+    }
+  );
+
+  // Send email with resetToken (unhashed) - you only store the hash
+  await sendResetEmail(email, resetToken);
+
+  // Always return the same response to prevent email enumeration
+  res.json({ message: 'If that email exists, you will receive a reset link.' });
+});
+```
+
+---
+
+## A05: Security Misconfiguration
+
+Default credentials, verbose error messages, enabled debug features, unnecessary services, missing security headers.
+
+```javascript
+// PRODUCTION ERROR HANDLING: never expose internals
+app.use((err, req, res, next) => {
+  const isDev = process.env.NODE_ENV === 'development';
+
+  console.error({
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+  });
+
+  res.status(err.status || 500).json({
+    error: isDev ? err.message : 'Internal server error',
+    stack: isDev ? err.stack : undefined,
+    // Never expose: database errors, file paths, internal IDs
+  });
+});
+
+// Disable framework fingerprinting
+app.disable('x-powered-by');
+
+// Helmet for security headers
+import helmet from 'helmet';
+app.use(helmet());
+```
+
+**Environment checklist:**
+- [ ] Different secrets for dev/staging/production
+- [ ] Debug mode disabled in production
+- [ ] Default credentials changed everywhere
+- [ ] Unnecessary ports/services closed
+- [ ] `npm audit` run regularly
+
+---
+
+## A06: Vulnerable and Outdated Components
+
+Using libraries with known vulnerabilities. An attacker finds CVE-2025-XXXXX in your express-validator version, and your app is exploitable.
+
+```bash
+# Check for vulnerabilities
+npm audit
+
+# Fix automatically where possible
+npm audit fix
+
+# Check specific package
+npm info lodash vulnerabilities
+
+# Use a tool like Snyk for continuous monitoring
+npx snyk test
+
+# Automated updates (Dependabot in GitHub, Renovate)
+# Add .github/dependabot.yml:
+```
+
+```yaml
+# .github/dependabot.yml
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      production-dependencies:
+        dependency-type: production
+```
+
+---
+
+## A07: Identification and Authentication Failures
+
+Weak passwords allowed, no multi-factor authentication, predictable session IDs, sessions not invalidated on logout.
+
+```javascript
+import { randomBytes } from 'crypto';
+
+// Session management
+app.post('/api/auth/login', async (req, res) => {
+  const user = await validateCredentials(req.body.email, req.body.password);
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+  // Cryptographically random session ID
+  const sessionToken = randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  await db.sessions.create({
+    token: sessionToken,
+    userId: user.id,
+    expiresAt,
+    userAgent: req.headers['user-agent'],
+    ipAddress: req.ip,
+  });
+
+  res.cookie('sessionId', sessionToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict',
+    expires: expiresAt,
+  });
+
+  res.json({ success: true });
+});
+
+// Invalidate session on logout
+app.post('/api/auth/logout', requireAuth, async (req, res) => {
+  await db.sessions.delete({ token: req.cookies.sessionId });
+  res.clearCookie('sessionId');
+  res.json({ success: true });
+});
+
+// Password strength enforcement
+import zxcvbn from 'zxcvbn';
+
+function validatePasswordStrength(password) {
+  const result = zxcvbn(password);
+  if (result.score < 3) {
+    throw new Error(`Password too weak: ${result.feedback.suggestions.join('. ')}`);
+  }
+}
+```
+
+---
+
+## A08: Software and Data Integrity Failures
+
+Running code from untrusted sources, auto-updates without signature verification, insecure deserialization.
+
+```javascript
+// VULNERABLE: deserializing untrusted input
+const userData = JSON.parse(req.body.data); // Actually fine for plain JSON
+// DANGEROUS: eval(), node-serialize, YAML.load() with untrusted input
+
+// SECURE: use JSON.parse only, validate with a schema
+import { z } from 'zod';
+
+const UserDataSchema = z.object({
+  name: z.string().max(100),
+  preferences: z.object({
+    theme: z.enum(['light', 'dark']),
+    language: z.string().max(10),
+  }),
+});
+
+app.post('/api/settings', (req, res) => {
+  const data = UserDataSchema.parse(JSON.parse(req.body.data));
+  // data is now validated and typed
+});
+
+// Verify file integrity when accepting uploads
+import crypto from 'crypto';
+
+function verifyFileHash(buffer, expectedHash) {
+  const actualHash = crypto.createHash('sha256').update(buffer).digest('hex');
+  if (actualHash !== expectedHash) {
+    throw new Error('File integrity check failed');
+  }
+}
+```
+
+---
+
+## A09: Security Logging and Monitoring Failures
+
+Without logs, attacks go undetected until it's too late. Security events should be logged and monitored in real time.
+
+```javascript
+import winston from 'winston';
+
+const securityLogger = winston.createLogger({
+  level: 'info',
+  format: winston.format.json(),
+  transports: [
+    new winston.transports.File({ filename: 'security.log' }),
+    // In production: ship to centralized logging (Datadog, Splunk, etc.)
+  ],
+});
+
+// Log security events
+function logSecurityEvent(type, details) {
+  securityLogger.warn({
+    type,
+    timestamp: new Date().toISOString(),
+    ...details,
+  });
+}
+
+// Usage throughout your app
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const user = await validateCredentials(req.body.email, req.body.password);
+
+    logSecurityEvent('LOGIN_SUCCESS', {
+      userId: user.id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    // ... session creation
+  } catch (error) {
+    logSecurityEvent('LOGIN_FAILURE', {
+      email: req.body.email,
+      ip: req.ip,
+      reason: error.message,
+    });
+
+    res.status(401).json({ error: 'Invalid credentials' });
+  }
+});
+
+// Log access to sensitive data
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  logSecurityEvent('ADMIN_DATA_ACCESS', {
+    adminId: req.user.id,
+    resource: 'users',
+    ip: req.ip,
+  });
+
+  const users = await db.users.findAll();
+  res.json(users);
+});
+```
+
+---
+
+## A10: Server-Side Request Forgery (SSRF)
+
+SSRF allows attackers to make your server fetch arbitrary URLs — potentially reaching internal services, cloud metadata endpoints, or local filesystems.
+
+### Attack Scenario
+
+```
+POST /api/preview
+{ "url": "http://169.254.169.254/latest/meta-data/iam/security-credentials/" }
+// Your server fetches AWS metadata → attacker gets IAM credentials
+```
+
+### Prevention
+
+```javascript
+import { URL } from 'url';
+import dns from 'dns/promises';
+
+const ALLOWED_DOMAINS = ['api.trusted-service.com', 'cdn.yourapp.com'];
+const BLOCKED_IP_RANGES = [
+  /^10\./,           // Private class A
+  /^172\.(1[6-9]|2[0-9]|3[01])\./,  // Private class B
+  /^192\.168\./,     // Private class C
+  /^127\./,          // Loopback
+  /^169\.254\./,     // Link-local (AWS metadata)
+  /^::1$/,           // IPv6 loopback
+];
+
+async function safeFetch(urlString) {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(urlString);
+  } catch {
+    throw new Error('Invalid URL');
+  }
+
+  // Only allow HTTPS
+  if (parsedUrl.protocol !== 'https:') {
+    throw new Error('Only HTTPS URLs are allowed');
+  }
+
+  // Allowlist approach (most secure)
+  if (!ALLOWED_DOMAINS.includes(parsedUrl.hostname)) {
+    throw new Error('Domain not allowed');
+  }
+
+  // Resolve IP to check for private ranges
+  const addresses = await dns.resolve4(parsedUrl.hostname);
+  for (const ip of addresses) {
+    if (BLOCKED_IP_RANGES.some(range => range.test(ip))) {
+      throw new Error('Private IP ranges are not allowed');
+    }
+  }
+
+  return fetch(urlString);
+}
+```
+
+---
+
+## OWASP Quick Reference Card
+
+| # | Vulnerability | Primary Prevention |
+|---|---|---|
+| A01 | Broken Access Control | Deny by default, server-side authorization checks |
+| A02 | Cryptographic Failures | HTTPS + bcrypt + AES-256-GCM |
+| A03 | Injection | Parameterized queries, input validation |
+| A04 | Insecure Design | Threat modeling, secure design patterns |
+| A05 | Security Misconfiguration | helmet.js, disable debug, `npm audit` |
+| A06 | Vulnerable Components | Dependabot, regular `npm audit` |
+| A07 | Auth Failures | Strong session management, MFA |
+| A08 | Integrity Failures | Schema validation, avoid eval |
+| A09 | Logging Failures | Log security events, centralized monitoring |
+| A10 | SSRF | URL allowlisting, block private IP ranges |
+
+---
+
+Security is not a feature you add at the end — it's a foundation you build from the start. The OWASP Top 10 gives you a prioritized starting point. Implement parameterized queries and proper authentication this week. Add CSP headers and rate limiting next week. Run `npm audit` on a schedule.
+
+Every vulnerability you fix before it's exploited is a breach that never happens.
+
+---
+
+*Want a pre-secured Express boilerplate that handles all 10 of these? The [DevToolkit Starter Kit](https://devplaybook.gumroad.com/l/devtoolkit) includes OWASP-hardened templates with helmet, bcrypt, rate limiting, parameterized queries, and CSP pre-configured.*

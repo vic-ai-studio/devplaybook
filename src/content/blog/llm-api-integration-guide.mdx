@@ -1,0 +1,504 @@
+---
+title: "LLM API Integration Guide: Add AI to Your Web App in 2026"
+description: "Step-by-step tutorial for integrating LLM APIs into your web application. Node.js and Python examples with streaming, error handling, prompt engineering, and cost control."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["llm-api", "ai-integration", "node-js", "python", "claude-api", "openai-api", "tutorial", "web-development"]
+readingTime: "15 min read"
+---
+
+Adding AI to a web app sounds complicated until you realize the core pattern is simple: you send text in, you get text back. Everything else — streaming, error handling, context management, cost control — is configuration around that core.
+
+This guide walks you through a complete LLM API integration: from your first API call to a production-ready implementation with streaming responses, proper error handling, and cost monitoring. Examples are in both **Node.js** and **Python**.
+
+---
+
+## Prerequisites
+
+- Node.js 18+ or Python 3.10+
+- An API key from [Anthropic](https://console.anthropic.com), [OpenAI](https://platform.openai.com), or [Google AI Studio](https://aistudio.google.com)
+- Basic familiarity with async/await
+
+---
+
+## Step 1: Install the SDK
+
+### Node.js
+
+```bash
+npm install @anthropic-ai/sdk
+# or for OpenAI
+npm install openai
+# or for Google
+npm install @google/generative-ai
+```
+
+### Python
+
+```bash
+pip install anthropic
+# or
+pip install openai
+# or
+pip install google-generativeai
+```
+
+---
+
+## Step 2: Your First API Call
+
+Let's start with the simplest possible integration — a single question, a single answer.
+
+### Node.js (Claude API)
+
+```javascript
+import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+async function askClaude(question) {
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: question }],
+  });
+
+  return message.content[0].text;
+}
+
+// Usage
+const answer = await askClaude("Explain async/await in JavaScript in 3 sentences.");
+console.log(answer);
+```
+
+### Python (Claude API)
+
+```python
+import anthropic
+import os
+
+client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+def ask_claude(question: str) -> str:
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": question}]
+    )
+    return message.content[0].text
+
+# Usage
+answer = ask_claude("Explain async/await in Python in 3 sentences.")
+print(answer)
+```
+
+That's it. Two API keys, three lines of actual logic. Everything from here is refinement.
+
+---
+
+## Step 3: Add a System Prompt
+
+System prompts define your AI's persona and behavior. They're the most powerful lever for getting consistent, appropriate responses.
+
+```javascript
+async function aiAssistant(userMessage, systemPrompt) {
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  return message.content[0].text;
+}
+
+// For a coding assistant
+const codeReviewer = (code) =>
+  aiAssistant(
+    `Review this code:\n\n${code}`,
+    `You are a senior software engineer conducting a code review.
+     Focus on: correctness, performance, security, and maintainability.
+     Format your response with clear sections for each concern.
+     Be specific — point to line numbers and explain the why.`
+  );
+```
+
+**System prompt best practices:**
+- Be specific about output format (JSON, markdown, bullet points)
+- Define the persona and expertise level
+- List what to focus on AND what to ignore
+- Include examples of ideal responses for complex tasks
+
+---
+
+## Step 4: Implement Streaming
+
+For any response longer than a few sentences, streaming dramatically improves perceived performance. Users see words appearing rather than waiting for the full response.
+
+### Node.js Streaming
+
+```javascript
+import express from "express";
+
+const app = express();
+
+app.post("/api/chat", async (req, res) => {
+  const { message } = req.body;
+
+  // Set up SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  try {
+    const stream = client.messages.stream({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2048,
+      messages: [{ role: "user", content: message }],
+    });
+
+    for await (const chunk of stream) {
+      if (
+        chunk.type === "content_block_delta" &&
+        chunk.delta.type === "text_delta"
+      ) {
+        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
+      }
+    }
+
+    res.write("data: [DONE]\n\n");
+    res.end();
+  } catch (error) {
+    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    res.end();
+  }
+});
+```
+
+### Frontend Client (React)
+
+```javascript
+async function streamChat(message, onChunk) {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const lines = decoder.decode(value).split("\n");
+    for (const line of lines) {
+      if (line.startsWith("data: ") && line !== "data: [DONE]") {
+        const data = JSON.parse(line.slice(6));
+        if (data.text) onChunk(data.text);
+      }
+    }
+  }
+}
+
+// In your React component:
+const [response, setResponse] = useState("");
+
+await streamChat(userInput, (chunk) => {
+  setResponse((prev) => prev + chunk);
+});
+```
+
+### Python Streaming (FastAPI)
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+import anthropic
+import json
+
+app = FastAPI()
+client = anthropic.Anthropic()
+
+@app.post("/api/chat")
+async def chat_stream(request: dict):
+    message = request.get("message", "")
+
+    async def generate():
+        with client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": message}]
+        ) as stream:
+            for text in stream.text_stream:
+                yield f"data: {json.dumps({'text': text})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream"
+    )
+```
+
+---
+
+## Step 5: Multi-Turn Conversations
+
+Maintaining conversation history is how you enable ChatGPT-style back-and-forth:
+
+```javascript
+class ConversationManager {
+  constructor(systemPrompt = "") {
+    this.systemPrompt = systemPrompt;
+    this.history = [];
+    this.client = new Anthropic();
+  }
+
+  async chat(userMessage) {
+    // Add user message to history
+    this.history.push({
+      role: "user",
+      content: userMessage,
+    });
+
+    const response = await this.client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2048,
+      system: this.systemPrompt,
+      messages: this.history,
+    });
+
+    const assistantMessage = response.content[0].text;
+
+    // Add response to history for next turn
+    this.history.push({
+      role: "assistant",
+      content: assistantMessage,
+    });
+
+    return assistantMessage;
+  }
+
+  clearHistory() {
+    this.history = [];
+  }
+
+  // Prevent context window overflow by keeping last N turns
+  trimHistory(maxTurns = 10) {
+    if (this.history.length > maxTurns * 2) {
+      this.history = this.history.slice(-maxTurns * 2);
+    }
+  }
+}
+
+// Usage
+const conversation = new ConversationManager(
+  "You are a helpful coding assistant."
+);
+
+console.log(await conversation.chat("How do I sort an array in JavaScript?"));
+console.log(await conversation.chat("What about sorting by a specific property?"));
+console.log(await conversation.chat("Show me that with a TypeScript type annotation."));
+```
+
+---
+
+## Step 6: Error Handling and Retries
+
+LLM APIs fail. Rate limits, network issues, model overloads — handle them gracefully:
+
+```javascript
+import { RateLimitError, APIError } from "@anthropic-ai/sdk";
+
+async function robustAPICall(prompt, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      });
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        // Exponential backoff for rate limits
+        const waitTime = Math.pow(2, attempt) * 1000;
+        console.log(`Rate limited. Waiting ${waitTime}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      if (error instanceof APIError) {
+        if (error.status >= 500) {
+          // Server error — retry
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * (attempt + 1))
+          );
+          continue;
+        }
+        // Client error (4xx except 429) — don't retry
+        throw error;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error(`Failed after ${maxRetries} attempts`);
+}
+```
+
+```python
+import time
+from anthropic import RateLimitError, APIStatusError
+
+def robust_api_call(prompt: str, max_retries: int = 3) -> str:
+    for attempt in range(max_retries):
+        try:
+            response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.content[0].text
+
+        except RateLimitError:
+            wait_time = (2 ** attempt) * 1
+            print(f"Rate limited. Waiting {wait_time}s...")
+            time.sleep(wait_time)
+
+        except APIStatusError as e:
+            if e.status_code >= 500:
+                time.sleep(attempt + 1)
+            else:
+                raise  # 4xx errors — don't retry
+
+    raise RuntimeError(f"Failed after {max_retries} attempts")
+```
+
+---
+
+## Step 7: Cost Monitoring
+
+Without monitoring, API costs can spiral unexpectedly. Here's a simple token tracker:
+
+```javascript
+class CostTracker {
+  constructor() {
+    this.totalInputTokens = 0;
+    this.totalOutputTokens = 0;
+    // Claude Sonnet 4.6 pricing
+    this.inputCostPer1M = 3.0;
+    this.outputCostPer1M = 15.0;
+  }
+
+  track(usage) {
+    this.totalInputTokens += usage.input_tokens;
+    this.totalOutputTokens += usage.output_tokens;
+  }
+
+  getCost() {
+    const inputCost = (this.totalInputTokens / 1_000_000) * this.inputCostPer1M;
+    const outputCost =
+      (this.totalOutputTokens / 1_000_000) * this.outputCostPer1M;
+    return {
+      inputCost: inputCost.toFixed(4),
+      outputCost: outputCost.toFixed(4),
+      totalCost: (inputCost + outputCost).toFixed(4),
+      inputTokens: this.totalInputTokens,
+      outputTokens: this.totalOutputTokens,
+    };
+  }
+}
+
+const tracker = new CostTracker();
+
+const response = await client.messages.create({ /* ... */ });
+tracker.track(response.usage);
+
+console.log(tracker.getCost());
+// { inputCost: '0.0012', outputCost: '0.0045', totalCost: '0.0057', ... }
+```
+
+---
+
+## Production Checklist
+
+Before shipping your LLM integration to production:
+
+- [ ] **API keys in environment variables** — never hardcoded, never in source control
+- [ ] **Rate limiting** — add your own rate limiting per user to prevent abuse
+- [ ] **Input validation** — max length limits, content filtering if needed
+- [ ] **Timeout handling** — set a request timeout (30–60 seconds for most cases)
+- [ ] **Logging** — log prompts, responses, latency, and token usage (but respect privacy)
+- [ ] **Cost alerts** — set budget alerts in your provider's dashboard
+- [ ] **Fallback behavior** — what should your app do when the API is down?
+- [ ] **Prompt injection protection** — if users influence system prompts, sanitize carefully
+
+```javascript
+// Production-ready wrapper
+async function productionAICall(userId, userInput) {
+  // Input validation
+  if (userInput.length > 10000) {
+    throw new Error("Input too long");
+  }
+
+  // Rate limiting (pseudo-code — use Redis in production)
+  const requestCount = await rateLimit.check(userId);
+  if (requestCount > 10) {
+    throw new Error("Rate limit exceeded");
+  }
+
+  const startTime = Date.now();
+
+  try {
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1024,
+      timeout: 30000, // 30 second timeout
+      messages: [{ role: "user", content: userInput }],
+    });
+
+    // Log for monitoring
+    logger.info({
+      event: "ai_call_success",
+      userId,
+      latencyMs: Date.now() - startTime,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    });
+
+    return response.content[0].text;
+  } catch (error) {
+    logger.error({
+      event: "ai_call_error",
+      userId,
+      error: error.message,
+      latencyMs: Date.now() - startTime,
+    });
+    throw error;
+  }
+}
+```
+
+---
+
+## Summary
+
+The LLM API integration path:
+
+1. **Install SDK** → one npm/pip install
+2. **First API call** → 10 lines of code
+3. **Add system prompt** → define behavior and format
+4. **Enable streaming** → instant UX improvement
+5. **Manage conversation history** → multi-turn capability
+6. **Add error handling** → production resilience
+7. **Monitor costs** → no surprise bills
+
+The hardest part isn't the code — it's designing good prompts and handling edge cases gracefully. Spend 20% of your time on the API integration and 80% on what you're building with it.
+
+---
+
+*Want production-ready starter templates? The [DevToolkit Starter Kit](https://devplaybook.gumroad.com/l/devtoolkit) includes complete Express + FastAPI boilerplates with streaming, auth, rate limiting, and cost tracking already wired up.*

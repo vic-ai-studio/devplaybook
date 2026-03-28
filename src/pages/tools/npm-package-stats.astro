@@ -1,0 +1,266 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "Where does this data come from?", answer: "Package metadata is fetched from the npm registry API (registry.npmjs.org). Weekly download counts are from the npm downloads API (api.npmjs.org). All requests are made directly from your browser — no proxy server involved." },
+  { question: "What is the npm download count and how is it measured?", answer: "npm counts a download each time a package tarball is fetched from the registry — including automated CI builds, docker image builds, and bots. The count doesn't represent unique users or installs. Very popular packages like lodash see hundreds of millions of weekly downloads due to transitive dependencies in CI pipelines." },
+  { question: "What does 'unpacked size' mean?", answer: "Unpacked size is the total size of all files in the package after extraction from the .tgz tarball. It represents the disk space used when you run npm install. This differs from the tarball size (smaller, compressed) and the bundle size (depends on tree-shaking and bundler config)." },
+  { question: "What is the difference between dependencies and devDependencies?", answer: "dependencies are packages required at runtime — they are installed when users install your package. devDependencies are only needed during development and testing (bundlers, test frameworks, type definitions). Users who install your package don't get devDependencies, which reduces their install size." },
+  { question: "How do I check if a package is actively maintained?", answer: "Look at: last publish date (more than 2 years may mean abandoned), number of open issues vs closed, recent commit activity on GitHub, whether the package has a CHANGELOG, and the number of maintainers. A high weekly download count alone doesn't indicate active maintenance — many abandoned packages are widely used transitively." },
+  { question: "What is a scoped package like @org/package?", answer: "Scoped packages use the @scope/name format. They allow organizations to publish related packages under a namespace. Public scoped packages (like @babel/core) are free on npm. Private scoped packages require an npm paid account. The scope doesn't affect functionality — it's just a namespace." },
+];
+---
+
+<BaseLayout
+  title="npm Package Stats — Weekly Downloads, Size, Dependencies & Metadata"
+  description="Look up any npm package's weekly download count, unpacked size, dependency count, latest version, license, and repository link. Fetches live data from the npm registry. Free, runs in your browser."
+  tool="npm package stats, npm weekly downloads, npm package size, npm package metadata, npm registry lookup, npm package info"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "npm Package Stats",
+    "url": "https://devplaybook.cc/tools/npm-package-stats",
+    "description": "Look up npm package weekly download counts, size, dependencies, and metadata from the npm registry.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">npm Package Stats</h1>
+  <p class="text-text-muted mb-6">
+    Look up any npm package's <strong>weekly downloads</strong>, size, dependencies, and metadata — live from the npm registry.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Weekly download count</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Size & dependencies</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live npm registry data</span>
+  </div>
+
+  <div id="stats-app" class="space-y-5">
+    <!-- Search -->
+    <div class="flex gap-3">
+      <input
+        id="pkg-input"
+        type="text"
+        value=""
+        placeholder="react, lodash, @types/node, express…"
+        class="flex-1 bg-bg-card border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button id="lookup-btn" class="px-5 py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition-colors text-sm whitespace-nowrap">
+        Look up
+      </button>
+    </div>
+
+    <!-- Quick picks -->
+    <div class="flex gap-2 flex-wrap text-xs">
+      <span class="text-text-muted">Popular:</span>
+      <button class="quick-pick text-primary hover:underline" data-pkg="react">react</button>
+      <button class="quick-pick text-primary hover:underline" data-pkg="lodash">lodash</button>
+      <button class="quick-pick text-primary hover:underline" data-pkg="express">express</button>
+      <button class="quick-pick text-primary hover:underline" data-pkg="typescript">typescript</button>
+      <button class="quick-pick text-primary hover:underline" data-pkg="axios">axios</button>
+      <button class="quick-pick text-primary hover:underline" data-pkg="next">next</button>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="hidden text-sm text-text-muted animate-pulse">Fetching from npm registry…</div>
+
+    <!-- Error -->
+    <div id="error-msg" class="hidden bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 text-sm"></div>
+
+    <!-- Results -->
+    <div id="results" class="hidden space-y-4">
+      <!-- Header -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 id="pkg-name" class="text-xl font-bold font-mono"></h2>
+            <p id="pkg-description" class="text-sm text-text-muted mt-1 max-w-lg"></p>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <a id="pkg-npm-link" href="#" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary transition-colors">npm →</a>
+            <a id="pkg-repo-link" href="#" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary transition-colors hidden">Repo →</a>
+          </div>
+        </div>
+        <div class="flex gap-4 mt-3 flex-wrap text-xs text-text-muted">
+          <span id="pkg-version"></span>
+          <span id="pkg-license"></span>
+          <span id="pkg-published"></span>
+          <span id="pkg-author"></span>
+        </div>
+      </div>
+
+      <!-- Stats grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Weekly Downloads</p>
+          <p id="stat-downloads" class="text-2xl font-bold tabular-nums text-primary">—</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Unpacked Size</p>
+          <p id="stat-size" class="text-2xl font-bold tabular-nums">—</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Dependencies</p>
+          <p id="stat-deps" class="text-2xl font-bold tabular-nums">—</p>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-1">Maintainers</p>
+          <p id="stat-maintainers" class="text-2xl font-bold tabular-nums">—</p>
+        </div>
+      </div>
+
+      <!-- Keywords & engines -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div id="keywords-section" class="bg-bg-card border border-border rounded-xl p-4">
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-2">Keywords</p>
+          <div id="pkg-keywords" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <div id="engines-section" class="bg-bg-card border border-border rounded-xl p-4">
+          <p class="text-xs text-text-muted uppercase tracking-wide mb-2">Dependencies breakdown</p>
+          <div id="deps-breakdown" class="space-y-1 text-xs"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="npm Package Stats" relatedTags={['npm', 'nodejs', 'javascript', 'package-manager', 'open-source']} />
+</BaseLayout>
+
+<script>
+  function formatNum(n: number): string {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return String(n);
+  }
+
+  function formatBytes(bytes: number): string {
+    if (!bytes) return '—';
+    if (bytes >= 1_048_576) return (bytes / 1_048_576).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return bytes + ' B';
+  }
+
+  function timeAgo(dateStr: string): string {
+    if (!dateStr) return '';
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days < 1) return 'today';
+    if (days < 30) return `${days}d ago`;
+    if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+    return `${Math.floor(days / 365)}y ago`;
+  }
+
+  async function lookup(pkg: string) {
+    const name = pkg.trim();
+    if (!name) return;
+
+    document.getElementById('loading')?.classList.remove('hidden');
+    document.getElementById('error-msg')?.classList.add('hidden');
+    document.getElementById('results')?.classList.add('hidden');
+
+    try {
+      const [regRes, dlRes] = await Promise.allSettled([
+        fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`),
+        fetch(`https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(name)}`),
+      ]);
+
+      if (regRes.status === 'rejected' || !regRes.value.ok) {
+        throw new Error(`Package "${name}" not found`);
+      }
+
+      const reg = await regRes.value.json();
+      const latest = reg['dist-tags']?.latest || Object.keys(reg.versions || {}).at(-1) || '';
+      const ver = reg.versions?.[latest] || {};
+
+      let downloads = 0;
+      if (dlRes.status === 'fulfilled' && dlRes.value.ok) {
+        const dlData = await dlRes.value.json();
+        downloads = dlData.downloads || 0;
+      }
+
+      // Populate UI
+      (document.getElementById('pkg-name') as HTMLElement).textContent = name;
+      (document.getElementById('pkg-description') as HTMLElement).textContent = ver.description || reg.description || '';
+      (document.getElementById('pkg-version') as HTMLElement).textContent = `v${latest}`;
+      (document.getElementById('pkg-license') as HTMLElement).textContent = ver.license ? `License: ${ver.license}` : '';
+
+      const publishedDate = reg.time?.[latest] || '';
+      (document.getElementById('pkg-published') as HTMLElement).textContent = publishedDate ? `Published: ${timeAgo(publishedDate)}` : '';
+
+      const author = ver.author?.name || (typeof ver.author === 'string' ? ver.author : '') || reg.author?.name || '';
+      (document.getElementById('pkg-author') as HTMLElement).textContent = author ? `By: ${author}` : '';
+
+      const npmLink = document.getElementById('pkg-npm-link') as HTMLAnchorElement;
+      npmLink.href = `https://www.npmjs.com/package/${name}`;
+
+      const repoUrl = ver.repository?.url || reg.repository?.url || '';
+      const repoClean = repoUrl.replace(/^git\+/, '').replace(/\.git$/, '').replace(/^git:\/\//, 'https://');
+      const repoLink = document.getElementById('pkg-repo-link') as HTMLAnchorElement;
+      if (repoClean) {
+        repoLink.href = repoClean;
+        repoLink.classList.remove('hidden');
+      } else {
+        repoLink.classList.add('hidden');
+      }
+
+      (document.getElementById('stat-downloads') as HTMLElement).textContent = downloads ? formatNum(downloads) : '—';
+      (document.getElementById('stat-size') as HTMLElement).textContent = formatBytes(ver.dist?.unpackedSize || 0);
+
+      const deps = Object.keys(ver.dependencies || {}).length;
+      const peerDeps = Object.keys(ver.peerDependencies || {}).length;
+      const optDeps = Object.keys(ver.optionalDependencies || {}).length;
+      (document.getElementById('stat-deps') as HTMLElement).textContent = String(deps);
+      (document.getElementById('stat-maintainers') as HTMLElement).textContent = String(reg.maintainers?.length || 0);
+
+      // Keywords
+      const keywords = ver.keywords || reg.keywords || [];
+      const kwEl = document.getElementById('pkg-keywords') as HTMLElement;
+      kwEl.innerHTML = keywords.slice(0, 15).map((k: string) =>
+        `<span class="text-xs bg-surface-2 border border-border px-2 py-0.5 rounded-full">${k}</span>`
+      ).join('') || '<span class="text-text-muted text-xs">No keywords</span>';
+
+      // Deps breakdown
+      const depsEl = document.getElementById('deps-breakdown') as HTMLElement;
+      depsEl.innerHTML = [
+        { label: 'Dependencies', count: deps },
+        { label: 'Peer deps', count: peerDeps },
+        { label: 'Optional deps', count: optDeps },
+        { label: 'Dev deps (not installed by users)', count: Object.keys(ver.devDependencies || {}).length },
+      ].map(({ label, count }) =>
+        `<div class="flex justify-between"><span class="text-text-muted">${label}</span><span class="font-medium">${count}</span></div>`
+      ).join('');
+
+      document.getElementById('results')?.classList.remove('hidden');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch package data';
+      const errEl = document.getElementById('error-msg') as HTMLElement;
+      errEl.textContent = msg;
+      errEl.classList.remove('hidden');
+    } finally {
+      document.getElementById('loading')?.classList.add('hidden');
+    }
+  }
+
+  document.getElementById('lookup-btn')?.addEventListener('click', () => {
+    lookup((document.getElementById('pkg-input') as HTMLInputElement).value);
+  });
+  document.getElementById('pkg-input')?.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter') lookup((document.getElementById('pkg-input') as HTMLInputElement).value);
+  });
+  document.querySelectorAll('.quick-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pkg = (btn as HTMLElement).dataset.pkg || '';
+      (document.getElementById('pkg-input') as HTMLInputElement).value = pkg;
+      lookup(pkg);
+    });
+  });
+</script>

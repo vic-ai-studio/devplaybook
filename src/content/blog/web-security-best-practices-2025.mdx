@@ -1,0 +1,440 @@
+---
+title: "Web Application Security Best Practices 2025: The Developer Checklist"
+description: "Complete web application security guide for developers in 2025. Covers HTTPS, CSP, XSS, SQL injection, CSRF, authentication security with real code examples in Node.js and Express."
+date: "2026-03-28"
+author: "DevPlaybook Team"
+tags: ["web-security", "security", "owasp", "xss", "sql-injection", "csrf", "https", "express", "node-js"]
+readingTime: "16 min read"
+---
+
+Most web applications get breached not because attackers are sophisticated, but because developers skip security fundamentals. SQL injection — first documented in 1998 — still appears in the OWASP Top 10. XSS vulnerabilities exist in millions of production apps. CSRF tokens are often skipped because "we'll add them later."
+
+This is the checklist that "later" never comes. Work through it once, build the habits, and most common attack vectors disappear from your codebase.
+
+---
+
+## 1. HTTPS Everywhere
+
+If you're not on HTTPS, everything else in this guide is irrelevant. An attacker on the same network can intercept plaintext HTTP traffic in seconds.
+
+**What you need:**
+- TLS certificate (free via Let's Encrypt / Certbot)
+- HSTS header to prevent protocol downgrade attacks
+- Redirect all HTTP to HTTPS
+
+```javascript
+// Express: redirect HTTP to HTTPS
+app.use((req, res, next) => {
+  if (req.header('x-forwarded-proto') !== 'https' && process.env.NODE_ENV === 'production') {
+    return res.redirect(301, `https://${req.hostname}${req.url}`);
+  }
+  next();
+});
+
+// HSTS: tell browsers to always use HTTPS for 1 year
+app.use((req, res, next) => {
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  next();
+});
+```
+
+**Verify:** `curl -I https://yourdomain.com` and look for `Strict-Transport-Security` in the response headers.
+
+---
+
+## 2. Content Security Policy (CSP)
+
+CSP is your main defense against Cross-Site Scripting (XSS). It tells browsers which sources of scripts, styles, and resources are legitimate.
+
+```javascript
+// Using helmet.js (recommended for Express apps)
+import helmet from 'helmet';
+
+app.use(helmet.contentSecurityPolicy({
+  directives: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+    styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+    fontSrc: ["'self'", "https://fonts.gstatic.com"],
+    imgSrc: ["'self'", "data:", "https:"],
+    connectSrc: ["'self'", "https://api.yourservice.com"],
+    frameSrc: ["'none'"],
+    objectSrc: ["'none'"],
+    upgradeInsecureRequests: [],
+  },
+}));
+```
+
+**Start in report-only mode** to avoid breaking your app:
+
+```javascript
+// Logs violations without blocking — use this to tune your CSP first
+res.setHeader(
+  'Content-Security-Policy-Report-Only',
+  "default-src 'self'; report-uri /csp-violations"
+);
+```
+
+Common CSP mistakes:
+- `'unsafe-inline'` for scripts defeats the purpose entirely
+- `'unsafe-eval'` opens eval() and related functions — avoid if possible
+- Wildcard `*` sources are nearly as bad as no CSP
+
+---
+
+## 3. Preventing XSS (Cross-Site Scripting)
+
+XSS happens when user input is rendered as HTML without sanitization. An attacker injects `<script>` tags and can steal cookies, hijack sessions, or deface your UI.
+
+**Rule 1: Escape output in templates**
+
+Most modern template engines (React JSX, Vue templates, EJS) escape by default. The danger is when you deliberately bypass escaping:
+
+```javascript
+// DANGEROUS: directly injecting user content
+res.send(`<h1>Welcome ${req.query.name}</h1>`);
+// If name = '<script>alert(1)</script>', you just got XSSed
+
+// SAFE: escape HTML entities
+import { escape } from 'html-escaper';
+res.send(`<h1>Welcome ${escape(req.query.name)}</h1>`);
+```
+
+**Rule 2: Sanitize rich HTML with DOMPurify**
+
+If users submit HTML (blog comments, rich text editors), you need to sanitize — not just escape:
+
+```javascript
+import DOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
+
+const window = new JSDOM('').window;
+const purify = DOMPurify(window);
+
+function sanitizeHtml(dirty) {
+  return purify.sanitize(dirty, {
+    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href', 'title', 'rel'],
+  });
+}
+
+const clean = sanitizeHtml(userSubmittedHtml);
+```
+
+**Rule 3: HttpOnly and SameSite cookies**
+
+If your session cookie is accessible via JavaScript, XSS can steal it. `HttpOnly` prevents that:
+
+```javascript
+res.cookie('sessionId', token, {
+  httpOnly: true,       // Not accessible via document.cookie
+  secure: true,         // HTTPS only
+  sameSite: 'strict',   // No cross-origin sends
+  maxAge: 24 * 60 * 60 * 1000, // 1 day
+});
+```
+
+---
+
+## 4. SQL Injection Prevention
+
+SQL injection occurs when user input is concatenated into SQL queries directly. It's been known for 25+ years and still appears constantly in codebases.
+
+```javascript
+// VULNERABLE: never do this
+const user = await db.query(
+  `SELECT * FROM users WHERE email = '${req.body.email}'`
+);
+// Input: ' OR '1'='1 → returns all users
+// Input: '; DROP TABLE users; -- → drops the table
+
+// SAFE: parameterized queries
+const user = await db.query(
+  'SELECT * FROM users WHERE email = $1',
+  [req.body.email]
+);
+
+// SAFE with Prisma (ORM handles this automatically)
+const user = await prisma.user.findUnique({
+  where: { email: req.body.email }
+});
+
+// SAFE with Sequelize
+const user = await User.findOne({
+  where: { email: req.body.email }
+});
+```
+
+**Rule of thumb:** If you're using string concatenation or string interpolation to build SQL queries, you have a SQL injection vulnerability. No exceptions.
+
+For raw queries, always use parameterized queries (also called prepared statements). Every major database driver supports them — `$1` / `?` / `@param` depending on the driver.
+
+---
+
+## 5. CSRF Protection
+
+Cross-Site Request Forgery (CSRF) tricks authenticated users into making requests they didn't intend. An attacker's page submits a form to your bank's `/transfer` endpoint — the browser sends the user's session cookie automatically.
+
+```javascript
+import csrf from 'csurf';
+import cookieParser from 'cookie-parser';
+
+app.use(cookieParser());
+
+const csrfProtection = csrf({
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  }
+});
+
+// Apply to state-changing routes
+app.post('/api/transfer', csrfProtection, async (req, res) => {
+  // CSRF token validated automatically
+  await processTransfer(req.body);
+  res.json({ success: true });
+});
+
+// Provide token to frontend
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+```
+
+**Frontend usage:**
+
+```javascript
+// Get CSRF token
+const { csrfToken } = await fetch('/api/csrf-token').then(r => r.json());
+
+// Include in state-changing requests
+await fetch('/api/transfer', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-CSRF-Token': csrfToken,
+  },
+  body: JSON.stringify({ amount: 100, to: 'account123' }),
+});
+```
+
+**Note:** If you're using SameSite=Strict cookies with a modern browser-only audience, CSRF risk is significantly reduced — but don't skip the token for anything sensitive.
+
+---
+
+## 6. Authentication Security
+
+Authentication bugs are the fastest path to a complete account compromise.
+
+### Password Hashing
+
+```javascript
+import bcrypt from 'bcrypt';
+
+const SALT_ROUNDS = 12; // Cost factor — higher = slower = more secure
+
+// Registration
+async function registerUser(email, password) {
+  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+  await db.users.create({ email, password: hashedPassword });
+}
+
+// Login
+async function loginUser(email, password) {
+  const user = await db.users.findOne({ email });
+  if (!user) {
+    // Still run bcrypt.compare to prevent timing attacks
+    await bcrypt.compare(password, '$2b$12$placeholderhashfortiming');
+    throw new Error('Invalid credentials');
+  }
+
+  const isValid = await bcrypt.compare(password, user.password);
+  if (!isValid) throw new Error('Invalid credentials');
+
+  return generateSessionToken(user);
+}
+```
+
+**Never use MD5, SHA1, or plain SHA256 for passwords.** They're fast — which is exactly what you don't want. Use bcrypt, scrypt, or argon2.
+
+### JWT Best Practices
+
+```javascript
+import jwt from 'jsonwebtoken';
+
+// Signing
+function generateToken(userId) {
+  return jwt.sign(
+    { userId, iat: Math.floor(Date.now() / 1000) },
+    process.env.JWT_SECRET,
+    {
+      algorithm: 'HS256',
+      expiresIn: '15m', // Short-lived access tokens
+    }
+  );
+}
+
+// Verification
+function verifyToken(token) {
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ['HS256'], // Explicitly allowlist algorithms
+    });
+  } catch (error) {
+    throw new Error('Invalid or expired token');
+  }
+}
+```
+
+**JWT security checklist:**
+- [ ] Use strong secret (32+ random bytes) via `openssl rand -hex 32`
+- [ ] Short expiry for access tokens (15–60 minutes)
+- [ ] Explicitly specify allowed algorithms (prevents `alg: none` attack)
+- [ ] Store in httpOnly cookies, not localStorage
+
+---
+
+## 7. Security Headers Checklist
+
+Install `helmet` for Express — it sets a solid baseline of security headers automatically:
+
+```javascript
+import helmet from 'helmet';
+
+app.use(helmet());
+
+// What helmet sets:
+// X-Content-Type-Options: nosniff
+// X-Frame-Options: SAMEORIGIN
+// X-XSS-Protection: 0 (deprecated, rely on CSP instead)
+// Referrer-Policy: no-referrer
+// Permissions-Policy: ...
+// Cross-Origin-Embedder-Policy
+// Cross-Origin-Opener-Policy
+// Cross-Origin-Resource-Policy
+```
+
+Check your headers with [securityheaders.com](https://securityheaders.com) or run:
+
+```bash
+curl -I https://yourdomain.com | grep -E 'Strict-Transport|Content-Security|X-Content|X-Frame|Referrer'
+```
+
+---
+
+## 8. Rate Limiting
+
+Without rate limiting, attackers can brute-force login endpoints, scrape your data, or DDoS your API.
+
+```javascript
+import rateLimit from 'express-rate-limit';
+
+// General API rate limit
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,                   // 100 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+
+// Strict limit for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10, // Only 10 login attempts per 15 minutes per IP
+  skipSuccessfulRequests: true, // Don't count successful logins
+});
+
+app.use('/api/', apiLimiter);
+app.post('/api/auth/login', authLimiter, loginHandler);
+app.post('/api/auth/register', authLimiter, registerHandler);
+```
+
+For production with multiple servers, use Redis-backed rate limiting:
+
+```javascript
+import RedisStore from 'rate-limit-redis';
+import { createClient } from 'redis';
+
+const redisClient = createClient({ url: process.env.REDIS_URL });
+await redisClient.connect();
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+  }),
+});
+```
+
+---
+
+## 9. Input Validation
+
+Never trust user input. Validate everything at the boundary:
+
+```javascript
+import { z } from 'zod';
+
+const RegisterSchema = z.object({
+  email: z.string().email().max(254),
+  password: z.string().min(8).max(128),
+  username: z.string().min(3).max(50).regex(/^[a-zA-Z0-9_-]+$/),
+});
+
+app.post('/api/register', async (req, res) => {
+  const result = RegisterSchema.safeParse(req.body);
+
+  if (!result.success) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: result.error.flatten()
+    });
+  }
+
+  const { email, password, username } = result.data;
+  // Safe to proceed
+});
+```
+
+---
+
+## Web App Security Checklist Summary
+
+```
+Transport:
+  ✅ HTTPS with valid TLS certificate
+  ✅ HSTS header enabled
+  ✅ All HTTP redirected to HTTPS
+
+Headers:
+  ✅ Content-Security-Policy configured
+  ✅ helmet.js enabled (Express)
+  ✅ Cookies: HttpOnly + Secure + SameSite
+
+Injection:
+  ✅ Parameterized SQL queries everywhere
+  ✅ HTML output escaped or sanitized
+  ✅ Input validation with Zod/Joi/Yup
+
+Authentication:
+  ✅ Passwords hashed with bcrypt (≥10 rounds)
+  ✅ CSRF tokens on state-changing forms
+  ✅ Rate limiting on auth endpoints
+  ✅ JWT: explicit algorithm + short expiry
+
+Monitoring:
+  ✅ Error messages don't leak stack traces
+  ✅ Dependencies regularly audited (npm audit)
+  ✅ Security headers verified with securityheaders.com
+```
+
+---
+
+Security isn't a feature you add — it's a set of habits built into every decision. The checklist above catches 90% of real-world vulnerabilities that affect production web applications. Work through it once, automate what you can (helmet, rate limiting, parameterized queries), and schedule a quarterly review.
+
+---
+
+*Want to level up your security practices? The [DevToolkit Starter Kit](https://devplaybook.gumroad.com/l/devtoolkit) includes a hardened Express boilerplate with all these security patterns pre-configured.*
