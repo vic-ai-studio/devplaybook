@@ -1,0 +1,334 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a VirtualService in Istio?", answer: "A VirtualService defines how traffic is routed to a Kubernetes service. Unlike a Kubernetes Service (which is just a stable IP), a VirtualService lets you split traffic by percentage, match on HTTP headers/paths/methods, apply retries, timeouts, and fault injection. It's the core traffic management primitive in Istio." },
+  { question: "What is a DestinationRule and when do I need it?", answer: "A DestinationRule configures policies applied to traffic after routing: load balancing strategy, connection pool settings, circuit breaker (outlier detection), and TLS mode. You also use it to define subsets — named groups of pods selected by labels (e.g. version: v1 vs version: v2). VirtualService references these subsets for weighted routing (canary deployments)." },
+  { question: "How does canary deployment work in Istio?", answer: "Deploy both v1 and v2 of your app with different labels (e.g. version: v1, version: v2). Create a DestinationRule defining two subsets based on those labels. Then use a VirtualService to split traffic: send 90% to subset v1 and 10% to v2. Gradually shift traffic to v2 (10→25→50→100%) as you gain confidence, with instant rollback by changing the weight back to 0." },
+  { question: "What is fault injection and why use it?", answer: "Fault injection tests your system's resilience by deliberately introducing failures. Istio supports two types: (1) HTTP delay — adds latency to a percentage of requests to test timeout handling, and (2) HTTP abort — returns error codes (e.g. 503) to test circuit breakers and retry logic. Unlike chaos engineering tools that affect infrastructure, Istio faults are applied at the proxy level with no code changes." },
+  { question: "What is the difference between retry and circuit breaker?", answer: "Retries automatically re-send failed requests (up to N times, with backoff). They handle transient failures but can amplify load during outages. Circuit breakers (outlier detection in Istio) track error rates per endpoint and temporarily eject unhealthy hosts from the load balancer pool — preventing overload. Use both: retries for occasional failures, circuit breaker to protect against cascading failures." },
+  { question: "Do I need Istio for canary deployments?", answer: "No, but Istio makes it much easier. Without Istio, canary routing depends on Kubernetes Service selector (which is binary — all traffic or none), so you'd need to manually scale replicas to approximate traffic percentages. Istio decouples traffic weight from replica count, enabling precise percentages regardless of pod count." },
+];
+---
+
+<BaseLayout
+  title="Istio Traffic Policy Builder — VirtualService & DestinationRule Generator"
+  description="Generate Istio VirtualService and DestinationRule YAML for canary deployments, traffic splitting, fault injection, and retries. Copy-paste ready kubectl commands."
+  tool="Istio traffic policy builder, VirtualService generator, DestinationRule YAML, Istio canary deployment, traffic splitting Istio"
+  keywords={["istio virtualservice", "istio destinationrule", "canary deployment istio", "traffic splitting kubernetes", "istio fault injection", "service mesh traffic"]}
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Istio Traffic Policy Builder</h1>
+  <p class="text-text-muted mb-4">Configure canary splits, fault injection, and retries. Get VirtualService YAML, DestinationRule YAML, and kubectl apply commands ready to paste.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Traffic split (canary / blue-green)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Fault injection (delay / abort)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Retries & timeouts</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> kubectl apply commands</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Config -->
+    <div class="space-y-5">
+      <div class="bg-bg-card border border-border rounded-xl p-5 space-y-4">
+        <h2 class="text-base font-semibold">Service Configuration</h2>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Service Name</label>
+          <input id="svc-name" type="text" value="my-service" placeholder="my-service"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Namespace</label>
+          <input id="svc-ns" type="text" value="default" placeholder="default"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Service Port</label>
+          <input id="svc-port" type="number" value="80" min="1" max="65535"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5 space-y-4">
+        <h2 class="text-base font-semibold">Traffic Split</h2>
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="text-sm font-medium">Stable (v1) — <span id="stable-pct-label">90</span>%</label>
+            <label class="text-sm font-medium">Canary (v2) — <span id="canary-pct-label">10</span>%</label>
+          </div>
+          <input id="canary-pct" type="range" min="0" max="100" value="10" step="5"
+            class="w-full accent-primary" />
+          <div class="flex justify-between text-xs text-text-muted mt-1">
+            <span>0% canary (100% stable)</span>
+            <span>50/50</span>
+            <span>100% canary</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Stable label key</label>
+            <input id="v1-label-key" type="text" value="version" class="w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Stable label value</label>
+            <input id="v1-label-val" type="text" value="v1" class="w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Canary label key</label>
+            <input id="v2-label-key" type="text" value="version" class="w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Canary label value</label>
+            <input id="v2-label-val" type="text" value="v2" class="w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5 space-y-4">
+        <h2 class="text-base font-semibold">Fault Injection (Optional)</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Delay %</label>
+            <input id="delay-pct" type="number" value="0" min="0" max="100" placeholder="0 = disabled"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Delay Duration (ms)</label>
+            <input id="delay-ms" type="number" value="500" min="0"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Abort %</label>
+            <input id="abort-pct" type="number" value="0" min="0" max="100" placeholder="0 = disabled"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Abort HTTP Status</label>
+            <input id="abort-code" type="number" value="503" min="400" max="599"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5 space-y-3">
+        <h2 class="text-base font-semibold">Retries & Timeout</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Retry Attempts</label>
+            <input id="retry-attempts" type="number" value="3" min="0" max="10"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Per-Try Timeout (s)</label>
+            <input id="retry-timeout" type="text" value="2s"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Request Timeout</label>
+          <input id="req-timeout" type="text" value="10s" placeholder="e.g. 10s, 0 = no timeout"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div class="flex gap-2 mb-2 flex-wrap">
+        <button class="tab-btn active text-xs px-3 py-1.5 rounded-lg border border-primary bg-primary/10 text-primary" data-tab="vs">VirtualService</button>
+        <button class="tab-btn text-xs px-3 py-1.5 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary" data-tab="dr">DestinationRule</button>
+        <button class="tab-btn text-xs px-3 py-1.5 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary" data-tab="apply">kubectl apply</button>
+      </div>
+
+      <div id="tab-vs" class="tab-panel">
+        <div class="bg-bg border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted">VirtualService.yaml</span>
+            <button id="copy-vs" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-vs" class="text-xs font-mono text-green-400 whitespace-pre overflow-x-auto max-h-96 overflow-y-auto leading-relaxed"></pre>
+        </div>
+      </div>
+
+      <div id="tab-dr" class="tab-panel hidden">
+        <div class="bg-bg border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted">DestinationRule.yaml</span>
+            <button id="copy-dr" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-dr" class="text-xs font-mono text-green-400 whitespace-pre overflow-x-auto max-h-96 overflow-y-auto leading-relaxed"></pre>
+        </div>
+      </div>
+
+      <div id="tab-apply" class="tab-panel hidden">
+        <div class="bg-bg border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted">kubectl commands</span>
+            <button id="copy-apply" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-apply" class="text-xs font-mono text-green-400 whitespace-pre overflow-x-auto max-h-96 overflow-y-auto leading-relaxed"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Istio Traffic Policy Builder" relatedTags={['kubernetes', 'istio', 'devops', 'service-mesh', 'canary', 'ci-cd']} />
+
+  <script is:inline>
+    function generate() {
+      const svc = document.getElementById('svc-name').value.trim() || 'my-service';
+      const ns = document.getElementById('svc-ns').value.trim() || 'default';
+      const port = parseInt(document.getElementById('svc-port').value) || 80;
+      const canaryPct = parseInt(document.getElementById('canary-pct').value);
+      const stablePct = 100 - canaryPct;
+      const v1k = document.getElementById('v1-label-key').value.trim() || 'version';
+      const v1v = document.getElementById('v1-label-val').value.trim() || 'v1';
+      const v2k = document.getElementById('v2-label-key').value.trim() || 'version';
+      const v2v = document.getElementById('v2-label-val').value.trim() || 'v2';
+      const delayPct = parseInt(document.getElementById('delay-pct').value) || 0;
+      const delayMs = parseInt(document.getElementById('delay-ms').value) || 500;
+      const abortPct = parseInt(document.getElementById('abort-pct').value) || 0;
+      const abortCode = parseInt(document.getElementById('abort-code').value) || 503;
+      const retryAttempts = parseInt(document.getElementById('retry-attempts').value);
+      const retryTimeout = document.getElementById('retry-timeout').value.trim() || '2s';
+      const reqTimeout = document.getElementById('req-timeout').value.trim() || '10s';
+
+      document.getElementById('stable-pct-label').textContent = stablePct;
+      document.getElementById('canary-pct-label').textContent = canaryPct;
+
+      // Build fault section
+      let faultSection = '';
+      if (delayPct > 0 || abortPct > 0) {
+        faultSection = '      fault:\n';
+        if (delayPct > 0) {
+          faultSection += `        delay:\n          percentage:\n            value: ${delayPct}\n          fixedDelay: ${delayMs}ms\n`;
+        }
+        if (abortPct > 0) {
+          faultSection += `        abort:\n          percentage:\n            value: ${abortPct}\n          httpStatus: ${abortCode}\n`;
+        }
+      }
+
+      const vs = `apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ${svc}
+  namespace: ${ns}
+spec:
+  hosts:
+    - ${svc}
+  http:
+    - route:
+        - destination:
+            host: ${svc}
+            subset: stable
+            port:
+              number: ${port}
+          weight: ${stablePct}
+        - destination:
+            host: ${svc}
+            subset: canary
+            port:
+              number: ${port}
+          weight: ${canaryPct}${faultSection ? '\n' + faultSection.trimEnd() : ''}
+      retries:
+        attempts: ${retryAttempts}
+        perTryTimeout: ${retryTimeout}
+        retryOn: gateway-error,connect-failure,retriable-4xx
+      timeout: ${reqTimeout}`;
+
+      const dr = `apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ${svc}
+  namespace: ${ns}
+spec:
+  host: ${svc}
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        h2UpgradePolicy: UPGRADE
+        http1MaxPendingRequests: 1024
+        http2MaxRequests: 1024
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+  subsets:
+    - name: stable
+      labels:
+        ${v1k}: "${v1v}"
+    - name: canary
+      labels:
+        ${v2k}: "${v2v}"`;
+
+      const apply = `# Apply DestinationRule first (defines subsets)
+kubectl apply -f destinationrule-${svc}.yaml
+
+# Apply VirtualService
+kubectl apply -f virtualservice-${svc}.yaml
+
+# Verify
+kubectl get virtualservice ${svc} -n ${ns}
+kubectl get destinationrule ${svc} -n ${ns}
+
+# Check traffic split with istioctl
+istioctl analyze -n ${ns}
+
+# Monitor canary traffic (if kiali installed)
+# kubectl port-forward svc/kiali 20001:20001 -n istio-system
+
+# Rollback (set canary to 0%)
+kubectl patch virtualservice ${svc} -n ${ns} --type=merge \\
+  -p '{"spec":{"http":[{"route":[{"destination":{"host":"${svc}","subset":"stable","port":{"number":${port}}},"weight":100},{"destination":{"host":"${svc}","subset":"canary","port":{"number":${port}}},"weight":0}]}]}}'
+
+# Promote canary to 100%
+kubectl patch virtualservice ${svc} -n ${ns} --type=merge \\
+  -p '{"spec":{"http":[{"route":[{"destination":{"host":"${svc}","subset":"stable","port":{"number":${port}}},"weight":0},{"destination":{"host":"${svc}","subset":"canary","port":{"number":${port}}},"weight":100}]}]}}'`;
+
+      document.getElementById('out-vs').textContent = vs;
+      document.getElementById('out-dr').textContent = dr;
+      document.getElementById('out-apply').textContent = apply;
+    }
+
+    document.querySelectorAll('#svc-name, #svc-ns, #svc-port, #canary-pct, #v1-label-key, #v1-label-val, #v2-label-key, #v2-label-val, #delay-pct, #delay-ms, #abort-pct, #abort-code, #retry-attempts, #retry-timeout, #req-timeout').forEach(el => {
+      el.addEventListener('input', generate);
+      el.addEventListener('change', generate);
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          b.classList.remove('active', 'border-primary', 'bg-primary/10', 'text-primary');
+          b.classList.add('border-border', 'text-text-muted');
+        });
+        btn.classList.add('active', 'border-primary', 'bg-primary/10', 'text-primary');
+        btn.classList.remove('border-border', 'text-text-muted');
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+      });
+    });
+
+    function copyText(id, btnId) {
+      navigator.clipboard.writeText(document.getElementById(id).textContent).then(() => {
+        const btn = document.getElementById(btnId);
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = orig, 1500);
+      });
+    }
+    document.getElementById('copy-vs').addEventListener('click', () => copyText('out-vs', 'copy-vs'));
+    document.getElementById('copy-dr').addEventListener('click', () => copyText('out-dr', 'copy-dr'));
+    document.getElementById('copy-apply').addEventListener('click', () => copyText('out-apply', 'copy-apply'));
+
+    generate();
+  </script>
+</BaseLayout>

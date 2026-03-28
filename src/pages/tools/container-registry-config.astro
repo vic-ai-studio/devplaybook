@@ -1,0 +1,242 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is an imagePullSecret in Kubernetes?", answer: "An imagePullSecret is a Kubernetes Secret that holds container registry credentials. When specified in a Pod spec, Kubernetes uses it to authenticate with a private registry before pulling images. Without it, pulling from private registries returns 401 Unauthorized (ImagePullBackOff). Create it with: kubectl create secret docker-registry." },
+  { question: "What is the difference between ECR, GCR, ACR, and GHCR?", answer: "ECR (Elastic Container Registry) is AWS's managed registry, integrated with IAM. GCR (Google Container Registry) / Artifact Registry is GCP's registry. ACR (Azure Container Registry) is Azure's registry. GHCR (GitHub Container Registry) is GitHub's free registry for public/private images. Each has different auth methods: ECR uses AWS tokens (short-lived), others typically use static credentials or service accounts." },
+  { question: "How do ECR credentials work with Kubernetes?", answer: "AWS ECR tokens expire after 12 hours, which breaks static imagePullSecrets. Solutions: (1) Use ECR credential helper (aws-ecr-credential-provider as a node plugin), (2) Use a CronJob to refresh the secret every 6 hours, or (3) Use IAM roles for service accounts (IRSA) with kube2iam/KIAM on EKS. Option 3 is the production-grade approach." },
+  { question: "How do I use GHCR in GitHub Actions?", answer: "GHCR integrates natively with GitHub Actions via GITHUB_TOKEN (no PAT needed for same-repo images). Use: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin. Then push to ghcr.io/<org>/<image>:<tag>. For pulling from other repos, create a PAT with read:packages scope." },
+  { question: "Should I use a Personal Access Token or Service Account for registry auth?", answer: "For production, always use service accounts / machine credentials, never personal tokens. PATs are tied to individual users — if that person leaves, access breaks. Use: Docker Hub organization access tokens, AWS IAM roles, GCP Service Accounts with Workload Identity, or ACR service principals. Store credentials in Kubernetes Secrets, never in Dockerfiles or source code." },
+  { question: "How do I configure imagePullSecrets for all pods in a namespace?", answer: "Attach the imagePullSecret to the default ServiceAccount in the namespace: kubectl patch serviceaccount default -p '{\"imagePullSecrets\": [{\"name\": \"regcred\"}]}' -n <namespace>. All pods that don't specify a serviceAccountName will inherit it. This avoids adding imagePullSecrets to every Deployment manually." },
+];
+---
+
+<BaseLayout
+  title="Container Registry Config Generator — Docker Auth & Kubernetes imagePullSecret"
+  description="Generate docker login commands, Kubernetes imagePullSecret YAML, and GitHub Actions workflow steps for DockerHub, ECR, GCR, ACR, and GHCR registries."
+  tool="container registry config, imagePullSecret generator, ECR Kubernetes auth, docker login command, GitHub Actions registry"
+  keywords={["container registry", "imagepullsecret", "docker hub auth", "ecr kubernetes", "ghcr github actions", "acr azure", "gcr google"]}
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Container Registry Config Generator</h1>
+  <p class="text-text-muted mb-4">Generate docker login commands, Kubernetes imagePullSecret YAML, and GitHub Actions steps for your registry. Supports DockerHub, ECR, GCR, ACR, and GHCR.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> docker login command</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Kubernetes imagePullSecret YAML</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GitHub Actions workflow step</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> All major registries</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Config -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 space-y-4">
+      <h2 class="text-base font-semibold">Registry Configuration</h2>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Registry Type</label>
+        <select id="registry-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="dockerhub">Docker Hub</option>
+          <option value="ecr">AWS ECR</option>
+          <option value="gcr">Google GCR / Artifact Registry</option>
+          <option value="acr">Azure ACR</option>
+          <option value="ghcr">GitHub GHCR</option>
+        </select>
+      </div>
+      <div id="field-username-wrap">
+        <label class="block text-sm font-medium mb-1.5" id="label-username">Username / Account ID</label>
+        <input id="username" type="text" value="myusername" placeholder="your-username"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+      <div id="field-password-wrap">
+        <label class="block text-sm font-medium mb-1.5" id="label-password">Password / Token / Secret</label>
+        <input id="password" type="text" value="my-access-token" placeholder="token or password"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+        <p id="pw-hint" class="text-xs text-text-muted mt-1">Use an access token, not your account password.</p>
+      </div>
+      <div id="field-region-wrap" class="hidden">
+        <label class="block text-sm font-medium mb-1.5">AWS Region</label>
+        <input id="aws-region" type="text" value="us-east-1" placeholder="us-east-1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+      <div id="field-account-wrap" class="hidden">
+        <label class="block text-sm font-medium mb-1.5">AWS Account ID</label>
+        <input id="aws-account" type="text" value="123456789012" placeholder="123456789012"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Kubernetes Namespace</label>
+        <input id="k8s-ns" type="text" value="default" placeholder="default"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Secret Name</label>
+        <input id="secret-name" type="text" value="regcred" placeholder="regcred"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div class="flex gap-2 mb-2 flex-wrap">
+        <button class="tab-btn active text-xs px-3 py-1.5 rounded-lg border border-primary bg-primary/10 text-primary" data-tab="docker">docker login</button>
+        <button class="tab-btn text-xs px-3 py-1.5 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary" data-tab="k8s">K8s Secret</button>
+        <button class="tab-btn text-xs px-3 py-1.5 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary" data-tab="gha">GitHub Actions</button>
+      </div>
+
+      <div id="tab-docker" class="tab-panel">
+        <div class="bg-bg border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted">Login command</span>
+            <button id="copy-docker" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-docker" class="text-xs font-mono text-green-400 whitespace-pre-wrap break-all leading-relaxed"></pre>
+        </div>
+      </div>
+
+      <div id="tab-k8s" class="tab-panel hidden">
+        <div class="bg-bg border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted">kubectl create secret</span>
+            <button id="copy-k8s" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-k8s" class="text-xs font-mono text-green-400 whitespace-pre-wrap break-all leading-relaxed"></pre>
+        </div>
+        <div class="bg-bg border border-border rounded-xl p-4 mt-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted">Deployment spec snippet</span>
+            <button id="copy-deploy" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-deploy" class="text-xs font-mono text-green-400 whitespace-pre-wrap break-all leading-relaxed"></pre>
+        </div>
+      </div>
+
+      <div id="tab-gha" class="tab-panel hidden">
+        <div class="bg-bg border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted">GitHub Actions step</span>
+            <button id="copy-gha" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-gha" class="text-xs font-mono text-green-400 whitespace-pre-wrap break-all leading-relaxed"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Container Registry Config Generator" relatedTags={['docker', 'kubernetes', 'devops', 'ci-cd', 'cloud', 'aws', 'gcp', 'azure']} />
+
+  <script is:inline>
+    const REGISTRY_META = {
+      dockerhub: { server: 'https://index.docker.io/v1/', serverDisplay: 'index.docker.io', label_user: 'Docker Hub Username', label_pw: 'Access Token (not password)', hint: 'Create at hub.docker.com → Account Settings → Security → New Access Token.' },
+      ecr:       { server: null, serverDisplay: '<account>.dkr.ecr.<region>.amazonaws.com', label_user: 'AWS Access Key ID', label_pw: 'AWS Secret Access Key', hint: 'ECR auth tokens expire in 12h. For production use IAM roles (IRSA on EKS) instead.' },
+      gcr:       { server: 'https://gcr.io', serverDisplay: 'gcr.io', label_user: 'Service Account Email', label_pw: 'Service Account JSON Key (one-line)', hint: 'Create a GCP Service Account with Storage Object Viewer role, download JSON key.' },
+      acr:       { server: null, serverDisplay: '<registry>.azurecr.io', label_user: 'Service Principal App ID', label_pw: 'Service Principal Password', hint: 'Create with: az ad sp create-for-rbac --role AcrPull --scopes /subscriptions/.../resourceGroups/.../providers/Microsoft.ContainerRegistry/registries/<name>' },
+      ghcr:      { server: 'https://ghcr.io', serverDisplay: 'ghcr.io', label_user: 'GitHub Username or Org', label_pw: 'Personal Access Token (read:packages)', hint: 'In GitHub Actions, use secrets.GITHUB_TOKEN for same-repo images (no PAT needed).' },
+    };
+
+    function getServer() {
+      const t = document.getElementById('registry-type').value;
+      const acct = document.getElementById('aws-account').value.trim() || '123456789012';
+      const region = document.getElementById('aws-region').value.trim() || 'us-east-1';
+      if (t === 'ecr') return `${acct}.dkr.ecr.${region}.amazonaws.com`;
+      if (t === 'acr') return `${document.getElementById('username').value.trim() || 'myregistry'}.azurecr.io`;
+      return REGISTRY_META[t].server || REGISTRY_META[t].serverDisplay;
+    }
+
+    function generate() {
+      const t = document.getElementById('registry-type').value;
+      const user = document.getElementById('username').value.trim() || 'myusername';
+      const pw = document.getElementById('password').value.trim() || 'mytoken';
+      const ns = document.getElementById('k8s-ns').value.trim() || 'default';
+      const secretName = document.getElementById('secret-name').value.trim() || 'regcred';
+      const region = document.getElementById('aws-region').value.trim() || 'us-east-1';
+      const acct = document.getElementById('aws-account').value.trim() || '123456789012';
+      const server = getServer();
+
+      // docker login
+      let dockerLogin = '';
+      if (t === 'ecr') {
+        dockerLogin = `# Get ECR auth token and login (expires in 12 hours)\naws ecr get-login-password --region ${region} | \\\n  docker login --username AWS --password-stdin \\\n  ${acct}.dkr.ecr.${region}.amazonaws.com`;
+      } else if (t === 'gcr') {
+        dockerLogin = `# Login with service account key\ncat service-account-key.json | docker login -u _json_key --password-stdin https://gcr.io\n\n# Or configure credential helper (recommended)\ngcloud auth configure-docker gcr.io`;
+      } else {
+        dockerLogin = `echo "${pw}" | docker login ${server} -u ${user} --password-stdin`;
+      }
+
+      // kubectl create secret
+      let k8sSecret = '';
+      if (t === 'ecr') {
+        k8sSecret = `# ECR: create secret from temporary token (needs refresh every 12h)\nkubectl create secret docker-registry ${secretName} \\\n  --docker-server=${acct}.dkr.ecr.${region}.amazonaws.com \\\n  --docker-username=AWS \\\n  --docker-password=$(aws ecr get-login-password --region ${region}) \\\n  -n ${ns}\n\n# Production: use IAM roles for service accounts (IRSA) instead`;
+      } else {
+        k8sSecret = `kubectl create secret docker-registry ${secretName} \\\n  --docker-server=${server} \\\n  --docker-username=${user} \\\n  --docker-password=${pw} \\\n  -n ${ns}`;
+      }
+
+      const deploySnippet = `# In your Deployment spec:\nspec:\n  template:\n    spec:\n      imagePullSecrets:\n        - name: ${secretName}\n      containers:\n        - name: my-app\n          image: ${server}/my-org/my-app:latest`;
+
+      // GitHub Actions
+      let gha = '';
+      if (t === 'ecr') {
+        gha = `- name: Configure AWS credentials\n  uses: aws-actions/configure-aws-credentials@v4\n  with:\n    aws-access-key-id: \${{ secrets.AWS_ACCESS_KEY_ID }}\n    aws-secret-access-key: \${{ secrets.AWS_SECRET_ACCESS_KEY }}\n    aws-region: ${region}\n\n- name: Login to Amazon ECR\n  uses: aws-actions/amazon-ecr-login@v2\n\n- name: Build and push\n  run: |\n    docker build -t ${acct}.dkr.ecr.${region}.amazonaws.com/my-app:\${{ github.sha }} .\n    docker push ${acct}.dkr.ecr.${region}.amazonaws.com/my-app:\${{ github.sha }}`;
+      } else if (t === 'gcr') {
+        gha = `- name: Authenticate to Google Cloud\n  uses: google-github-actions/auth@v2\n  with:\n    credentials_json: \${{ secrets.GCP_SA_KEY }}\n\n- name: Configure Docker for GCR\n  run: gcloud auth configure-docker gcr.io --quiet\n\n- name: Build and push\n  run: |\n    docker build -t gcr.io/\${{ secrets.GCP_PROJECT }}/my-app:\${{ github.sha }} .\n    docker push gcr.io/\${{ secrets.GCP_PROJECT }}/my-app:\${{ github.sha }}`;
+      } else if (t === 'ghcr') {
+        gha = `- name: Login to GitHub Container Registry\n  uses: docker/login-action@v3\n  with:\n    registry: ghcr.io\n    username: \${{ github.actor }}\n    password: \${{ secrets.GITHUB_TOKEN }}\n\n- name: Build and push\n  uses: docker/build-push-action@v5\n  with:\n    push: true\n    tags: ghcr.io/\${{ github.repository_owner }}/my-app:\${{ github.sha }}`;
+      } else if (t === 'acr') {
+        gha = `- name: Login to Azure Container Registry\n  uses: azure/docker-login@v1\n  with:\n    login-server: ${user}.azurecr.io\n    username: \${{ secrets.ACR_CLIENT_ID }}\n    password: \${{ secrets.ACR_CLIENT_SECRET }}\n\n- name: Build and push\n  run: |\n    docker build -t ${user}.azurecr.io/my-app:\${{ github.sha }} .\n    docker push ${user}.azurecr.io/my-app:\${{ github.sha }}`;
+      } else {
+        gha = `- name: Login to Docker Hub\n  uses: docker/login-action@v3\n  with:\n    username: \${{ secrets.DOCKERHUB_USERNAME }}\n    password: \${{ secrets.DOCKERHUB_TOKEN }}\n\n- name: Build and push\n  uses: docker/build-push-action@v5\n  with:\n    push: true\n    tags: ${user}/my-app:\${{ github.sha }}`;
+      }
+
+      document.getElementById('out-docker').textContent = dockerLogin;
+      document.getElementById('out-k8s').textContent = k8sSecret;
+      document.getElementById('out-deploy').textContent = deploySnippet;
+      document.getElementById('out-gha').textContent = gha;
+
+      // Update labels & hints
+      const meta = REGISTRY_META[t];
+      document.getElementById('label-username').textContent = meta.label_user;
+      document.getElementById('label-password').textContent = meta.label_pw;
+      document.getElementById('pw-hint').textContent = meta.hint;
+
+      // Show/hide ECR-specific fields
+      const isEcr = t === 'ecr';
+      document.getElementById('field-region-wrap').classList.toggle('hidden', !isEcr);
+      document.getElementById('field-account-wrap').classList.toggle('hidden', !isEcr);
+    }
+
+    document.querySelectorAll('#registry-type, #username, #password, #aws-region, #aws-account, #k8s-ns, #secret-name').forEach(el => {
+      el.addEventListener('input', generate);
+      el.addEventListener('change', generate);
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          b.classList.remove('active', 'border-primary', 'bg-primary/10', 'text-primary');
+          b.classList.add('border-border', 'text-text-muted');
+        });
+        btn.classList.add('active', 'border-primary', 'bg-primary/10', 'text-primary');
+        btn.classList.remove('border-border', 'text-text-muted');
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+      });
+    });
+
+    function copyText(id, btnId) {
+      navigator.clipboard.writeText(document.getElementById(id).textContent).then(() => {
+        const btn = document.getElementById(btnId);
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = orig, 1500);
+      });
+    }
+    document.getElementById('copy-docker').addEventListener('click', () => copyText('out-docker', 'copy-docker'));
+    document.getElementById('copy-k8s').addEventListener('click', () => copyText('out-k8s', 'copy-k8s'));
+    document.getElementById('copy-deploy').addEventListener('click', () => copyText('out-deploy', 'copy-deploy'));
+    document.getElementById('copy-gha').addEventListener('click', () => copyText('out-gha', 'copy-gha'));
+
+    generate();
+  </script>
+</BaseLayout>

@@ -1,0 +1,226 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a multi-stage Docker build?", answer: "A multi-stage build uses multiple FROM statements in a single Dockerfile. Each stage has its own filesystem and can copy specific artifacts from previous stages. The key benefit: your final image only contains what you explicitly copy — not the build tools, compilers, or dev dependencies. This can shrink images from gigabytes to under 100MB." },
+  { question: "How does COPY --from work between stages?", answer: "COPY --from=<stage> copies files from a named or numbered stage into the current stage. Example: 'COPY --from=builder /app/dist /usr/share/nginx/html' copies the compiled output from the builder stage into an nginx image. The builder stage's filesystem (node_modules, source files, compilers) is discarded." },
+  { question: "What base image should I use for production Node.js apps?", answer: "For Node.js, use node:20-alpine for production — it's ~50MB vs ~300MB for node:20-slim. For the build stage, node:20-alpine also works. Avoid node:latest (unpinned, large). If you need specific glibc features not in Alpine's musl, use node:20-slim instead. Always pin your versions: node:20.11-alpine3.19." },
+  { question: "What is a .dockerignore file and why is it important?", answer: ".dockerignore prevents unnecessary files from being sent to the Docker build context. Without it, Docker copies your entire project directory (including node_modules, .git, test files) before running the Dockerfile. A good .dockerignore can reduce build context from gigabytes to kilobytes, significantly speeding up builds." },
+  { question: "When should I use a worker vs API app type?", answer: "Use 'worker' for background jobs, queue consumers, and scheduled tasks that don't listen on a port. Use 'api' for HTTP servers. Use 'static' for SPAs, documentation, and sites served by nginx. The distinction matters for the CMD/ENTRYPOINT, the runtime base image, and whether you need an exposed port." },
+  { question: "How do I cache npm install in Docker?", answer: "Copy package.json and package-lock.json before copying source code. Docker layer caching means if those files haven't changed, the npm install layer is reused on the next build. Example order: COPY package*.json ./ → RUN npm ci → COPY . . This keeps build times fast when only code changes." },
+];
+---
+
+<BaseLayout
+  title="Docker Multi-Stage Build Generator — Optimized Dockerfile Builder"
+  description="Generate optimized multi-stage Dockerfiles for Node.js, Python, Go, Java, and Rust. Get build stage, runtime stage, .dockerignore, and docker-compose.yml instantly."
+  tool="Docker multi-stage build generator, Dockerfile builder, optimized Docker image, multi-stage Dockerfile, docker-compose generator"
+  keywords={["docker multi-stage", "dockerfile generator", "docker build optimization", "minimal docker image", "docker-compose", "nodejs dockerfile", "golang dockerfile"]}
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Docker Multi-Stage Build Generator</h1>
+  <p class="text-text-muted mb-4">Generate optimized multi-stage Dockerfiles that separate build and runtime environments. Smaller images, faster deploys, no build tools in production.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-stage Dockerfile</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Optimized .dockerignore</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> docker-compose.yml</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Layer cache tips</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Config -->
+    <div class="space-y-5">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Application Configuration</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Language / Runtime</label>
+            <select id="lang" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+              <option value="node">Node.js</option>
+              <option value="python">Python</option>
+              <option value="go">Go</option>
+              <option value="java">Java (Maven)</option>
+              <option value="rust">Rust</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">App Type</label>
+            <select id="apptype" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+              <option value="api">API / HTTP Server</option>
+              <option value="static">Static / SPA (nginx)</option>
+              <option value="worker">Background Worker</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Base Image Preference</label>
+            <select id="baseimg" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+              <option value="alpine">Alpine (minimal, ~5MB)</option>
+              <option value="slim">Slim (Debian slim)</option>
+              <option value="distroless">Distroless (Google, no shell)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">App Port</label>
+            <input id="port" type="number" value="3000" min="1" max="65535"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output tabs -->
+    <div class="space-y-4">
+      <div class="flex gap-2 mb-2">
+        <button class="tab-btn active text-xs px-3 py-1.5 rounded-lg border border-primary bg-primary/10 text-primary" data-tab="dockerfile">Dockerfile</button>
+        <button class="tab-btn text-xs px-3 py-1.5 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary" data-tab="dockerignore">.dockerignore</button>
+        <button class="tab-btn text-xs px-3 py-1.5 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary" data-tab="compose">docker-compose.yml</button>
+      </div>
+
+      <div id="tab-dockerfile" class="tab-panel">
+        <div class="bg-bg border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted font-mono">Dockerfile</span>
+            <button id="copy-dockerfile" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-dockerfile" class="text-xs font-mono text-green-400 whitespace-pre overflow-x-auto max-h-80 overflow-y-auto leading-relaxed"></pre>
+        </div>
+      </div>
+
+      <div id="tab-dockerignore" class="tab-panel hidden">
+        <div class="bg-bg border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted font-mono">.dockerignore</span>
+            <button id="copy-ignore" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-ignore" class="text-xs font-mono text-green-400 whitespace-pre overflow-x-auto max-h-80 overflow-y-auto leading-relaxed"></pre>
+        </div>
+      </div>
+
+      <div id="tab-compose" class="tab-panel hidden">
+        <div class="bg-bg border border-border rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-text-muted font-mono">docker-compose.yml</span>
+            <button id="copy-compose" class="text-xs px-2 py-1 rounded border border-border hover:border-primary hover:text-primary transition-all">Copy</button>
+          </div>
+          <pre id="out-compose" class="text-xs font-mono text-green-400 whitespace-pre overflow-x-auto max-h-80 overflow-y-auto leading-relaxed"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Docker Multi-Stage Build Generator" relatedTags={['docker', 'containers', 'devops', 'kubernetes', 'ci-cd']} />
+
+  <script is:inline>
+    const CONFIGS = {
+      node: {
+        buildImg: { alpine: 'node:20-alpine', slim: 'node:20-slim', distroless: 'node:20-alpine' },
+        runImg: { alpine: 'node:20-alpine', slim: 'node:20-slim', distroless: 'gcr.io/distroless/nodejs20-debian12' },
+        buildSteps: `WORKDIR /app\nCOPY package*.json ./\nRUN npm ci --only=production\nCOPY . .`,
+        buildCmd: `RUN npm run build`,
+        runCmd: (t) => t === 'api' ? `CMD ["node", "dist/index.js"]` : t === 'worker' ? `CMD ["node", "dist/worker.js"]` : null,
+        copyFrom: (t) => t === 'static' ? 'COPY --from=builder /app/dist /usr/share/nginx/html' : 'COPY --from=builder /app/node_modules ./node_modules\nCOPY --from=builder /app/dist ./dist',
+        ignoreExtra: 'node_modules\nnpm-debug.log\n.npm',
+      },
+      python: {
+        buildImg: { alpine: 'python:3.12-alpine', slim: 'python:3.12-slim', distroless: 'python:3.12-slim' },
+        runImg: { alpine: 'python:3.12-alpine', slim: 'python:3.12-slim', distroless: 'gcr.io/distroless/python3-debian12' },
+        buildSteps: `WORKDIR /app\nCOPY requirements.txt .\nRUN pip install --no-cache-dir --prefix=/install -r requirements.txt\nCOPY . .`,
+        buildCmd: null,
+        runCmd: (t) => t === 'api' ? `CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0"]` : `CMD ["python", "main.py"]`,
+        copyFrom: () => 'COPY --from=builder /install /usr/local\nCOPY --from=builder /app .',
+        ignoreExtra: '__pycache__\n*.pyc\n*.pyo\n.venv\nvenv\n.pytest_cache',
+      },
+      go: {
+        buildImg: { alpine: 'golang:1.22-alpine', slim: 'golang:1.22', distroless: 'golang:1.22-alpine' },
+        runImg: { alpine: 'alpine:3.19', slim: 'debian:12-slim', distroless: 'gcr.io/distroless/static-debian12' },
+        buildSteps: `WORKDIR /build\nCOPY go.mod go.sum ./\nRUN go mod download\nCOPY . .\nRUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o app ./cmd/main.go`,
+        buildCmd: null,
+        runCmd: () => `CMD ["/app"]`,
+        copyFrom: () => 'COPY --from=builder /build/app /app',
+        ignoreExtra: 'vendor\n*.test',
+      },
+      java: {
+        buildImg: { alpine: 'maven:3.9-eclipse-temurin-21-alpine', slim: 'maven:3.9-eclipse-temurin-21', distroless: 'maven:3.9-eclipse-temurin-21-alpine' },
+        runImg: { alpine: 'eclipse-temurin:21-jre-alpine', slim: 'eclipse-temurin:21-jre', distroless: 'gcr.io/distroless/java21-debian12' },
+        buildSteps: `WORKDIR /build\nCOPY pom.xml .\nRUN mvn dependency:go-offline -B\nCOPY src ./src\nRUN mvn package -DskipTests`,
+        buildCmd: null,
+        runCmd: () => `CMD ["java", "-jar", "app.jar"]`,
+        copyFrom: () => 'COPY --from=builder /build/target/*.jar app.jar',
+        ignoreExtra: 'target\n.mvn',
+      },
+      rust: {
+        buildImg: { alpine: 'rust:1.77-alpine', slim: 'rust:1.77-slim', distroless: 'rust:1.77-alpine' },
+        runImg: { alpine: 'alpine:3.19', slim: 'debian:12-slim', distroless: 'gcr.io/distroless/cc-debian12' },
+        buildSteps: `WORKDIR /build\nCOPY Cargo.toml Cargo.lock ./\nRUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release && rm src/main.rs\nCOPY . .\nRUN touch src/main.rs && cargo build --release`,
+        buildCmd: null,
+        runCmd: () => `CMD ["/app"]`,
+        copyFrom: () => 'COPY --from=builder /build/target/release/app /app',
+        ignoreExtra: 'target',
+      },
+    };
+
+    function generate() {
+      const lang = document.getElementById('lang').value;
+      const apptype = document.getElementById('apptype').value;
+      const baseimg = document.getElementById('baseimg').value;
+      const port = document.getElementById('port').value || '3000';
+      const cfg = CONFIGS[lang];
+
+      const buildImg = cfg.buildImg[baseimg];
+      const runImg = cfg.runImg[baseimg];
+      const isStatic = apptype === 'static';
+
+      let dockerfile = `# ── Stage 1: Build ──────────────────────────────────────\nFROM ${buildImg} AS builder\n\n${cfg.buildSteps}\n`;
+      if (cfg.buildCmd) dockerfile += `\n${cfg.buildCmd}\n`;
+
+      if (isStatic) {
+        dockerfile += `\n# ── Stage 2: Runtime (nginx) ────────────────────────────\nFROM nginx:alpine AS runtime\n\n${cfg.copyFrom(apptype)}\nEXPOSE 80\nCMD ["nginx", "-g", "daemon off;"]`;
+      } else {
+        dockerfile += `\n# ── Stage 2: Runtime ────────────────────────────────────\nFROM ${runImg} AS runtime\n\nWORKDIR /app\n\n${cfg.copyFrom(apptype)}\n\nEXPOSE ${port}\n\n${cfg.runCmd(apptype)}`;
+      }
+
+      const ignore = `.git\n.gitignore\n.dockerignore\nREADME.md\n*.md\nDocs\ndocs\nLICENSE\n${cfg.ignoreExtra || ''}\n.env\n.env.*\n!.env.example\ntests\ntest\n*.test.*\n*.spec.*\n.github\nCoverage\ncoverage\n.DS_Store\nThumbs.db`;
+
+      const compose = `version: '3.9'\n\nservices:\n  app:\n    build:\n      context: .\n      dockerfile: Dockerfile\n      target: runtime\n    image: my-app:latest\n    ports:\n      - "${port}:${isStatic ? '80' : port}"\n    environment:\n      - NODE_ENV=production\n    restart: unless-stopped\n    healthcheck:\n      test: ["CMD", "wget", "-qO-", "http://localhost:${isStatic ? '80' : port}/health"]\n      interval: 30s\n      timeout: 5s\n      retries: 3`;
+
+      document.getElementById('out-dockerfile').textContent = dockerfile;
+      document.getElementById('out-ignore').textContent = ignore;
+      document.getElementById('out-compose').textContent = compose;
+    }
+
+    document.querySelectorAll('#lang, #apptype, #baseimg, #port').forEach(el => el.addEventListener('change', generate));
+    document.getElementById('port').addEventListener('input', generate);
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          b.classList.remove('active', 'border-primary', 'bg-primary/10', 'text-primary');
+          b.classList.add('border-border', 'text-text-muted');
+        });
+        btn.classList.add('active', 'border-primary', 'bg-primary/10', 'text-primary');
+        btn.classList.remove('border-border', 'text-text-muted');
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+      });
+    });
+
+    function copyText(id, btnId) {
+      const text = document.getElementById(id).textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById(btnId);
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = orig, 1500);
+      });
+    }
+    document.getElementById('copy-dockerfile').addEventListener('click', () => copyText('out-dockerfile', 'copy-dockerfile'));
+    document.getElementById('copy-ignore').addEventListener('click', () => copyText('out-ignore', 'copy-ignore'));
+    document.getElementById('copy-compose').addEventListener('click', () => copyText('out-compose', 'copy-compose'));
+
+    generate();
+  </script>
+</BaseLayout>

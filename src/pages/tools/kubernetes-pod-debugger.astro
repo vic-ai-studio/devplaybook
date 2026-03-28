@@ -1,0 +1,256 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What causes CrashLoopBackOff?", answer: "CrashLoopBackOff means the container keeps starting and crashing. Kubernetes backs off between restarts (1s, 2s, 4s... up to 5 minutes). Common causes: application error on startup (bad config, missing env var), failed health check, out-of-memory kill (OOMKilled), or trying to bind to an already-used port. Check 'kubectl logs' and 'kubectl describe pod' for the exit code and last error." },
+  { question: "Why is my pod stuck in Pending?", answer: "Pending means Kubernetes can't schedule the pod. Common causes: insufficient CPU/memory on all nodes (FailedScheduling), PodDisruptionBudget blocking, taint/toleration mismatch (NoSchedule), NodeAffinity/NodeSelector not matching any node, or PVC not bound (no storage class). Check 'kubectl describe pod' for the Events section which usually identifies the exact reason." },
+  { question: "What is ImagePullBackOff vs ErrImagePull?", answer: "ErrImagePull is the initial failure when Kubernetes can't pull a container image. ImagePullBackOff is the retry state with exponential backoff. Causes: typo in image name, private registry without imagePullSecrets, rate limiting (Docker Hub), or deleted image tag. Fix by checking the image name, adding imagePullSecrets for private registries, or using a specific tag instead of latest." },
+  { question: "How do I get logs from a crashed container?", answer: "For a crashed/restarted container, use 'kubectl logs <pod> --previous' (-p) to get the logs from the last terminated container instance. Without --previous you get current instance logs (which may be empty if it just started). For multi-container pods, add '-c <container-name>' to target a specific container." },
+  { question: "What is OOMKilled and how do I fix it?", answer: "OOMKilled (exit code 137) means the container exceeded its memory limit and was killed by the Linux OOM killer. Fix: either increase the memory limit in your resource spec (limits.memory), or optimize your application's memory usage. Use 'kubectl top pods' to see actual memory usage and set your limit to at least 2× the observed peak. Check for memory leaks with profiling tools." },
+  { question: "How do I exec into a running pod for debugging?", answer: "Use 'kubectl exec -it <pod-name> -- /bin/sh' (or /bin/bash for bash). For pods without a shell (distroless), use 'kubectl debug': it creates an ephemeral debug container with tools attached to the same pod. Always specify '-n <namespace>' if not in the default namespace." },
+];
+---
+
+<BaseLayout
+  title="Kubernetes Pod Debugger — kubectl Debug Command Builder"
+  description="Generate kubectl diagnostic commands for Kubernetes pod issues. Debug CrashLoopBackOff, OOMKilled, ImagePullBackOff, and Pending pods with step-by-step commands."
+  tool="Kubernetes pod debugger, kubectl debug commands, CrashLoopBackOff fix, kubernetes troubleshooting, pod diagnostic commands"
+  keywords={["kubernetes debugging", "kubectl commands", "crashloopbackoff", "oomkilled", "imagepullbackoff", "pod pending", "k8s troubleshoot"]}
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Kubernetes Pod Debugger</h1>
+  <p class="text-text-muted mb-4">Enter your pod details and issue type. Get a step-by-step diagnostic command sequence, what to look for in each output, and common fix commands.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Diagnostic command sequence</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> What to look for per command</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Common fix commands</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CrashLoopBackOff / OOMKilled / ImagePullBackOff / Pending</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Inputs -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 space-y-4">
+      <h2 class="text-base font-semibold">Pod Details</h2>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Pod Name</label>
+        <input id="pod-name" type="text" value="my-app-7d8f9b-xk2p4" placeholder="e.g. my-app-7d8f9b-xk2p4"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Namespace</label>
+        <input id="namespace" type="text" value="default" placeholder="default"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Container Name (optional)</label>
+        <input id="container" type="text" value="" placeholder="Leave blank for single-container pods"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Issue Type</label>
+        <select id="issue-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="crashloop">CrashLoopBackOff</option>
+          <option value="oomkilled">OOMKilled (exit code 137)</option>
+          <option value="imagepull">ImagePullBackOff / ErrImagePull</option>
+          <option value="pending">Pending (not scheduling)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div id="commands-output" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Kubernetes Pod Debugger" relatedTags={['kubernetes', 'k8s', 'devops', 'docker', 'debugging']} />
+
+  <script is:inline>
+    const PLAYBOOKS = {
+      crashloop: [
+        {
+          step: 1,
+          title: 'Check pod status and events',
+          cmd: (p, n) => `kubectl describe pod ${p} -n ${n}`,
+          look: 'Scroll to the Events section. Look for: exit code, OOMKilled, failed liveness/readiness probe, FailedMount, or error pulling image.',
+          fix: null,
+        },
+        {
+          step: 2,
+          title: 'Get current container logs',
+          cmd: (p, n, c) => `kubectl logs ${p} -n ${n}${c ? ' -c ' + c : ''} --tail=100`,
+          look: 'Look for: startup error, missing env var, config parse failure, port already in use, or connection refused to a dependency.',
+          fix: null,
+        },
+        {
+          step: 3,
+          title: 'Get previous container logs (last crash)',
+          cmd: (p, n, c) => `kubectl logs ${p} -n ${n}${c ? ' -c ' + c : ''} --previous --tail=100`,
+          look: 'This shows logs from the last crashed instance. Often contains the real error that triggered the crash before the container exited.',
+          fix: null,
+        },
+        {
+          step: 4,
+          title: 'Check resource limits',
+          cmd: (p, n) => `kubectl get pod ${p} -n ${n} -o jsonpath='{.spec.containers[*].resources}'`,
+          look: "If no limits are set, the pod may be OOMKilled without showing it. If limits are very low (e.g. 64Mi memory), that's likely the cause.",
+          fix: 'Increase memory/CPU limits in your Deployment spec. Recommended: set limit to 2× observed usage.',
+        },
+        {
+          step: 5,
+          title: 'Check environment variables / secrets',
+          cmd: (p, n) => `kubectl get pod ${p} -n ${n} -o jsonpath='{.spec.containers[*].env}' | python3 -m json.tool`,
+          look: 'Verify all required env vars are present. Check for missing Secrets or ConfigMaps.',
+          fix: null,
+        },
+      ],
+      oomkilled: [
+        {
+          step: 1,
+          title: 'Confirm OOMKilled exit code',
+          cmd: (p, n) => `kubectl describe pod ${p} -n ${n} | grep -A5 "Last State"`,
+          look: 'Look for: Reason: OOMKilled, Exit Code: 137. This confirms the memory limit was hit.',
+          fix: null,
+        },
+        {
+          step: 2,
+          title: 'Check current memory usage',
+          cmd: (p, n) => `kubectl top pod ${p} -n ${n} --containers`,
+          look: 'Compare actual memory usage to the limit in your spec. If usage is near or above limit, you need to increase the limit.',
+          fix: null,
+        },
+        {
+          step: 3,
+          title: 'View memory limits',
+          cmd: (p, n) => `kubectl get pod ${p} -n ${n} -o jsonpath='{.spec.containers[*].resources.limits}'`,
+          look: 'Note the memory limit. For OOMKilled pods, this is the ceiling that was breached.',
+          fix: 'In your Deployment: increase resources.limits.memory to at least 2× observed peak. Example: 512Mi → 1Gi.',
+        },
+        {
+          step: 4,
+          title: 'Check node pressure',
+          cmd: (_p, n) => `kubectl get nodes -o custom-columns="NAME:.metadata.name,MEM:.status.conditions[?(@.type=='MemoryPressure')].status"`,
+          look: "If any node shows MemoryPressure: True, the node itself is under memory pressure and may evict pods even below their limits.",
+          fix: 'Add more nodes or move memory-intensive workloads to larger nodes.',
+        },
+        {
+          step: 5,
+          title: 'Get logs from last crash',
+          cmd: (p, n, c) => `kubectl logs ${p} -n ${n}${c ? ' -c ' + c : ''} --previous --tail=50`,
+          look: 'Look for memory allocation errors, large object allocations, or infinite loops that grow data structures.',
+          fix: null,
+        },
+      ],
+      imagepull: [
+        {
+          step: 1,
+          title: 'Get the image pull error details',
+          cmd: (p, n) => `kubectl describe pod ${p} -n ${n} | grep -A10 "Events:"`,
+          look: 'Look for: Failed to pull image, 401 Unauthorized (wrong credentials), 404 Not Found (wrong image name/tag), or rate limit exceeded.',
+          fix: null,
+        },
+        {
+          step: 2,
+          title: 'Verify the image reference',
+          cmd: (p, n) => `kubectl get pod ${p} -n ${n} -o jsonpath='{.spec.containers[*].image}'`,
+          look: 'Check for typos in the image name or tag. Verify the tag exists on the registry (latest is often deleted; use specific versions).',
+          fix: null,
+        },
+        {
+          step: 3,
+          title: 'Check imagePullSecrets',
+          cmd: (p, n) => `kubectl get pod ${p} -n ${n} -o jsonpath='{.spec.imagePullSecrets}'`,
+          look: 'For private registries, there must be an imagePullSecret. Empty output means no secret is configured.',
+          fix: `Create a secret: kubectl create secret docker-registry regcred --docker-server=<registry> --docker-username=<user> --docker-password=<pass> -n ${'{namespace}'}\nThen add to your Deployment spec: imagePullSecrets: [{name: regcred}]`,
+        },
+        {
+          step: 4,
+          title: 'Check Docker Hub rate limits (if using Docker Hub)',
+          cmd: (_p, _n) => `kubectl get events -A | grep "toomanyrequests"`,
+          look: 'Docker Hub rate limits: 100 pulls/6h for anonymous, 200 for free accounts. If you see "toomanyrequests", you\'re rate limited.',
+          fix: 'Use authenticated pulls (add Docker Hub credentials as imagePullSecret) or mirror images to a private registry.',
+        },
+      ],
+      pending: [
+        {
+          step: 1,
+          title: 'Get scheduling failure reason',
+          cmd: (p, n) => `kubectl describe pod ${p} -n ${n} | grep -A20 "Events:"`,
+          look: 'Look for: Insufficient cpu, Insufficient memory, 0/N nodes are available, no nodes match node selector, PVC not bound.',
+          fix: null,
+        },
+        {
+          step: 2,
+          title: 'Check node capacity',
+          cmd: (_p, _n) => `kubectl describe nodes | grep -A5 "Allocated resources"`,
+          look: "Look for nodes with 90%+ CPU or memory allocation. If all nodes are nearly full, the scheduler can't place the pod.",
+          fix: 'Scale up node group or reduce resource requests. Consider using Cluster Autoscaler.',
+        },
+        {
+          step: 3,
+          title: 'Check node taints vs pod tolerations',
+          cmd: (_p, _n) => `kubectl get nodes -o custom-columns="NAME:.metadata.name,TAINTS:.spec.taints"`,
+          look: 'If nodes have taints (e.g. key=value:NoSchedule), pods need matching tolerations. No matching toleration = pod stays Pending.',
+          fix: 'Add a toleration to the pod spec or remove the taint if unintentional.',
+        },
+        {
+          step: 4,
+          title: 'Check PVC status (if pod uses volumes)',
+          cmd: (_p, n) => `kubectl get pvc -n ${n}`,
+          look: "Look for PVCs in 'Pending' state. A pending PVC blocks pod scheduling. Causes: no StorageClass, wrong storageClassName, no available PV.",
+          fix: 'Verify StorageClass exists: kubectl get storageclass. Check PVC events: kubectl describe pvc <name> -n <ns>.',
+        },
+        {
+          step: 5,
+          title: 'Check pod affinity/nodeSelector',
+          cmd: (p, n) => `kubectl get pod ${p} -n ${n} -o jsonpath='{.spec.nodeSelector}'`,
+          look: 'If nodeSelector is set, verify at least one node has all the required labels: kubectl get nodes --show-labels',
+          fix: null,
+        },
+      ],
+    };
+
+    function generate() {
+      const pod = document.getElementById('pod-name').value.trim() || 'my-pod';
+      const ns = document.getElementById('namespace').value.trim() || 'default';
+      const container = document.getElementById('container').value.trim();
+      const issue = document.getElementById('issue-type').value;
+      const steps = PLAYBOOKS[issue];
+      const out = document.getElementById('commands-output');
+      out.innerHTML = '';
+
+      steps.forEach(s => {
+        const cmd = s.cmd(pod, ns, container);
+        const div = document.createElement('div');
+        div.className = 'bg-bg-card border border-border rounded-xl p-4 space-y-2';
+        div.innerHTML = `
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs font-bold text-primary bg-primary/10 rounded-full w-5 h-5 flex items-center justify-center">${s.step}</span>
+            <span class="text-sm font-medium">${s.title}</span>
+          </div>
+          <div class="bg-bg border border-border rounded-lg p-3 relative group">
+            <pre class="text-xs font-mono text-green-400 whitespace-pre-wrap break-all">${cmd}</pre>
+            <button class="copy-step-btn absolute top-2 right-2 text-xs px-2 py-1 rounded border border-border bg-bg-card opacity-0 group-hover:opacity-100 transition-all hover:border-primary">Copy</button>
+          </div>
+          <p class="text-xs text-text-muted"><span class="font-medium text-yellow-400">Look for:</span> ${s.look}</p>
+          ${s.fix ? `<div class="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-xs text-blue-300"><span class="font-medium">Fix:</span> ${s.fix.replace(/\n/g, '<br/>')}</div>` : ''}
+        `;
+        div.querySelector('.copy-step-btn').addEventListener('click', (e) => {
+          navigator.clipboard.writeText(cmd).then(() => {
+            e.target.textContent = '✓';
+            setTimeout(() => e.target.textContent = 'Copy', 1200);
+          });
+        });
+        out.appendChild(div);
+      });
+    }
+
+    document.querySelectorAll('#pod-name, #namespace, #container').forEach(el => el.addEventListener('input', generate));
+    document.getElementById('issue-type').addEventListener('change', generate);
+    generate();
+  </script>
+</BaseLayout>
