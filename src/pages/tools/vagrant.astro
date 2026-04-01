@@ -1,0 +1,270 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Vagrant and how does it differ from Docker for local development?", answer: "Vagrant manages full virtual machines (VMs) via providers like VirtualBox, VMware, or Hyper-V, each with their own kernel and OS. Docker manages lightweight containers that share the host kernel. Vagrant is better when you need: a specific OS (e.g., test on Ubuntu 22.04 from a Mac), kernel-level features, full OS testing, or when the application requires a VM (kernel modules, different filesystem, etc.). Docker is better for most microservice development since containers start in seconds, use less RAM, and Docker Compose is excellent for multi-service local stacks. Many teams replaced Vagrant with Docker Compose but Vagrant remains relevant for OS-specific testing and legacy environments." },
+  { question: "What is a Vagrantfile and what goes in it?", answer: "A Vagrantfile is a Ruby script (but reads like a configuration file) that defines the virtual machine configuration: which base box to use, networking, synced folders, provisioners, and resource allocation. The Vagrantfile lives in the project root and is version-controlled so every team member gets the same environment. Key directives: config.vm.box (which OS image), config.vm.network (port forwarding or private network), config.vm.synced_folder (map host directory into VM), config.vm.provider (VirtualBox/VMware settings like RAM and CPU), and config.vm.provision (how to configure the VM: shell, Ansible, Chef, Puppet)." },
+  { question: "Where do I find Vagrant boxes?", answer: "Vagrant Cloud (app.vagrantup.com, formerly Vagrant Atlas) is the official registry for public Vagrant boxes. Boxes are base OS images you build your environment on top of. Popular boxes: ubuntu/jammy64 (Ubuntu 22.04), debian/bullseye64, centos/stream8, hashicorp/bionic64, bento/ubuntu-22.04 (the Bento project by Chef has well-maintained boxes). You can also build custom boxes with Packer. Boxes are versioned, so you can pin to a specific version and lock them in your Vagrantfile with config.vm.box_version." },
+  { question: "How do synced folders work in Vagrant?", answer: "Synced folders share a directory between your host machine and the VM in real-time. The default sync type maps the project directory (where Vagrantfile lives) to /vagrant in the VM. For better performance, use NFS (fastest on macOS/Linux) or SMB (Windows). Example: config.vm.synced_folder './src', '/var/www/html', type: 'nfs'. This means you edit code in your IDE on the host, and the VM immediately sees the changes — no SSH copy needed. Some boxes do not include VirtualBox Guest Additions by default (needed for VirtualBox synced folders), so the vagrant-vbguest plugin auto-installs them." },
+  { question: "What are the most commonly used Vagrant commands?", answer: "vagrant up — start and provision the VM (or resume if suspended). vagrant ssh — SSH into the running VM. vagrant halt — shut down the VM (preserves disk state). vagrant suspend — save VM state to disk (like hibernation, faster resume than halt). vagrant resume — resume from suspended state. vagrant reload — restart VM and re-run provisioners. vagrant reload --provision — force re-run all provisioners. vagrant destroy — delete the VM entirely (frees disk space). vagrant status — show VM status. vagrant box update — download newer version of the base box. vagrant provision — re-run provisioners without restarting." },
+  { question: "How does Vagrant compare to Docker Compose for local development?", answer: "Docker Compose is now the default for most modern microservice development: faster startup (seconds vs minutes), lower resource usage (containers vs full VMs), easy multi-service networking, and tight integration with the container ecosystem. Vagrant is better when you specifically need full VM isolation, a different kernel or OS from your host, or are replicating a production VM environment. Some teams use both: Docker Compose for application services and Vagrant for infrastructure testing (e.g., testing Ansible playbooks against a real Ubuntu VM before deploying to production servers)." },
+];
+---
+
+<BaseLayout
+  title="Vagrant: Local Dev Environment Setup & Vagrantfile Guide"
+  description="Complete guide to Vagrant: Vagrantfile configuration, VirtualBox setup, box discovery, synced folders, shell and Ansible provisioning, multi-machine setups, vagrant commands cheatsheet, and Docker Compose comparison."
+  tool="Vagrant, Vagrantfile, local development, VirtualBox, VM provisioning, HashiCorp"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Vagrant: Local Dev Environment Setup & Vagrantfile Guide",
+    "url": "https://devplaybook.cc/tools/vagrant",
+    "description": "Complete guide to Vagrant: Vagrantfile setup, boxes, synced folders, provisioning, multi-machine environments, and commands reference.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Vagrant</h1>
+  <p class="text-text-muted mb-6">
+    Create reproducible, shareable local development environments. Define your VM in a Vagrantfile, commit it to Git, and every team member runs <code>vagrant up</code> to get an identical environment.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> VirtualBox / VMware / Hyper-V</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Declarative Vagrantfile</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Shell + Ansible provisioning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-machine environments</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installing Vagrant and VirtualBox</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># macOS
+brew install --cask virtualbox
+brew install --cask vagrant
+
+# Windows (with Chocolatey)
+choco install virtualbox vagrant
+
+# Linux (Ubuntu/Debian)
+sudo apt-get install virtualbox
+wget https://releases.hashicorp.com/vagrant/2.4.1/vagrant_2.4.1_linux_amd64.deb
+sudo dpkg -i vagrant_2.4.1_linux_amd64.deb
+
+# Verify
+vagrant --version</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Basic Vagrantfile</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Vagrantfile
+Vagrant.configure("2") do |config|
+  # Base box — Ubuntu 22.04 from Vagrant Cloud
+  config.vm.box = "ubuntu/jammy64"
+  config.vm.box_version = "~> 20240301.0"  # pin to a version range
+
+  # Hostname
+  config.vm.hostname = "dev-box"
+
+  # Network: forward port 3000 on VM to 3000 on host
+  config.vm.network "forwarded_port", guest: 3000, host: 3000
+  config.vm.network "forwarded_port", guest: 5432, host: 5432
+
+  # Private network (VM gets a static IP on a host-only network)
+  config.vm.network "private_network", ip: "192.168.56.10"
+
+  # Synced folder: host ./src → VM /var/www/html (NFS for performance)
+  config.vm.synced_folder "./src", "/var/www/html", type: "nfs"
+
+  # VirtualBox provider settings
+  config.vm.provider "virtualbox" do |vb|
+    vb.name   = "my-dev-box"
+    vb.memory = "2048"
+    vb.cpus   = 2
+  end
+
+  # Shell provisioner: run once on first vagrant up
+  config.vm.provision "shell", inline: &lt;&lt;-SHELL
+    apt-get update -y
+    apt-get install -y nodejs npm postgresql nginx
+    systemctl enable postgresql nginx
+  SHELL
+end</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Ansible Provisioner</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Vagrantfile with Ansible provisioner
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64"
+
+  # Ansible is installed on the HOST machine and runs against the VM
+  config.vm.provision "ansible" do |ansible|
+    ansible.playbook = "provisioning/site.yml"
+    ansible.groups = &#123;
+      "webservers" => ["default"],
+    &#125;
+    ansible.extra_vars = &#123;
+      node_env: "development",
+      app_port: 3000,
+    &#125;
+    ansible.verbose = "v"
+  end
+end
+
+# For environments where Ansible is NOT on the host, use ansible_local:
+# config.vm.provision "ansible_local" do |ansible|
+#   ansible.playbook = "provisioning/site.yml"
+#   # Vagrant installs Ansible inside the VM then runs it locally
+# end</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Multi-Machine Vagrantfile</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Define multiple machines to simulate a real cluster
+Vagrant.configure("2") do |config|
+
+  # Web server
+  config.vm.define "web" do |web|
+    web.vm.box = "ubuntu/jammy64"
+    web.vm.hostname = "web"
+    web.vm.network "private_network", ip: "192.168.56.10"
+    web.vm.provider "virtualbox" do |vb|
+      vb.memory = "1024"
+    end
+    web.vm.provision "shell", inline: "apt-get install -y nginx && systemctl enable nginx"
+  end
+
+  # Database server
+  config.vm.define "db" do |db|
+    db.vm.box = "ubuntu/jammy64"
+    db.vm.hostname = "db"
+    db.vm.network "private_network", ip: "192.168.56.11"
+    db.vm.provider "virtualbox" do |vb|
+      vb.memory = "2048"
+    end
+    db.vm.provision "shell", inline: "apt-get install -y postgresql && systemctl enable postgresql"
+  end
+
+  # Load balancer
+  config.vm.define "lb" do |lb|
+    lb.vm.box = "ubuntu/jammy64"
+    lb.vm.hostname = "lb"
+    lb.vm.network "private_network", ip: "192.168.56.9"
+    lb.vm.network "forwarded_port", guest: 80, host: 8080
+    lb.vm.provision "shell", inline: "apt-get install -y haproxy"
+  end
+end
+
+# vagrant up              — start all machines
+# vagrant up web          — start only the web machine
+# vagrant ssh web         — SSH into web machine
+# vagrant status          — show all machine statuses</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Vagrant Commands Cheatsheet</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Command</th>
+          <th class="border border-border px-3 py-2 text-left">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2"><code>vagrant up</code></td>
+          <td class="border border-border px-3 py-2">Start VM and run provisioners (first time or after destroy)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2"><code>vagrant ssh</code></td>
+          <td class="border border-border px-3 py-2">SSH into the running VM</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2"><code>vagrant halt</code></td>
+          <td class="border border-border px-3 py-2">Gracefully shut down the VM</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2"><code>vagrant suspend</code></td>
+          <td class="border border-border px-3 py-2">Save VM state (hibernate) — fast resume</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2"><code>vagrant resume</code></td>
+          <td class="border border-border px-3 py-2">Resume from suspended state</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2"><code>vagrant reload</code></td>
+          <td class="border border-border px-3 py-2">Restart VM (picks up Vagrantfile changes)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2"><code>vagrant reload --provision</code></td>
+          <td class="border border-border px-3 py-2">Restart and re-run all provisioners</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2"><code>vagrant destroy</code></td>
+          <td class="border border-border px-3 py-2">Delete VM and free disk space</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2"><code>vagrant status</code></td>
+          <td class="border border-border px-3 py-2">Show running/stopped status</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2"><code>vagrant box list</code></td>
+          <td class="border border-border px-3 py-2">List downloaded base boxes</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2"><code>vagrant box update</code></td>
+          <td class="border border-border px-3 py-2">Download newer version of base box</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2"><code>vagrant snapshot save NAME</code></td>
+          <td class="border border-border px-3 py-2">Save a named VM snapshot</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Vagrant vs Docker Compose for Local Dev</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Factor</th>
+          <th class="border border-border px-3 py-2 text-left">Vagrant (VMs)</th>
+          <th class="border border-border px-3 py-2 text-left">Docker Compose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Startup time</td>
+          <td class="border border-border px-3 py-2">2–5 minutes (VM boot)</td>
+          <td class="border border-border px-3 py-2">5–30 seconds</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">RAM usage</td>
+          <td class="border border-border px-3 py-2">High (512MB–4GB per VM)</td>
+          <td class="border border-border px-3 py-2">Low (containers share host kernel)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">OS isolation</td>
+          <td class="border border-border px-3 py-2">Full (own kernel)</td>
+          <td class="border border-border px-3 py-2">None (shared kernel)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Matches prod</td>
+          <td class="border border-border px-3 py-2">Excellent for VM-based prod</td>
+          <td class="border border-border px-3 py-2">Excellent for container-based prod</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Provisioning</td>
+          <td class="border border-border px-3 py-2">Shell, Ansible, Chef, Puppet</td>
+          <td class="border border-border px-3 py-2">Dockerfile (layered builds)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">OS testing, legacy apps, Ansible dev</td>
+          <td class="border border-border px-3 py-2">Microservices, modern app dev</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Vagrant" relatedTags={['vagrant', 'virtualbox', 'local-dev', 'hashicorp', 'devops']} />
+</BaseLayout>

@@ -1,0 +1,269 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is HashiCorp Nomad and how does it differ from Kubernetes?", answer: "Nomad is a workload orchestrator that schedules and manages Docker containers, static binaries, Java JARs, virtual machines, and any other workload type using a driver model. Kubernetes only schedules containers. Nomad is significantly simpler: a single binary with no etcd, no separate API server, no controller manager — just Nomad server (scheduling) and Nomad client (execution). This makes Nomad easier to install, operate, and debug. Kubernetes has a vastly larger ecosystem and is the industry standard for containers. Nomad wins for mixed workloads (legacy apps + containers), simpler operations, or teams who find Kubernetes too complex for their scale." },
+  { question: "What is a Nomad job spec and how do task groups work?", answer: "A Nomad job is defined in HCL (or JSON) with a hierarchical structure: Job → Group → Task. The Job is the top-level unit with metadata (name, datacenter, namespace). A Group defines a set of Tasks that run co-located on the same node (like a Kubernetes Pod), with count for replicas, network, and volume configurations. A Task is the actual workload — it specifies the driver (docker, exec, java, etc.), the task config (image, command), resources (CPU/memory), and environment variables. Multiple tasks in a group share networking and can communicate via localhost." },
+  { question: "How does Nomad integrate with Consul for service discovery?", answer: "Nomad has native Consul integration. Add a service block inside a task to automatically register it with Consul when the task is running and deregister it when stopped. Define health checks in the service block (HTTP, TCP, script). Nomad also uses Consul for its own cluster coordination (server discovery). Applications running under Nomad can use Consul's DNS interface or HTTP API to discover other services. For upstream dependencies, use consul-template or Nomad's template stanza to dynamically render configuration files with Consul KV values and service addresses." },
+  { question: "How does Nomad handle secrets with Vault?", answer: "Nomad has native Vault integration. In the task stanza, add a vault block specifying which Vault policies to apply. Nomad automatically authenticates to Vault using the task's identity, retrieves a Vault token with the specified policies, and exposes it to the task as VAULT_TOKEN environment variable. You can then use the Nomad template stanza to render Vault secrets directly into config files: &#123;&#123; with secret 'secret/data/my-app' &#125;&#125;DB_PASSWORD=&#123;&#123; .Data.data.password &#125;&#125;&#123;&#123; end &#125;&#125;. Vault secrets are automatically renewed before expiry." },
+  { question: "What are Nomad's update strategies (rolling, blue-green, canary)?", answer: "Nomad supports three deployment strategies via the update stanza. Rolling: replace allocations one at a time (max_parallel = 1) or in batches — the default strategy. Blue-green: set canary = count (total count), which creates a full parallel set of new allocations before any old ones are stopped. After validation, run nomad deployment promote to cut traffic. Canary: similar to blue-green but you promote a subset — set canary = 2 to run 2 new instances alongside existing ones for testing before promoting the full deployment. Set auto_revert = true to automatically roll back if health checks fail." },
+  { question: "What is the Nomad vs Kubernetes vs ECS decision framework?", answer: "Choose Nomad when: you have mixed workloads (containers + binaries + VMs), you want operational simplicity, or you are already using Vault/Consul and want the HashiCorp stack. Choose Kubernetes when: you are container-only, need the largest ecosystem and job market, want advanced traffic management (Istio, Gateway API), or need managed offerings (EKS, GKE, AKS). Choose ECS when: you are fully AWS-committed, want minimal operational overhead, use Fargate for serverless containers, or need deep AWS service integrations (ALB, CloudMap, X-Ray). ECS has less flexibility than Kubernetes but near-zero operational overhead with Fargate." },
+];
+---
+
+<BaseLayout
+  title="HashiCorp Nomad: Workload Orchestration Beyond Kubernetes"
+  description="Complete guide to HashiCorp Nomad: cluster setup, job spec HCL, Docker deployments, Consul service discovery, Vault secrets, update strategies (rolling/canary/blue-green), and Nomad vs Kubernetes vs ECS comparison."
+  tool="Nomad, HashiCorp Nomad, workload orchestration, job scheduling, Docker, Kubernetes alternative"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "HashiCorp Nomad: Workload Orchestration Beyond Kubernetes",
+    "url": "https://devplaybook.cc/tools/nomad-hashicorp",
+    "description": "Complete guide to Nomad: job specs, Docker scheduling, Consul integration, Vault secrets, update strategies, and comparison with Kubernetes and ECS.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">HashiCorp Nomad</h1>
+  <p class="text-text-muted mb-6">
+    Simple, flexible workload orchestration. Schedule Docker containers, raw binaries, Java JARs, and VMs on the same cluster. A single binary, no etcd, no controller manager — just clean HCL job specs and a powerful scheduler.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-workload: containers + binaries + VMs</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Native Consul + Vault integration</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Rolling / blue-green / canary updates</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Single binary, easy to operate</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Nomad vs Kubernetes: Key Differences</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Nomad</th>
+          <th class="border border-border px-3 py-2 text-left">Kubernetes</th>
+          <th class="border border-border px-3 py-2 text-left">ECS (Fargate)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Workload types</td>
+          <td class="border border-border px-3 py-2">Docker, binary, Java, QEMU VM</td>
+          <td class="border border-border px-3 py-2">Containers only</td>
+          <td class="border border-border px-3 py-2">Containers only</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Architecture</td>
+          <td class="border border-border px-3 py-2">Single binary (server + client)</td>
+          <td class="border border-border px-3 py-2">Many components (etcd, API server, etc.)</td>
+          <td class="border border-border px-3 py-2">Fully managed (AWS)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Learning curve</td>
+          <td class="border border-border px-3 py-2">Low</td>
+          <td class="border border-border px-3 py-2">High</td>
+          <td class="border border-border px-3 py-2">Low (AWS console)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Ecosystem</td>
+          <td class="border border-border px-3 py-2">HashiCorp stack</td>
+          <td class="border border-border px-3 py-2">Largest (Helm, Argo, Istio, etc.)</td>
+          <td class="border border-border px-3 py-2">AWS services</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Multi-cloud</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+          <td class="border border-border px-3 py-2">AWS only</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Operational overhead</td>
+          <td class="border border-border px-3 py-2">Low (self-managed)</td>
+          <td class="border border-border px-3 py-2">High (self-managed) / Low (managed)</td>
+          <td class="border border-border px-3 py-2">Minimal (serverless)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Dev Mode Cluster Setup</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install Nomad (macOS)
+brew install nomad
+
+# Linux
+wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install nomad
+
+# Start in dev mode (single node: server + client combined)
+# Dev mode is in-memory only — never use in production
+sudo nomad agent -dev -bind=0.0.0.0
+
+# In another terminal, check cluster status
+export NOMAD_ADDR=http://127.0.0.1:4646
+nomad server members
+nomad node status
+
+# Access the web UI at http://localhost:4646/ui</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Job Spec: Deploying a Docker Container</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># jobs/web-app.nomad.hcl
+job "web-app" &#123;
+  datacenters = ["dc1"]
+  type        = "service"   # long-running service (vs batch, sysbatch)
+  namespace   = "production"
+
+  group "web" &#123;
+    count = 3   # 3 replicas
+
+    # Placement constraint: only on nodes with docker driver
+    constraint &#123;
+      attribute = "$&#123;driver.docker&#125;"
+      value     = "1"
+    &#125;
+
+    # Network: each allocation gets a dynamic port mapped to container port 8080
+    network &#123;
+      port "http" &#123;
+        to = 8080
+      &#125;
+    &#125;
+
+    # Update strategy
+    update &#123;
+      max_parallel      = 1
+      min_healthy_time  = "30s"
+      healthy_deadline  = "5m"
+      progress_deadline = "10m"
+      auto_revert       = true
+      canary            = 0
+    &#125;
+
+    task "server" &#123;
+      driver = "docker"
+
+      config &#123;
+        image = "my-org/web-app:v1.4.2"
+        ports = ["http"]
+      &#125;
+
+      env &#123;
+        NODE_ENV = "production"
+        PORT     = "$&#123;NOMAD_PORT_http&#125;"  # dynamic port injected by Nomad
+      &#125;
+
+      resources &#123;
+        cpu    = 500   # MHz
+        memory = 256   # MB
+      &#125;
+
+      # Register with Consul
+      service &#123;
+        name = "web-app"
+        port = "http"
+        tags = ["production", "v1.4.2"]
+
+        check &#123;
+          type     = "http"
+          path     = "/health"
+          interval = "10s"
+          timeout  = "3s"
+        &#125;
+      &#125;
+    &#125;
+  &#125;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Running a Job</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Validate the job spec
+nomad job validate jobs/web-app.nomad.hcl
+
+# Plan (dry-run: see what Nomad will do)
+nomad job plan jobs/web-app.nomad.hcl
+
+# Run the job
+nomad job run jobs/web-app.nomad.hcl
+
+# Check job status
+nomad job status web-app
+
+# List allocations (running instances)
+nomad alloc list -job web-app
+
+# View logs for an allocation
+nomad alloc logs <ALLOC_ID> server
+
+# SSH into an allocation's container
+nomad alloc exec <ALLOC_ID> /bin/sh
+
+# Stop the job (does not delete history)
+nomad job stop web-app
+
+# Purge job (delete history)
+nomad job stop -purge web-app</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Canary Deployments</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Enable canary in the update stanza
+update &#123;
+  max_parallel     = 1
+  canary           = 2      # deploy 2 canary instances before touching existing
+  min_healthy_time = "60s"
+  auto_revert      = true   # roll back if canaries are unhealthy
+  auto_promote     = false  # require manual promotion
+&#125;
+
+# Workflow:
+# 1. nomad job run new-version.hcl
+#    → Nomad creates 2 canary allocations alongside existing 3 allocations
+#    → Total: 5 allocations running simultaneously
+#
+# 2. Test the canary instances (they are registered in Consul with canary tag)
+#
+# 3. If healthy, promote the deployment:
+nomad deployment promote $(nomad job deployments -latest web-app | awk 'NR==2&#123;print $1&#125;')
+#    → Nomad replaces remaining old allocations with new version
+#
+# 4. If problems found, fail the deployment:
+nomad deployment fail DEPLOYMENT_ID
+#    → auto_revert kicks in, restores previous version</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Vault Integration for Secrets</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">task "server" &#123;
+  driver = "docker"
+
+  # Request a Vault token with the 'web-app' policy
+  vault &#123;
+    policies = ["web-app"]
+    change_mode   = "restart"  # restart task if secrets are renewed
+    change_signal = "SIGUSR1"
+  &#125;
+
+  # Render Vault secrets into a config file using Nomad template
+  template &#123;
+    destination = "secrets/config.env"
+    env         = true   # load as environment variables
+    data        = &lt;&lt;EOH
+&#123;&#123;- with secret "secret/data/web-app/production" -&#125;&#125;
+DB_URL=&#123;&#123; .Data.data.db_url &#125;&#125;
+API_SECRET=&#123;&#123; .Data.data.api_secret &#125;&#125;
+&#123;&#123;- end -&#125;&#125;
+
+# Dynamic database credentials (auto-renew before TTL expires)
+&#123;&#123;- with secret "database/creds/web-app-role" -&#125;&#125;
+DB_USERNAME=&#123;&#123; .Data.username &#125;&#125;
+DB_PASSWORD=&#123;&#123; .Data.password &#125;&#125;
+&#123;&#123;- end -&#125;&#125;
+EOH
+  &#125;
+&#125;</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="HashiCorp Nomad" relatedTags={['nomad', 'hashicorp', 'orchestration', 'devops', 'docker']} />
+</BaseLayout>
