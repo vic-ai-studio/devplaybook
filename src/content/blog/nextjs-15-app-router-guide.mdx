@@ -1,0 +1,331 @@
+---
+title: "Next.js 15 App Router: Complete Guide to RSC, Caching, and PPR"
+description: "Master Next.js 15 App Router: React Server Components, Partial Prerendering, dynamic rendering, caching strategies, route handlers, and migration from Pages Router."
+date: "2026-04-02"
+tags: [nextjs, react, frontend, javascript, web-development]
+readingTime: "10 min read"
+---
+
+# Next.js 15 App Router: Complete Guide to RSC, Caching, and PPR
+
+Next.js 15 stabilized Partial Prerendering (PPR), ships with React 19 by default, and overhauled the caching model to be opt-in rather than opt-out. If you've avoided the App Router due to confusing caching behavior, Next.js 15 is the inflection point worth upgrading for.
+
+---
+
+## React Server Components: The Mental Model
+
+The single most important concept: in the App Router, components are server-first. By default, every component in `app/` is a React Server Component (RSC) — it runs on the server, never ships to the browser, and can directly access databases, APIs, and secrets.
+
+```tsx
+// app/products/page.tsx — Server Component (default)
+// This code runs ONLY on the server. Never sent to the browser.
+import { db } from '@/lib/db';
+import { cache } from 'react';
+
+// cache() deduplicates DB calls within a single request
+const getProducts = cache(async (categoryId: string) => {
+  return db.product.findMany({
+    where: { categoryId, published: true },
+    orderBy: { createdAt: 'desc' },
+  });
+});
+
+export default async function ProductsPage({
+  params,
+}: {
+  params: { category: string };
+}) {
+  const products = await getProducts(params.category);
+
+  return (
+    <div>
+      <h1>Products</h1>
+      {products.map(p => (
+        <ProductCard key={p.id} product={p} />
+      ))}
+    </div>
+  );
+}
+```
+
+```tsx
+// 'use client' marks a component as Client Component
+// It renders on server for initial HTML, then hydrates on client
+'use client';
+
+import { useState } from 'react';
+
+export function AddToCartButton({ productId }: { productId: string }) {
+  const [added, setAdded] = useState(false);
+
+  return (
+    <button onClick={() => {
+      addToCart(productId);
+      setAdded(true);
+    }}>
+      {added ? 'Added!' : 'Add to Cart'}
+    </button>
+  );
+}
+```
+
+**Rule of thumb**: Push `'use client'` as far down the component tree as possible — keep data fetching and layout in Server Components, put interactivity in Client Components.
+
+---
+
+## Caching in Next.js 15: Opt-In by Default
+
+Next.js 14 cached aggressively by default (everything was `force-cache`). Next.js 15 changed to **no caching by default**:
+
+```tsx
+// Next.js 15 default behavior
+fetch('/api/data')
+// → cache: 'no-store' by default (was 'force-cache' in Next.js 14)
+
+// Explicit static caching
+fetch('/api/data', { cache: 'force-cache' })
+// Or use Next.js-specific options:
+fetch('/api/data', { next: { revalidate: 3600 } }) // ISR: revalidate every hour
+fetch('/api/data', { next: { tags: ['products'] } }) // Tag for on-demand revalidation
+```
+
+### Route Segment Config
+
+```tsx
+// app/products/page.tsx
+// Force the entire route to be static
+export const dynamic = 'force-static';
+export const revalidate = 3600; // ISR: revalidate every hour
+
+// Force dynamic (always server-rendered, never cached)
+export const dynamic = 'force-dynamic';
+
+// Default in Next.js 15 (dynamic if any dynamic data)
+export const dynamic = 'auto';
+```
+
+### On-Demand Revalidation
+
+```tsx
+// app/actions.ts
+'use server';
+import { revalidatePath, revalidateTag } from 'next/cache';
+
+export async function updateProduct(id: string, data: Partial<Product>) {
+  await db.product.update({ where: { id }, data });
+
+  // Revalidate specific paths
+  revalidatePath(`/products/${id}`);
+  revalidatePath('/products'); // List page
+
+  // Or revalidate by tag (all pages that fetched with this tag)
+  revalidateTag('products');
+}
+```
+
+---
+
+## Partial Prerendering (PPR)
+
+PPR is Next.js 15's headline feature: static shell + dynamic holes in a single request. No more choosing between static (fast, stale) and dynamic (slow, fresh).
+
+```tsx
+// next.config.ts
+const config: NextConfig = {
+  experimental: {
+    ppr: 'incremental', // Enable per-route or globally
+  },
+};
+
+// app/product/[id]/page.tsx
+export const experimental_ppr = true; // Enable PPR for this route
+
+import { Suspense } from 'react';
+
+// Static shell — generated at build time, served from CDN
+export default function ProductPage({ params }: { params: { id: string } }) {
+  return (
+    <div>
+      {/* Static content — built at deploy time */}
+      <Breadcrumb />
+      <ProductImages productId={params.id} />
+
+      {/* Dynamic hole — streamed from server */}
+      <Suspense fallback={<PriceSkeleton />}>
+        <DynamicPrice productId={params.id} />
+      </Suspense>
+
+      {/* Dynamic hole — streamed from server */}
+      <Suspense fallback={<ReviewsSkeleton />}>
+        <LiveReviews productId={params.id} />
+      </Suspense>
+    </div>
+  );
+}
+
+// DynamicPrice fetches real-time data
+async function DynamicPrice({ productId }: { productId: string }) {
+  const price = await fetchCurrentPrice(productId); // Dynamic data
+  return <PriceDisplay price={price} />;
+}
+```
+
+The result: first byte is the static shell from CDN (< 10ms), dynamic content streams in as it's ready. Best of both worlds.
+
+---
+
+## Route Handlers
+
+Route Handlers replace API Routes (`pages/api/`) in the App Router:
+
+```typescript
+// app/api/webhooks/stripe/route.ts
+import { headers } from 'next/headers';
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+export async function POST(request: Request) {
+  const body = await request.text();
+  const sig = (await headers()).get('stripe-signature')!;
+
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+  } catch {
+    return new Response('Invalid signature', { status: 400 });
+  }
+
+  switch (event.type) {
+    case 'checkout.session.completed':
+      await handleCheckoutComplete(event.data.object);
+      break;
+    case 'customer.subscription.deleted':
+      await handleSubscriptionCancel(event.data.object);
+      break;
+  }
+
+  return Response.json({ received: true });
+}
+
+// GET with search params and caching
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const category = searchParams.get('category') ?? 'all';
+
+  const products = await getProducts(category);
+
+  return Response.json(products, {
+    headers: {
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+    },
+  });
+}
+```
+
+---
+
+## Parallel Routes and Intercepting Routes
+
+```
+app/
+  @modal/
+    (..)photo/
+      [id]/
+        page.tsx    ← Intercepting route: shows photo in modal when navigating from feed
+  photo/
+    [id]/
+      page.tsx      ← Full photo page for direct navigation/refresh
+  feed/
+    page.tsx
+  layout.tsx        ← Receives @modal slot
+```
+
+```tsx
+// app/layout.tsx
+export default function Layout({
+  children,
+  modal,          // @modal slot — null if no modal
+}: {
+  children: React.ReactNode;
+  modal: React.ReactNode;
+}) {
+  return (
+    <>
+      {children}
+      {modal}   {/* Photo modal renders on top of feed when intercepted */}
+    </>
+  );
+}
+```
+
+---
+
+## Middleware for Auth
+
+```typescript
+// middleware.ts (root of project)
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { verifyAuth } from '@/lib/auth';
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Public routes — no auth required
+  const publicPaths = ['/', '/login', '/signup', /^\/api\/webhooks/];
+  const isPublic = publicPaths.some(p =>
+    typeof p === 'string' ? pathname === p : p.test(pathname)
+  );
+  if (isPublic) return NextResponse.next();
+
+  const token = request.cookies.get('session')?.value;
+  const verified = token ? await verifyAuth(token) : null;
+
+  if (!verified) {
+    const url = new URL('/login', request.url);
+    url.searchParams.set('next', pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // Pass user info to route handlers via headers
+  const response = NextResponse.next();
+  response.headers.set('x-user-id', verified.userId);
+  return response;
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+};
+```
+
+---
+
+## Migration: Pages Router → App Router
+
+You don't have to migrate all at once — both routers can coexist:
+
+```
+pages/
+  old-page.tsx     ← Still works
+app/
+  new-page/
+    page.tsx       ← New App Router page
+```
+
+Incremental migration strategy:
+1. Create `app/` directory alongside `pages/`
+2. Migrate leaf pages first (no layout dependencies)
+3. Move shared layout to `app/layout.tsx` last
+4. Keep API routes in `pages/api/` until ready to migrate to Route Handlers
+
+Key differences summary:
+
+| Feature | Pages Router | App Router |
+|---|---|---|
+| Data fetching | `getServerSideProps` / `getStaticProps` | `async` components + `fetch` |
+| Layouts | `_app.tsx` + per-page | Nested `layout.tsx` files |
+| Loading states | Manual | `loading.tsx` |
+| Error states | `_error.tsx` | `error.tsx` |
+| API routes | `pages/api/` | `app/api/route.ts` |
+| Metadata | `next/head` | `export const metadata` |

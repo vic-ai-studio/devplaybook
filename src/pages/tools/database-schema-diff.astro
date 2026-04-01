@@ -1,0 +1,244 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is a schema diff?", answer: "A schema diff (schema comparison) identifies the structural differences between two database schemas — added tables, dropped columns, changed data types, new indexes, modified constraints, etc. It's used to generate migration scripts when evolving a database schema from one version to another." },
+  { question: "What is a database migration?", answer: "A database migration is a script that transforms a database schema from one state to another. Migrations are version-controlled and run in order. Tools like Flyway, Liquibase, Prisma Migrate, and Alembic manage migration files and track which have been applied to each environment." },
+  { question: "What is a non-destructive vs destructive migration?", answer: "Destructive migrations permanently remove data (DROP TABLE, DROP COLUMN, TRUNCATE). Non-destructive migrations only add or modify structure without removing existing data (ADD COLUMN, CREATE INDEX, ADD CONSTRAINT). In production, always prefer non-destructive migrations and phase out deprecated columns after all code is updated." },
+  { question: "What is a zero-downtime migration?", answer: "Zero-downtime migrations allow schema changes while the application is running. The pattern: 1) Add new column (nullable), 2) Deploy code that writes to both old and new columns, 3) Backfill existing rows, 4) Add NOT NULL constraint, 5) Deploy code that only uses the new column, 6) Drop old column. Never add NOT NULL without a default on large tables — it will lock the table." },
+];
+---
+
+<BaseLayout
+  title="Database Schema Diff — Compare SQL Schemas & Generate Migration"
+  description="Compare two SQL schemas and generate ALTER TABLE migration scripts. Detect added/dropped tables, columns, indexes, and constraints. Supports PostgreSQL and MySQL syntax."
+  tool="Database Schema Diff, SQL Schema Comparison, Schema Migration Generator, ALTER TABLE Generator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Database Schema Diff</h1>
+  <p class="text-text-muted mb-4">Paste two CREATE TABLE schemas to compare them and generate an ALTER TABLE migration script.</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <!-- Inputs -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <label class="block text-sm font-medium mb-2">Current Schema (FROM)</label>
+        <textarea id="schema-from" rows="12" placeholder="CREATE TABLE users (&#10;  id SERIAL PRIMARY KEY,&#10;  email VARCHAR(255) NOT NULL,&#10;  name VARCHAR(100)&#10;);"
+          class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-none"></textarea>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <label class="block text-sm font-medium mb-2">Target Schema (TO)</label>
+        <textarea id="schema-to" rows="12" placeholder="CREATE TABLE users (&#10;  id SERIAL PRIMARY KEY,&#10;  email VARCHAR(255) NOT NULL UNIQUE,&#10;  name VARCHAR(255),&#10;  created_at TIMESTAMPTZ DEFAULT NOW()&#10;);"
+          class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-none"></textarea>
+      </div>
+      <div class="flex gap-2">
+        <button id="diff-btn" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">Compare</button>
+        <button id="sample-btn" class="text-xs text-text-muted border border-border px-3 py-2 rounded-lg hover:bg-bg">Load Sample</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="lg:col-span-2 space-y-4">
+      <div id="empty-state" class="text-center text-text-muted text-sm py-8">Paste two schemas and click Compare.</div>
+      <div id="results" class="hidden space-y-4">
+        <div id="summary-box" class="bg-bg-card border border-border rounded-xl p-4 text-sm"></div>
+        <div class="bg-bg-card border border-border rounded-xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-semibold">Migration SQL</h2>
+            <button id="copy-migration" class="text-xs text-text-muted border border-border px-2 py-1 rounded hover:bg-bg">Copy</button>
+          </div>
+          <pre id="migration-sql" class="text-xs font-mono bg-bg rounded-lg p-3 overflow-auto text-text-muted whitespace-pre max-h-96"></pre>
+        </div>
+        <div id="warnings-box" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-amber-400 text-xs"></div>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="in-content" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Database Schema Diff" relatedTags={['database', 'sql', 'postgresql', 'mysql', 'devtools']} />
+</BaseLayout>
+
+<script>
+interface Column { name: string; type: string; nullable: boolean; default?: string; unique?: boolean; pk?: boolean; raw: string; }
+interface Table { name: string; columns: Map<string, Column>; rawSql: string; }
+
+function parseColumn(line: string): Column | null {
+  const l = line.trim().replace(/,$/, '').trim();
+  if (!l || l.startsWith('--') || l.startsWith('CONSTRAINT') || l.startsWith('INDEX')) return null;
+  if (/^(PRIMARY KEY|UNIQUE|CHECK|FOREIGN KEY)/i.test(l)) return null;
+
+  const parts = l.split(/\s+/);
+  if (parts.length < 2) return null;
+  const name = parts[0].replace(/"/g, '');
+  const type = parts[1];
+  const rest = l.toUpperCase();
+  const nullable = !rest.includes('NOT NULL');
+  const pk = rest.includes('PRIMARY KEY');
+  const unique = rest.includes('UNIQUE');
+  const defMatch = l.match(/DEFAULT\s+([^\s,]+)/i);
+  return { name, type, nullable, default: defMatch?.[1], unique, pk, raw: l };
+}
+
+function parseSchema(sql: string): Map<string, Table> {
+  const tables = new Map<string, Table>();
+  const tableMatches = [...sql.matchAll(/CREATE\s+TABLE\s+(?:IF NOT EXISTS\s+)?["']?(\w+)["']?\s*\(([\s\S]*?)\);/gi)];
+  for (const m of tableMatches) {
+    const name = m[1].toLowerCase();
+    const body = m[2];
+    const cols = new Map<string, Column>();
+    for (const line of body.split('\n')) {
+      const col = parseColumn(line);
+      if (col) cols.set(col.name.toLowerCase(), col);
+    }
+    tables.set(name, { name, columns: cols, rawSql: m[0] });
+  }
+  return tables;
+}
+
+function diff() {
+  const fromSql = (document.getElementById('schema-from') as HTMLTextAreaElement).value.trim();
+  const toSql = (document.getElementById('schema-to') as HTMLTextAreaElement).value.trim();
+
+  document.getElementById('empty-state')!.classList.add('hidden');
+  document.getElementById('results')!.classList.remove('hidden');
+
+  const fromTables = parseSchema(fromSql);
+  const toTables = parseSchema(toSql);
+
+  const migrationLines: string[] = ['-- Auto-generated migration', '-- Review before executing!\n'];
+  const summaryLines: string[] = [];
+  const warnings: string[] = [];
+
+  // New tables
+  for (const [name, table] of toTables) {
+    if (!fromTables.has(name)) {
+      migrationLines.push(`-- New table: ${name}`);
+      migrationLines.push(table.rawSql + '\n');
+      summaryLines.push(`<span class="text-green-400">+ TABLE ${name}</span>`);
+    }
+  }
+
+  // Dropped tables
+  for (const name of fromTables.keys()) {
+    if (!toTables.has(name)) {
+      migrationLines.push(`-- DESTRUCTIVE: drop table ${name}`);
+      migrationLines.push(`DROP TABLE IF EXISTS ${name};\n`);
+      summaryLines.push(`<span class="text-red-400">- TABLE ${name} (destructive!)</span>`);
+      warnings.push(`Dropping table "${name}" is destructive and irreversible.`);
+    }
+  }
+
+  // Column diffs on existing tables
+  for (const [tableName, toTable] of toTables) {
+    const fromTable = fromTables.get(tableName);
+    if (!fromTable) continue;
+
+    // New columns
+    for (const [colName, col] of toTable.columns) {
+      if (!fromTable.columns.has(colName)) {
+        const defStr = col.default ? ` DEFAULT ${col.default}` : (col.nullable ? '' : ' DEFAULT NULL');
+        const notNull = col.nullable ? '' : ' NOT NULL';
+        migrationLines.push(`ALTER TABLE ${tableName} ADD COLUMN ${colName} ${col.type}${notNull}${defStr};`);
+        summaryLines.push(`<span class="text-green-400">+ ${tableName}.${colName} ${col.type}</span>`);
+        if (!col.nullable && !col.default) warnings.push(`Adding NOT NULL column "${colName}" to "${tableName}" without a DEFAULT will fail on non-empty tables.`);
+      }
+    }
+
+    // Dropped columns
+    for (const colName of fromTable.columns.keys()) {
+      if (!toTable.columns.has(colName)) {
+        migrationLines.push(`ALTER TABLE ${tableName} DROP COLUMN ${colName};`);
+        summaryLines.push(`<span class="text-red-400">- ${tableName}.${colName} (destructive!)</span>`);
+        warnings.push(`Dropping column "${colName}" from "${tableName}" removes data permanently.`);
+      }
+    }
+
+    // Modified columns (type or nullability changed)
+    for (const [colName, toCol] of toTable.columns) {
+      const fromCol = fromTable.columns.get(colName);
+      if (!fromCol) continue;
+      if (fromCol.type.toLowerCase() !== toCol.type.toLowerCase()) {
+        migrationLines.push(`ALTER TABLE ${tableName} ALTER COLUMN ${colName} TYPE ${toCol.type};`);
+        summaryLines.push(`<span class="text-amber-400">~ ${tableName}.${colName}: ${fromCol.type} → ${toCol.type}</span>`);
+        warnings.push(`Type change on "${tableName}.${colName}" (${fromCol.type} → ${toCol.type}) may fail if existing data is incompatible.`);
+      }
+      if (fromCol.nullable && !toCol.nullable) {
+        migrationLines.push(`ALTER TABLE ${tableName} ALTER COLUMN ${colName} SET NOT NULL;`);
+        summaryLines.push(`<span class="text-amber-400">~ ${tableName}.${colName}: added NOT NULL</span>`);
+        warnings.push(`Adding NOT NULL to existing column "${colName}" will fail if any rows have NULL values.`);
+      }
+      if (!fromCol.nullable && toCol.nullable) {
+        migrationLines.push(`ALTER TABLE ${tableName} ALTER COLUMN ${colName} DROP NOT NULL;`);
+        summaryLines.push(`<span class="text-green-400">~ ${tableName}.${colName}: removed NOT NULL</span>`);
+      }
+      if (!fromCol.unique && toCol.unique) {
+        migrationLines.push(`ALTER TABLE ${tableName} ADD CONSTRAINT ${tableName}_${colName}_unique UNIQUE (${colName});`);
+        summaryLines.push(`<span class="text-amber-400">~ ${tableName}.${colName}: added UNIQUE</span>`);
+      }
+    }
+  }
+
+  if (migrationLines.length === 2) {
+    migrationLines.push('-- No changes detected');
+    summaryLines.push('<span class="text-text-muted">No differences found.</span>');
+  }
+
+  document.getElementById('migration-sql')!.textContent = migrationLines.join('\n');
+  document.getElementById('summary-box')!.innerHTML = '<div class="space-y-1">' + summaryLines.join('\n') + '</div>';
+
+  const warnBox = document.getElementById('warnings-box')!;
+  if (warnings.length) {
+    warnBox.classList.remove('hidden');
+    warnBox.innerHTML = '<div class="font-semibold mb-1">⚠ Warnings</div>' + warnings.map(w => `<div>• ${w}</div>`).join('');
+  } else {
+    warnBox.classList.add('hidden');
+  }
+
+  document.getElementById('copy-migration')!.onclick = () => navigator.clipboard.writeText(document.getElementById('migration-sql')!.textContent || '');
+}
+
+document.getElementById('diff-btn')!.addEventListener('click', diff);
+
+document.getElementById('sample-btn')!.addEventListener('click', () => {
+  (document.getElementById('schema-from') as HTMLTextAreaElement).value = `CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  name VARCHAR(100),
+  role VARCHAR(20) DEFAULT 'user'
+);
+
+CREATE TABLE posts (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  title VARCHAR(500) NOT NULL,
+  body TEXT
+);`;
+
+  (document.getElementById('schema-to') as HTMLTextAreaElement).value = `CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  name VARCHAR(255),
+  role VARCHAR(20) DEFAULT 'user',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  is_active BOOLEAN NOT NULL DEFAULT true
+);
+
+CREATE TABLE posts (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  title VARCHAR(500) NOT NULL,
+  body TEXT,
+  published_at TIMESTAMPTZ
+);
+
+CREATE TABLE tags (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE
+);`;
+  diff();
+});
+</script>

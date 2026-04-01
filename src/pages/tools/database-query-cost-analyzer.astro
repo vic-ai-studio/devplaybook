@@ -1,0 +1,236 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What makes a SQL query slow?", answer: "The main culprits: 1) Full table scans — no index on filtered columns. 2) N+1 queries — fetching related records one at a time in a loop. 3) SELECT * — fetching unnecessary columns, especially with large TEXT/BLOB columns. 4) Missing index on JOIN columns. 5) Functions on indexed columns (WHERE LOWER(email) = '...' bypasses the index). 6) LIKE '%term' — leading wildcard prevents index use." },
+  { question: "How do I read EXPLAIN output?", answer: "Key fields: 'Seq Scan' = full table scan (bad for large tables). 'Index Scan' = uses index. 'Bitmap Heap Scan' = index + heap fetch. 'Hash Join' / 'Merge Join' = common for large joins. 'cost=X..Y' means estimated rows X to Y. 'rows=' is estimated row count. 'actual time=' (in EXPLAIN ANALYZE) shows real execution time. Look for high cost nodes and missing indexes." },
+  { question: "What is an index scan vs index-only scan?", answer: "Index scan: PostgreSQL uses the index to find row locations, then fetches the actual heap (table) rows to get full column data. Index-only scan: all needed columns are in the index itself — no heap fetch needed. Much faster. To get index-only scans, include all SELECT columns in the index using INCLUDE (PostgreSQL 11+) or a covering index." },
+  { question: "What is the N+1 query problem?", answer: "N+1 happens when you fetch a list of N items, then for each item run 1 more query to fetch related data. Example: fetch 100 users (1 query), then for each user fetch their posts (100 queries) = 101 total queries. Fix: use a JOIN to fetch both in one query, or use eager loading (with the ORM) with IN clauses." },
+];
+---
+
+<BaseLayout
+  title="Database Query Cost Analyzer — SQL Anti-Pattern Detector & Optimizer"
+  description="Analyze SQL queries for performance anti-patterns. Detect missing indexes, N+1 problems, SELECT *, full table scans, and inefficient JOINs. Get optimization suggestions."
+  tool="SQL Query Analyzer, SQL Anti-Pattern Detector, Query Optimization, SQL Performance Checker"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Database Query Cost Analyzer</h1>
+  <p class="text-text-muted mb-4">Paste a SQL query to detect common performance anti-patterns and get optimization suggestions.</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- Input -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <label class="block text-sm font-medium mb-2">SQL Query</label>
+        <textarea id="sql-input" rows="14" placeholder="SELECT * FROM orders o&#10;JOIN users u ON u.id = o.user_id&#10;WHERE LOWER(u.email) = 'test@example.com'&#10;ORDER BY o.created_at DESC;"
+          class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-none"></textarea>
+        <div class="flex gap-2 mt-3">
+          <button id="analyze-btn" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">Analyze</button>
+          <button id="sample1-btn" class="text-xs text-text-muted border border-border px-3 py-1.5 rounded-lg hover:bg-bg">Anti-pattern 1</button>
+          <button id="sample2-btn" class="text-xs text-text-muted border border-border px-3 py-1.5 rounded-lg hover:bg-bg">Anti-pattern 2</button>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Common Anti-Patterns</h2>
+        <div class="space-y-2 text-xs text-text-muted">
+          <div class="flex gap-2"><span class="text-red-400">✗</span><span><code class="font-mono">SELECT *</code> — fetches all columns, prevents index-only scans</span></div>
+          <div class="flex gap-2"><span class="text-red-400">✗</span><span><code class="font-mono">WHERE func(col) = ?</code> — function on indexed column bypasses index</span></div>
+          <div class="flex gap-2"><span class="text-red-400">✗</span><span><code class="font-mono">LIKE '%term'</code> — leading wildcard = full scan</span></div>
+          <div class="flex gap-2"><span class="text-red-400">✗</span><span><code class="font-mono">OR</code> across different columns — often can't use index</span></div>
+          <div class="flex gap-2"><span class="text-red-400">✗</span><span><code class="font-mono">NOT IN (subquery)</code> — use <code>NOT EXISTS</code> instead</span></div>
+          <div class="flex gap-2"><span class="text-red-400">✗</span><span>Implicit type conversion in WHERE clause</span></div>
+          <div class="flex gap-2"><span class="text-red-400">✗</span><span><code class="font-mono">OFFSET</code> with large values — scans all preceding rows</span></div>
+          <div class="flex gap-2"><span class="text-red-400">✗</span><span>Correlated subquery in SELECT — runs once per row</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="space-y-4">
+      <div id="empty-state" class="text-center text-text-muted text-sm py-8">Paste a query and click Analyze to detect issues.</div>
+      <div id="results" class="hidden space-y-3">
+        <div id="score-box" class="bg-bg-card border border-border rounded-xl p-4"></div>
+        <div id="issues-box" class="space-y-3"></div>
+        <div id="optimized-box" class="hidden bg-bg-card border border-border rounded-xl p-5">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs font-medium text-text-muted">Suggested Optimized Query</div>
+            <button id="copy-opt" class="text-xs text-text-muted border border-border px-2 py-0.5 rounded hover:bg-bg">Copy</button>
+          </div>
+          <pre id="optimized-sql" class="text-xs font-mono bg-bg rounded-lg px-3 py-2 overflow-auto text-text-muted whitespace-pre"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="in-content" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Database Query Cost Analyzer" relatedTags={['database', 'sql', 'postgresql', 'mysql', 'performance']} />
+</BaseLayout>
+
+<script>
+interface Issue { severity: 'high' | 'medium' | 'low'; title: string; desc: string; fix?: string; }
+
+function analyze() {
+  const sql = (document.getElementById('sql-input') as HTMLTextAreaElement).value.trim();
+  const empty = document.getElementById('empty-state')!;
+  const results = document.getElementById('results')!;
+
+  if (!sql) { empty.classList.remove('hidden'); results.classList.add('hidden'); return; }
+  empty.classList.add('hidden');
+  results.classList.remove('hidden');
+
+  const upper = sql.toUpperCase();
+  const issues: Issue[] = [];
+  let optimized = sql;
+
+  // SELECT *
+  if (/SELECT\s+\*/.test(upper)) {
+    issues.push({
+      severity: 'high',
+      title: 'SELECT * detected',
+      desc: 'Fetching all columns is wasteful — especially with TEXT/BLOB columns. Prevents index-only scans. Breaks if schema changes.',
+      fix: 'Specify only the columns you need: SELECT id, name, email FROM ...',
+    });
+    optimized = optimized.replace(/SELECT\s+\*/i, 'SELECT id, name, created_at /* specify columns */');
+  }
+
+  // Function on column in WHERE
+  const funcMatch = sql.match(/WHERE\s+\w+\((\w+)\)\s*=/i);
+  if (funcMatch || /WHERE\s+(LOWER|UPPER|TRIM|TO_CHAR|DATE|YEAR|MONTH|CAST)\(/i.test(sql)) {
+    issues.push({
+      severity: 'high',
+      title: 'Function applied to column in WHERE',
+      desc: 'Wrapping a column in a function (e.g. LOWER(email)) prevents the database from using an index on that column — forcing a full table scan.',
+      fix: 'Use a functional index: CREATE INDEX ON users (LOWER(email)); or store pre-normalized data.',
+    });
+  }
+
+  // LIKE with leading wildcard
+  if (/LIKE\s+'%[^%]/.test(sql)) {
+    issues.push({
+      severity: 'high',
+      title: 'LIKE with leading wildcard',
+      desc: "LIKE '%term' cannot use a B-tree index — it requires scanning every row. LIKE 'term%' CAN use an index.",
+      fix: 'For full-text search, use pg_trgm extension with GIN index, or a full-text search solution (Elasticsearch, pg_search).',
+    });
+  }
+
+  // NOT IN with subquery
+  if (/NOT\s+IN\s*\(\s*SELECT/i.test(sql)) {
+    issues.push({
+      severity: 'medium',
+      title: 'NOT IN with subquery',
+      desc: 'NOT IN with a subquery can be slow and has surprising NULL behavior (if subquery returns any NULLs, the whole NOT IN returns false). ',
+      fix: 'Replace with NOT EXISTS: WHERE NOT EXISTS (SELECT 1 FROM ... WHERE ...)',
+    });
+  }
+
+  // Large OFFSET
+  const offsetMatch = sql.match(/OFFSET\s+(\d+)/i);
+  if (offsetMatch && parseInt(offsetMatch[1]) > 1000) {
+    issues.push({
+      severity: 'medium',
+      title: `Large OFFSET (${offsetMatch[1]})`,
+      desc: `OFFSET ${offsetMatch[1]} means the DB must scan and discard ${offsetMatch[1]} rows before returning results. Slow for deep pagination.`,
+      fix: 'Use keyset pagination: WHERE id > :last_seen_id ORDER BY id LIMIT N (cursor-based pagination).',
+    });
+  }
+
+  // SELECT in SELECT (correlated subquery)
+  const subCount = (sql.match(/\(\s*SELECT/gi) || []).length;
+  if (subCount >= 2) {
+    issues.push({
+      severity: 'medium',
+      title: 'Possible correlated subquery',
+      desc: 'Subqueries in the SELECT clause or in WHERE that reference outer query columns run once per row — O(n) extra queries.',
+      fix: 'Rewrite as a JOIN or use a CTE (WITH clause) to compute once.',
+    });
+  }
+
+  // OR across columns
+  if (/WHERE.*\s+OR\s+.*AND\b/i.test(sql) || /WHERE[^(]*\bOR\b[^)]*\bOR\b/i.test(sql)) {
+    issues.push({
+      severity: 'low',
+      title: 'Multiple OR conditions',
+      desc: 'ORs across different columns often cannot use indexes efficiently. The planner may resort to a full scan.',
+      fix: 'Consider rewriting with UNION ALL: (SELECT ... WHERE col1 = ?) UNION ALL (SELECT ... WHERE col2 = ?)',
+    });
+  }
+
+  // Missing WHERE clause on UPDATE/DELETE
+  if (/^\s*(UPDATE|DELETE)/i.test(sql) && !/WHERE/i.test(sql)) {
+    issues.push({
+      severity: 'high',
+      title: 'UPDATE/DELETE without WHERE clause',
+      desc: 'This query will modify/delete ALL rows in the table. This is almost always a mistake.',
+      fix: 'Add a WHERE clause to target specific rows. Test with a SELECT first.',
+    });
+  }
+
+  // No issues
+  if (issues.length === 0) {
+    issues.push({ severity: 'low', title: 'No obvious anti-patterns detected', desc: 'Basic static analysis found no common issues. For deeper analysis, run EXPLAIN ANALYZE on your actual database.', });
+  }
+
+  const score = Math.max(0, 100 - issues.filter(i => i.severity === 'high').length * 30 - issues.filter(i => i.severity === 'medium').length * 15 - issues.filter(i => i.severity === 'low').length * 5);
+  const scoreColor = score >= 80 ? 'text-green-400' : score >= 50 ? 'text-amber-400' : 'text-red-400';
+  document.getElementById('score-box')!.innerHTML = `
+    <div class="flex items-center gap-3">
+      <div class="text-3xl font-bold ${scoreColor}">${score}</div>
+      <div><div class="text-sm font-medium">Query Health Score</div><div class="text-xs text-text-muted">${issues.length} issue${issues.length !== 1 ? 's' : ''} found</div></div>
+    </div>`;
+
+  const severityStyles: Record<string, string> = {
+    high: 'border-red-500/30 bg-red-500/10 text-red-400',
+    medium: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
+    low: 'border-blue-500/30 bg-blue-500/10 text-blue-400',
+  };
+  document.getElementById('issues-box')!.innerHTML = issues.map(i => `
+    <div class="border ${severityStyles[i.severity]} rounded-xl p-4">
+      <div class="text-sm font-semibold mb-1">${i.severity.toUpperCase()}: ${i.title}</div>
+      <div class="text-xs opacity-80 mb-2">${i.desc}</div>
+      ${i.fix ? `<div class="text-xs font-medium opacity-90">Fix: ${i.fix}</div>` : ''}
+    </div>`).join('');
+
+  const changed = optimized !== sql;
+  const optBox = document.getElementById('optimized-box')!;
+  if (changed) {
+    optBox.classList.remove('hidden');
+    document.getElementById('optimized-sql')!.textContent = optimized;
+    document.getElementById('copy-opt')!.onclick = () => navigator.clipboard.writeText(optimized);
+  } else {
+    optBox.classList.add('hidden');
+  }
+}
+
+document.getElementById('analyze-btn')!.addEventListener('click', analyze);
+document.getElementById('sql-input')!.addEventListener('input', () => {
+  if ((document.getElementById('sql-input') as HTMLTextAreaElement).value.length > 20) analyze();
+});
+
+const samples = [
+  `SELECT *
+FROM orders o
+JOIN users u ON u.id = o.user_id
+WHERE LOWER(u.email) = 'alice@example.com'
+  AND o.status = 'pending'
+ORDER BY o.created_at DESC
+LIMIT 20 OFFSET 50000;`,
+  `SELECT u.id, u.name,
+  (SELECT COUNT(*) FROM orders WHERE user_id = u.id) AS order_count,
+  (SELECT SUM(total) FROM orders WHERE user_id = u.id) AS total_spent
+FROM users u
+WHERE u.created_at NOT IN (
+  SELECT created_at FROM deleted_users
+)
+ORDER BY total_spent DESC;`,
+];
+
+document.getElementById('sample1-btn')!.addEventListener('click', () => { (document.getElementById('sql-input') as HTMLTextAreaElement).value = samples[0]; analyze(); });
+document.getElementById('sample2-btn')!.addEventListener('click', () => { (document.getElementById('sql-input') as HTMLTextAreaElement).value = samples[1]; analyze(); });
+</script>

@@ -1,0 +1,313 @@
+---
+title: "React 19: New Features, Server Actions, and the useTransition Revolution"
+description: "Complete guide to React 19 features: Server Actions, useActionState, useFormStatus, use() hook, ref as prop, improved hydration, and performance improvements over React 18."
+date: "2026-04-02"
+tags: [react, javascript, frontend, nextjs, web-development]
+readingTime: "9 min read"
+---
+
+# React 19: New Features, Server Actions, and the useTransition Revolution
+
+React 19 shipped with the biggest API surface changes since hooks. The new primitives — Server Actions, `useActionState`, `useFormStatus`, `use()`, and first-class ref handling — fundamentally change how you handle async mutations and form state. This guide covers everything that changed and why it matters.
+
+---
+
+## Server Actions: From Client to Server Without an API Route
+
+Server Actions let you call server-side functions directly from React components — no API route needed. The framework (Next.js 15, Remix) handles serialization, authentication context, and network transport.
+
+```tsx
+// app/actions.ts — Server Actions (Next.js App Router)
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { db } from '@/lib/db';
+import { z } from 'zod';
+
+const CreatePostSchema = z.object({
+  title: z.string().min(1).max(500),
+  body: z.string().min(1),
+  tags: z.array(z.string()).optional(),
+});
+
+export async function createPost(formData: FormData) {
+  // Runs on the server — can access DB, secrets, etc.
+  const raw = {
+    title: formData.get('title') as string,
+    body: formData.get('body') as string,
+  };
+
+  const validated = CreatePostSchema.safeParse(raw);
+  if (!validated.success) {
+    return { error: validated.error.flatten() };
+  }
+
+  const post = await db.post.create({ data: validated.data });
+  revalidatePath('/posts'); // Revalidate the posts cache
+  return { success: true, id: post.id };
+}
+
+export async function deletePost(id: string) {
+  await db.post.delete({ where: { id } });
+  revalidatePath('/posts');
+}
+```
+
+---
+
+## useActionState: The New Form Hook
+
+`useActionState` (replaced the experimental `useFormState`) manages the state of a form action including pending, error, and success states:
+
+```tsx
+// components/CreatePostForm.tsx
+'use client';
+
+import { useActionState } from 'react';
+import { createPost } from '@/app/actions';
+
+type ActionState = { error?: { title?: string[]; body?: string[] } } | { success: true; id: string } | null;
+
+export function CreatePostForm() {
+  const [state, formAction, isPending] = useActionState<ActionState, FormData>(
+    createPost,
+    null
+  );
+
+  return (
+    <form action={formAction}>
+      <div>
+        <label htmlFor="title">Title</label>
+        <input id="title" name="title" type="text" required />
+        {state && 'error' in state && state.error?.title && (
+          <p className="text-red-500">{state.error.title[0]}</p>
+        )}
+      </div>
+
+      <div>
+        <textarea name="body" rows={5} required />
+        {state && 'error' in state && state.error?.body && (
+          <p className="text-red-500">{state.error.body[0]}</p>
+        )}
+      </div>
+
+      <button type="submit" disabled={isPending}>
+        {isPending ? 'Creating…' : 'Create Post'}
+      </button>
+
+      {state && 'success' in state && (
+        <p className="text-green-500">Post created! ID: {state.id}</p>
+      )}
+    </form>
+  );
+}
+```
+
+**Key differences from React 18:**
+- `isPending` is built-in — no need for `useTransition` manually
+- The action receives `FormData` natively
+- Works with progressive enhancement (works without JS)
+
+---
+
+## useFormStatus: Deep Status in Child Components
+
+`useFormStatus` lets any child component inside a form read the form's pending state — even if it's deeply nested:
+
+```tsx
+// components/SubmitButton.tsx — reusable submit button that knows the form state
+'use client';
+
+import { useFormStatus } from 'react-dom';
+
+export function SubmitButton({ children = 'Submit' }: { children?: React.ReactNode }) {
+  const { pending, data, method, action } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className={pending ? 'opacity-50 cursor-not-allowed' : ''}
+    >
+      {pending ? (
+        <span className="flex items-center gap-2">
+          <Spinner className="w-4 h-4" />
+          Submitting…
+        </span>
+      ) : children}
+    </button>
+  );
+}
+
+// Use it anywhere inside a <form> — no prop drilling needed
+function MyForm() {
+  return (
+    <form action={myAction}>
+      <input name="email" />
+      <SubmitButton>Subscribe</SubmitButton>
+    </form>
+  );
+}
+```
+
+---
+
+## use(): Read Promises and Context in Render
+
+`use()` is a new hook that reads the value of a Promise or Context. Unlike `useContext`, it can be called conditionally:
+
+```tsx
+// Reading a promise (Suspense-based data fetching)
+import { use, Suspense } from 'react';
+
+async function fetchUser(id: string) {
+  const res = await fetch(`/api/users/${id}`, { cache: 'no-store' });
+  return res.json();
+}
+
+// Server component creates the promise
+function UserPage({ id }: { id: string }) {
+  const userPromise = fetchUser(id); // Don't await — pass the promise
+  return (
+    <Suspense fallback={<UserSkeleton />}>
+      <UserCard promise={userPromise} />
+    </Suspense>
+  );
+}
+
+// Client component reads the promise
+'use client';
+function UserCard({ promise }: { promise: Promise<User> }) {
+  const user = use(promise); // Suspends until resolved
+  return <div>{user.name}</div>;
+}
+
+// Reading context conditionally (not possible with useContext)
+function ConditionalTheme({ showTheme }: { showTheme: boolean }) {
+  if (!showTheme) return null; // Early return before use() is fine!
+  const theme = use(ThemeContext); // Works with early returns
+  return <div style={{ color: theme.primary }}>{/* … */}</div>;
+}
+```
+
+---
+
+## Ref as Prop (No More forwardRef)
+
+React 19 allows `ref` as a regular prop — no `forwardRef` wrapper needed:
+
+```tsx
+// React 18 — required forwardRef
+const Input18 = forwardRef<HTMLInputElement, InputProps>(({ label, ...props }, ref) => (
+  <div>
+    <label>{label}</label>
+    <input ref={ref} {...props} />
+  </div>
+));
+
+// React 19 — ref is just a prop
+function Input({ label, ref, ...props }: InputProps & { ref?: React.Ref<HTMLInputElement> }) {
+  return (
+    <div>
+      <label>{label}</label>
+      <input ref={ref} {...props} />
+    </div>
+  );
+}
+
+// Usage is identical
+<Input label="Email" ref={inputRef} />
+```
+
+---
+
+## Improved Error Handling and Hydration
+
+React 19 has significantly better error messages, especially for hydration mismatches:
+
+```tsx
+// React 18 hydration error:
+// "Text content does not match server-rendered HTML"
+// (that's it — no context about where or why)
+
+// React 19 hydration error:
+// "In #document > html > body > div > p:
+//   Expected server HTML: "Hello "
+//   Received client HTML: "Hello World"
+// The mismatch is likely caused by: rendering different content on server vs client"
+```
+
+New error boundary patterns:
+
+```tsx
+// React 19: onCaughtError and onUncaughtError on createRoot
+const root = createRoot(document.getElementById('root')!, {
+  onCaughtError(error, errorInfo) {
+    // Error was caught by an error boundary
+    console.error('Caught error:', error, errorInfo.componentStack);
+    reportErrorToMonitoring(error, errorInfo);
+  },
+  onUncaughtError(error, errorInfo) {
+    // Error was NOT caught — will crash the app
+    console.error('Uncaught error:', error);
+    showCriticalErrorUI();
+  },
+  onRecoverableError(error) {
+    // React auto-recovered (e.g., hydration mismatch)
+    console.warn('Recovered from:', error);
+  },
+});
+```
+
+---
+
+## Document Metadata in Components
+
+React 19 natively supports rendering `<title>`, `<meta>`, and `<link>` directly in components — they're hoisted to `<head>` automatically:
+
+```tsx
+// No need for next/head or react-helmet in React 19
+function ProductPage({ product }: { product: Product }) {
+  return (
+    <>
+      <title>{product.name} — My Store</title>
+      <meta name="description" content={product.description} />
+      <link rel="canonical" href={`https://store.com/products/${product.slug}`} />
+
+      <h1>{product.name}</h1>
+      {/* page content */}
+    </>
+  );
+}
+```
+
+---
+
+## Migration from React 18
+
+Most React 18 code is forward-compatible. Key changes to make:
+
+```bash
+npm install react@^19 react-dom@^19 @types/react@^19 @types/react-dom@^19
+```
+
+```tsx
+// Replace useFormState with useActionState
+// Before (React 18 experimental):
+import { experimental_useFormState as useFormState } from 'react-dom';
+const [state, action] = useFormState(myAction, initialState);
+
+// After (React 19):
+import { useActionState } from 'react';
+const [state, action, isPending] = useActionState(myAction, initialState);
+
+// Remove forwardRef wrappers when convenient (not breaking, just cleaner)
+// Remove explicit children type (React 19 no longer requires ReactNode for children)
+
+// ReactContext renamed (but old import still works)
+// Before: React.createContext → After: createContext (same API)
+```
+
+React 19 is the fastest React to date — concurrent features are now applied by default for all transitions, and the new compiler (when enabled) automatically memoizes components without explicit `useMemo`/`useCallback`.
+
+Use the [React Hook Form Builder](/tools/react-hook-form-builder) to scaffold React 19 forms with validation.

@@ -1,0 +1,232 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Redis TTL?", answer: "TTL (Time To Live) is the expiration time for a Redis key. After the TTL expires, Redis automatically deletes the key. Set it with EXPIRE key seconds or EXPIREAT key unix-timestamp. Check remaining TTL with TTL key (returns -1 if no expiry, -2 if key doesn't exist)." },
+  { question: "What Redis commands set expiry?", answer: "EXPIRE key seconds — set TTL in seconds. PEXPIRE key milliseconds — set TTL in milliseconds. EXPIREAT key timestamp — expire at Unix timestamp. PEXPIREAT key milliseconds-timestamp — expire at ms timestamp. SET key value EX seconds — set value with TTL atomically. In Redis 7.0+, EXPIRE supports NX/XX/GT/LT options." },
+  { question: "What is the best TTL for caching?", answer: "It depends on data volatility and acceptable staleness: Real-time data (stock prices, live scores): 1-5 seconds. Session tokens: 15-30 minutes. User profile cache: 5-15 minutes. Product catalog: 1-6 hours. Static reference data (countries, categories): 24 hours. Computed aggregates (daily stats): until next compute cycle." },
+  { question: "How do I avoid cache stampede with TTL?", answer: "Cache stampede happens when many keys expire simultaneously, causing all requests to hit the database at once. Solutions: 1) Jitter — add random offset to TTL (base + rand(0, jitter)). 2) Probabilistic early expiration — start refreshing before expiry. 3) Background refresh — never let cache miss hit the DB directly. 4) Lock with SETNX — only one process refreshes, others wait." },
+];
+---
+
+<BaseLayout
+  title="Redis TTL Calculator — Cache Expiry Time Converter & Strategy Guide"
+  description="Calculate Redis TTL values. Convert between seconds, minutes, hours, and days. Generate EXPIRE, EXPIREAT, and SET EX commands. Includes caching strategy recommendations."
+  tool="Redis TTL Calculator, Cache Expiry Calculator, Redis EXPIRE Command, Redis Cache Duration"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Redis TTL Calculator</h1>
+  <p class="text-text-muted mb-4">Calculate cache expiration times and generate Redis commands. Includes TTL jitter, cache strategy patterns, and command reference.</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- TTL Builder -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5 space-y-3">
+        <h2 class="text-base font-semibold">TTL Duration Builder</h2>
+        <div class="grid grid-cols-4 gap-2">
+          {[
+            { id: 'ttl-days', label: 'Days', max: 365 },
+            { id: 'ttl-hours', label: 'Hours', max: 23 },
+            { id: 'ttl-mins', label: 'Minutes', max: 59 },
+            { id: 'ttl-secs', label: 'Seconds', max: 59 },
+          ].map(f => (
+            <div>
+              <label class="block text-xs font-medium mb-1">{f.label}</label>
+              <input id={f.id} type="number" value="0" min="0" max={f.max}
+                class="w-full bg-bg border border-border rounded-lg px-2 py-2 text-sm font-mono text-center focus:outline-none focus:border-primary" />
+            </div>
+          ))}
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">Jitter (±seconds, prevents stampede)</label>
+          <input id="ttl-jitter" type="number" value="0" min="0"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">Key Name</label>
+          <input id="ttl-key" type="text" value="user:session:123"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+        </div>
+
+        <!-- Quick presets -->
+        <div>
+          <div class="text-xs font-medium mb-2">Quick Presets</div>
+          <div class="flex flex-wrap gap-1.5">
+            {[
+              { label: '5 min', s: 300 }, { label: '15 min', s: 900 }, { label: '1 hour', s: 3600 },
+              { label: '6 hours', s: 21600 }, { label: '1 day', s: 86400 }, { label: '1 week', s: 604800 },
+            ].map(p => (
+              <button class="preset-btn text-xs border border-border px-2.5 py-1 rounded hover:bg-primary/10 hover:border-primary/50" data-s={p.s}>{p.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <!-- Cache strategy presets -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Cache Strategy Presets</h2>
+        <div class="space-y-2 text-xs">
+          {[
+            { label: 'Session token', ttl: 1800, jitter: 60, key: 'session:{token}' },
+            { label: 'User profile', ttl: 600, jitter: 120, key: 'user:{id}:profile' },
+            { label: 'API response', ttl: 300, jitter: 30, key: 'api:{endpoint}:{hash}' },
+            { label: 'Product catalog', ttl: 21600, jitter: 600, key: 'catalog:{category}' },
+            { label: 'Daily stats', ttl: 86400, jitter: 3600, key: 'stats:{date}:{metric}' },
+            { label: 'Rate limit counter', ttl: 60, jitter: 0, key: 'rate:{ip}:{endpoint}' },
+          ].map(s => (
+            <button class="strategy-btn w-full flex items-center justify-between border border-border rounded-lg px-3 py-2 hover:bg-bg text-left"
+              data-ttl={s.ttl} data-jitter={s.jitter} data-key={s.key}>
+              <span class="font-medium">{s.label}</span>
+              <span class="text-text-muted">{s.ttl >= 3600 ? (s.ttl/3600) + 'h' : s.ttl >= 60 ? (s.ttl/60) + 'm' : s.ttl + 's'}{s.jitter ? ` ±${s.jitter}s` : ''}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5 space-y-3">
+        <h2 class="text-sm font-semibold">Results</h2>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+          <div class="bg-bg rounded-lg p-3">
+            <div class="text-xs text-text-muted mb-1">Total seconds</div>
+            <div id="res-seconds" class="font-mono text-lg font-bold"></div>
+          </div>
+          <div class="bg-bg rounded-lg p-3">
+            <div class="text-xs text-text-muted mb-1">With jitter range</div>
+            <div id="res-jitter" class="font-mono text-sm"></div>
+          </div>
+          <div class="bg-bg rounded-lg p-3 col-span-2">
+            <div class="text-xs text-text-muted mb-1">Human readable</div>
+            <div id="res-human" class="text-sm"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Redis Commands</h2>
+        <div class="space-y-3">
+          {[
+            { id: 'cmd-expire', label: 'EXPIRE', desc: 'Set TTL on existing key' },
+            { id: 'cmd-pexpire', label: 'PEXPIRE', desc: 'Set TTL in milliseconds' },
+            { id: 'cmd-expireat', label: 'EXPIREAT', desc: 'Expire at Unix timestamp' },
+            { id: 'cmd-set-ex', label: 'SET EX', desc: 'Set value with TTL atomically' },
+          ].map(c => (
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs text-text-muted">{c.label} — {c.desc}</span>
+                <button class="copy-cmd text-xs text-text-muted border border-border px-2 py-0.5 rounded hover:bg-bg" data-target={c.id}>Copy</button>
+              </div>
+              <div id={c.id} class="text-xs font-mono bg-bg rounded px-3 py-2 text-text-muted"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-2">Jitter Code (Python)</h2>
+        <pre id="jitter-code" class="text-xs font-mono bg-bg rounded-lg px-3 py-2 text-text-muted whitespace-pre overflow-auto"></pre>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="in-content" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Redis TTL Calculator" relatedTags={['database', 'redis', 'caching', 'backend', 'devtools']} />
+</BaseLayout>
+
+<script>
+function gi(id: string) { return parseInt((document.getElementById(id) as HTMLInputElement)?.value || '0') || 0; }
+function sv(id: string) { return (document.getElementById(id) as HTMLInputElement)?.value || ''; }
+
+function setFromSeconds(s: number) {
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  (document.getElementById('ttl-days') as HTMLInputElement).value = String(d);
+  (document.getElementById('ttl-hours') as HTMLInputElement).value = String(h);
+  (document.getElementById('ttl-mins') as HTMLInputElement).value = String(m);
+  (document.getElementById('ttl-secs') as HTMLInputElement).value = String(sec);
+  update();
+}
+
+function humanDuration(s: number): string {
+  if (s === 0) return '0 seconds';
+  const parts: string[] = [];
+  const d = Math.floor(s / 86400); if (d) parts.push(`${d} day${d !== 1 ? 's' : ''}`);
+  const h = Math.floor((s % 86400) / 3600); if (h) parts.push(`${h} hour${h !== 1 ? 's' : ''}`);
+  const m = Math.floor((s % 3600) / 60); if (m) parts.push(`${m} minute${m !== 1 ? 's' : ''}`);
+  const sec = s % 60; if (sec) parts.push(`${sec} second${sec !== 1 ? 's' : ''}`);
+  return parts.join(', ');
+}
+
+function update() {
+  const d = gi('ttl-days'), h = gi('ttl-hours'), m = gi('ttl-mins'), s = gi('ttl-secs');
+  const jitter = gi('ttl-jitter');
+  const key = sv('ttl-key') || 'mykey';
+  const total = d * 86400 + h * 3600 + m * 60 + s;
+  const ms = total * 1000;
+  const expireAt = Math.floor(Date.now() / 1000) + total;
+
+  document.getElementById('res-seconds')!.textContent = total.toLocaleString() + 's';
+  document.getElementById('res-jitter')!.textContent = jitter > 0
+    ? `${(total - jitter).toLocaleString()}s – ${(total + jitter).toLocaleString()}s`
+    : 'No jitter set';
+  document.getElementById('res-human')!.textContent = humanDuration(total);
+
+  document.getElementById('cmd-expire')!.textContent = `EXPIRE ${key} ${total}`;
+  document.getElementById('cmd-pexpire')!.textContent = `PEXPIRE ${key} ${ms}`;
+  document.getElementById('cmd-expireat')!.textContent = `EXPIREAT ${key} ${expireAt}  # ~${new Date(expireAt * 1000).toISOString()}`;
+  document.getElementById('cmd-set-ex')!.textContent = `SET ${key} "value" EX ${total}`;
+
+  const jitterCode = jitter > 0 ? `import random
+import redis
+
+r = redis.Redis(host='localhost', port=6379)
+BASE_TTL = ${total}
+JITTER = ${jitter}
+
+def set_with_jitter(key: str, value: str) -> None:
+    ttl = BASE_TTL + random.randint(-JITTER, JITTER)
+    r.setex(key, ttl, value)
+
+# Usage
+set_with_jitter("${key}", "your_value")` :
+`# Set jitter above to generate jitter code
+import redis
+r = redis.Redis(host='localhost', port=6379)
+r.setex("${key}", ${total}, "your_value")`;
+  document.getElementById('jitter-code')!.textContent = jitterCode;
+}
+
+['ttl-days','ttl-hours','ttl-mins','ttl-secs','ttl-jitter','ttl-key'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', update);
+});
+
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => setFromSeconds(parseInt((e.currentTarget as HTMLElement).dataset.s!)));
+});
+
+document.querySelectorAll('.strategy-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const el = e.currentTarget as HTMLElement;
+    (document.getElementById('ttl-jitter') as HTMLInputElement).value = el.dataset.jitter!;
+    (document.getElementById('ttl-key') as HTMLInputElement).value = el.dataset.key!;
+    setFromSeconds(parseInt(el.dataset.ttl!));
+  });
+});
+
+document.querySelectorAll('.copy-cmd').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const target = (e.currentTarget as HTMLElement).dataset.target!;
+    navigator.clipboard.writeText(document.getElementById(target)!.textContent || '');
+  });
+});
+
+setFromSeconds(1800);
+</script>

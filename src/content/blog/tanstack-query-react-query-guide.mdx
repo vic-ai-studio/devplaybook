@@ -1,0 +1,415 @@
+---
+title: "TanStack Query (React Query) v5: Complete Guide to Server State Management"
+description: "Master TanStack Query v5: useQuery, useMutation, optimistic updates, infinite queries, prefetching, caching strategies, and integration with React Server Components."
+date: "2026-04-02"
+tags: [react, javascript, frontend, tanstack-query, web-development]
+readingTime: "9 min read"
+---
+
+# TanStack Query (React Query) v5: Complete Guide to Server State Management
+
+TanStack Query is the industry standard for server state in React applications. v5 brought object-based API, improved TypeScript, streaming support, and first-class SSR. This guide covers everything you need for production usage.
+
+---
+
+## Setup and Configuration
+
+```bash
+npm install @tanstack/react-query @tanstack/react-query-devtools
+```
+
+```tsx
+// app/providers.tsx
+'use client';
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { useState } from 'react';
+
+function makeQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60 * 1000,         // 1 minute — data is fresh for 1 minute
+        gcTime: 5 * 60 * 1000,        // 5 minutes — keep unused data in cache
+        retry: 2,                      // Retry failed requests twice
+        refetchOnWindowFocus: true,    // Refetch when tab regains focus
+      },
+      mutations: {
+        retry: 0,                      // Don't retry mutations
+      },
+    },
+  });
+}
+
+let browserQueryClient: QueryClient | undefined;
+
+function getQueryClient() {
+  if (typeof window === 'undefined') {
+    return makeQueryClient(); // Server: always new client
+  }
+  if (!browserQueryClient) browserQueryClient = makeQueryClient();
+  return browserQueryClient;
+}
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const queryClient = getQueryClient();
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
+  );
+}
+```
+
+---
+
+## useQuery: Fetching and Caching
+
+```tsx
+import { useQuery } from '@tanstack/react-query';
+
+// Define query keys as constants for consistency
+export const queryKeys = {
+  users: {
+    all: ['users'] as const,
+    list: (filters: UserFilters) => ['users', 'list', filters] as const,
+    detail: (id: string) => ['users', 'detail', id] as const,
+  },
+  products: {
+    all: ['products'] as const,
+    list: (page: number, category: string) => ['products', 'list', page, category] as const,
+  },
+};
+
+// Basic query
+function UserProfile({ userId }: { userId: string }) {
+  const {
+    data: user,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching, // true when background refetch is happening
+  } = useQuery({
+    queryKey: queryKeys.users.detail(userId),
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${userId}`);
+      if (!res.ok) throw new Error('Failed to fetch user');
+      return res.json() as Promise<User>;
+    },
+    staleTime: 5 * 60 * 1000, // Override default: 5 minutes
+    enabled: !!userId,         // Only fetch when userId is defined
+  });
+
+  if (isLoading) return <UserSkeleton />;
+  if (isError) return <ErrorMessage error={error} onRetry={refetch} />;
+  if (!user) return null;
+
+  return (
+    <div>
+      {isFetching && <small>Refreshing…</small>}
+      <h1>{user.name}</h1>
+      <p>{user.email}</p>
+    </div>
+  );
+}
+```
+
+---
+
+## useMutation: Mutations with Cache Updates
+
+```tsx
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+function UpdateUserForm({ user }: { user: User }) {
+  const queryClient = useQueryClient();
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: Partial<User>) => {
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Update failed');
+      return res.json();
+    },
+
+    // Optimistic update — immediately reflect changes in UI
+    onMutate: async (newData) => {
+      // Cancel any outgoing refetches (to avoid overwriting optimistic update)
+      await queryClient.cancelQueries({ queryKey: queryKeys.users.detail(user.id) });
+
+      // Snapshot current value
+      const previousUser = queryClient.getQueryData<User>(queryKeys.users.detail(user.id));
+
+      // Optimistically update cache
+      queryClient.setQueryData<User>(queryKeys.users.detail(user.id), old => ({
+        ...old!,
+        ...newData,
+      }));
+
+      // Return context with snapshot for rollback
+      return { previousUser };
+    },
+
+    // Rollback on error
+    onError: (error, _newData, context) => {
+      if (context?.previousUser) {
+        queryClient.setQueryData(queryKeys.users.detail(user.id), context.previousUser);
+      }
+      toast.error(`Failed to update: ${error.message}`);
+    },
+
+    // Refetch after success or error to ensure consistency
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.detail(user.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+    },
+
+    onSuccess: () => {
+      toast.success('Profile updated!');
+    },
+  });
+
+  return (
+    <form onSubmit={e => {
+      e.preventDefault();
+      const formData = new FormData(e.currentTarget);
+      updateMutation.mutate({ name: formData.get('name') as string });
+    }}>
+      <input name="name" defaultValue={user.name} />
+      <button type="submit" disabled={updateMutation.isPending}>
+        {updateMutation.isPending ? 'Saving…' : 'Save'}
+      </button>
+    </form>
+  );
+}
+```
+
+---
+
+## Infinite Queries: Pagination and Load More
+
+```tsx
+import { useInfiniteQuery } from '@tanstack/react-query';
+
+function PostFeed() {
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery({
+    queryKey: ['posts', 'feed'],
+    queryFn: async ({ pageParam }) => {
+      const res = await fetch(`/api/posts?cursor=${pageParam}&limit=20`);
+      return res.json() as Promise<{ posts: Post[]; nextCursor: string | null }>;
+    },
+    initialPageParam: '',                              // Start cursor
+    getNextPageParam: (lastPage) => lastPage.nextCursor, // Return null to stop
+  });
+
+  const allPosts = data?.pages.flatMap(page => page.posts) ?? [];
+
+  if (isLoading) return <FeedSkeleton />;
+
+  return (
+    <div>
+      {allPosts.map(post => <PostCard key={post.id} post={post} />)}
+
+      {hasNextPage && (
+        <button
+          onClick={() => fetchNextPage()}
+          disabled={isFetchingNextPage}
+        >
+          {isFetchingNextPage ? 'Loading more…' : 'Load more'}
+        </button>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## Prefetching for Better UX
+
+```tsx
+// Prefetch on hover — data is ready when user clicks
+function ProductLink({ product }: { product: Product }) {
+  const queryClient = useQueryClient();
+
+  const prefetch = () => {
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.products.detail(product.id),
+      queryFn: () => fetchProduct(product.id),
+      staleTime: 10 * 1000, // Don't prefetch if data is fresh
+    });
+  };
+
+  return (
+    <Link href={`/products/${product.id}`} onMouseEnter={prefetch}>
+      {product.name}
+    </Link>
+  );
+}
+```
+
+Server-side prefetching with Next.js App Router:
+
+```tsx
+// app/products/page.tsx (Server Component)
+import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query';
+
+export default async function ProductsPage() {
+  const queryClient = new QueryClient();
+
+  // Prefetch on server — no loading state on client
+  await queryClient.prefetchQuery({
+    queryKey: queryKeys.products.list(1, 'all'),
+    queryFn: () => fetchProducts({ page: 1, category: 'all' }),
+  });
+
+  return (
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <ProductList />
+    </HydrationBoundary>
+  );
+}
+
+// app/products/ProductList.tsx (Client Component)
+'use client';
+function ProductList() {
+  // Data is already in cache from server prefetch — no loading spinner!
+  const { data } = useQuery({
+    queryKey: queryKeys.products.list(1, 'all'),
+    queryFn: () => fetchProducts({ page: 1, category: 'all' }),
+  });
+
+  return <>{data?.products.map(p => <ProductCard key={p.id} product={p} />)}</>;
+}
+```
+
+---
+
+## Query Invalidation Strategies
+
+```tsx
+const queryClient = useQueryClient();
+
+// Invalidate everything under 'users'
+queryClient.invalidateQueries({ queryKey: ['users'] });
+
+// Invalidate exact key only
+queryClient.invalidateQueries({ queryKey: ['users', 'detail', userId], exact: true });
+
+// Invalidate and immediately refetch (don't wait for next focus/mount)
+queryClient.invalidateQueries({
+  queryKey: ['users'],
+  refetchType: 'active', // Only refetch currently rendered queries
+});
+
+// Remove from cache entirely (no background refetch)
+queryClient.removeQueries({ queryKey: ['users', 'detail', userId] });
+
+// Update cache directly without refetch
+queryClient.setQueryData<User[]>(['users', 'list'], old =>
+  old ? old.filter(u => u.id !== deletedUserId) : []
+);
+```
+
+---
+
+## Error Handling and Retry
+
+```tsx
+// Global error handling
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Exponential backoff retry
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30000),
+      // Don't retry 4xx errors
+      retry: (failureCount, error) => {
+        if (error instanceof HttpError && error.status < 500) return false;
+        return failureCount < 3;
+      },
+    },
+  },
+});
+
+// Per-query error handling with React error boundaries
+import { QueryErrorResetBoundary } from '@tanstack/react-query';
+
+function ProductPageWithErrorBoundary() {
+  return (
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ErrorBoundary
+          onReset={reset}
+          fallbackRender={({ resetErrorBoundary }) => (
+            <div>
+              <p>Something went wrong loading products.</p>
+              <button onClick={resetErrorBoundary}>Try again</button>
+            </div>
+          )}
+        >
+          <Suspense fallback={<ProductSkeleton />}>
+            <ProductList />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
+  );
+}
+```
+
+---
+
+## Custom Query Hook Pattern
+
+Always wrap `useQuery` in custom hooks for reusability and type safety:
+
+```tsx
+// hooks/useUser.ts
+export function useUser(userId: string) {
+  return useQuery({
+    queryKey: queryKeys.users.detail(userId),
+    queryFn: () => userApi.getById(userId),
+    enabled: !!userId,
+    select: (data) => ({
+      ...data,
+      fullName: `${data.firstName} ${data.lastName}`,
+      isAdmin: data.roles.includes('admin'),
+    }),
+  });
+}
+
+// hooks/useUpdateUser.ts
+export function useUpdateUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: userApi.update,
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData(queryKeys.users.detail(updatedUser.id), updatedUser);
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+    },
+  });
+}
+
+// Usage
+function Profile({ userId }: { userId: string }) {
+  const { data: user, isLoading } = useUser(userId);
+  const { mutate: updateUser } = useUpdateUser();
+
+  if (isLoading) return <Skeleton />;
+  return <form onSubmit={/* … */}>{user?.fullName}</form>;
+}
+```
+
+Use the [React Query Config Builder](/tools/react-query-config-builder) to generate TanStack Query configuration and the [React Hook Form Builder](/tools/react-hook-form-builder) for form integration.
