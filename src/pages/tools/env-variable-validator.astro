@@ -1,0 +1,317 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is a .env file and why does it need validating?", answer: ".env files store environment variables — configuration values and secrets (API keys, database URLs, passwords) that your application reads at runtime. They should never be committed to version control. Validation catches common problems before they cause runtime failures: malformed syntax, duplicate keys that silently override each other, missing required variables, or accidentally hardcoded secrets." },
+  { question: "What counts as a potential secret in .env values?", answer: "This tool flags values that match patterns commonly used for secrets: long random strings (>20 chars with mixed case and numbers), values starting with common key prefixes (sk-, pk-, AKIA, ghp_, xoxb-), base64-looking strings, and values containing words like 'password', 'secret', 'token', 'key'. These warnings don't mean your value is definitely a secret — they're prompts to double-check before committing." },
+  { question: "What is the correct .env file syntax?", answer: ".env files follow a simple KEY=value format. Rules: one variable per line, no spaces around the = sign, values with spaces or special characters should be quoted (KEY=\"value with spaces\"), lines starting with # are comments. Empty lines are ignored. Keys should be uppercase with underscores. Values can be unquoted (KEY=simple), single-quoted (KEY='value'), or double-quoted (KEY=\"value\")." },
+  { question: "What happens if I have duplicate keys in .env?", answer: "The behavior depends on the library loading your .env file. Most (dotenv for Node.js, python-dotenv) use the first occurrence and silently ignore duplicates. Some use the last. This inconsistency is a common source of bugs — you change a variable and can't figure out why the old value keeps appearing. This tool detects duplicates and flags all occurrences so you can clean them up." },
+  { question: "Should I commit my .env file to Git?", answer: "Never commit your actual .env file containing secrets to version control. Instead, commit a .env.example file with all the expected keys but empty or placeholder values (e.g. DATABASE_URL=), so other developers know what variables are needed. Add .env to your .gitignore. For team deployments, use a secrets manager (AWS Secrets Manager, HashiCorp Vault, Doppler) or your hosting platform's environment variable settings." },
+  { question: "How do I specify required variables in this tool?", answer: "In the 'Required Keys' input, enter the variable names you expect to be present, separated by commas or newlines (e.g. DATABASE_URL, API_KEY, PORT). The tool will flag any required key that is missing from the pasted .env content, helping you catch forgotten variables before deploying to a new environment." },
+];
+---
+
+<BaseLayout
+  title=".env File Validator — Syntax, Duplicate Keys & Secrets Detector"
+  description="Validate .env files for syntax errors, duplicate keys, missing required variables, and potential secrets. Paste your .env content for instant analysis with a parsed variables table."
+  tool=".env Validator, Environment Variable Checker, Dotenv Linter, Secrets Detector, .env Syntax Checker, Missing Env Vars"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">.env File Validator</h1>
+  <p class="text-text-muted mb-4">Paste your .env file contents to check for syntax errors, duplicate keys, missing required variables, and potential secrets. Parsed variable table included. No data leaves your browser.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Syntax validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Duplicate key detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Secrets pattern detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Required vars check</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 100% client-side</span>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">.env Contents</h2>
+      <div class="flex gap-2">
+        <button id="load-example" class="text-xs px-3 py-1.5 bg-bg-surface border border-border rounded-lg hover:border-primary hover:text-primary transition-colors">Load Example</button>
+        <button id="clear-btn" class="text-xs px-3 py-1.5 bg-bg-surface border border-border rounded-lg hover:border-primary hover:text-primary transition-colors">Clear</button>
+      </div>
+    </div>
+    <textarea
+      id="env-input"
+      class="w-full h-48 bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+      placeholder="Paste your .env file contents here..."
+      spellcheck="false"
+    ></textarea>
+    <div class="mt-3">
+      <label class="block text-sm font-medium mb-1.5">Required Keys <span class="text-text-muted font-normal">(optional — comma or newline separated)</span></label>
+      <textarea
+        id="required-keys"
+        class="w-full h-16 bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+        placeholder="DATABASE_URL, API_KEY, PORT, NODE_ENV"
+        spellcheck="false"
+      ></textarea>
+    </div>
+    <button id="validate-btn" class="mt-3 bg-primary text-white px-5 py-2 rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium">
+      Validate .env
+    </button>
+  </div>
+
+  <!-- Results -->
+  <div id="results-container" class="hidden">
+    <!-- Summary -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <div class="flex flex-wrap items-center gap-4">
+        <h2 class="text-base font-semibold">Summary</h2>
+        <div class="flex gap-3 text-sm ml-auto flex-wrap">
+          <span id="count-vars" class="px-3 py-1 rounded-lg bg-bg-surface border border-border text-text-muted font-medium">0 Variables</span>
+          <span id="count-errors" class="px-3 py-1 rounded-lg bg-red-500/10 text-red-500 font-medium">0 Errors</span>
+          <span id="count-warnings" class="px-3 py-1 rounded-lg bg-yellow-500/10 text-yellow-500 font-medium">0 Warnings</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Issues -->
+    <div id="issues-list" class="space-y-3 mb-5"></div>
+
+    <!-- Variables table -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Parsed Variables</h2>
+        <button id="copy-table" class="text-xs px-3 py-1.5 bg-bg-surface border border-border rounded-lg hover:border-primary hover:text-primary transition-colors">Copy as JSON</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border text-left text-text-muted">
+              <th class="pb-2 pr-4 font-medium">#</th>
+              <th class="pb-2 pr-4 font-medium">Key</th>
+              <th class="pb-2 pr-4 font-medium">Value Preview</th>
+              <th class="pb-2 font-medium">Flags</th>
+            </tr>
+          </thead>
+          <tbody id="vars-table-body" class="divide-y divide-border"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- All-clear -->
+    <div id="all-clear" class="hidden bg-green-500/10 border border-green-500/30 rounded-xl p-5 mb-5 text-center">
+      <div class="text-2xl mb-2">✓</div>
+      <p class="text-green-500 font-semibold">No issues found!</p>
+      <p class="text-text-muted text-sm mt-1">Your .env file looks clean. Remember to never commit it to version control.</p>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="env-variable-validator" relatedTags={['dotenv', 'env-file', 'security', 'devops', 'configuration']} />
+</BaseLayout>
+
+<script>
+const EXAMPLE_ENV = `# Application settings
+NODE_ENV=development
+PORT=3000
+APP_NAME=My Awesome App
+
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/mydb
+DB_HOST=localhost
+DB_PORT=5432
+
+# API Keys
+STRIPE_SECRET_KEY=sk_live_4eC39HqLyjWDarjtT1zdp7dc
+OPENAI_API_KEY=sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
+GITHUB_TOKEN=ghp_16C7e42F292c6912E7710c838347Ae5b6
+
+# Duplicate key (intentional for demo)
+PORT=4000
+
+# Malformed line
+MISSING_EQUALS this has no equals sign
+= EMPTY_KEY
+
+# Empty value (fine)
+OPTIONAL_FEATURE=
+`;
+
+const SECRET_PREFIXES = ['sk_live_', 'sk_test_', 'sk-', 'pk_live_', 'pk_test_', 'AKIA', 'ghp_', 'gho_', 'ghs_', 'xoxb-', 'xoxp-', 'xoxa-', 'ya29.', 'AIza'];
+const SECRET_KEYWORDS = ['password', 'passwd', 'secret', 'private_key', 'api_key', 'auth_token', 'access_token', 'client_secret'];
+
+function looksLikeSecret(key, value) {
+  if (!value || value.length < 8) return false;
+  const lk = key.toLowerCase();
+  if (SECRET_KEYWORDS.some(kw => lk.includes(kw))) return true;
+  if (SECRET_PREFIXES.some(p => value.startsWith(p))) return true;
+  // long random-looking string
+  if (value.length > 20 && /^[A-Za-z0-9+/=_\-]+$/.test(value) && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value)) return true;
+  return false;
+}
+
+function maskValue(val) {
+  if (!val) return '(empty)';
+  if (val.length <= 4) return '****';
+  return val.slice(0, 4) + '…' + '*'.repeat(Math.min(val.length - 4, 8));
+}
+
+function parseEnv(raw) {
+  const lines = raw.split('\n');
+  const variables = [];
+  const issues = [];
+  const keyMap = {};
+
+  lines.forEach((line, idx) => {
+    const lineNum = idx + 1;
+    const trimmed = line.trim();
+
+    // Skip empty lines and comments
+    if (trimmed === '' || trimmed.startsWith('#')) return;
+
+    const eqIdx = trimmed.indexOf('=');
+
+    if (eqIdx === -1) {
+      issues.push({ severity: 'error', line: lineNum, message: `Malformed line ${lineNum}: no "=" found`, detail: `"${trimmed}" — every variable must follow the format KEY=value.` });
+      return;
+    }
+
+    const rawKey = trimmed.slice(0, eqIdx).trim();
+    let rawVal = trimmed.slice(eqIdx + 1).trim();
+
+    if (!rawKey) {
+      issues.push({ severity: 'error', line: lineNum, message: `Line ${lineNum}: empty key`, detail: `A line starts with "=" but has no key name before it.` });
+      return;
+    }
+
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(rawKey)) {
+      issues.push({ severity: 'warning', line: lineNum, message: `Line ${lineNum}: key "${rawKey}" has unusual characters`, detail: `Environment variable names should start with a letter or underscore and contain only letters, numbers, and underscores.` });
+    }
+
+    // Strip quotes
+    let value = rawVal;
+    if ((rawVal.startsWith('"') && rawVal.endsWith('"')) || (rawVal.startsWith("'") && rawVal.endsWith("'"))) {
+      value = rawVal.slice(1, -1);
+    }
+
+    // Duplicate check
+    if (keyMap[rawKey] !== undefined) {
+      issues.push({ severity: 'error', line: lineNum, message: `Duplicate key "${rawKey}" (lines ${keyMap[rawKey]} and ${lineNum})`, detail: `Duplicate keys cause inconsistent behavior. The value used depends on the library — either the first or last occurrence wins.` });
+    } else {
+      keyMap[rawKey] = lineNum;
+    }
+
+    const isSecret = looksLikeSecret(rawKey, value);
+    if (isSecret) {
+      issues.push({ severity: 'warning', line: lineNum, message: `Potential secret in "${rawKey}"`, detail: `The value of ${rawKey} looks like an API key, token, or password. Ensure this file is in .gitignore and never committed to version control.` });
+    }
+
+    variables.push({ key: rawKey, value, line: lineNum, isSecret });
+  });
+
+  return { variables, issues };
+}
+
+function checkRequired(variables, requiredRaw) {
+  const issues = [];
+  if (!requiredRaw.trim()) return issues;
+  const required = requiredRaw.split(/[\n,]/).map(k => k.trim().toUpperCase()).filter(Boolean);
+  const presentKeys = new Set(variables.map(v => v.key.toUpperCase()));
+  required.forEach(req => {
+    if (!presentKeys.has(req)) {
+      issues.push({ severity: 'error', line: null, message: `Missing required variable: ${req}`, detail: `"${req}" is listed as required but was not found in the .env file.` });
+    }
+  });
+  return issues;
+}
+
+function render(variables, issues) {
+  const container = document.getElementById('results-container');
+  container.classList.remove('hidden');
+
+  const errors = issues.filter(i => i.severity === 'error').length;
+  const warnings = issues.filter(i => i.severity === 'warning').length;
+
+  document.getElementById('count-vars').textContent = `${variables.length} Variable${variables.length !== 1 ? 's' : ''}`;
+  document.getElementById('count-errors').textContent = `${errors} Error${errors !== 1 ? 's' : ''}`;
+  document.getElementById('count-warnings').textContent = `${warnings} Warning${warnings !== 1 ? 's' : ''}`;
+
+  const allClear = document.getElementById('all-clear');
+  const issuesList = document.getElementById('issues-list');
+
+  if (issues.length === 0) {
+    allClear.classList.remove('hidden');
+    issuesList.innerHTML = '';
+  } else {
+    allClear.classList.add('hidden');
+    issuesList.innerHTML = issues.map(issue => {
+      const isError = issue.severity === 'error';
+      const bg = isError ? 'bg-red-500/10 border-red-500/30' : 'bg-yellow-500/10 border-yellow-500/30';
+      const badge = isError ? 'bg-red-500 text-white' : 'bg-yellow-500 text-white';
+      const lineLabel = issue.line ? ` · line ${issue.line}` : '';
+      return `
+        <div class="${bg} border rounded-xl p-4">
+          <div class="flex items-start gap-3">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${badge} shrink-0 mt-0.5">${issue.severity.toUpperCase()}</span>
+            <div>
+              <p class="text-sm font-medium">${issue.message}<span class="text-text-muted font-normal">${lineLabel}</span></p>
+              <p class="text-sm text-text-muted mt-1">${issue.detail}</p>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Table
+  const tbody = document.getElementById('vars-table-body');
+  if (variables.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-text-muted text-sm">No valid variables parsed.</td></tr>';
+  } else {
+    tbody.innerHTML = variables.map((v, i) => {
+      const flags = [];
+      if (v.isSecret) flags.push('<span class="text-xs px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-500">secret?</span>');
+      return `
+        <tr class="hover:bg-bg-surface/50">
+          <td class="py-2 pr-4 text-text-muted">${i + 1}</td>
+          <td class="py-2 pr-4 font-mono font-medium">${v.key}</td>
+          <td class="py-2 pr-4 font-mono text-text-muted">${v.isSecret ? maskValue(v.value) : (v.value || '<span class="italic">(empty)</span>')}</td>
+          <td class="py-2">${flags.join(' ') || '<span class="text-text-muted text-xs">—</span>'}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // JSON copy
+  const jsonData = Object.fromEntries(variables.map(v => [v.key, v.isSecret ? '[REDACTED]' : v.value]));
+  document.getElementById('copy-table').onclick = () => {
+    navigator.clipboard.writeText(JSON.stringify(jsonData, null, 2)).then(() => {
+      const btn = document.getElementById('copy-table');
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      btn.classList.add('text-green-500', 'border-green-500');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('text-green-500', 'border-green-500'); }, 1500);
+    });
+  };
+}
+
+document.getElementById('validate-btn').addEventListener('click', () => {
+  const raw = document.getElementById('env-input').value;
+  if (!raw.trim()) return;
+  const { variables, issues } = parseEnv(raw);
+  const requiredIssues = checkRequired(variables, document.getElementById('required-keys').value);
+  render(variables, [...requiredIssues, ...issues]);
+});
+
+document.getElementById('load-example').addEventListener('click', () => {
+  document.getElementById('env-input').value = EXAMPLE_ENV;
+  document.getElementById('required-keys').value = 'DATABASE_URL, PORT, NODE_ENV, REDIS_URL';
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  document.getElementById('env-input').value = '';
+  document.getElementById('required-keys').value = '';
+  document.getElementById('results-container').classList.add('hidden');
+});
+</script>

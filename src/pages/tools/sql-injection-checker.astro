@@ -1,0 +1,357 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is SQL injection and why is it dangerous?", answer: "SQL injection (SQLi) is the #1 web security vulnerability (OWASP Top 10). It occurs when user-supplied input is inserted directly into a SQL query without proper sanitization. An attacker can manipulate the query to bypass authentication (OR 1=1), extract all database records (UNION SELECT), delete data (DROP TABLE), or even execute OS commands on the database server. A single vulnerable input field can compromise an entire database." },
+  { question: "What is a parameterized query and how does it prevent SQLi?", answer: "A parameterized query (also called a prepared statement) separates the SQL code from the data. Instead of building a string like 'SELECT * FROM users WHERE id=' + userId, you write 'SELECT * FROM users WHERE id = ?' and pass userId as a separate parameter. The database driver handles escaping and quoting, making it structurally impossible for the data to be interpreted as SQL code. This is the gold standard defense." },
+  { question: "What SQL injection patterns does this tool detect?", answer: "This tool checks for common injection patterns: UNION SELECT attacks (data extraction), Boolean-based blind injection (OR 1=1, AND 1=2), comment injection (-- , #, /**/), stacked queries (semicolons), tautologies and always-true conditions, common SQLi function calls (SLEEP, BENCHMARK, WAITFOR, LOAD_FILE, INTO OUTFILE), and encoded/obfuscated variants. It's educational and not a replacement for a full security scanner." },
+  { question: "Does this tool check my actual database?", answer: "No. This tool only analyzes the text you paste — it detects SQL injection patterns in the string itself. No network requests are made, no database is connected. It's a learning and code review aid to spot suspicious patterns in query strings or user input values before they reach your database layer." },
+  { question: "What is the difference between first-order and second-order SQL injection?", answer: "First-order injection happens immediately — the malicious input is used in a query right away. Second-order (or stored) injection is more subtle: the malicious input is stored in the database safely, but then later retrieved and used unsanitized in a different query. Second-order injection is why you should always use parameterized queries when reading data back out of the database, not just when writing." },
+  { question: "Are ORMs and query builders safe from SQL injection?", answer: "Modern ORMs (Sequelize, Prisma, SQLAlchemy, ActiveRecord) use parameterized queries by default, making them safe for standard operations. However, they become vulnerable when you use raw query escape hatches: Sequelize.literal(), cursor.execute(f'... {val}'), or .where('column = ' + val). Always treat raw SQL fragments inside an ORM as a red flag and pass values as bind parameters instead." },
+];
+---
+
+<BaseLayout
+  title="SQL Injection Checker — Pattern Detector & Parameterized Query Guide"
+  description="Paste a SQL query or user input to detect SQL injection patterns: UNION SELECT, OR 1=1, comment injection, stacked queries, and more. Get risk level and parameterized query examples."
+  tool="SQL Injection Checker, SQLi Detector, SQL Injection Pattern Scanner, OWASP SQLi, Parameterized Query Generator, SQL Security Checker"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">SQL Injection Pattern Checker</h1>
+  <p class="text-text-muted mb-4">Paste a SQL query or user input value to detect common SQL injection patterns. See risk level, why each pattern is dangerous, and how to fix it with parameterized queries.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 15+ injection patterns</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Risk level rating</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Educational explanations</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Parameterized query examples</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> No data sent to server</span>
+  </div>
+
+  <!-- Mode + Input -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
+      <h2 class="text-base font-semibold">Input</h2>
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex gap-1 bg-bg-surface border border-border rounded-lg p-1">
+          <button id="mode-query" class="mode-btn px-3 py-1 rounded text-sm font-medium bg-primary text-white transition-colors">SQL Query</button>
+          <button id="mode-input" class="mode-btn px-3 py-1 rounded text-sm text-text-muted hover:text-white transition-colors">User Input Value</button>
+        </div>
+        <div class="flex gap-2">
+          <button id="load-example" class="text-xs px-3 py-1.5 bg-bg-surface border border-border rounded-lg hover:border-primary hover:text-primary transition-colors">Load Example</button>
+          <button id="clear-btn" class="text-xs px-3 py-1.5 bg-bg-surface border border-border rounded-lg hover:border-primary hover:text-primary transition-colors">Clear</button>
+        </div>
+      </div>
+    </div>
+    <textarea
+      id="sql-input"
+      class="w-full h-40 bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+      placeholder="Paste a SQL query or user input value to check..."
+      spellcheck="false"
+    ></textarea>
+    <button id="check-btn" class="mt-3 bg-primary text-white px-5 py-2 rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium">
+      Check for Injection
+    </button>
+  </div>
+
+  <!-- Results -->
+  <div id="results-container" class="hidden">
+    <!-- Risk badge -->
+    <div id="risk-banner" class="rounded-xl p-5 mb-5 border">
+      <div class="flex items-center gap-4">
+        <div id="risk-icon" class="text-4xl"></div>
+        <div>
+          <div class="flex items-center gap-3">
+            <span class="text-lg font-bold">Risk Level:</span>
+            <span id="risk-label" class="text-lg font-bold"></span>
+          </div>
+          <p id="risk-summary" class="text-sm text-text-muted mt-0.5"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detected patterns -->
+    <div id="patterns-section" class="hidden mb-5">
+      <h2 class="text-base font-semibold mb-3">Detected Patterns</h2>
+      <div id="patterns-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Parameterized query example -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Parameterized Query Example</h2>
+        <button id="copy-fix" class="text-xs px-3 py-1.5 bg-bg-surface border border-border rounded-lg hover:border-primary hover:text-primary transition-colors">Copy</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <p class="text-xs text-red-500 font-medium mb-1.5">VULNERABLE — string concatenation</p>
+          <pre id="code-bad" class="font-mono text-xs bg-bg-surface border border-red-500/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap text-text-muted"></pre>
+        </div>
+        <div>
+          <p class="text-xs text-green-500 font-medium mb-1.5">SAFE — parameterized query</p>
+          <pre id="code-good" class="font-mono text-xs bg-bg-surface border border-green-500/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap text-text-muted"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sanitized output -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <div class="flex items-center justify-between mb-2">
+        <div>
+          <h2 class="text-base font-semibold">Sanitized / Escaped Version</h2>
+          <p class="text-xs text-text-muted mt-0.5">For display only — always prefer parameterized queries over string escaping.</p>
+        </div>
+        <button id="copy-sanitized" class="text-xs px-3 py-1.5 bg-bg-surface border border-border rounded-lg hover:border-primary hover:text-primary transition-colors">Copy</button>
+      </div>
+      <pre id="sanitized-output" class="font-mono text-sm bg-bg-surface rounded-lg p-4 overflow-x-auto text-text-muted whitespace-pre-wrap"></pre>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="sql-injection-checker" relatedTags={['sql', 'security', 'sql-injection', 'database', 'owasp']} />
+</BaseLayout>
+
+<script>
+const EXAMPLES = {
+  query: `SELECT * FROM users WHERE username = 'admin' OR '1'='1' -- ' AND password = 'anything'`,
+  input: `' OR 1=1 UNION SELECT username, password, NULL FROM users --`,
+};
+
+const PATTERNS = [
+  {
+    id: 'union_select',
+    risk: 'high',
+    label: 'UNION SELECT — Data Extraction',
+    regex: /union\s+(?:all\s+)?select/i,
+    why: 'UNION SELECT appends a second query result to the original, allowing an attacker to extract data from any table in the database (usernames, passwords, credit cards, etc.).',
+    example: "' UNION SELECT username, password FROM users --",
+  },
+  {
+    id: 'or_tautology',
+    risk: 'high',
+    label: "OR Tautology (OR 1=1, OR 'a'='a')",
+    regex: /\bor\b\s*['"]?\s*[1a]\s*['"]?\s*=\s*['"]?\s*[1a]\b/i,
+    why: "Adding OR 1=1 makes the WHERE clause always true, bypassing authentication or returning all rows instead of just the matching one. Classic login bypass.",
+    example: "' OR '1'='1",
+  },
+  {
+    id: 'comment_injection',
+    risk: 'high',
+    label: 'Comment Injection (-- or # or /*)',
+    regex: /--|#|\/\*/,
+    why: 'SQL comments truncate the rest of the query. Used after injected code to "comment out" the original WHERE conditions, passwords, or closing quotes.',
+    example: "admin' --",
+  },
+  {
+    id: 'stacked_queries',
+    risk: 'high',
+    label: 'Stacked Queries (semicolon)',
+    regex: /;\s*(select|insert|update|delete|drop|create|alter|exec|execute)/i,
+    why: "Stacked queries use a semicolon to end the original query and start a new one — enabling DROP TABLE, INSERT, or arbitrary command execution if the database supports multiple statements.",
+    example: "1; DROP TABLE users --",
+  },
+  {
+    id: 'drop_table',
+    risk: 'high',
+    label: 'DROP / TRUNCATE — Destructive DDL',
+    regex: /\b(drop|truncate)\s+table\b/i,
+    why: 'DROP TABLE permanently deletes an entire table. TRUNCATE removes all rows. These commands in user input indicate a destructive injection attempt.',
+    example: "'; DROP TABLE orders; --",
+  },
+  {
+    id: 'sleep_benchmark',
+    risk: 'high',
+    label: 'Time-Based Blind Injection (SLEEP, BENCHMARK, WAITFOR)',
+    regex: /\b(sleep\s*\(|benchmark\s*\(|waitfor\s+delay\b|pg_sleep\s*\()/i,
+    why: 'Time-delay functions are used in blind injection when the attacker cannot see the output. By causing measurable delays (e.g. SLEEP(5)), they infer data one bit at a time.',
+    example: "' AND SLEEP(5) --",
+  },
+  {
+    id: 'file_operations',
+    risk: 'high',
+    label: 'File Read/Write (LOAD_FILE, INTO OUTFILE)',
+    regex: /\b(load_file|into\s+outfile|into\s+dumpfile)\b/i,
+    why: 'MySQL/MariaDB functions LOAD_FILE() and INTO OUTFILE can read from or write to the server filesystem when the DB user has FILE privilege — enabling full server compromise.',
+    example: "' UNION SELECT LOAD_FILE('/etc/passwd') --",
+  },
+  {
+    id: 'and_false',
+    risk: 'medium',
+    label: "AND False Condition (AND 1=2, AND 0=1)",
+    regex: /\band\b\s*[0-9]\s*=\s*[0-9]/i,
+    why: "AND false conditions are used in Boolean-based blind injection to cause a query to return no results, confirming the injection point is active.",
+    example: "' AND 1=2 --",
+  },
+  {
+    id: 'exec_xp',
+    risk: 'high',
+    label: 'Stored Procedure Execution (EXEC, xp_cmdshell)',
+    regex: /\b(exec|execute|xp_cmdshell|sp_executesql)\b/i,
+    why: "SQL Server's xp_cmdshell executes OS commands with the SQL Server service account's privileges — one of the most severe SQLi outcomes. EXEC can run arbitrary stored procedures.",
+    example: "'; EXEC xp_cmdshell('whoami') --",
+  },
+  {
+    id: 'hex_encoding',
+    risk: 'medium',
+    label: 'Hex/Char Encoding (0x…, CHAR())',
+    regex: /\b(0x[0-9a-f]{4,}|char\s*\()/i,
+    why: 'Attackers encode payloads as hex literals (0x...) or CHAR() sequences to bypass keyword filters and WAFs that block words like UNION or SELECT.',
+    example: "' UNION SELECT 0x61646d696e --",
+  },
+  {
+    id: 'information_schema',
+    risk: 'medium',
+    label: 'Schema Enumeration (information_schema)',
+    regex: /\binformation_schema\b/i,
+    why: 'information_schema is a meta-database that lists all tables, columns, and databases. Attackers query it after gaining injection access to map the schema before extracting data.',
+    example: "' UNION SELECT table_name FROM information_schema.tables --",
+  },
+  {
+    id: 'single_quote',
+    risk: 'low',
+    label: "Unescaped Single Quote (')",
+    regex: /'/,
+    why: "A lone single quote is the simplest injection probe — it closes the string context in the SQL query, potentially causing a syntax error (revealing the injection point) or breaking the query logic.",
+    example: "' (test probe — may cause syntax error)",
+  },
+];
+
+let currentMode = 'query';
+let lastInput = '';
+
+function getRiskLevel(matches) {
+  if (matches.some(m => m.risk === 'high')) return 'high';
+  if (matches.some(m => m.risk === 'medium')) return 'medium';
+  if (matches.length > 0) return 'low';
+  return 'none';
+}
+
+function sanitize(input) {
+  return input
+    .replace(/'/g, "''")
+    .replace(/;/g, '')
+    .replace(/--/g, '')
+    .replace(/\/\*/g, '')
+    .replace(/\*\//g, '');
+}
+
+const PARAM_EXAMPLES = {
+  node: {
+    bad: `// Node.js + mysql2 — VULNERABLE\nconst query = "SELECT * FROM users WHERE username = '" + username + "'";\nconnection.query(query, callback);`,
+    good: `// Node.js + mysql2 — SAFE\nconst query = "SELECT * FROM users WHERE username = ?";\nconnection.query(query, [username], callback);`,
+  },
+  python: {
+    bad: `# Python + sqlite3 — VULNERABLE\ncursor.execute("SELECT * FROM users WHERE id = " + user_id)`,
+    good: `# Python + sqlite3 — SAFE\ncursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))`,
+  },
+};
+
+function renderResults(input) {
+  const container = document.getElementById('results-container');
+  container.classList.remove('hidden');
+
+  const matches = PATTERNS.filter(p => p.regex.test(input));
+  const risk = getRiskLevel(matches);
+
+  // Risk banner
+  const banner = document.getElementById('risk-banner');
+  const riskConfig = {
+    high:   { bg: 'bg-red-500/10 border-red-500/30',    icon: '🚨', label: 'HIGH',   labelClass: 'text-red-500',    summary: 'Critical injection patterns detected. This input can likely compromise your database.' },
+    medium: { bg: 'bg-yellow-500/10 border-yellow-500/30', icon: '⚠️', label: 'MEDIUM', labelClass: 'text-yellow-500', summary: 'Suspicious patterns found. May indicate an injection attempt or require further review.' },
+    low:    { bg: 'bg-blue-500/10 border-blue-500/30',   icon: '🔍', label: 'LOW',    labelClass: 'text-blue-500',   summary: 'Minor patterns detected. Could be legitimate, but worth reviewing in context.' },
+    none:   { bg: 'bg-green-500/10 border-green-500/30', icon: '✓',  label: 'NONE',  labelClass: 'text-green-500',  summary: 'No common SQL injection patterns detected in this input.' },
+  };
+  const rc = riskConfig[risk];
+  banner.className = `${rc.bg} rounded-xl p-5 mb-5 border`;
+  document.getElementById('risk-icon').textContent = rc.icon;
+  document.getElementById('risk-label').textContent = rc.label;
+  document.getElementById('risk-label').className = `text-lg font-bold ${rc.labelClass}`;
+  document.getElementById('risk-summary').textContent = rc.summary;
+
+  // Patterns
+  const pSection = document.getElementById('patterns-section');
+  const pList = document.getElementById('patterns-list');
+  if (matches.length === 0) {
+    pSection.classList.add('hidden');
+  } else {
+    pSection.classList.remove('hidden');
+    const riskColors = { high: 'bg-red-500', medium: 'bg-yellow-500', low: 'bg-blue-500' };
+    const riskBg = { high: 'bg-red-500/10 border-red-500/30', medium: 'bg-yellow-500/10 border-yellow-500/30', low: 'bg-blue-500/10 border-blue-500/30' };
+    pList.innerHTML = matches.map(m => `
+      <div class="${riskBg[m.risk]} border rounded-xl p-4">
+        <div class="flex items-start gap-3">
+          <span class="inline-flex px-2 py-0.5 rounded text-xs font-bold text-white ${riskColors[m.risk]} shrink-0 mt-0.5">${m.risk.toUpperCase()}</span>
+          <div>
+            <p class="text-sm font-semibold">${m.label}</p>
+            <p class="text-sm text-text-muted mt-1"><span class="font-medium">Why it's dangerous:</span> ${m.why}</p>
+            <p class="text-sm mt-1"><span class="font-medium">Example pattern:</span> <code class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">${m.example}</code></p>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Parameterized query examples
+  const ex = PARAM_EXAMPLES.node;
+  document.getElementById('code-bad').textContent = ex.bad;
+  document.getElementById('code-good').textContent = ex.good;
+
+  document.getElementById('copy-fix').onclick = () => {
+    navigator.clipboard.writeText(ex.good).then(() => {
+      const btn = document.getElementById('copy-fix');
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      btn.classList.add('text-green-500', 'border-green-500');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('text-green-500', 'border-green-500'); }, 1500);
+    });
+  };
+
+  // Sanitized
+  const sanitized = sanitize(input);
+  document.getElementById('sanitized-output').textContent = sanitized;
+
+  document.getElementById('copy-sanitized').onclick = () => {
+    navigator.clipboard.writeText(sanitized).then(() => {
+      const btn = document.getElementById('copy-sanitized');
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      btn.classList.add('text-green-500', 'border-green-500');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('text-green-500', 'border-green-500'); }, 1500);
+    });
+  };
+}
+
+document.getElementById('check-btn').addEventListener('click', () => {
+  const input = document.getElementById('sql-input').value.trim();
+  if (!input) return;
+  lastInput = input;
+  renderResults(input);
+});
+
+document.getElementById('load-example').addEventListener('click', () => {
+  document.getElementById('sql-input').value = EXAMPLES[currentMode];
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  document.getElementById('sql-input').value = '';
+  document.getElementById('results-container').classList.add('hidden');
+});
+
+document.getElementById('mode-query').addEventListener('click', () => {
+  currentMode = 'query';
+  document.getElementById('mode-query').className = 'mode-btn px-3 py-1 rounded text-sm font-medium bg-primary text-white transition-colors';
+  document.getElementById('mode-input').className = 'mode-btn px-3 py-1 rounded text-sm text-text-muted hover:text-white transition-colors';
+  document.getElementById('sql-input').placeholder = 'Paste a SQL query to check for injection vulnerabilities...';
+});
+
+document.getElementById('mode-input').addEventListener('click', () => {
+  currentMode = 'input';
+  document.getElementById('mode-input').className = 'mode-btn px-3 py-1 rounded text-sm font-medium bg-primary text-white transition-colors';
+  document.getElementById('mode-query').className = 'mode-btn px-3 py-1 rounded text-sm text-text-muted hover:text-white transition-colors';
+  document.getElementById('sql-input').placeholder = 'Paste a user input value (e.g. from a form field) to check if it contains injection patterns...';
+});
+</script>
