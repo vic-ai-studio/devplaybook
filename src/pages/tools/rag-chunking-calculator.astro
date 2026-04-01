@@ -1,0 +1,235 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is RAG chunking and why does it matter?", answer: "RAG (Retrieval-Augmented Generation) splits documents into chunks before embedding and storing them in a vector database. When a query arrives, similar chunks are retrieved and passed to the LLM as context. Chunk size directly affects retrieval quality: too small and you lose context; too large and you dilute relevance and waste tokens." },
+  { question: "What chunk size should I use?", answer: "For general text: 512–1024 tokens works well. For technical docs with dense code: 256–512. For conversational transcripts: 128–256. For long-form articles: 1024–2048. The key is that each chunk should be semantically complete — a full paragraph, code block, or logical section — not an arbitrary cut." },
+  { question: "What overlap should I use?", answer: "Overlap of 10–20% of chunk size prevents context loss at boundaries. For a 512-token chunk, 50–100 tokens of overlap is typical. Higher overlap increases storage and retrieval cost but reduces the chance of splitting important context. For factual documents, lower overlap is fine; for narrative or code, higher overlap helps." },
+  { question: "What is the difference between character and token chunking?", answer: "Token chunking (tiktoken/BPE) gives exact LLM token counts and aligns with model limits, but is slower. Character chunking is faster and language-agnostic but less precise. Sentence-aware chunking (NLTK, spaCy) produces more semantically coherent chunks but is more complex. For production RAG, token-aware chunking is recommended to avoid hitting context limits." },
+  { question: "How does chunk size affect embedding quality?", answer: "Embeddings represent the semantic meaning of the entire chunk as a single vector. Smaller chunks produce more specific, high-precision embeddings — good for exact fact retrieval. Larger chunks produce broader, more contextual embeddings — good for concept/topic retrieval. For hybrid search (dense + sparse), medium chunks (512–768 tokens) often perform best." },
+];
+---
+
+<BaseLayout
+  title="RAG Chunking Calculator — Optimal Chunk Size & Overlap for RAG Pipelines"
+  description="Calculate optimal chunk size, overlap, and token estimates for your RAG pipeline. Paste your document to see how many chunks it produces and tune settings for LangChain, LlamaIndex, or any vector database."
+  tool="RAG chunking calculator, chunk size overlap, LangChain text splitter, RAG pipeline optimization, vector database chunks, embedding chunk size"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">RAG Chunking Calculator</h1>
+  <p class="text-text-muted mb-4">Tune chunk size and overlap for your RAG pipeline. Paste your document to see real chunk previews and token estimates.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live chunk preview</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Token estimates</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Overlap visualization</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> LangChain-compatible settings</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Controls -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Chunking Settings</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="chunk-size">Chunk Size (tokens)</label>
+          <input id="chunk-size" type="number" min="32" max="8192" step="32" value="512"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Approx 4 chars/token</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="chunk-overlap">Overlap (tokens)</label>
+          <input id="chunk-overlap" type="number" min="0" max="2048" step="16" value="64"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Repeated context at boundaries</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="split-mode">Split Strategy</label>
+          <select id="split-mode" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="char">Character (fixed)</option>
+            <option value="sentence" selected>Sentence-aware</option>
+            <option value="paragraph">Paragraph-aware</option>
+          </select>
+          <div class="text-xs text-text-muted mt-1">Boundary detection method</div>
+        </div>
+      </div>
+
+      <!-- Preset buttons -->
+      <div class="mb-4">
+        <div class="text-xs text-text-muted mb-2 font-medium uppercase tracking-wide">Presets</div>
+        <div class="flex flex-wrap gap-2">
+          <button class="preset-btn px-3 py-1 text-xs rounded-lg bg-bg border border-border hover:border-primary hover:text-primary transition-colors" data-size="256" data-overlap="32">Chat / Conversational</button>
+          <button class="preset-btn px-3 py-1 text-xs rounded-lg bg-bg border border-border hover:border-primary hover:text-primary transition-colors" data-size="512" data-overlap="64">General Documents</button>
+          <button class="preset-btn px-3 py-1 text-xs rounded-lg bg-bg border border-border hover:border-primary hover:text-primary transition-colors" data-size="1024" data-overlap="128">Technical / Code Docs</button>
+          <button class="preset-btn px-3 py-1 text-xs rounded-lg bg-bg border border-border hover:border-primary hover:text-primary transition-colors" data-size="2048" data-overlap="256">Long Articles / Books</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Document input -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-3">Your Document</h2>
+      <textarea id="doc-input" rows="10"
+        placeholder="Paste your document text here..."
+        class="w-full bg-bg border border-border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"></textarea>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="stats-grid">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold text-primary" id="stat-chunks">—</div>
+        <div class="text-xs text-text-muted mt-1">Total Chunks</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold text-primary" id="stat-tokens">—</div>
+        <div class="text-xs text-text-muted mt-1">Est. Total Tokens</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold text-primary" id="stat-avg">—</div>
+        <div class="text-xs text-text-muted mt-1">Avg Tokens/Chunk</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold text-primary" id="stat-overhead">—</div>
+        <div class="text-xs text-text-muted mt-1">Overlap Overhead</div>
+      </div>
+    </div>
+
+    <!-- Chunk preview -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold">Chunk Preview</h2>
+        <div class="text-xs text-text-muted">First 5 chunks shown</div>
+      </div>
+      <div id="chunk-preview" class="space-y-3 text-sm">
+        <div class="text-text-muted text-sm">Paste a document above to see chunk preview.</div>
+      </div>
+    </div>
+
+    <!-- LangChain code -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-3">LangChain Code</h2>
+      <pre id="langchain-code" class="bg-bg rounded-lg p-4 text-xs font-mono overflow-x-auto text-text-muted"></pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="RAG Chunking Calculator" relatedTags={['rag', 'ai', 'llm', 'langchain', 'embedding', 'vector-database']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var chunkSizeInput = document.getElementById('chunk-size');
+  var chunkOverlapInput = document.getElementById('chunk-overlap');
+  var splitModeInput = document.getElementById('split-mode');
+  var docInput = document.getElementById('doc-input');
+  var statChunks = document.getElementById('stat-chunks');
+  var statTokens = document.getElementById('stat-tokens');
+  var statAvg = document.getElementById('stat-avg');
+  var statOverhead = document.getElementById('stat-overhead');
+  var chunkPreview = document.getElementById('chunk-preview');
+  var langchainCode = document.getElementById('langchain-code');
+
+  function estTokens(str) { return Math.ceil(str.length / 4); }
+
+  function splitText(text, chunkChars, overlapChars, mode) {
+    var chunks = [];
+    if (!text) return chunks;
+
+    if (mode === 'paragraph') {
+      var paras = text.split(/\n\s*\n/).filter(function (p) { return p.trim(); });
+      var buf = '';
+      for (var i = 0; i < paras.length; i++) {
+        if (buf && (buf.length + paras[i].length) > chunkChars) {
+          chunks.push(buf.trim());
+          buf = buf.slice(Math.max(0, buf.length - overlapChars));
+        }
+        buf += (buf ? '\n\n' : '') + paras[i];
+      }
+      if (buf.trim()) chunks.push(buf.trim());
+    } else if (mode === 'sentence') {
+      var sentences = text.split(/(?<=[.!?])\s+/).filter(function (s) { return s.trim(); });
+      var buf2 = '';
+      for (var j = 0; j < sentences.length; j++) {
+        if (buf2 && (buf2.length + sentences[j].length) > chunkChars) {
+          chunks.push(buf2.trim());
+          buf2 = buf2.slice(Math.max(0, buf2.length - overlapChars));
+        }
+        buf2 += (buf2 ? ' ' : '') + sentences[j];
+      }
+      if (buf2.trim()) chunks.push(buf2.trim());
+    } else {
+      var start = 0;
+      var step = chunkChars - overlapChars;
+      if (step <= 0) step = chunkChars;
+      while (start < text.length) {
+        chunks.push(text.slice(start, start + chunkChars));
+        start += step;
+      }
+    }
+    return chunks;
+  }
+
+  function update() {
+    var chunkTok = parseInt(chunkSizeInput.value) || 512;
+    var overlapTok = parseInt(chunkOverlapInput.value) || 64;
+    var mode = splitModeInput.value;
+    var text = docInput.value;
+
+    var chunkChars = chunkTok * 4;
+    var overlapChars = overlapTok * 4;
+
+    var chunks = splitText(text, chunkChars, overlapChars, mode);
+    var totalTok = chunks.reduce(function (s, c) { return s + estTokens(c); }, 0);
+    var avgTok = chunks.length ? Math.round(totalTok / chunks.length) : 0;
+    var baseTok = estTokens(text);
+    var overheadPct = baseTok > 0 ? Math.round(((totalTok - baseTok) / baseTok) * 100) : 0;
+
+    statChunks.textContent = chunks.length.toLocaleString();
+    statTokens.textContent = totalTok.toLocaleString();
+    statAvg.textContent = avgTok.toLocaleString();
+    statOverhead.textContent = '+' + Math.max(0, overheadPct) + '%';
+
+    chunkPreview.innerHTML = chunks.length === 0
+      ? '<div class="text-text-muted text-sm">Paste a document above to see chunk preview.</div>'
+      : chunks.slice(0, 5).map(function (c, i) {
+          return '<div class="border border-border rounded-lg p-3 bg-bg">' +
+            '<div class="flex items-center justify-between mb-2">' +
+            '<span class="text-xs font-semibold text-primary">Chunk ' + (i + 1) + '</span>' +
+            '<span class="text-xs text-text-muted">' + estTokens(c) + ' tokens · ' + c.length + ' chars</span>' +
+            '</div>' +
+            '<div class="text-xs font-mono text-text-muted whitespace-pre-wrap break-all line-clamp-4">' + c.replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 400) + (c.length > 400 ? '...' : '') + '</div>' +
+            '</div>';
+        }).join('') + (chunks.length > 5 ? '<div class="text-xs text-text-muted text-center py-2">... and ' + (chunks.length - 5) + ' more chunks</div>' : '');
+
+    var modeMap = { char: 'RecursiveCharacterTextSplitter', sentence: 'RecursiveCharacterTextSplitter', paragraph: 'RecursiveCharacterTextSplitter' };
+    langchainCode.textContent =
+      'from langchain.text_splitter import RecursiveCharacterTextSplitter\n\n' +
+      'text_splitter = RecursiveCharacterTextSplitter(\n' +
+      '    chunk_size=' + (chunkTok * 4) + ',  # ~' + chunkTok + ' tokens\n' +
+      '    chunk_overlap=' + (overlapTok * 4) + ',  # ~' + overlapTok + ' tokens\n' +
+      '    length_function=len,\n' +
+      '    is_separator_regex=False,\n' +
+      ')\n\n' +
+      '# Estimated output: ' + chunks.length + ' chunks from ' + text.length + ' chars\n' +
+      'chunks = text_splitter.split_text(your_document)\n' +
+      '# chunks[0]: "' + (chunks[0] ? chunks[0].slice(0, 60).replace(/\n/g, '\\n') + '..."' : '') + '"';
+  }
+
+  [chunkSizeInput, chunkOverlapInput, splitModeInput, docInput].forEach(function (el) {
+    el.addEventListener('input', update);
+  });
+
+  document.querySelectorAll('.preset-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      chunkSizeInput.value = btn.dataset.size;
+      chunkOverlapInput.value = btn.dataset.overlap;
+      update();
+    });
+  });
+
+  docInput.value = 'Retrieval-Augmented Generation (RAG) is a technique that enhances large language model (LLM) responses by retrieving relevant documents from a knowledge base before generating an answer.\n\nThe process involves three main steps: first, documents are split into chunks and converted to vector embeddings. Second, when a query arrives, similar chunks are retrieved using semantic search. Third, the retrieved chunks are passed as context to the LLM along with the original query.\n\nChunk size is one of the most important hyperparameters in a RAG system. Smaller chunks produce more precise embeddings but may lack sufficient context. Larger chunks capture more context but may dilute the embedding signal and consume more tokens during retrieval.\n\nOverlap between chunks ensures that context is not lost at chunk boundaries. A typical overlap of 10-20% of chunk size is recommended. For a 512-token chunk, an overlap of 50-100 tokens works well in practice.';
+  update();
+})();
+</script>

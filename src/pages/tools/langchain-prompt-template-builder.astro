@@ -1,0 +1,289 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a LangChain PromptTemplate?", answer: "A PromptTemplate is LangChain's way of creating reusable prompts with dynamic variables. You define a template string with curly-brace placeholders, then fill them in at runtime. This enables prompt reuse, testing, and chaining prompts together in pipelines (LCEL — LangChain Expression Language)." },
+  { question: "What is the difference between PromptTemplate and ChatPromptTemplate?", answer: "PromptTemplate generates a single string — suitable for completion models (text-davinci, older GPT). ChatPromptTemplate generates a list of messages (system, human, AI) — required for chat models like GPT-4o and Claude. ChatPromptTemplate is the standard for modern LLM applications using the messages API." },
+  { question: "How do I use input variables?", answer: "Variables are defined with curly brace syntax. LangChain will raise an error if required variables are missing at invocation time. You can also use partial_variables to pre-fill some variables while leaving others dynamic — useful for injecting API keys, dates, or system context." },
+  { question: "What is LCEL and how do prompts fit in?", answer: "LangChain Expression Language (LCEL) is a declarative way to compose chains: prompt | model | output_parser. PromptTemplate transforms your input dict into a formatted prompt string or messages, which is then passed to the model. LCEL chains are lazy — they only execute when you call .invoke(), .stream(), or .batch()." },
+  { question: "Can I use LangChain prompts with any LLM provider?", answer: "Yes. LangChain prompts are provider-agnostic. The same ChatPromptTemplate works with OpenAI, Anthropic Claude, Google Gemini, Cohere, Ollama (local), and any other provider that implements the LangChain LLM or ChatModel interface. This makes it easy to swap models without rewriting your prompts." },
+];
+
+const simplePlaceholder = "Write your template here. Use {variable} syntax for dynamic values.\n\nExample: Translate the following text from {source_lang} to {target_lang}:\n{text}";
+---
+
+<BaseLayout
+  title="LangChain PromptTemplate Builder — Visual Prompt Builder with Variable Preview"
+  description="Build LangChain PromptTemplate and ChatPromptTemplate with live variable preview. Generate Python code for PromptTemplate, ChatPromptTemplate, and LCEL chains."
+  tool="LangChain PromptTemplate builder, ChatPromptTemplate, LCEL chain, LangChain prompt variables, Python prompt template, LangChain Expression Language"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">LangChain PromptTemplate Builder</h1>
+  <p class="text-text-muted mb-4">Build LangChain prompts visually. Add {variables}, fill in test values, and generate ready-to-copy Python code.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PromptTemplate + ChatPromptTemplate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live variable preview</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> LCEL chain code</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy-ready Python</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Template type selector -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Template Type</h2>
+      <div class="flex gap-3 flex-wrap">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="template-type" value="prompt" id="type-prompt" class="accent-primary" />
+          <span class="text-sm font-medium">PromptTemplate <span class="text-text-muted">(string output)</span></span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="template-type" value="chat" id="type-chat" checked class="accent-primary" />
+          <span class="text-sm font-medium">ChatPromptTemplate <span class="text-text-muted">(messages output)</span></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Chat messages (shown for ChatPromptTemplate) -->
+    <div id="chat-section" class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold">Messages</h2>
+        <button id="add-msg-btn" class="text-xs bg-primary/10 text-primary border border-primary/30 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors">+ Add Message</button>
+      </div>
+      <div id="messages-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Simple prompt (shown for PromptTemplate) -->
+    <div id="prompt-section" class="hidden bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-3">Template String</h2>
+      <textarea id="simple-template" rows="6" placeholder={simplePlaceholder}
+        class="w-full bg-bg border border-border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"></textarea>
+    </div>
+
+    <!-- Detected variables + test values -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-3">Input Variables</h2>
+      <div id="vars-container">
+        <div class="text-sm text-text-muted">Variables detected from your template will appear here.</div>
+      </div>
+    </div>
+
+    <!-- Preview -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-3">Rendered Preview</h2>
+      <div id="preview-output" class="bg-bg border border-border rounded-lg p-4 text-sm font-mono whitespace-pre-wrap text-text-muted min-h-[80px]">Fill in the template above to see preview...</div>
+    </div>
+
+    <!-- Generated code -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Python Code</h2>
+        <button id="copy-code-btn" class="text-xs bg-bg border border-border px-3 py-1.5 rounded-lg hover:border-primary hover:text-primary transition-colors">Copy</button>
+      </div>
+      <pre id="code-output" class="bg-bg rounded-lg p-4 text-xs font-mono overflow-x-auto text-green-400 whitespace-pre-wrap"></pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="LangChain PromptTemplate Builder" relatedTags={['langchain', 'ai', 'llm', 'prompt', 'python', 'openai']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var chatSection = document.getElementById('chat-section');
+  var promptSection = document.getElementById('prompt-section');
+  var messagesList = document.getElementById('messages-list');
+  var addMsgBtn = document.getElementById('add-msg-btn');
+  var varsContainer = document.getElementById('vars-container');
+  var previewOutput = document.getElementById('preview-output');
+  var codeOutput = document.getElementById('code-output');
+  var copyCodeBtn = document.getElementById('copy-code-btn');
+  var simpleTemplate = document.getElementById('simple-template');
+
+  var messages = [
+    { role: 'system', content: 'You are a helpful {role} assistant. Always respond in {language}.' },
+    { role: 'human', content: '{question}' },
+  ];
+
+  var testVars = {};
+
+  function getTemplateType() {
+    return document.querySelector('input[name="template-type"]:checked').value;
+  }
+
+  function extractVars(str) {
+    var vars = [];
+    var re = /\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
+    var m;
+    while ((m = re.exec(str)) !== null) {
+      if (vars.indexOf(m[1]) === -1) vars.push(m[1]);
+    }
+    return vars;
+  }
+
+  function getAllVars() {
+    var type = getTemplateType();
+    var all = [];
+    if (type === 'chat') {
+      messages.forEach(function (msg) {
+        extractVars(msg.content).forEach(function (v) {
+          if (all.indexOf(v) === -1) all.push(v);
+        });
+      });
+    } else {
+      extractVars(simpleTemplate.value).forEach(function (v) {
+        if (all.indexOf(v) === -1) all.push(v);
+      });
+    }
+    return all;
+  }
+
+  function renderMessages() {
+    messagesList.innerHTML = messages.map(function (msg, i) {
+      var roleColors = { system: 'text-yellow-400', human: 'text-blue-400', ai: 'text-green-400' };
+      return '<div class="border border-border rounded-lg p-3 bg-bg">' +
+        '<div class="flex items-center gap-3 mb-2">' +
+        '<select class="msg-role text-xs bg-bg-card border border-border rounded px-2 py-1 ' + (roleColors[msg.role] || '') + '" data-idx="' + i + '">' +
+        ['system', 'human', 'ai'].map(function (r) { return '<option value="' + r + '"' + (msg.role === r ? ' selected' : '') + '>' + r.charAt(0).toUpperCase() + r.slice(1) + '</option>'; }).join('') +
+        '</select>' +
+        '<button class="remove-msg ml-auto text-xs text-text-muted hover:text-red-400 transition-colors" data-idx="' + i + '">✕ Remove</button>' +
+        '</div>' +
+        '<textarea class="msg-content w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/40 resize-y" rows="3" data-idx="' + i + '">' + msg.content.replace(/</g, '&lt;') + '</textarea>' +
+        '</div>';
+    }).join('');
+
+    messagesList.querySelectorAll('.msg-role').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        messages[parseInt(sel.dataset.idx)].role = sel.value;
+        update();
+      });
+    });
+    messagesList.querySelectorAll('.msg-content').forEach(function (ta) {
+      ta.addEventListener('input', function () {
+        messages[parseInt(ta.dataset.idx)].content = ta.value;
+        update();
+      });
+    });
+    messagesList.querySelectorAll('.remove-msg').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        messages.splice(parseInt(btn.dataset.idx), 1);
+        renderMessages();
+        update();
+      });
+    });
+  }
+
+  function renderVars() {
+    var vars = getAllVars();
+    if (!vars.length) {
+      varsContainer.innerHTML = '<div class="text-sm text-text-muted">No variables detected. Use {variable_name} syntax in your template.</div>';
+      return;
+    }
+    varsContainer.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+      vars.map(function (v) {
+        return '<div>' +
+          '<label class="block text-xs font-medium text-text-muted mb-1">{' + v + '}</label>' +
+          '<input class="var-input w-full bg-bg border border-border rounded-lg px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" data-var="' + v + '" value="' + (testVars[v] || '') + '" placeholder="Test value for ' + v + '" />' +
+          '</div>';
+      }).join('') + '</div>';
+
+    varsContainer.querySelectorAll('.var-input').forEach(function (inp) {
+      inp.addEventListener('input', function () {
+        testVars[inp.dataset.var] = inp.value;
+        renderPreview();
+        renderCode();
+      });
+    });
+  }
+
+  function renderPreview() {
+    var type = getTemplateType();
+    var vars = getAllVars();
+    if (type === 'chat') {
+      var preview = messages.map(function (msg) {
+        var content = msg.content;
+        vars.forEach(function (v) {
+          content = content.replace(new RegExp('\\{' + v + '\\}', 'g'), testVars[v] || '{' + v + '}');
+        });
+        return '[' + msg.role.toUpperCase() + ']\n' + content;
+      }).join('\n\n---\n\n');
+      previewOutput.textContent = preview || '(empty template)';
+    } else {
+      var content = simpleTemplate.value;
+      vars.forEach(function (v) {
+        content = content.replace(new RegExp('\\{' + v + '\\}', 'g'), testVars[v] || '{' + v + '}');
+      });
+      previewOutput.textContent = content || '(empty template)';
+    }
+  }
+
+  function renderCode() {
+    var type = getTemplateType();
+    var vars = getAllVars();
+    var varList = '[\'' + vars.join("', '") + '\']';
+    var testDict = '{' + vars.map(function (v) { return '"' + v + '": "' + (testVars[v] || 'your_' + v) + '"'; }).join(', ') + '}';
+
+    var code = '';
+    if (type === 'chat') {
+      code = 'from langchain_core.prompts import ChatPromptTemplate\n\n';
+      code += 'template = ChatPromptTemplate.from_messages([\n';
+      messages.forEach(function (msg) {
+        var role = msg.role === 'human' ? 'human' : msg.role === 'ai' ? 'ai' : 'system';
+        code += '    ("' + role + '", """' + msg.content.replace(/\\/g, '\\\\') + '"""),\n';
+      });
+      code += '])\n\n';
+      code += '# Input variables: ' + varList + '\n\n';
+      code += '# Usage\nprompt = template.invoke(' + testDict + ')\n\n';
+      code += '# LCEL chain\nfrom langchain_openai import ChatOpenAI\n\nmodel = ChatOpenAI(model="gpt-4o")\nchain = template | model\nresponse = chain.invoke(' + testDict + ')';
+    } else {
+      var tmpl = simpleTemplate.value.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"');
+      code = 'from langchain_core.prompts import PromptTemplate\n\n';
+      code += 'template = PromptTemplate(\n';
+      code += '    input_variables=' + varList + ',\n';
+      code += '    template="""' + tmpl + '"""\n';
+      code += ')\n\n';
+      code += '# Usage\nprompt = template.invoke(' + testDict + ')\n\n';
+      code += '# LCEL chain\nfrom langchain_openai import ChatOpenAI\n\nmodel = ChatOpenAI(model="gpt-4o")\nchain = template | model\nresponse = chain.invoke(' + testDict + ')';
+    }
+
+    codeOutput.textContent = code;
+  }
+
+  function update() {
+    renderVars();
+    renderPreview();
+    renderCode();
+  }
+
+  document.querySelectorAll('input[name="template-type"]').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      var isChatMode = getTemplateType() === 'chat';
+      chatSection.classList.toggle('hidden', !isChatMode);
+      promptSection.classList.toggle('hidden', isChatMode);
+      update();
+    });
+  });
+
+  addMsgBtn.addEventListener('click', function () {
+    messages.push({ role: 'human', content: '' });
+    renderMessages();
+    update();
+  });
+
+  simpleTemplate.addEventListener('input', update);
+
+  copyCodeBtn.addEventListener('click', function () {
+    navigator.clipboard.writeText(codeOutput.textContent).then(function () {
+      copyCodeBtn.textContent = 'Copied!';
+      setTimeout(function () { copyCodeBtn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  // Init
+  renderMessages();
+  testVars = { role: 'coding', language: 'English', question: 'What is the difference between async/await and Promises?' };
+  update();
+})();
+</script>
