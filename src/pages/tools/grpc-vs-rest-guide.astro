@@ -1,0 +1,217 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "Is gRPC always faster than REST?", answer: "gRPC is typically 5–10x faster than REST/JSON for equivalent payloads because Protobuf binary encoding is more compact and faster to serialize/deserialize than JSON text. However, the gap narrows for small payloads (under 1 KB) and widens dramatically for large or highly repeated payloads. gRPC also benefits from HTTP/2 multiplexing which eliminates head-of-line blocking. That said, REST with HTTP/2, binary formats like MessagePack, or compression (gzip/brotli) can close the gap significantly for most workloads." },
+  { question: "Can I use gRPC from a browser?", answer: "Not natively. Browsers cannot send HTTP/2 trailers required by the gRPC protocol. The solution is gRPC-Web, a protocol variant supported by Envoy proxy or grpc-gateway. gRPC-Web works in all modern browsers but lacks full bidirectional streaming support — it only supports server-side streaming. For browser-facing APIs where you need real-time streaming, consider Server-Sent Events (SSE) over REST or WebSockets instead. gRPC is best suited for server-to-server communication or native mobile clients." },
+  { question: "What is Protocol Buffers (Protobuf) and why does gRPC use it?", answer: "Protocol Buffers is Google's binary serialization format. You define your data schema in .proto files using typed fields with integer field numbers. The protoc compiler generates typed client and server code in your target language. Advantages over JSON: 3–10x smaller payload size, faster encode/decode, strongly typed with compile-time errors for schema changes, built-in schema evolution via optional fields and field numbers. The trade-off is that binary data is not human-readable, making debugging harder without tooling." },
+  { question: "When should I choose REST over gRPC?", answer: "Choose REST when: building a public API consumed by third parties (universal HTTP client support), your team is less familiar with Protobuf tooling, you need human-readable requests for easy debugging with curl/browser, your API is primarily CRUD-shaped, or you need flexible response shaping (clients request only needed fields). REST is also simpler to cache with standard HTTP caches (CDN, Varnish) since GET requests are inherently cacheable. If browser support without a proxy layer is required, REST is the pragmatic choice." },
+  { question: "What gRPC streaming modes are available?", answer: "gRPC supports four communication patterns. Unary RPC is the simplest: one request, one response (like REST). Server streaming: client sends one request, server streams back multiple responses (useful for real-time updates, large result sets). Client streaming: client streams multiple requests, server returns one response (useful for file uploads or batch inserts). Bidirectional streaming: both sides stream simultaneously over a single connection (useful for real-time chat, live game state, collaborative editing)." },
+  { question: "How do I handle errors in gRPC?", answer: "gRPC has a standard set of status codes defined in the google.rpc.Code enum: OK (0), CANCELLED (1), UNKNOWN (2), INVALID_ARGUMENT (3), NOT_FOUND (5), ALREADY_EXISTS (6), PERMISSION_DENIED (7), UNAUTHENTICATED (16), RESOURCE_EXHAUSTED (8, for rate limiting), INTERNAL (13), UNAVAILABLE (14). Return rich error details by attaching google.rpc.Status messages to the response. Libraries like grpc-status in Node.js or grpcio-status in Python let you attach structured error details beyond the simple status code." },
+];
+---
+
+<BaseLayout
+  title="gRPC vs REST: When to Use Each in 2026"
+  description="gRPC vs REST comparison covering protocol differences, Protobuf vs JSON, HTTP/2 streaming, performance benchmarks, and decision framework for choosing the right API style."
+  tool="gRPC vs REST, Protocol Buffers, Protobuf, gRPC streaming, API protocol comparison, HTTP/2"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "gRPC vs REST Guide",
+    "url": "https://devplaybook.cc/tools/grpc-vs-rest-guide",
+    "description": "Comprehensive gRPC vs REST comparison: protocol, performance, streaming, and when to use each.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">gRPC vs REST: When to Use Each in 2026</h1>
+  <p class="text-text-muted mb-6">
+    gRPC and REST solve different problems. This guide covers the protocol differences, Protobuf vs JSON tradeoffs, all four gRPC streaming modes, and a clear decision framework so you can pick the right tool for each service.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Protocol deep-dive</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Protobuf vs JSON benchmarks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> All 4 streaming modes</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Decision framework</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Protocol Comparison at a Glance</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Dimension</th>
+          <th class="border border-border px-3 py-2 text-left">REST</th>
+          <th class="border border-border px-3 py-2 text-left">gRPC</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Transport</td><td class="border border-border px-3 py-2">HTTP/1.1 or HTTP/2</td><td class="border border-border px-3 py-2">HTTP/2 only</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Payload format</td><td class="border border-border px-3 py-2">JSON (text), optionally MessagePack</td><td class="border border-border px-3 py-2">Protobuf (binary)</td></tr>
+        <tr><td class="border border-border px-3 py-2">Schema</td><td class="border border-border px-3 py-2">Optional (OpenAPI)</td><td class="border border-border px-3 py-2">Required (.proto file)</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Code generation</td><td class="border border-border px-3 py-2">Optional (openapi-generator)</td><td class="border border-border px-3 py-2">Built-in (protoc)</td></tr>
+        <tr><td class="border border-border px-3 py-2">Browser support</td><td class="border border-border px-3 py-2">Native</td><td class="border border-border px-3 py-2">Needs gRPC-Web proxy</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Streaming</td><td class="border border-border px-3 py-2">SSE or WebSocket (separate)</td><td class="border border-border px-3 py-2">Built-in (4 modes)</td></tr>
+        <tr><td class="border border-border px-3 py-2">Caching</td><td class="border border-border px-3 py-2">HTTP cache headers (CDN-friendly)</td><td class="border border-border px-3 py-2">No HTTP caching</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Payload size</td><td class="border border-border px-3 py-2">Baseline (JSON text)</td><td class="border border-border px-3 py-2">3–10x smaller</td></tr>
+        <tr><td class="border border-border px-3 py-2">Latency</td><td class="border border-border px-3 py-2">Baseline</td><td class="border border-border px-3 py-2">~5–10x lower</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Debugging</td><td class="border border-border px-3 py-2">curl, browser DevTools</td><td class="border border-border px-3 py-2">grpcurl, Evans, Postman</td></tr>
+        <tr><td class="border border-border px-3 py-2">Firewall compatibility</td><td class="border border-border px-3 py-2">Excellent (port 80/443)</td><td class="border border-border px-3 py-2">May need proxy (HTTP/2)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">A Minimal proto3 Service Definition</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// user.proto
+syntax = "proto3";
+
+package user.v1;
+
+option go_package = "github.com/example/user/v1;userv1";
+
+// Import well-known types for timestamps
+import "google/protobuf/timestamp.proto";
+
+// Service definition
+service UserService &#123;
+  // Unary RPC
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+
+  // Server streaming: stream all orders for a user
+  rpc ListUserOrders(ListUserOrdersRequest)
+    returns (stream Order);
+
+  // Client streaming: bulk create users
+  rpc BulkCreateUsers(stream CreateUserRequest)
+    returns (BulkCreateUsersResponse);
+
+  // Bidirectional: live user activity feed
+  rpc WatchUserActivity(stream WatchRequest)
+    returns (stream ActivityEvent);
+&#125;
+
+message GetUserRequest &#123;
+  string user_id = 1;  // field number 1
+&#125;
+
+message GetUserResponse &#123;
+  User user = 1;
+&#125;
+
+message User &#123;
+  string id         = 1;
+  string email      = 2;
+  string name       = 3;
+  bool   active     = 4;
+  google.protobuf.Timestamp created_at = 5;
+  repeated string roles = 6;  // array field
+&#125;
+
+message Order &#123;
+  string id     = 1;
+  double amount = 2;
+  string status = 3;
+&#125;
+
+message ListUserOrdersRequest &#123;
+  string user_id = 1;
+  string status  = 2;  // optional filter
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Generating Code &amp; Running the Server (Node.js)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install protoc and the Node plugin
+npm install -g grpc-tools grpc_tools_node_protoc_ts
+
+# Generate TypeScript client + server stubs
+grpc_tools_node_protoc \
+  --js_out=import_style=commonjs,binary:./generated \
+  --grpc_out=grpc_js:./generated \
+  --ts_out=./generated \
+  -I ./proto \
+  user.proto</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// server.ts — implement the service
+import * as grpc from '@grpc/grpc-js';
+import &#123; UserServiceService, IUserServiceServer &#125; from './generated/user_grpc_pb';
+
+const userServiceImpl: IUserServiceServer = &#123;
+  getUser: (call, callback) => &#123;
+    const userId = call.request.getUserId();
+    // fetch from DB...
+    const user = buildUserResponse(userId);
+    callback(null, user);
+  &#125;,
+
+  listUserOrders: (call) => &#123;
+    const userId = call.request.getUserId();
+    const orders = fetchOrders(userId);
+
+    for (const order of orders) &#123;
+      call.write(order);   // stream each order
+    &#125;
+    call.end();
+  &#125;,
+&#125;;
+
+const server = new grpc.Server();
+server.addService(UserServiceService, userServiceImpl);
+server.bindAsync(
+  '0.0.0.0:50051',
+  grpc.ServerCredentials.createInsecure(),
+  () => server.start()
+);</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Performance Benchmarks (typical results)</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Scenario</th>
+          <th class="border border-border px-3 py-2 text-left">REST/JSON</th>
+          <th class="border border-border px-3 py-2 text-left">gRPC/Protobuf</th>
+          <th class="border border-border px-3 py-2 text-left">Improvement</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">10-field object</td><td class="border border-border px-3 py-2">250 bytes</td><td class="border border-border px-3 py-2">80 bytes</td><td class="border border-border px-3 py-2">3x smaller</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">1000-item list</td><td class="border border-border px-3 py-2">48 KB</td><td class="border border-border px-3 py-2">6 KB</td><td class="border border-border px-3 py-2">8x smaller</td></tr>
+        <tr><td class="border border-border px-3 py-2">Serialization (Node)</td><td class="border border-border px-3 py-2">~2 ms / 1k items</td><td class="border border-border px-3 py-2">~0.3 ms / 1k items</td><td class="border border-border px-3 py-2">6x faster</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">P99 latency (LAN)</td><td class="border border-border px-3 py-2">~8 ms</td><td class="border border-border px-3 py-2">~1.5 ms</td><td class="border border-border px-3 py-2">5x faster</td></tr>
+        <tr><td class="border border-border px-3 py-2">Throughput (RPS)</td><td class="border border-border px-3 py-2">~30k RPS</td><td class="border border-border px-3 py-2">~150k RPS</td><td class="border border-border px-3 py-2">5x higher</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-text-muted text-sm mb-6">Benchmarks vary significantly based on payload size, hardware, and language runtime. These are illustrative ranges from common benchmarks — measure your own workload.</p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Decision Framework</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Situation</th>
+          <th class="border border-border px-3 py-2 text-left">Recommended choice</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Public API for third-party developers</td><td class="border border-border px-3 py-2">REST</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Browser-facing API without proxy</td><td class="border border-border px-3 py-2">REST</td></tr>
+        <tr><td class="border border-border px-3 py-2">Internal microservice communication</td><td class="border border-border px-3 py-2">gRPC</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">High-throughput data pipeline</td><td class="border border-border px-3 py-2">gRPC</td></tr>
+        <tr><td class="border border-border px-3 py-2">Real-time bidirectional streaming</td><td class="border border-border px-3 py-2">gRPC</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Mobile app (iOS/Android native)</td><td class="border border-border px-3 py-2">gRPC</td></tr>
+        <tr><td class="border border-border px-3 py-2">Team new to binary protocols</td><td class="border border-border px-3 py-2">REST</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Polyglot microservices needing strong contracts</td><td class="border border-border px-3 py-2">gRPC</td></tr>
+        <tr><td class="border border-border px-3 py-2">CDN caching required</td><td class="border border-border px-3 py-2">REST</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="gRPC vs REST Guide" relatedTags={['grpc', 'rest', 'api', 'protobuf', 'microservices']} />
+</BaseLayout>

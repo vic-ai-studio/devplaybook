@@ -1,0 +1,348 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is the difference between OpenAPI 3.0 and 3.1?", answer: "OpenAPI 3.1 (released 2021) aligns fully with JSON Schema Draft 2020-12, whereas 3.0 used a subset of JSON Schema Draft 4. Key improvements in 3.1: webhooks are a first-class concept (separate from paths), the info.license object now supports SPDX expressions, $ref can now appear alongside other properties (3.0 forbade sibling keywords), the nullable: true hack is replaced by type: ['string', 'null'] following JSON Schema conventions, and $vocabulary support enables custom validation keywords. Use 3.1 for all new APIs — tooling support caught up in 2022-2023." },
+  { question: "How do I define authentication in an OpenAPI spec?", answer: "Authentication is defined in two places. First, declare security schemes under components.securitySchemes: for Bearer JWT use type: http, scheme: bearer, bearerFormat: JWT. For API keys use type: apiKey with in: header or in: query and the name field. For OAuth2 use type: oauth2 with flows describing authorization, implicit, clientCredentials, or password flows. Second, apply them: global security array sets defaults for all operations, individual operations can override with their own security array, or opt out with security: [] for public endpoints." },
+  { question: "What tools validate an OpenAPI spec?", answer: "Spectral by Stoplight is the most powerful validator — it has built-in OAS3 ruleset and you can write custom rules as JS/YAML rulesets. Install with npm i -g @stoplight/spectral-cli then run spectral lint openapi.yaml. Other options: swagger-parser (programmatic validation in Node.js), vacuum (Go-based, extremely fast, CI-friendly), redocly CLI (redocly lint, also has its own ruleset), and the official swagger-editor online validator at editor.swagger.io. For CI, run Spectral or redocly in your GitHub Actions workflow to block PRs with invalid specs." },
+  { question: "Should I write OpenAPI by hand or generate it from code?", answer: "Code-first generation (annotations or decorators on route handlers) keeps the spec in sync automatically but produces verbose, hard-to-read specs and couples your API contract to implementation details. Spec-first (design the YAML manually, then generate server stubs and client SDKs) enforces deliberate API design and makes contract changes explicit and reviewable. Best practice: write the spec first as a design artifact, review it with stakeholders, then generate server stubs (openapi-generator, oapi-codegen for Go, FastAPI with Pydantic models). This makes breaking changes visible in diffs." },
+  { question: "How do I generate a Swagger UI from my OpenAPI spec?", answer: "The simplest way is the swagger-ui-express package: npm i swagger-ui-express js-yaml, then app.use('/docs', swaggerUi.serve, swaggerUi.setup(yaml.load(fs.readFileSync('./openapi.yaml')))). For static hosting, run npx @redocly/cli build-docs openapi.yaml -o docs/index.html to produce a zero-dependency HTML file. Redoc produces cleaner documentation than default Swagger UI and handles complex schemas better. For Next.js or Astro projects, serve the raw openapi.yaml and initialize swagger-ui-dist client-side." },
+  { question: "What is the best way to handle $ref and schema reuse?", answer: "Define all reusable schemas under components.schemas, parameters under components.parameters, and responses under components.responses. Use $ref: '#/components/schemas/User' to reference them. For request/response bodies, define them inline for simple one-off cases and in components for any schema used more than once. For large APIs, split into multiple files and use $ref: './schemas/user.yaml'. Tools like Redocly and swagger-parser handle multi-file specs with bundle commands that merge everything into a single file for distribution." },
+];
+---
+
+<BaseLayout
+  title="OpenAPI 3.1 Spec Guide: Writing &amp; Validating API Specifications"
+  description="Complete OpenAPI 3.1 guide covering spec structure, request/response schemas, authentication, generating Swagger UI docs, and validation tools like Spectral."
+  tool="OpenAPI 3.1, Swagger, API specification, OpenAPI validation, Spectral lint, API docs"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "OpenAPI 3.1 Spec Guide",
+    "url": "https://devplaybook.cc/tools/openapi-spec-generator",
+    "description": "Complete OpenAPI 3.1 guide: spec structure, authentication, schema reuse, Swagger UI, and validation with Spectral.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">OpenAPI 3.1 Spec Guide</h1>
+  <p class="text-text-muted mb-6">
+    OpenAPI 3.1 is the industry standard for describing REST APIs. This guide walks through every section of a production-quality spec — from info and paths to authentication, schema reuse, and automated validation in CI.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Full spec structure</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auth &amp; schema reuse</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Swagger UI generation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Spectral validation</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Spec Skeleton (OpenAPI 3.1)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">openapi: "3.1.0"
+
+info:
+  title: Acme API
+  version: "1.0.0"
+  description: |
+    Public REST API for Acme services.
+    Rate limits: 100 req/min (standard), 1000 req/min (pro).
+  contact:
+    name: Acme Engineering
+    email: api@acme.example
+  license:
+    name: MIT
+    identifier: MIT   # SPDX identifier (new in 3.1)
+
+servers:
+  - url: https://api.acme.example/v1
+    description: Production
+  - url: https://staging-api.acme.example/v1
+    description: Staging
+
+tags:
+  - name: users
+    description: User management
+  - name: orders
+    description: Order operations
+
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/CursorParam'
+      responses:
+        '200':
+          description: Paginated user list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+            example:
+              email: jane@example.com
+              name: Jane Doe
+      responses:
+        '201':
+          description: User created
+          headers:
+            Location:
+              description: URL of the created user
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - BearerAuth: []</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Components: Schemas, Parameters &amp; Responses</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">components:
+  # --- Reusable schemas ---
+  schemas:
+    User:
+      type: object
+      required: [id, email, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          example: "jane@example.com"
+        name:
+          type: ["string", "null"]  # nullable in OAS 3.1 (not nullable: true)
+          example: "Jane Doe"
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [admin, editor, viewer]
+          default: [viewer]
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    CreateUserRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    UserListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        meta:
+          type: object
+          properties:
+            next_cursor:
+              type: ["string", "null"]
+            has_more:
+              type: boolean
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: VALIDATION_FAILED
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  issue:
+                    type: string
+            trace_id:
+              type: string
+
+  # --- Reusable parameters ---
+  parameters:
+    LimitParam:
+      name: limit
+      in: query
+      description: Number of results per page (max 100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    CursorParam:
+      name: cursor
+      in: query
+      description: Pagination cursor from previous response
+      schema:
+        type: string
+
+  # --- Reusable responses ---
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  # --- Security schemes ---
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.acme.example/oauth/authorize
+          tokenUrl: https://auth.acme.example/oauth/token
+          scopes:
+            read:users: Read user data
+            write:users: Create and update users</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Validation with Spectral (CI)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install Spectral CLI
+npm install -g @stoplight/spectral-cli
+
+# Lint against built-in OAS ruleset
+spectral lint openapi.yaml
+
+# Custom ruleset (.spectral.yaml)
+extends: ["spectral:oas"]
+rules:
+  operation-tag-defined: error       # all operations must have tags
+  operation-success-response: error  # must have 2xx response
+  no-$ref-siblings: off              # relax for OAS 3.1
+  info-contact: warn
+  oas3-api-servers: error
+
+# GitHub Actions integration
+# .github/workflows/api-lint.yml
+name: Lint OpenAPI Spec
+on: [pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g @stoplight/spectral-cli
+      - run: spectral lint openapi.yaml --fail-severity=warn</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Generating Swagger UI &amp; Redoc</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Express + swagger-ui-express
+import express from 'express';
+import swaggerUi from 'swagger-ui-express';
+import yaml from 'js-yaml';
+import fs from 'fs';
+
+const app = express();
+const spec = yaml.load(fs.readFileSync('./openapi.yaml', 'utf8'));
+
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(spec, &#123;
+  customCss: '.swagger-ui .topbar &#123; display: none &#125;',
+  swaggerOptions: &#123; persistAuthorization: true &#125;,
+&#125;));
+
+// Serve raw spec for SDK generators
+app.get('/openapi.json', (req, res) => res.json(spec));</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Generate static Redoc HTML (zero runtime deps)
+npx @redocly/cli build-docs openapi.yaml -o docs/api.html
+
+# Bundle multi-file spec into single file
+npx @redocly/cli bundle openapi.yaml -o dist/openapi.yaml
+
+# Generate TypeScript client SDK
+npx @openapitools/openapi-generator-cli generate \
+  -i openapi.yaml \
+  -g typescript-fetch \
+  -o src/api-client</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Tooling Quick Reference</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Tool</th>
+          <th class="border border-border px-3 py-2 text-left">Purpose</th>
+          <th class="border border-border px-3 py-2 text-left">Command</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Spectral</td><td class="border border-border px-3 py-2">Lint &amp; custom rules</td><td class="border border-border px-3 py-2">spectral lint openapi.yaml</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Redocly CLI</td><td class="border border-border px-3 py-2">Lint, bundle, build docs</td><td class="border border-border px-3 py-2">redocly lint / bundle / build-docs</td></tr>
+        <tr><td class="border border-border px-3 py-2">vacuum</td><td class="border border-border px-3 py-2">Fast Go-based linter</td><td class="border border-border px-3 py-2">vacuum lint openapi.yaml</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">openapi-generator</td><td class="border border-border px-3 py-2">Generate client SDKs</td><td class="border border-border px-3 py-2">openapi-generator-cli generate</td></tr>
+        <tr><td class="border border-border px-3 py-2">swagger-ui-express</td><td class="border border-border px-3 py-2">Serve interactive docs</td><td class="border border-border px-3 py-2">npm i swagger-ui-express</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Prism</td><td class="border border-border px-3 py-2">Mock server from spec</td><td class="border border-border px-3 py-2">prism mock openapi.yaml</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="OpenAPI 3.1 Spec Guide" relatedTags={['openapi', 'swagger', 'api', 'rest', 'documentation']} />
+</BaseLayout>

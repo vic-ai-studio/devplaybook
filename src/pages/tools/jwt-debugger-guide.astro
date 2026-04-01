@@ -1,0 +1,210 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What are the three parts of a JWT?", answer: "A JWT consists of three Base64URL-encoded parts separated by dots: Header.Payload.Signature. The header specifies the token type and signing algorithm (e.g., HS256, RS256). The payload contains claims — registered claims like 'sub', 'iat', 'exp', plus custom application claims. The signature is computed over the header and payload using the secret or private key, ensuring the token has not been tampered with." },
+  { question: "What is the difference between HS256 and RS256?", answer: "HS256 (HMAC-SHA256) uses a single shared secret for both signing and verification — all parties must have the same secret, making it suitable for single-service tokens. RS256 (RSA-SHA256) uses a private key to sign and a public key to verify — the private key stays on the auth server, the public key can be shared broadly. RS256 is preferred for distributed systems and third-party token consumers. ES256 (ECDSA) gives similar asymmetric benefits with smaller key sizes." },
+  { question: "What is the 'alg:none' JWT vulnerability?", answer: "The 'alg:none' attack exploits JWT libraries that accept unsigned tokens when the algorithm is set to 'none'. An attacker modifies the header to set alg to 'none', removes the signature, and the server accepts the token as valid. Mitigation: always explicitly specify which algorithms your application accepts and reject any token with alg:none. Never trust the algorithm from the token header — enforce it server-side." },
+  { question: "What JWT claims should I always validate?", answer: "Always validate: 'exp' (expiry — reject expired tokens), 'nbf' (not before — reject tokens not yet valid), 'iss' (issuer — must match your expected auth server), 'aud' (audience — must match your application identifier). Optional but recommended: 'jti' (JWT ID for revocation tracking), 'sub' (subject matches the user). Libraries like jsonwebtoken, python-jose, and java-jwt validate these automatically when you pass the expected values." },
+  { question: "Should I store JWTs in localStorage or cookies?", answer: "httpOnly cookies are the safer choice. localStorage is accessible to JavaScript, making JWTs stored there vulnerable to XSS attacks — any script that runs on your page can read them. httpOnly cookies cannot be read by JavaScript and are automatically sent by the browser. Use Secure + SameSite=Strict or SameSite=Lax cookies. The tradeoff: cookies require CSRF protection (use double-submit cookie pattern or SameSite=Strict). For SPAs calling third-party APIs, in-memory storage (React state) is another XSS-resistant option." },
+  { question: "How do I revoke a JWT before it expires?", answer: "JWTs are stateless by design, which makes revocation difficult. Approaches: (1) Short expiry + refresh tokens — issue 15-minute access tokens; revoke the refresh token. (2) Token blocklist — maintain a Redis/DB set of revoked 'jti' values; check on each request. (3) Token version — store a 'token_version' on the user record; reject tokens issued before a version increment. Each approach trades statelessness for revocation capability. Most production systems use refresh tokens with short-lived access tokens." },
+];
+---
+
+<BaseLayout
+  title="JWT Structure, Claims & Debugging Guide"
+  description="Complete JWT guide covering Header.Payload.Signature anatomy, claims reference, HS256 vs RS256 algorithm comparison, common vulnerabilities like alg:none, and Node.js/Python implementation examples."
+  tool="JWT Debugger, JSON Web Token, JWT Claims, HS256 RS256, JWT Security"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "JWT Structure, Claims & Debugging Guide",
+    "url": "https://devplaybook.cc/tools/jwt-debugger-guide",
+    "description": "Complete JWT guide covering anatomy, claims, algorithm choices, vulnerabilities, and Node.js/Python code examples.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">JWT Structure, Claims & Debugging Guide</h1>
+  <p class="text-text-muted mb-6">Everything developers need to understand, implement, and debug JSON Web Tokens — from anatomy and claims to security pitfalls and production best practices.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Token anatomy breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HS256 vs RS256 vs ES256</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Common vulnerabilities</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Node.js & Python examples</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mb-3">JWT Anatomy: Header.Payload.Signature</h2>
+  <p class="text-text-muted mb-4">A JWT is three Base64URL-encoded JSON objects concatenated with dots. It is <strong>not encrypted by default</strong> — the payload is readable by anyone who has the token. It is only <em>signed</em>, which ensures integrity (it hasn't been tampered with) but not confidentiality.</p>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9    ← Header
+.eyJzdWIiOiJ1c2VyXzEyMyIsIm5hbWUiOiJBbGljZSIsImlhdCI6MTcwNDY3MjAwMCwiZXhwIjoxNzA0Njc1NjAwfQ==
+                                           ← Payload (readable!)
+.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV...   ← Signature (verifiable)</pre>
+
+  <h3 class="text-base font-semibold mb-2">Decoded Header</h3>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">&#123;
+  "alg": "RS256",   // Algorithm: RS256, HS256, ES256, PS256
+  "typ": "JWT",     // Token type
+  "kid": "key-1"   // Optional: Key ID for key rotation
+&#125;</pre>
+
+  <h3 class="text-base font-semibold mb-2">Decoded Payload (Claims)</h3>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-6">&#123;
+  // Registered Claims (RFC 7519 standard)
+  "iss": "https://auth.yourapp.com",   // Issuer
+  "sub": "user_123",                   // Subject (user ID)
+  "aud": "api.yourapp.com",            // Audience (your API)
+  "exp": 1704675600,                   // Expiry (Unix timestamp)
+  "nbf": 1704672000,                   // Not Before
+  "iat": 1704672000,                   // Issued At
+  "jti": "a1b2c3d4-uuid",             // JWT ID (for revocation)
+
+  // Custom Application Claims
+  "email": "alice@example.com",
+  "roles": ["user", "admin"],
+  "plan": "pro"
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mb-3">Algorithm Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm mb-6">
+      <thead>
+        <tr class="border-b border-border text-left text-text-muted">
+          <th class="py-2 pr-4">Algorithm</th>
+          <th class="py-2 pr-4">Type</th>
+          <th class="py-2 pr-4">Key Setup</th>
+          <th class="py-2 pr-4">Use Case</th>
+          <th class="py-2">Security</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr><td class="py-2 pr-4 font-mono text-xs">HS256</td><td class="py-2 pr-4">Symmetric HMAC</td><td class="py-2 pr-4">Single shared secret</td><td class="py-2 pr-4">Single service</td><td class="py-2 text-yellow-500">Good (if secret strong)</td></tr>
+        <tr><td class="py-2 pr-4 font-mono text-xs">HS512</td><td class="py-2 pr-4">Symmetric HMAC</td><td class="py-2 pr-4">Single shared secret</td><td class="py-2 pr-4">Single service (stronger)</td><td class="py-2 text-green-500">Better</td></tr>
+        <tr><td class="py-2 pr-4 font-mono text-xs">RS256</td><td class="py-2 pr-4">Asymmetric RSA</td><td class="py-2 pr-4">Private + public key pair</td><td class="py-2 pr-4">Distributed / microservices</td><td class="py-2 text-green-500">Strong</td></tr>
+        <tr><td class="py-2 pr-4 font-mono text-xs">ES256</td><td class="py-2 pr-4">Asymmetric ECDSA</td><td class="py-2 pr-4">EC key pair (P-256)</td><td class="py-2 pr-4">Mobile / constrained</td><td class="py-2 text-green-500">Strong + compact</td></tr>
+        <tr><td class="py-2 pr-4 font-mono text-xs">PS256</td><td class="py-2 pr-4">RSA-PSS</td><td class="py-2 pr-4">Private + public key pair</td><td class="py-2 pr-4">High-security systems</td><td class="py-2 text-green-500">Strongest RSA</td></tr>
+        <tr><td class="py-2 pr-4 font-mono text-xs">none</td><td class="py-2 pr-4">Unsigned</td><td class="py-2 pr-4">None</td><td class="py-2 pr-4">Never in production</td><td class="py-2 text-red-500">CRITICAL VULN</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mb-3">Node.js Implementation</h2>
+  <h3 class="text-base font-semibold mb-2">Sign and Verify with jsonwebtoken</h3>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">import jwt from 'jsonwebtoken';
+import &#123; readFileSync &#125; from 'fs';
+
+const PRIVATE_KEY = readFileSync('./keys/private.pem');
+const PUBLIC_KEY = readFileSync('./keys/public.pem');
+
+// Sign a token (RS256)
+function signToken(userId: string, roles: string[]): string &#123;
+  return jwt.sign(
+    &#123;
+      sub: userId,
+      roles,
+      iss: 'https://auth.yourapp.com',
+      aud: 'api.yourapp.com',
+    &#125;,
+    PRIVATE_KEY,
+    &#123;
+      algorithm: 'RS256',
+      expiresIn: '15m',   // Short-lived access token
+      jwtid: crypto.randomUUID(),
+    &#125;
+  );
+&#125;
+
+// Verify a token — always specify algorithms explicitly!
+function verifyToken(token: string) &#123;
+  return jwt.verify(token, PUBLIC_KEY, &#123;
+    algorithms: ['RS256'],          // ← NEVER omit this!
+    issuer: 'https://auth.yourapp.com',
+    audience: 'api.yourapp.com',
+  &#125;);
+&#125;</pre>
+
+  <h3 class="text-base font-semibold mb-2">Express Middleware</h3>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-6">import &#123; Request, Response, NextFunction &#125; from 'express';
+
+export function authenticate(req: Request, res: Response, next: NextFunction) &#123;
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) &#123;
+    return res.status(401).json(&#123; error: 'Missing token' &#125;);
+  &#125;
+
+  const token = authHeader.slice(7);
+  try &#123;
+    const payload = verifyToken(token);
+    req.user = payload;  // Attach verified claims to request
+    next();
+  &#125; catch (err) &#123;
+    if (err instanceof jwt.TokenExpiredError) &#123;
+      return res.status(401).json(&#123; error: 'Token expired' &#125;);
+    &#125;
+    return res.status(401).json(&#123; error: 'Invalid token' &#125;);
+  &#125;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mb-3">Python Implementation (python-jose)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-6">from jose import jwt, JWTError
+from datetime import datetime, timedelta, timezone
+import uuid
+
+SECRET_KEY = "your-256-bit-secret-from-env"
+ALGORITHM = "HS256"
+
+def create_access_token(user_id: str, roles: list[str]) -> str:
+    now = datetime.now(timezone.utc)
+    payload = &#123;
+        "sub": user_id,
+        "roles": roles,
+        "iss": "https://auth.yourapp.com",
+        "aud": "api.yourapp.com",
+        "iat": now,
+        "exp": now + timedelta(minutes=15),
+        "jti": str(uuid.uuid4()),
+    &#125;
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],          # explicit allowlist
+            audience="api.yourapp.com",
+            issuer="https://auth.yourapp.com",
+        )
+        return payload
+    except JWTError as e:
+        raise ValueError(f"Invalid token: &#123;e&#125;")</pre>
+
+  <h2 class="text-xl font-semibold mb-3">Critical JWT Vulnerabilities</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm mb-6">
+      <thead>
+        <tr class="border-b border-border text-left text-text-muted">
+          <th class="py-2 pr-4">Vulnerability</th>
+          <th class="py-2 pr-4">Attack</th>
+          <th class="py-2">Fix</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr><td class="py-2 pr-4 font-medium">alg:none</td><td class="py-2 pr-4 text-text-muted">Set alg to "none", strip signature</td><td class="py-2 text-text-muted">Always specify allowed algorithms</td></tr>
+        <tr><td class="py-2 pr-4 font-medium">Algorithm confusion</td><td class="py-2 pr-4 text-text-muted">Switch RS256 to HS256, sign with public key</td><td class="py-2 text-text-muted">Enforce algorithm server-side</td></tr>
+        <tr><td class="py-2 pr-4 font-medium">Weak HS256 secret</td><td class="py-2 pr-4 text-text-muted">Brute-force short/dictionary secrets</td><td class="py-2 text-text-muted">256-bit random secret minimum</td></tr>
+        <tr><td class="py-2 pr-4 font-medium">No expiry</td><td class="py-2 pr-4 text-text-muted">Stolen token valid forever</td><td class="py-2 text-text-muted">Always set exp (15 min access)</td></tr>
+        <tr><td class="py-2 pr-4 font-medium">Sensitive data in payload</td><td class="py-2 pr-4 text-text-muted">Base64 decode reveals PII</td><td class="py-2 text-text-muted">Use JWE for encrypted tokens</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="JWT Debugger Guide" relatedTags={['security', 'auth', 'backend', 'api']} />
+</BaseLayout>

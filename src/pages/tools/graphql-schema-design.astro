@@ -1,0 +1,290 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is the N+1 problem in GraphQL and why does it happen?", answer: "The N+1 problem occurs when resolving a list field triggers one database query per item. For example, querying posts &#123; author &#123; name &#125; &#125; for 100 posts runs 1 query to fetch posts, then 100 individual queries to fetch each author — 101 queries total. It happens because GraphQL resolvers are called independently for each item in a list. The solution is DataLoader, a batching library that collects all IDs requested within a single tick of the event loop and issues one batch query. With DataLoader, 100 author lookups collapse into a single SELECT WHERE id IN (1, 2, ..., 100)." },
+  { question: "What is the difference between schema-first and code-first GraphQL?", answer: "Schema-first means you write the .graphql SDL file manually, then implement resolvers that satisfy the schema. This makes the schema a design artifact that can be reviewed before implementation and shared across teams. Code-first means you define the schema programmatically using TypeScript classes and decorators (TypeGraphQL, Pothos) or resolver builders — the SDL is generated from code. Code-first eliminates the schema-resolver sync problem (where the SDL and resolvers drift apart) and gives type safety. Most production teams prefer code-first for better TypeScript integration, but schema-first remains valuable for design-first workflows." },
+  { question: "How should I design GraphQL mutations for complex operations?", answer: "Use the mutation payload pattern: every mutation returns a dedicated payload type (not the raw entity) that includes the affected resource, user errors array, and any side-effect data. Example: createUser returns CreateUserPayload &#123; user: User, errors: [UserError!]! &#125;. Always return errors as data (field in the payload) rather than throwing top-level GraphQL errors — this lets clients handle both success and expected failures in one type-safe response. Use input types (not individual arguments) for all mutations with more than 2 fields so you can evolve the input without breaking changes." },
+  { question: "How does cursor-based pagination work in GraphQL?", answer: "The Relay Cursor Connections spec is the standard. Each paginated field returns a Connection type: &#123; edges: [&#123; cursor: String!, node: T &#125;], pageInfo: &#123; hasNextPage, hasPreviousPage, startCursor, endCursor &#125; &#125;. Clients pass first: 10, after: cursor to page forward, or last: 10, before: cursor to page backward. The cursor encodes the position (usually base64 of the row ID or a composite sort key) and is opaque to clients. Avoid offset pagination for large datasets — cursor pagination is O(log N) with an index on the sort key, while OFFSET scans and discards rows." },
+  { question: "What are GraphQL subscriptions and when should I use them?", answer: "Subscriptions deliver real-time updates over a persistent WebSocket connection. The client sends a subscription operation and the server pushes new data whenever the subscribed event occurs. Use subscriptions for: live collaboration features, chat messages, order status updates, real-time dashboards. Implement with graphql-ws (the modern standard, replacing subscriptions-transport-ws) over WebSocket. For simple one-way server push, consider GraphQL over SSE instead — it's stateless and works through HTTP/2 multiplexing. Avoid subscriptions for polling-style updates that could use a regular query with client-side polling." },
+  { question: "How do I prevent overly complex or expensive GraphQL queries?", answer: "Defense in depth: (1) Query depth limiting — reject queries nested beyond a configured depth (typically 5–7) using graphql-depth-limit. (2) Query complexity analysis — assign cost scores to fields (list fields cost more than scalar fields) and reject queries exceeding a budget using graphql-query-complexity. (3) Query whitelisting (persisted queries) — only allow pre-approved query IDs from your known clients, making arbitrary query attacks impossible. (4) Field-level timeouts — use GraphQL execution timeout middleware. (5) Rate limiting on the operation level, not just IP. Most production APIs use at least depth limiting and complexity analysis together." },
+];
+---
+
+<BaseLayout
+  title="GraphQL Schema Design Best Practices &amp; N+1 Solutions"
+  description="GraphQL schema design guide: schema-first vs code-first, type design, mutations, N+1 problem with DataLoader solution, cursor-based pagination, and subscription patterns."
+  tool="GraphQL schema design, N+1 problem, DataLoader, GraphQL pagination, GraphQL subscriptions, Relay connections"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "GraphQL Schema Design Best Practices",
+    "url": "https://devplaybook.cc/tools/graphql-schema-design",
+    "description": "GraphQL schema design guide: type design, mutations, N+1 with DataLoader, cursor pagination, and subscriptions.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">GraphQL Schema Design Best Practices</h1>
+  <p class="text-text-muted mb-6">
+    Good GraphQL schema design avoids performance traps, keeps the API evolvable, and makes client development predictable. This guide covers everything from type design and mutation patterns to the N+1 problem, DataLoader batching, and cursor pagination.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Schema-first vs code-first</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> N+1 &amp; DataLoader</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Mutation payload pattern</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Relay cursor pagination</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Schema Design: Types &amp; Naming Conventions</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># schema.graphql — SDL (schema definition language)
+
+type Query &#123;
+  user(id: ID!): User
+  users(first: Int, after: String, filter: UserFilter): UserConnection!
+  post(slug: String!): Post
+&#125;
+
+type User &#123;
+  id:        ID!
+  email:     String!
+  name:      String
+  role:      UserRole!
+  posts(first: Int, after: String): PostConnection!
+  createdAt: DateTime!
+  # Avoid exposing implementation details like passwordHash
+&#125;
+
+enum UserRole &#123;
+  ADMIN
+  EDITOR
+  VIEWER
+&#125;
+
+type Post &#123;
+  id:        ID!
+  title:     String!
+  slug:      String!
+  body:      String!
+  author:    User!       # ← This is where N+1 happens
+  tags:      [Tag!]!     # ← And here for tag lists
+  status:    PostStatus!
+  publishedAt: DateTime
+  createdAt:   DateTime!
+&#125;
+
+enum PostStatus &#123;
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+&#125;
+
+scalar DateTime  # ISO-8601 string
+
+input UserFilter &#123;
+  role: UserRole
+  search: String
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">The N+1 Problem &amp; DataLoader Solution</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// PROBLEM — naive resolver causes N+1
+const resolvers = &#123;
+  Post: &#123;
+    author: async (post) => &#123;
+      // Called once per post — 100 posts = 100 DB queries!
+      return db.users.findUnique(&#123; where: &#123; id: post.authorId &#125; &#125;);
+    &#125;,
+  &#125;,
+&#125;;</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// SOLUTION — DataLoader batches requests within one event loop tick
+import DataLoader from 'dataloader';
+
+// Create one loader per request (never share across requests!)
+function createLoaders(db: PrismaClient) &#123;
+  return &#123;
+    userById: new DataLoader&lt;string, User | null&gt;(
+      async (userIds) => &#123;
+        // Receives ALL IDs collected within one tick
+        const users = await db.user.findMany(&#123;
+          where: &#123; id: &#123; in: [...userIds] &#125; &#125;,
+        &#125;);
+
+        // DataLoader requires results in same order as input keys
+        const userMap = new Map(users.map(u => [u.id, u]));
+        return userIds.map(id => userMap.get(id) ?? null);
+      &#125;,
+      &#123;
+        // Cache within the request lifecycle (default: true)
+        cache: true,
+        // Batch all loads in same event loop tick
+        batchScheduleFn: (callback) => process.nextTick(callback),
+      &#125;
+    ),
+
+    tagsByPostId: new DataLoader&lt;string, Tag[]&gt;(
+      async (postIds) => &#123;
+        const tags = await db.postTag.findMany(&#123;
+          where: &#123; postId: &#123; in: [...postIds] &#125; &#125;,
+          include: &#123; tag: true &#125;,
+        &#125;);
+
+        const tagsByPost = new Map&lt;string, Tag[]&gt;();
+        for (const pt of tags) &#123;
+          if (!tagsByPost.has(pt.postId)) tagsByPost.set(pt.postId, []);
+          tagsByPost.get(pt.postId)!.push(pt.tag);
+        &#125;
+        return postIds.map(id => tagsByPost.get(id) ?? []);
+      &#125;
+    ),
+  &#125;;
+&#125;
+
+// Pass loaders via context
+const server = new ApolloServer(&#123;
+  typeDefs,
+  resolvers,
+  context: (&#123; req &#125;) => (&#123;
+    db,
+    loaders: createLoaders(db),  // fresh loaders per request
+    user: req.user,
+  &#125;),
+&#125;);
+
+// Resolver using DataLoader — 100 posts = 1 batch query
+const resolvers = &#123;
+  Post: &#123;
+    author: (post, _, &#123; loaders &#125;) =>
+      loaders.userById.load(post.authorId),
+
+    tags: (post, _, &#123; loaders &#125;) =>
+      loaders.tagsByPostId.load(post.id),
+  &#125;,
+&#125;;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Mutation Payload Pattern</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># SDL — mutation with payload type
+type Mutation &#123;
+  createPost(input: CreatePostInput!): CreatePostPayload!
+  updatePost(id: ID!, input: UpdatePostInput!): UpdatePostPayload!
+  deletePost(id: ID!): DeletePostPayload!
+  publishPost(id: ID!): PublishPostPayload!
+&#125;
+
+input CreatePostInput &#123;
+  title:  String!
+  body:   String!
+  tags:   [String!]
+  status: PostStatus = DRAFT
+&#125;
+
+# Payload type — always has errors array + affected resource
+type CreatePostPayload &#123;
+  post:   Post          # null on failure
+  errors: [UserError!]! # empty on success
+&#125;
+
+type UserError &#123;
+  field:   String       # null if not field-specific
+  message: String!
+  code:    String!
+&#125;
+
+# Client query — handles both success and validation errors
+# mutation &#123;
+#   createPost(input: &#123; title: "Hello", body: "World" &#125;) &#123;
+#     post &#123; id slug &#125;
+#     errors &#123; field message code &#125;
+#   &#125;
+# &#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Relay Cursor Pagination</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Connection types (Relay spec)
+type PostConnection &#123;
+  edges:    [PostEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+&#125;
+
+type PostEdge &#123;
+  node:   Post!
+  cursor: String!
+&#125;
+
+type PageInfo &#123;
+  hasNextPage:     Boolean!
+  hasPreviousPage: Boolean!
+  startCursor:     String
+  endCursor:       String
+&#125;</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Resolver — cursor pagination with Prisma
+async function postsConnection(
+  _: unknown,
+  args: &#123; first?: number; after?: string; last?: number; before?: string &#125;,
+  &#123; db &#125;: Context
+) &#123;
+  const limit  = args.first ?? args.last ?? 20;
+  const cursor = args.after ?? args.before;
+
+  // Decode opaque cursor (base64 of post ID)
+  const afterId = cursor
+    ? Buffer.from(cursor, 'base64').toString('utf8')
+    : undefined;
+
+  const posts = await db.post.findMany(&#123;
+    take:   limit + 1,  // fetch one extra to detect hasNextPage
+    cursor: afterId ? &#123; id: afterId &#125; : undefined,
+    skip:   afterId ? 1 : 0,
+    orderBy: &#123; createdAt: 'desc' &#125;,
+  &#125;);
+
+  const hasMore = posts.length > limit;
+  const items   = hasMore ? posts.slice(0, limit) : posts;
+
+  const edges = items.map(post => (&#123;
+    cursor: Buffer.from(post.id).toString('base64'),
+    node:   post,
+  &#125;));
+
+  return &#123;
+    edges,
+    totalCount: await db.post.count(),
+    pageInfo: &#123;
+      hasNextPage:     hasMore,
+      hasPreviousPage: !!cursor,
+      startCursor:     edges[0]?.cursor ?? null,
+      endCursor:       edges[edges.length - 1]?.cursor ?? null,
+    &#125;,
+  &#125;;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Schema-First vs Code-First Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Aspect</th>
+          <th class="border border-border px-3 py-2 text-left">Schema-First (SDL)</th>
+          <th class="border border-border px-3 py-2 text-left">Code-First (TypeGraphQL / Pothos)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Schema location</td><td class="border border-border px-3 py-2">.graphql files</td><td class="border border-border px-3 py-2">Generated from decorators/builders</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Type safety</td><td class="border border-border px-3 py-2">Needs codegen (graphql-code-generator)</td><td class="border border-border px-3 py-2">Native TypeScript types</td></tr>
+        <tr><td class="border border-border px-3 py-2">Design workflow</td><td class="border border-border px-3 py-2">Design SDL first, then implement</td><td class="border border-border px-3 py-2">Code and schema evolve together</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Schema drift risk</td><td class="border border-border px-3 py-2">Possible (SDL vs resolvers)</td><td class="border border-border px-3 py-2">Impossible (same source)</td></tr>
+        <tr><td class="border border-border px-3 py-2">Best tools</td><td class="border border-border px-3 py-2">Apollo Server, graphql-yoga</td><td class="border border-border px-3 py-2">TypeGraphQL, Pothos, Nexus</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Team fit</td><td class="border border-border px-3 py-2">API-first teams, design reviews</td><td class="border border-border px-3 py-2">TypeScript-heavy teams</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="GraphQL Schema Design" relatedTags={['graphql', 'api', 'backend', 'dataloader', 'pagination']} />
+</BaseLayout>

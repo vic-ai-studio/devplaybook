@@ -1,0 +1,227 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is the correct way to name REST API resources?", answer: "Always use plural nouns for collections: /users, /orders, /products. Never use verbs in the URL — the HTTP method conveys the action. Nest resources only when the child truly cannot exist without the parent, and limit nesting to two levels deep: /users/42/orders is fine, /users/42/orders/7/items/3/reviews gets unwieldy. Use kebab-case for multi-word segments: /blog-posts, not /blogPosts or /blog_posts. IDs go in the path for specific resources: GET /users/42, not GET /users?id=42." },
+  { question: "Which HTTP status codes should every API return?", answer: "At minimum: 200 OK (successful GET/PUT/PATCH), 201 Created (successful POST that creates a resource, include Location header pointing to new resource), 204 No Content (successful DELETE or PUT with no body), 400 Bad Request (invalid input — include error details in body), 401 Unauthorized (missing or invalid authentication), 403 Forbidden (authenticated but lacks permission), 404 Not Found (resource does not exist), 409 Conflict (optimistic locking collision, duplicate key), 422 Unprocessable Entity (validation errors with field-level details), 429 Too Many Requests (rate limited), 500 Internal Server Error (never expose stack traces)." },
+  { question: "What are the best API versioning strategies?", answer: "URL versioning (/v1/users) is the most widely used and cache-friendly approach — clients can see the version at a glance and proxy caches work correctly. Header versioning (Accept: application/vnd.api+json;version=2) keeps URLs clean but is harder to test in a browser. Avoid query param versioning (?v=1) because it mixes routing concerns with filtering. Whatever strategy you choose, publish a sunset policy: deprecate at least 6 months before removing a version and return a Sunset response header." },
+  { question: "How should REST APIs handle pagination?", answer: "Cursor-based pagination is recommended for large or frequently-changing datasets. Return a next_cursor (opaque base64 token encoding the last seen ID + timestamp) and use it as a query param: GET /posts?cursor=eyJpZCI6MTAwfQ&limit=20. Avoid offset pagination for large tables — OFFSET 10000 causes a full index scan. For simpler cases, return total_count, page, per_page, and links (self, next, prev) in a meta object. Always cap maximum page size (e.g., limit=100) and default to a safe value (limit=20)." },
+  { question: "What is HATEOAS and do I actually need it?", answer: "HATEOAS (Hypermedia as the Engine of Application State) means embedding links in API responses that describe available actions, so clients discover the API dynamically without hard-coding URLs. A fully HATEOAS response includes _links: &#123; self: &#123; href: '/orders/42' &#125;, cancel: &#123; href: '/orders/42/cancel', method: 'POST' &#125; &#125;. In practice, most public APIs skip full HATEOAS. A pragmatic middle ground: include a self link on every resource and a next/prev on paginated collections. Full HATEOAS is most valuable for machine-to-machine APIs where clients must be decoupled from server URL structure." },
+  { question: "How do I design consistent error responses?", answer: "Adopt a standard error envelope and apply it everywhere. A good structure: &#123; error: &#123; code: 'VALIDATION_FAILED', message: 'Human-readable summary', details: [ &#123; field: 'email', issue: 'must be a valid email address' &#125; ] &#125; &#125;. The code field is a machine-readable string constant your clients can switch on. Never return different error shapes for different endpoints. For 500 errors, log the full stack server-side but return only a generic message and a trace_id clients can quote in support tickets." },
+];
+---
+
+<BaseLayout
+  title="REST API Design Checklist: Resource Naming, Versioning &amp; Status Codes"
+  description="Complete REST API design checklist covering URL structure, HTTP methods, status codes, versioning strategies, pagination, filtering, sorting, and HATEOAS basics."
+  tool="REST API design, API naming conventions, HTTP status codes, API versioning, API pagination, HATEOAS"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "REST API Design Checklist",
+    "url": "https://devplaybook.cc/tools/rest-api-design-checklist",
+    "description": "Complete REST API design checklist: resource naming, HTTP methods, status codes, versioning, pagination, and HATEOAS.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">REST API Design Checklist</h1>
+  <p class="text-text-muted mb-6">
+    A practical reference covering every decision point when designing a REST API — from URL structure and HTTP semantics to versioning, pagination, and error shapes. Use this as a review checklist before shipping.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Resource naming conventions</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HTTP methods &amp; status codes</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Versioning &amp; pagination</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Filtering, sorting &amp; HATEOAS</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Resource URL Structure</h2>
+  <p class="text-text-muted mb-3">Follow these rules for every endpoint you design:</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Collections — plural nouns
+GET    /users              # list all users
+POST   /users              # create a new user
+
+# Specific resource — ID in path segment
+GET    /users/42           # get user 42
+PUT    /users/42           # full replace
+PATCH  /users/42           # partial update
+DELETE /users/42           # delete
+
+# Nested resource (max 2 levels)
+GET    /users/42/orders    # orders belonging to user 42
+GET    /users/42/orders/7  # specific order for user 42
+
+# WRONG — verbs in URL
+POST   /createUser         # bad
+GET    /users/getAll       # bad
+POST   /users/42/delete    # bad</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">HTTP Method Semantics</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Method</th>
+          <th class="border border-border px-3 py-2 text-left">Idempotent</th>
+          <th class="border border-border px-3 py-2 text-left">Safe</th>
+          <th class="border border-border px-3 py-2 text-left">Use for</th>
+          <th class="border border-border px-3 py-2 text-left">Success code</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">GET</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">Read resource or collection</td><td class="border border-border px-3 py-2">200</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">POST</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2">Create resource</td><td class="border border-border px-3 py-2">201 + Location</td></tr>
+        <tr><td class="border border-border px-3 py-2">PUT</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2">Full replace (all fields)</td><td class="border border-border px-3 py-2">200 or 204</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">PATCH</td><td class="border border-border px-3 py-2">No*</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2">Partial update (only sent fields)</td><td class="border border-border px-3 py-2">200 or 204</td></tr>
+        <tr><td class="border border-border px-3 py-2">DELETE</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2">Remove resource</td><td class="border border-border px-3 py-2">204</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">HEAD</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">Check existence / headers only</td><td class="border border-border px-3 py-2">200 or 404</td></tr>
+        <tr><td class="border border-border px-3 py-2">OPTIONS</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">CORS preflight, allowed methods</td><td class="border border-border px-3 py-2">200</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-text-muted text-sm mb-6">*PATCH is only idempotent if using JSON Patch format (RFC 6902). Merge-patch operations are not guaranteed idempotent.</p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Status Code Quick Reference</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">200 OK              — Successful GET, PUT, PATCH with response body
+201 Created         — Successful POST; include Location: /users/42
+204 No Content      — Successful DELETE or PUT/PATCH with no body
+304 Not Modified    — GET with conditional If-None-Match / If-Modified-Since
+400 Bad Request     — Malformed JSON, wrong types, missing required fields
+401 Unauthorized    — No auth token, expired token, invalid signature
+403 Forbidden       — Valid token but insufficient permissions
+404 Not Found       — Resource does not exist (or hidden for security)
+405 Method Not Allowed — PUT on a collection, etc.
+409 Conflict        — Duplicate unique field, optimistic lock version mismatch
+410 Gone            — Resource permanently deleted (use over 404 for caching)
+422 Unprocessable   — Syntactically valid but semantically wrong (validation)
+429 Too Many Requests — Rate limited; include Retry-After header
+500 Internal Error  — Server-side failure; return trace_id, log full error
+503 Service Unavailable — Dependency down; include Retry-After header</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Filtering, Sorting &amp; Pagination</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Filtering — query params per field
+GET /orders?status=pending&amp;created_after=2024-01-01
+
+# Range filters with operators
+GET /products?price[gte]=10&amp;price[lte]=100
+GET /products?price_min=10&amp;price_max=100  # simpler alternative
+
+# Sorting — comma-separated, prefix minus for desc
+GET /users?sort=-created_at,name    # newest first, then by name asc
+
+# Cursor pagination (recommended for large data)
+GET /posts?limit=20
+# Response includes:
+# &#123; "data": [...], "meta": &#123; "next_cursor": "eyJpZCI6MjB9", "has_more": true &#125; &#125;
+GET /posts?cursor=eyJpZCI6MjB9&amp;limit=20
+
+# Field selection (sparse fieldsets)
+GET /users?fields=id,name,email     # only return requested fields</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Consistent Error Response Shape</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// 422 Validation error
+&#123;
+  "error": &#123;
+    "code": "VALIDATION_FAILED",
+    "message": "Request validation failed",
+    "details": [
+      &#123; "field": "email", "issue": "must be a valid email address" &#125;,
+      &#123; "field": "age",   "issue": "must be a positive integer" &#125;
+    ],
+    "trace_id": "req_01hxyz..."
+  &#125;
+&#125;
+
+// 404 Not found
+&#123;
+  "error": &#123;
+    "code": "USER_NOT_FOUND",
+    "message": "No user found with id 42",
+    "trace_id": "req_01habc..."
+  &#125;
+&#125;
+
+// 429 Rate limited
+&#123;
+  "error": &#123;
+    "code": "RATE_LIMITED",
+    "message": "Too many requests",
+    "retry_after": 30
+  &#125;
+&#125;
+// Also set headers: X-RateLimit-Limit, X-RateLimit-Remaining, Retry-After</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Versioning Strategy</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Option 1: URL versioning (most common, cache-friendly)
+GET /v1/users
+GET /v2/users
+
+# Option 2: Request header versioning
+GET /users
+X-API-Version: 2
+
+# Option 3: Content-type negotiation (RFC 6838)
+Accept: application/vnd.myapi.v2+json
+
+# Deprecation lifecycle headers
+Deprecation: Tue, 01 Jan 2025 00:00:00 GMT
+Sunset: Mon, 01 Jul 2025 00:00:00 GMT
+Link: &lt;https://devdocs.example.com/v2/migration&gt;; rel="successor-version"</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">HATEOAS Basics</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Minimal HATEOAS — self link + available actions
+&#123;
+  "id": 42,
+  "status": "pending",
+  "total": 199.99,
+  "_links": &#123;
+    "self":    &#123; "href": "/orders/42",        "method": "GET" &#125;,
+    "cancel":  &#123; "href": "/orders/42/cancel", "method": "POST" &#125;,
+    "invoice": &#123; "href": "/orders/42/invoice","method": "GET" &#125;
+  &#125;
+&#125;
+
+// Paginated collection with navigation links
+&#123;
+  "data": [...],
+  "_links": &#123;
+    "self":  &#123; "href": "/posts?page=3" &#125;,
+    "next":  &#123; "href": "/posts?page=4" &#125;,
+    "prev":  &#123; "href": "/posts?page=2" &#125;,
+    "first": &#123; "href": "/posts?page=1" &#125;,
+    "last":  &#123; "href": "/posts?page=12" &#125;
+  &#125;,
+  "meta": &#123; "total": 234, "per_page": 20 &#125;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pre-Ship Checklist</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Area</th>
+          <th class="border border-border px-3 py-2 text-left">Checklist Item</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">URLs</td><td class="border border-border px-3 py-2">Plural nouns, no verbs, kebab-case, max 2 nesting levels</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Methods</td><td class="border border-border px-3 py-2">GET safe, PUT/DELETE idempotent, POST only for creation</td></tr>
+        <tr><td class="border border-border px-3 py-2">Status codes</td><td class="border border-border px-3 py-2">201 + Location on create, 204 on delete, 422 for validation</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Errors</td><td class="border border-border px-3 py-2">Consistent envelope, machine-readable code, trace_id</td></tr>
+        <tr><td class="border border-border px-3 py-2">Pagination</td><td class="border border-border px-3 py-2">Cursor-based, max limit enforced, meta with has_more</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Versioning</td><td class="border border-border px-3 py-2">Strategy chosen and documented, sunset headers on old versions</td></tr>
+        <tr><td class="border border-border px-3 py-2">Security</td><td class="border border-border px-3 py-2">Auth on all non-public routes, 401 vs 403 used correctly</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Docs</td><td class="border border-border px-3 py-2">OpenAPI spec published, examples for every endpoint</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="REST API Design Checklist" relatedTags={['api', 'rest', 'http', 'backend', 'design']} />
+</BaseLayout>

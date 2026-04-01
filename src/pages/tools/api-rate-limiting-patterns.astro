@@ -1,0 +1,267 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is the difference between token bucket and leaky bucket?", answer: "Token bucket allows bursting: tokens accumulate up to a maximum capacity and each request consumes one token. If tokens are available, the request proceeds immediately — so a burst of traffic up to the bucket capacity is allowed. Leaky bucket enforces a strictly constant output rate regardless of input burst. Requests join a queue and are processed at a fixed rate; if the queue is full, new requests are dropped. Token bucket is better for most APIs because it allows short bursts (page loads, mobile app startup) while still enforcing average rate limits. Leaky bucket is better for downstream protection where you need to protect a slow resource from any burst." },
+  { question: "How should I choose between fixed window and sliding window rate limiting?", answer: "Fixed window is simpler to implement and has constant memory usage (one counter per window per key), but has a boundary burst problem: a client can send max requests at the end of one window and max requests at the start of the next, effectively doubling the allowed rate at window boundaries. Sliding window log fixes this exactly but requires storing a timestamp for every request (memory scales with request count). Sliding window counter (the common Redis hybrid) approximates sliding behavior using two fixed-window counters with weighted interpolation, giving near-perfect accuracy at constant memory cost. Use sliding window counter for any production API." },
+  { question: "What Redis data structures are used for rate limiting?", answer: "Three approaches: (1) INCR + EXPIRE on a key like rate:user:42:2024010115 — simple fixed-window counter, O(1) per request. (2) Sorted set with ZADD + ZREMRANGEBYSCORE + ZCARD for sliding window log — stores timestamps as scores, removes old entries, counts remaining. Accurate but O(log N) and memory grows with request count. (3) Two-key sliding window counter using INCR on current and previous window keys with weighted interpolation — best balance of accuracy and performance. Use Lua scripts to make multi-command operations atomic, or use Redis modules like redis-cell (TOKEN_BUCKET command) for built-in token bucket." },
+  { question: "What response headers should a rate-limited API return?", answer: "Standard headers: X-RateLimit-Limit (total requests allowed in window), X-RateLimit-Remaining (requests left in current window), X-RateLimit-Reset (Unix timestamp when the window resets or tokens refill), Retry-After (seconds to wait before retrying, required on 429 responses). The RateLimit header family is being standardized in IETF draft draft-ietf-httpapi-ratelimit-headers: RateLimit-Policy and RateLimit. Always include Retry-After on 429 — without it, clients that aggressively retry will amplify load rather than backing off. For token bucket, RateLimit-Reset should be the time until the next token is available." },
+  { question: "How do I rate limit in Nginx without Redis?", answer: "Nginx's ngx_http_limit_req_module implements leaky bucket natively. Define a zone with limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s; in the http block, then apply limit_req zone=api burst=20 nodelay; in your location block. The burst parameter allows up to 20 queued requests — nodelay serves them immediately (token bucket-like) rather than spacing them out (pure leaky bucket). For per-user limiting use $http_authorization or $cookie_session as the key. Nginx's in-memory zones are fast but not shared across workers by default — use a Lua-based solution (OpenResty) for per-worker accuracy across cluster nodes." },
+  { question: "How do I handle distributed rate limiting across multiple API servers?", answer: "Single-node counters fail in a multi-server deployment because each server only sees its own traffic. Solutions: (1) Redis centralized store — all servers increment the same key, highest accuracy, adds ~0.5–1ms latency per request. (2) Approximate local + sync — each server keeps a local counter and periodically syncs to Redis, reducing latency at the cost of slight over-allowance during sync intervals. (3) API Gateway rate limiting (Kong, AWS API Gateway, Nginx Plus) — handles limiting before traffic reaches your servers. (4) Token bucket with occasional replenishment — servers pull a batch of tokens from Redis and serve locally until exhausted. For most APIs, option 1 or 3 is the right choice." },
+];
+---
+
+<BaseLayout
+  title="API Rate Limiting Patterns: Token Bucket, Sliding Window &amp; Redis Implementation"
+  description="Complete guide to API rate limiting: fixed window, sliding window, token bucket, leaky bucket algorithms, Redis implementation with Lua scripts, Nginx config, and response headers."
+  tool="API rate limiting, token bucket, sliding window, Redis rate limit, Nginx rate limiting, rate limit headers"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "API Rate Limiting Patterns",
+    "url": "https://devplaybook.cc/tools/api-rate-limiting-patterns",
+    "description": "API rate limiting guide: algorithms, Redis implementation, Nginx config, and response headers.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">API Rate Limiting Patterns</h1>
+  <p class="text-text-muted mb-6">
+    Rate limiting protects your API from abuse, prevents cascading failures, and enforces fair usage tiers. This guide covers all four algorithms, Redis implementations you can copy directly, Nginx configuration, and the response headers your clients need to back off gracefully.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 4 algorithms compared</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Redis + Lua implementation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Nginx config</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Response headers</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Algorithm Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Algorithm</th>
+          <th class="border border-border px-3 py-2 text-left">Allows burst</th>
+          <th class="border border-border px-3 py-2 text-left">Memory</th>
+          <th class="border border-border px-3 py-2 text-left">Accuracy</th>
+          <th class="border border-border px-3 py-2 text-left">Best for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Fixed window</td><td class="border border-border px-3 py-2">Yes (boundary burst)</td><td class="border border-border px-3 py-2">O(1)</td><td class="border border-border px-3 py-2">Low (boundary problem)</td><td class="border border-border px-3 py-2">Simple analytics limits</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Sliding window log</td><td class="border border-border px-3 py-2">Controlled</td><td class="border border-border px-3 py-2">O(requests)</td><td class="border border-border px-3 py-2">Exact</td><td class="border border-border px-3 py-2">Low-traffic, exact billing</td></tr>
+        <tr><td class="border border-border px-3 py-2">Sliding window counter</td><td class="border border-border px-3 py-2">Controlled</td><td class="border border-border px-3 py-2">O(1)</td><td class="border border-border px-3 py-2">~0.1% error</td><td class="border border-border px-3 py-2">Most production APIs</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Token bucket</td><td class="border border-border px-3 py-2">Yes (up to capacity)</td><td class="border border-border px-3 py-2">O(1)</td><td class="border border-border px-3 py-2">High</td><td class="border border-border px-3 py-2">APIs with legitimate bursts</td></tr>
+        <tr><td class="border border-border px-3 py-2">Leaky bucket</td><td class="border border-border px-3 py-2">No (strict rate)</td><td class="border border-border px-3 py-2">O(queue)</td><td class="border border-border px-3 py-2">Exact output rate</td><td class="border border-border px-3 py-2">Protecting slow downstream</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Redis: Fixed Window (INCR + EXPIRE)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Node.js — fixed window rate limiter
+import &#123; createClient &#125; from 'redis';
+
+const redis = createClient();
+await redis.connect();
+
+async function fixedWindowRateLimit(
+  userId: string,
+  limitPerMinute: number
+): Promise&#123;&#123; allowed: boolean; remaining: number; resetIn: number &#125;&#125; &#123;
+  const windowSeconds = 60;
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = Math.floor(now / windowSeconds) * windowSeconds;
+  const key = `rate:fixed:$&#123;userId&#125;:$&#123;windowStart&#125;`;
+
+  const count = await redis.incr(key);
+
+  if (count === 1) &#123;
+    // First request in this window — set expiry
+    await redis.expire(key, windowSeconds);
+  &#125;
+
+  const resetIn = windowStart + windowSeconds - now;
+
+  return &#123;
+    allowed: count <= limitPerMinute,
+    remaining: Math.max(0, limitPerMinute - count),
+    resetIn,
+  &#125;;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Redis: Sliding Window Counter (Lua — Atomic)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">-- sliding_window.lua
+-- KEYS[1]: current window key   e.g. rate:user:42:1704067200
+-- KEYS[2]: previous window key  e.g. rate:user:42:1704067140
+-- ARGV[1]: current timestamp (seconds)
+-- ARGV[2]: window size in seconds
+-- ARGV[3]: max requests per window
+-- Returns: &#123; allowed (0|1), current_count, remaining &#125;
+
+local currentKey  = KEYS[1]
+local previousKey = KEYS[2]
+local now         = tonumber(ARGV[1])
+local windowSize  = tonumber(ARGV[2])
+local limit       = tonumber(ARGV[3])
+
+local currentCount  = tonumber(redis.call('GET', currentKey) or 0)
+local previousCount = tonumber(redis.call('GET', previousKey) or 0)
+
+-- Weight of previous window within the sliding window
+local windowStart  = math.floor(now / windowSize) * windowSize
+local elapsed      = now - windowStart
+local prevWeight   = 1 - (elapsed / windowSize)
+
+local estimatedCount = currentCount + math.floor(previousCount * prevWeight)
+
+if estimatedCount >= limit then
+  return &#123; 0, estimatedCount, 0 &#125;
+end
+
+-- Increment current window
+local newCount = redis.call('INCR', currentKey)
+if newCount == 1 then
+  redis.call('EXPIRE', currentKey, windowSize * 2)
+end
+
+local remaining = limit - estimatedCount - 1
+return &#123; 1, estimatedCount + 1, remaining &#125;</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Node.js — call the Lua script
+const slidingWindowScript = fs.readFileSync('./sliding_window.lua', 'utf8');
+
+async function slidingWindowRateLimit(userId: string, limit: number) &#123;
+  const windowSize = 60; // 1 minute
+  const now = Math.floor(Date.now() / 1000);
+  const currentWindow  = Math.floor(now / windowSize) * windowSize;
+  const previousWindow = currentWindow - windowSize;
+
+  const result = await redis.eval(slidingWindowScript, &#123;
+    keys: [
+      `rate:sw:$&#123;userId&#125;:$&#123;currentWindow&#125;`,
+      `rate:sw:$&#123;userId&#125;:$&#123;previousWindow&#125;`,
+    ],
+    arguments: [String(now), String(windowSize), String(limit)],
+  &#125;) as [number, number, number];
+
+  return &#123;
+    allowed:   result[0] === 1,
+    count:     result[1],
+    remaining: result[2],
+    resetAt:   currentWindow + windowSize,
+  &#125;;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Token Bucket with Redis</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">-- token_bucket.lua
+-- KEYS[1]: bucket key
+-- ARGV[1]: current timestamp (ms float)
+-- ARGV[2]: bucket capacity (max tokens)
+-- ARGV[3]: refill rate (tokens per second)
+-- ARGV[4]: tokens to consume (default 1)
+
+local key      = KEYS[1]
+local now      = tonumber(ARGV[1])
+local capacity = tonumber(ARGV[2])
+local rate     = tonumber(ARGV[3])
+local consume  = tonumber(ARGV[4]) or 1
+
+local bucket = redis.call('HMGET', key, 'tokens', 'last_refill')
+local tokens     = tonumber(bucket[1]) or capacity
+local lastRefill = tonumber(bucket[2]) or now
+
+-- Refill tokens based on elapsed time
+local elapsed  = math.max(0, now - lastRefill)
+local newTokens = math.min(capacity, tokens + (elapsed / 1000) * rate)
+
+if newTokens < consume then
+  -- Not enough tokens — calculate wait time
+  local waitMs = math.ceil((consume - newTokens) / rate * 1000)
+  return &#123; 0, math.floor(newTokens), waitMs &#125;
+end
+
+-- Consume tokens
+newTokens = newTokens - consume
+redis.call('HMSET', key, 'tokens', newTokens, 'last_refill', now)
+redis.call('PEXPIRE', key, math.ceil(capacity / rate * 1000))
+
+return &#123; 1, math.floor(newTokens), 0 &#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Express Middleware with Proper Headers</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// rate-limit.middleware.ts
+import &#123; Request, Response, NextFunction &#125; from 'express';
+
+export function createRateLimiter(limit: number) &#123;
+  return async (req: Request, res: Response, next: NextFunction) => &#123;
+    const userId = req.user?.id ?? req.ip;
+    const result = await slidingWindowRateLimit(userId, limit);
+
+    // Set standard rate limit headers
+    res.setHeader('X-RateLimit-Limit',     limit);
+    res.setHeader('X-RateLimit-Remaining', result.remaining);
+    res.setHeader('X-RateLimit-Reset',     result.resetAt);
+    res.setHeader('RateLimit-Policy',      `$&#123;limit&#125;;w=60`);
+
+    if (!result.allowed) &#123;
+      const retryAfter = result.resetAt - Math.floor(Date.now() / 1000);
+      res.setHeader('Retry-After', retryAfter);
+
+      return res.status(429).json(&#123;
+        error: &#123;
+          code: 'RATE_LIMITED',
+          message: 'Too many requests. Please slow down.',
+          retry_after: retryAfter,
+        &#125;,
+      &#125;);
+    &#125;
+
+    next();
+  &#125;;
+&#125;
+
+// Apply per-route
+app.use('/api/v1/search',  createRateLimiter(10));   // 10/min — expensive
+app.use('/api/v1/users',   createRateLimiter(100));  // 100/min — standard
+app.use('/api/v1/webhooks',createRateLimiter(1000)); // 1000/min — high volume</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Nginx Rate Limiting</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># nginx.conf — http block
+http &#123;
+  # Zone: 10MB stores ~160,000 IP addresses
+  # Rate: 10 req/sec per IP (leaky bucket)
+  limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+
+  # Per-user limiting using JWT sub claim (requires auth_request)
+  limit_req_zone $http_x_user_id zone=user_limit:10m rate=100r/m;
+
+  # Add headers to downstream
+  limit_req_status 429;
+  limit_conn_status 429;
+
+  server &#123;
+    location /api/ &#123;
+      # Allow burst of 20, serve immediately (nodelay = token bucket behavior)
+      limit_req zone=api_limit burst=20 nodelay;
+
+      # Return proper JSON error
+      error_page 429 @rate_limited;
+      proxy_pass http://backend;
+    &#125;
+
+    location @rate_limited &#123;
+      add_header Content-Type application/json;
+      add_header Retry-After 1;
+      return 429 '&#123;"error":&#123;"code":"RATE_LIMITED","message":"Too many requests"&#125;&#125;';
+    &#125;
+  &#125;
+&#125;</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="API Rate Limiting Patterns" relatedTags={['api', 'redis', 'backend', 'security', 'performance']} />
+</BaseLayout>

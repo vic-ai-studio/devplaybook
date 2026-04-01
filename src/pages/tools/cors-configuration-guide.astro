@@ -1,0 +1,201 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is CORS and why do browsers enforce it?", answer: "CORS (Cross-Origin Resource Sharing) is a browser security mechanism that restricts web pages from making requests to a different origin (protocol + domain + port) than the one that served the page. Browsers enforce it to prevent malicious websites from making authenticated requests to other sites on behalf of logged-in users (CSRF-style attacks). CORS is browser-enforced — server-to-server requests, curl, and Postman are not subject to CORS." },
+  { question: "What is a preflight request?", answer: "A preflight is an automatic OPTIONS request the browser sends before a 'non-simple' cross-origin request. Simple requests use GET/HEAD/POST with basic headers and standard content types. Preflight is triggered for: custom headers (like Authorization), methods other than GET/HEAD/POST, Content-Type other than application/x-www-form-urlencoded, multipart/form-data, or text/plain. The server must respond with appropriate Access-Control-Allow-* headers for the browser to proceed with the actual request." },
+  { question: "Why does my CORS config work in development but fail in production?", answer: "Common causes: (1) Your production domain is not in the allowlist — check for http vs https or www vs non-www mismatches. (2) A reverse proxy (nginx, load balancer) is adding duplicate CORS headers — both the proxy and app are setting headers, causing 'multiple values' errors. (3) Your CDN is caching OPTIONS responses without Vary: Origin. (4) Environment variables for allowed origins are not set in production. Always log the incoming Origin header and the outgoing CORS headers to debug." },
+  { question: "Can I use Access-Control-Allow-Origin: * with credentials?", answer: "No — this combination is explicitly forbidden by the CORS specification and browsers will reject it. When credentials: true (cookies, Authorization headers) you must specify an explicit origin, not a wildcard. If you need to support multiple origins, maintain an allowlist and dynamically respond with the exact requesting Origin if it's in the list. Always include Vary: Origin in responses when doing dynamic origin matching." },
+  { question: "What is the difference between CORS and CSRF?", answer: "CORS controls whether a browser allows a cross-origin response to be read by JavaScript. CSRF (Cross-Site Request Forgery) tricks a victim's browser into making a request to another site — the browser sends cookies automatically. CORS does not fully prevent CSRF: a simple POST with standard headers won't trigger a preflight. Use CSRF tokens or SameSite=Strict cookies for CSRF prevention. They are complementary protections, not alternatives." },
+  { question: "How do I configure CORS for a WebSocket connection?", answer: "WebSockets don't use CORS — they perform a regular HTTP upgrade request, but browsers don't enforce CORS on WebSocket connections. Instead, validate the Origin header manually in your WebSocket upgrade handler. If the Origin is not in your allowlist, reject the handshake with a 403. This is critical because browsers automatically include cookies with WebSocket connections to authenticated origins." },
+];
+---
+
+<BaseLayout
+  title="CORS Configuration Guide for REST APIs"
+  description="Complete CORS configuration guide for REST APIs. Covers preflight requests, common mistakes, correct Express/FastAPI/Nginx config, debugging CORS errors, and security best practices."
+  tool="CORS Configuration, Cross-Origin Resource Sharing, CORS Headers, Express CORS, FastAPI CORS"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "CORS Configuration Guide for REST APIs",
+    "url": "https://devplaybook.cc/tools/cors-configuration-guide",
+    "description": "Complete CORS configuration guide covering preflight, common mistakes, Express/FastAPI/Nginx configuration, and security best practices.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">CORS Configuration Guide for REST APIs</h1>
+  <p class="text-text-muted mb-6">A practical guide to understanding and correctly configuring Cross-Origin Resource Sharing for REST APIs. Covers the browser mechanics, common misconfigurations, and production-ready code for Node.js, Python, and Nginx.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Preflight request explained</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Express / FastAPI / Nginx</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Common errors & fixes</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Security best practices</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mb-3">How CORS Works: The Browser Flow</h2>
+  <p class="text-text-muted mb-4">When your frontend at <code class="text-primary">https://app.example.com</code> calls an API at <code class="text-primary">https://api.example.com</code>, those are different origins (different subdomain). The browser enforces CORS to protect users.</p>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-6">── Simple Request Flow ──────────────────────────────────────────────
+Browser → API:  GET /data
+                Origin: https://app.example.com
+
+API → Browser:  200 OK
+                Access-Control-Allow-Origin: https://app.example.com
+                ✅ Browser allows JavaScript to read the response
+
+── Preflight Flow (non-simple request) ──────────────────────────────
+Browser → API:  OPTIONS /data
+                Origin: https://app.example.com
+                Access-Control-Request-Method: DELETE
+                Access-Control-Request-Headers: Authorization
+
+API → Browser:  204 No Content
+                Access-Control-Allow-Origin: https://app.example.com
+                Access-Control-Allow-Methods: GET, POST, DELETE
+                Access-Control-Allow-Headers: Authorization, Content-Type
+                Access-Control-Max-Age: 86400   ← cache preflight for 1 day
+
+Browser → API:  DELETE /data/123
+                Authorization: Bearer eyJ...
+                ✅ Now sends the real request</pre>
+
+  <h2 class="text-xl font-semibold mb-3">Express.js Configuration</h2>
+  <h3 class="text-base font-semibold mb-2">Simple Single-Origin Setup</h3>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">import express from 'express';
+import cors from 'cors';
+
+const app = express();
+
+// Simple: single trusted origin
+app.use(cors(&#123;
+  origin: 'https://app.yourcompany.com',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+  exposedHeaders: ['X-Total-Count', 'X-Page'],  // headers JS can read
+  maxAge: 86400,  // preflight cache: 24 hours
+&#125;));
+
+app.options('*', cors());  // enable pre-flight for all routes</pre>
+
+  <h3 class="text-base font-semibold mb-2">Multi-Origin with Dynamic Allowlist</h3>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-6">const ALLOWED_ORIGINS = new Set([
+  'https://app.yourcompany.com',
+  'https://admin.yourcompany.com',
+  'https://staging.yourcompany.com',
+  ...(process.env.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:5173'] : []),
+]);
+
+app.use(cors(&#123;
+  origin: (origin, callback) => &#123;
+    // Allow server-to-server requests (no origin header)
+    if (!origin) return callback(null, true);
+
+    if (ALLOWED_ORIGINS.has(origin)) &#123;
+      callback(null, true);
+    &#125; else &#123;
+      console.warn(`CORS blocked: $&#123;origin&#125;`);
+      callback(new Error(`Origin $&#123;origin&#125; not allowed`));
+    &#125;
+  &#125;,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+&#125;));
+
+// ⚠️ When using dynamic origin, always add Vary: Origin
+app.use((req, res, next) => &#123;
+  res.vary('Origin');
+  next();
+&#125;);</pre>
+
+  <h2 class="text-xl font-semibold mb-3">FastAPI Configuration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-6">from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import os
+
+app = FastAPI()
+
+ALLOWED_ORIGINS = [
+    "https://app.yourcompany.com",
+    "https://admin.yourcompany.com",
+]
+
+if os.getenv("ENVIRONMENT") == "development":
+    ALLOWED_ORIGINS.extend([
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ])
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,        # never use ["*"] with credentials
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Total-Count"],
+    max_age=86400,
+)</pre>
+
+  <h2 class="text-xl font-semibold mb-3">Nginx Configuration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-6">server &#123;
+    listen 443 ssl;
+    server_name api.yourcompany.com;
+
+    # Map origins to allowed flag
+    map $http_origin $cors_origin &#123;
+        default                           "";
+        "https://app.yourcompany.com"     $http_origin;
+        "https://admin.yourcompany.com"   $http_origin;
+    &#125;
+
+    location /api/ &#123;
+        # Handle preflight
+        if ($request_method = OPTIONS) &#123;
+            add_header Access-Control-Allow-Origin      $cors_origin always;
+            add_header Access-Control-Allow-Credentials true always;
+            add_header Access-Control-Allow-Methods    "GET,POST,PUT,DELETE,OPTIONS" always;
+            add_header Access-Control-Allow-Headers    "Authorization,Content-Type" always;
+            add_header Access-Control-Max-Age          86400 always;
+            add_header Vary                            Origin always;
+            return 204;
+        &#125;
+
+        add_header Access-Control-Allow-Origin      $cors_origin always;
+        add_header Access-Control-Allow-Credentials true always;
+        add_header Vary                            Origin always;
+
+        proxy_pass http://backend;
+    &#125;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mb-3">Common CORS Errors & Fixes</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm mb-6">
+      <thead>
+        <tr class="border-b border-border text-left text-text-muted">
+          <th class="py-2 pr-4">Error Message</th>
+          <th class="py-2 pr-4">Root Cause</th>
+          <th class="py-2">Fix</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border text-xs">
+        <tr><td class="py-2 pr-4 font-mono">No 'Access-Control-Allow-Origin' header</td><td class="py-2 pr-4">Server not returning CORS headers</td><td class="py-2 text-text-muted">Add CORS middleware / nginx config</td></tr>
+        <tr><td class="py-2 pr-4 font-mono">has been blocked by CORS policy: The value of the 'Access-Control-Allow-Origin' header must not be the wildcard '*' when the request's credentials mode is 'include'</td><td class="py-2 pr-4">Using * with credentials:true</td><td class="py-2 text-text-muted">Use explicit origin, not wildcard</td></tr>
+        <tr><td class="py-2 pr-4 font-mono">The 'Access-Control-Allow-Origin' header contains multiple values</td><td class="py-2 pr-4">Proxy + app both adding header</td><td class="py-2 text-text-muted">Add CORS in one layer only</td></tr>
+        <tr><td class="py-2 pr-4 font-mono">Request header field authorization is not allowed</td><td class="py-2 pr-4">Authorization not in allowedHeaders</td><td class="py-2 text-text-muted">Add 'Authorization' to allowedHeaders</td></tr>
+        <tr><td class="py-2 pr-4 font-mono">Response to preflight has invalid HTTP status code 404</td><td class="py-2 pr-4">OPTIONS route not handled</td><td class="py-2 text-text-muted">Add app.options('*', cors())</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="CORS Configuration Guide" relatedTags={['security', 'api', 'backend', 'web']} />
+</BaseLayout>
