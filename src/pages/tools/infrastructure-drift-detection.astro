@@ -158,4 +158,77 @@ FROM aws_ec2_security_groups sg,
   jsonb_array_elements(perm -&gt; 'IpRanges') AS ip_range
 WHERE ip_range -&gt;&gt; 'CidrIp' = '0.0.0.0/0'
   AND perm -&gt;&gt; 'IpProtocol' != '-1'
-ORDER BY perm -&gt;&gt; 'FromPort';
+ORDER BY perm -&gt;&gt; 'FromPort';</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">CI Integration — GitHub Actions Drift Alert</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># .github/workflows/drift-detection.yml
+name: Infrastructure Drift Detection
+
+on:
+  schedule:
+    - cron: '0 8 * * *'   # Daily at 8 AM UTC
+  workflow_dispatch:
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: $&#123;&#123; secrets.AWS_ACCESS_KEY_ID &#125;&#125;
+          aws-secret-access-key: $&#123;&#123; secrets.AWS_SECRET_ACCESS_KEY &#125;&#125;
+          aws-region: us-east-1
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: terraform/
+
+      - name: Detect Drift
+        id: drift
+        run: |
+          terraform plan -refresh=true -detailed-exitcode \
+            -out=tfplan.binary 2&gt;&amp;1 | tee plan_output.txt
+          echo "exit_code=$?" &gt;&gt; $GITHUB_OUTPUT
+        working-directory: terraform/
+        continue-on-error: true
+
+      - name: Alert on Drift
+        if: steps.drift.outputs.exit_code == '2'
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            &#123;
+              "text": ":rotating_light: *Infrastructure Drift Detected*\nTerraform plan shows unexpected changes in production.\n&lt;$&#123;&#123; github.server_url &#125;&#125;/$&#123;&#123; github.repository &#125;&#125;/actions/runs/$&#123;&#123; github.run_id &#125;&#125;|View Details&gt;"
+            &#125;
+        env:
+          SLACK_WEBHOOK_URL: $&#123;&#123; secrets.SLACK_DRIFT_WEBHOOK &#125;&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Drift Severity Classification</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Severity</th>
+          <th class="text-left py-2 pr-4 font-semibold">Resource Type</th>
+          <th class="text-left py-2 font-semibold">Response</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4 text-red-500 font-semibold">Critical</td><td class="py-2 pr-4">IAM policies, security groups, KMS keys</td><td class="py-2">Immediate alert + auto-remediation</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4 text-yellow-500 font-semibold">High</td><td class="py-2 pr-4">Instance types, RDS configs, network ACLs</td><td class="py-2">Alert within 1 hour</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4 text-blue-500 font-semibold">Medium</td><td class="py-2 pr-4">Auto-scaling groups, load balancer rules</td><td class="py-2">Daily report</td></tr>
+        <tr><td class="py-2 pr-4 text-text-muted font-semibold">Low</td><td class="py-2 pr-4">Tags, descriptions, metadata</td><td class="py-2">Weekly batch review</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="infrastructure-drift-detection" relatedTags={["terraform", "devops", "infrastructure", "cloud", "devsecops", "ci-cd"]} />
+</BaseLayout>
