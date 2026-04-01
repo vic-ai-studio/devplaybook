@@ -1,0 +1,234 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is PKCE and why is it needed?", answer: "PKCE (Proof Key for Code Exchange) is a security extension to OAuth 2.0 that protects against authorization code interception attacks. It replaces the client_secret for public clients (SPAs, mobile apps) by using a cryptographically random code_verifier and its SHA-256 hash (code_challenge) that prove the same client that started the flow is completing it." },
+  { question: "What is the difference between code_verifier and code_challenge?", answer: "The code_verifier is a cryptographically random string (43-128 characters) generated fresh for each authorization request. The code_challenge is the BASE64URL-encoded SHA-256 hash of the code_verifier. You send the challenge in the authorization request and the verifier in the token exchange request." },
+  { question: "What characters are allowed in a code_verifier?", answer: "Per RFC 7636, the code_verifier must only use unreserved URI characters: A-Z, a-z, 0-9, hyphen, period, underscore, and tilde. It must be between 43 and 128 characters long. Do NOT use base64 standard encoding — use base64url (URL-safe, no padding)." },
+  { question: "What should the redirect_uri be for a SPA?", answer: "For a SPA, the redirect_uri is typically the same origin as your app, e.g. `https://myapp.com/callback`. During development, `http://localhost:3000/callback` is commonly used. The exact URI must match what's registered in your OAuth provider's settings." },
+  { question: "Is PKCE safe to use without a client_secret?", answer: "Yes — that's the point. PKCE was designed for public clients that cannot safely store a client_secret. The code_verifier/challenge pair provides equivalent security guarantees for single-use authorization codes without requiring a secret embedded in client-side code." },
+];
+---
+
+<BaseLayout
+  title="OAuth 2.0 PKCE Flow Debugger — Generate Code Verifier, Challenge & Auth URL"
+  description="Debug OAuth 2.0 PKCE flows. Auto-generate code_verifier and code_challenge, build authorization URLs, and get token exchange curl commands."
+  tool="OAuth PKCE Debugger, Code Verifier Generator, Code Challenge SHA256, Authorization URL Builder, Token Exchange"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">OAuth 2.0 PKCE Flow Debugger</h1>
+  <p class="text-text-muted mb-4">Generate PKCE code verifier/challenge pairs, build authorization URLs, and get ready-to-run token exchange commands for OAuth 2.0 PKCE flows.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cryptographically secure code_verifier</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SHA-256 code_challenge</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Full authorization URL</span>
+  </div>
+
+  <!-- Config Inputs -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">OAuth Provider Settings</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Authorization Endpoint URL</label>
+        <input id="pkce-auth-url" type="text" value="https://accounts.example.com/oauth/authorize"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Token Endpoint URL</label>
+        <input id="pkce-token-url" type="text" value="https://accounts.example.com/oauth/token"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Client ID</label>
+        <input id="pkce-client-id" type="text" value="my-spa-client-id"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Redirect URI</label>
+        <input id="pkce-redirect-uri" type="text" value="http://localhost:3000/callback"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Scopes (comma-separated)</label>
+        <input id="pkce-scopes" type="text" value="openid, profile, email"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">State (optional, leave blank to auto-generate)</label>
+        <input id="pkce-state" type="text" placeholder="auto-generated if blank"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+    </div>
+    <button id="pkce-generate" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity">
+      Generate New Code Verifier / Challenge Pair
+    </button>
+  </div>
+
+  <!-- PKCE Values -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Generated PKCE Values</h2>
+    <div class="space-y-3">
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label class="text-sm font-medium">code_verifier <span class="text-text-muted font-normal text-xs">(keep this secret — send in token exchange)</span></label>
+          <button class="pkce-copy text-xs text-primary hover:underline" data-target="out-verifier">Copy</button>
+        </div>
+        <div id="out-verifier" class="bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono break-all text-text-muted">Generating…</div>
+      </div>
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label class="text-sm font-medium">code_challenge <span class="text-text-muted font-normal text-xs">(SHA-256, base64url — send in authorization request)</span></label>
+          <button class="pkce-copy text-xs text-primary hover:underline" data-target="out-challenge">Copy</button>
+        </div>
+        <div id="out-challenge" class="bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono break-all text-text-muted">Generating…</div>
+      </div>
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label class="text-sm font-medium">state</label>
+          <button class="pkce-copy text-xs text-primary hover:underline" data-target="out-state">Copy</button>
+        </div>
+        <div id="out-state" class="bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono break-all text-text-muted">Generating…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authorization URL -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-3">
+      <h2 class="text-base font-semibold">Authorization URL</h2>
+      <button class="pkce-copy text-xs text-primary hover:underline" data-target="out-auth-url">Copy</button>
+    </div>
+    <div id="out-auth-url" class="bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono break-all text-text-muted">Generating…</div>
+    <p class="text-xs text-text-muted mt-2">Redirect the user's browser to this URL to start the authorization flow.</p>
+  </div>
+
+  <!-- Token Exchange -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <div class="flex justify-between items-center mb-3">
+      <h2 class="text-base font-semibold">Token Exchange curl <span class="text-text-muted font-normal text-sm">(after receiving authorization_code)</span></h2>
+      <button class="pkce-copy text-xs text-primary hover:underline" data-target="out-token-curl">Copy</button>
+    </div>
+    <pre id="out-token-curl" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted">Generating…</pre>
+    <p class="text-xs text-text-muted mt-2">Replace <code class="bg-bg-card border border-border rounded px-1">AUTHORIZATION_CODE</code> with the code received in the redirect callback.</p>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="OAuth PKCE Flow Debugger" relatedTags={['oauth', 'pkce', 'auth', 'security', 'api']} />
+</BaseLayout>
+
+<script>
+  function getV(id: string): string {
+    return (document.getElementById(id) as HTMLInputElement).value.trim();
+  }
+
+  function setEl(id: string, text: string) {
+    const el = document.getElementById(id)!;
+    el.textContent = text;
+  }
+
+  function base64urlEncode(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let str = '';
+    bytes.forEach(b => str += String.fromCharCode(b));
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  function generateVerifier(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+    const length = 64 + Math.floor(Math.random() * 20);
+    const array = new Uint8Array(length);
+    crypto.getRandomValues(array);
+    return Array.from(array).map(b => chars[b % chars.length]).join('');
+  }
+
+  function generateState(): string {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    return base64urlEncode(array.buffer);
+  }
+
+  let currentVerifier = '';
+  let currentChallenge = '';
+  let currentState = '';
+
+  async function generate() {
+    const verifier = generateVerifier();
+    currentVerifier = verifier;
+
+    // SHA-256 code_challenge
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const challenge = base64urlEncode(hashBuffer);
+    currentChallenge = challenge;
+
+    const stateInput = getV('pkce-state');
+    currentState = stateInput || generateState();
+
+    setEl('out-verifier', verifier);
+    setEl('out-challenge', challenge);
+    setEl('out-state', currentState);
+
+    buildUrls(verifier, challenge, currentState);
+  }
+
+  function buildUrls(verifier: string, challenge: string, state: string) {
+    const authEndpoint = getV('pkce-auth-url');
+    const tokenEndpoint = getV('pkce-token-url');
+    const clientId = getV('pkce-client-id');
+    const redirectUri = getV('pkce-redirect-uri');
+    const scopesRaw = getV('pkce-scopes');
+    const scopes = scopesRaw.split(',').map(s => s.trim()).filter(Boolean).join(' ');
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: scopes,
+      state: state,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+    });
+
+    const authUrl = `${authEndpoint}?${params.toString()}`;
+    setEl('out-auth-url', authUrl);
+
+    const tokenCurl = `curl -X POST "${tokenEndpoint}" \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -d "grant_type=authorization_code" \\
+  -d "client_id=${clientId}" \\
+  -d "redirect_uri=${encodeURIComponent(redirectUri)}" \\
+  -d "code=AUTHORIZATION_CODE" \\
+  -d "code_verifier=${verifier}"`;
+
+    setEl('out-token-curl', tokenCurl);
+  }
+
+  // Copy buttons
+  document.querySelectorAll('.pkce-copy').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = (btn as HTMLElement).dataset.target!;
+      const el = document.getElementById(target)!;
+      const text = el.textContent || '';
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+      });
+    });
+  });
+
+  document.getElementById('pkce-generate')!.addEventListener('click', generate);
+
+  // Rebuild URLs when inputs change (keep existing verifier)
+  ['pkce-auth-url', 'pkce-token-url', 'pkce-client-id', 'pkce-redirect-uri', 'pkce-scopes'].forEach(id => {
+    document.getElementById(id)!.addEventListener('input', () => {
+      if (currentVerifier) buildUrls(currentVerifier, currentChallenge, currentState);
+    });
+  });
+
+  // Auto-generate on load
+  generate();
+</script>
