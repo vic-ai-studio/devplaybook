@@ -11,6 +11,7 @@ tags:
   - typescript
   - ai-assisted
 author: "DevPlaybook"
+readingTime: "12 min read"
 ---
 
 Test-Driven Development (TDD) never died — it just got better tooling.

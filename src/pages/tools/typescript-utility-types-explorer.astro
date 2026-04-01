@@ -1,0 +1,483 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are TypeScript utility types?", answer: "Utility types are built-in TypeScript generic types that transform existing types into new ones. They cover common type-level operations like making all properties optional (Partial<T>), required (Required<T>), readonly (Readonly<T>), picking a subset of keys (Pick<T, K>), or omitting keys (Omit<T, K>). They eliminate the need to manually rewrite type definitions." },
+  { question: "When should I use Partial vs Required?", answer: "Use Partial<T> when creating update/patch payloads where not all fields are required (e.g., API PATCH requests). Use Required<T> to strip optional markers and force all fields to be present — useful for form validation output types or after hydrating optional config with defaults." },
+  { question: "What is the difference between Pick and Omit?", answer: "Pick<T, K> creates a new type with only the specified keys K from T. Omit<T, K> creates a type with all keys from T except K. Use Pick when you want a small subset of a large type. Use Omit when you want everything except a few fields — especially useful for removing 'id' or 'createdAt' from database entity types in create payloads." },
+  { question: "How do Exclude and Extract work with union types?", answer: "Exclude<T, U> removes types from union T that are assignable to U. Extract<T, U> keeps only types from union T that are assignable to U. Example: Exclude<'a'|'b'|'c', 'a'|'b'> results in 'c'. These operate on union type members, unlike Omit/Pick which operate on object keys." },
+  { question: "What are ReturnType and Parameters used for?", answer: "ReturnType<T> extracts the return type of a function type T. Parameters<T> extracts the parameter types as a tuple. These are invaluable for typing wrappers, middleware, and decorators without duplicating type annotations. Example: if you have an API handler, ReturnType<typeof handler> gives you its response type automatically." },
+];
+---
+
+<BaseLayout
+  title="TypeScript Utility Types Explorer — Partial, Required, Pick, Omit, Exclude & More"
+  description="Explore all TypeScript utility types interactively. Paste an interface, select Partial/Required/Readonly/Pick/Omit/Exclude/Extract/ReturnType/Parameters, see the resulting type with descriptions and real-world examples."
+  tool="TypeScript Utility Types, Partial Required Readonly Pick Omit TypeScript, TypeScript Type Explorer"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">TypeScript Utility Types Explorer</h1>
+  <p class="text-text-muted mb-4">Paste a TypeScript interface, select a utility type, and see the transformed result — with a plain-English description, real-world example, and copy button.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Zero dependencies</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 9 utility types</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Key picker for Pick/Omit</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real-world examples</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+    <!-- Left: Input -->
+    <div class="space-y-5">
+
+      <!-- Interface Input -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">TypeScript Interface / Type</h2>
+          <div class="flex gap-2">
+            <button id="load-example-btn" class="text-xs border border-border text-text-muted hover:border-primary hover:text-primary px-2 py-1 rounded-md transition-colors">Load Example</button>
+            <button id="clear-btn" class="text-xs border border-border text-text-muted hover:border-red-400 hover:text-red-400 px-2 py-1 rounded-md transition-colors">Clear</button>
+          </div>
+        </div>
+        <textarea id="interface-input" rows="14" spellcheck="false"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+          placeholder="interface User { ... }"></textarea>
+        <div id="parse-error" class="hidden mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"></div>
+      </div>
+
+      <!-- Utility Type Selector -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Select Utility Type</h2>
+        <div class="grid grid-cols-3 gap-2" id="utility-grid">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <!-- Key Picker (Pick / Omit / Extract / Exclude) -->
+      <div id="key-picker-section" class="bg-bg-card border border-border rounded-xl p-5 hidden">
+        <h2 class="text-base font-semibold mb-3">Select Keys <span id="key-picker-label" class="text-text-muted font-normal text-sm"></span></h2>
+        <div id="key-checkboxes" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <!-- Union input for Exclude/Extract -->
+      <div id="union-input-section" class="bg-bg-card border border-border rounded-xl p-5 hidden">
+        <h2 class="text-base font-semibold mb-2">Union Type to Filter Against</h2>
+        <input id="union-input" type="text" placeholder="'admin' | 'user' | 'guest'"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+
+    <!-- Right: Output -->
+    <div class="space-y-5">
+
+      <!-- Result Type -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Resulting Type</h2>
+          <button id="copy-result-btn" class="border border-border text-text-muted hover:text-primary hover:border-primary text-xs px-2.5 py-1 rounded-md transition-colors">Copy</button>
+        </div>
+        <pre id="result-output" class="text-green-400 text-sm font-mono overflow-x-auto whitespace-pre bg-bg-card border border-border rounded-lg p-4 min-h-[180px]"></pre>
+      </div>
+
+      <!-- Description -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-2">What does this do?</h2>
+        <div id="description-output" class="text-sm text-text-muted leading-relaxed"></div>
+      </div>
+
+      <!-- Real-world example -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Real-World Example</h2>
+          <button id="copy-example-btn" class="border border-border text-text-muted hover:text-primary hover:border-primary text-xs px-2.5 py-1 rounded-md transition-colors">Copy</button>
+        </div>
+        <pre id="example-output" class="text-blue-400 text-xs font-mono overflow-x-auto whitespace-pre bg-bg-card border border-border rounded-lg p-3"></pre>
+      </div>
+
+      <!-- Signature reference -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">All Utility Type Signatures</h2>
+        <div class="space-y-1.5 text-xs font-mono">
+          <div class="flex gap-2"><span class="text-purple-400 shrink-0">Partial&lt;T&gt;</span><span class="text-text-muted">Makes all properties optional</span></div>
+          <div class="flex gap-2"><span class="text-purple-400 shrink-0">Required&lt;T&gt;</span><span class="text-text-muted">Makes all properties required</span></div>
+          <div class="flex gap-2"><span class="text-purple-400 shrink-0">Readonly&lt;T&gt;</span><span class="text-text-muted">Makes all properties readonly</span></div>
+          <div class="flex gap-2"><span class="text-yellow-400 shrink-0">Pick&lt;T, K&gt;</span><span class="text-text-muted">Keep only keys K from T</span></div>
+          <div class="flex gap-2"><span class="text-yellow-400 shrink-0">Omit&lt;T, K&gt;</span><span class="text-text-muted">Remove keys K from T</span></div>
+          <div class="flex gap-2"><span class="text-green-400 shrink-0">Exclude&lt;T, U&gt;</span><span class="text-text-muted">Remove union members assignable to U</span></div>
+          <div class="flex gap-2"><span class="text-green-400 shrink-0">Extract&lt;T, U&gt;</span><span class="text-text-muted">Keep union members assignable to U</span></div>
+          <div class="flex gap-2"><span class="text-blue-400 shrink-0">ReturnType&lt;T&gt;</span><span class="text-text-muted">Return type of function T</span></div>
+          <div class="flex gap-2"><span class="text-blue-400 shrink-0">Parameters&lt;T&gt;</span><span class="text-text-muted">Parameter tuple of function T</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="TypeScript Utility Types Explorer" relatedTags={['typescript', 'types', 'utility-types', 'generics', 'frontend']} />
+</BaseLayout>
+
+<script>
+  type UtilityType = 'Partial' | 'Required' | 'Readonly' | 'Pick' | 'Omit' | 'Exclude' | 'Extract' | 'ReturnType' | 'Parameters';
+
+  const UTILITIES: { name: UtilityType; color: string }[] = [
+    { name: 'Partial', color: 'purple' },
+    { name: 'Required', color: 'purple' },
+    { name: 'Readonly', color: 'purple' },
+    { name: 'Pick', color: 'yellow' },
+    { name: 'Omit', color: 'yellow' },
+    { name: 'Exclude', color: 'green' },
+    { name: 'Extract', color: 'green' },
+    { name: 'ReturnType', color: 'blue' },
+    { name: 'Parameters', color: 'blue' },
+  ];
+
+  const colorMap: Record<string, string> = {
+    purple: 'border-purple-500/40 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20',
+    yellow: 'border-yellow-500/40 text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20',
+    green: 'border-green-500/40 text-green-400 bg-green-500/10 hover:bg-green-500/20',
+    blue: 'border-blue-500/40 text-blue-400 bg-blue-500/10 hover:bg-blue-500/20',
+  };
+  const activeColorMap: Record<string, string> = {
+    purple: 'border-purple-500 text-white bg-purple-500',
+    yellow: 'border-yellow-500 text-white bg-yellow-500',
+    green: 'border-green-500 text-white bg-green-500',
+    blue: 'border-blue-500 text-white bg-blue-500',
+  };
+
+  let selectedUtility: UtilityType = 'Partial';
+  let selectedKeys: Set<string> = new Set();
+
+  const EXAMPLE_INTERFACE = `interface User {
+  id: number;
+  name: string;
+  email: string;
+  age?: number;
+  role: 'admin' | 'user' | 'guest';
+  createdAt: Date;
+  updatedAt: Date;
+}`;
+
+  const DESCRIPTIONS: Record<UtilityType, string> = {
+    Partial: `<b>Partial&lt;T&gt;</b> makes every property in <code>T</code> optional by adding <code>?</code> to each key. Useful for update/patch payloads where only changed fields need to be provided.`,
+    Required: `<b>Required&lt;T&gt;</b> removes the optional <code>?</code> modifier from all properties, making them all required. Useful after merging defaults into a partial config object.`,
+    Readonly: `<b>Readonly&lt;T&gt;</b> makes every property in <code>T</code> immutable — TypeScript will error if you try to reassign them. Useful for constants, configuration objects, and immutable state.`,
+    Pick: `<b>Pick&lt;T, K&gt;</b> constructs a new type by selecting only the specified keys <code>K</code> from type <code>T</code>. Great for creating lean DTO types or props subsets from a larger entity.`,
+    Omit: `<b>Omit&lt;T, K&gt;</b> constructs a new type with all keys from <code>T</code> except those in <code>K</code>. Commonly used to remove <code>id</code>, <code>createdAt</code>, or other auto-generated fields from entity types when creating insert payloads.`,
+    Exclude: `<b>Exclude&lt;T, U&gt;</b> removes members from union type <code>T</code> that are assignable to <code>U</code>. Operates on union members, not object keys. Note: use Omit for object property removal.`,
+    Extract: `<b>Extract&lt;T, U&gt;</b> keeps only members of union type <code>T</code> that are assignable to <code>U</code>. The opposite of Exclude — filters in instead of filtering out.`,
+    ReturnType: `<b>ReturnType&lt;T&gt;</b> extracts the return type of function type <code>T</code>. Extremely useful for typing wrappers and inferring API response types from handler functions without manual duplication.`,
+    Parameters: `<b>Parameters&lt;T&gt;</b> extracts the parameter types of function <code>T</code> as a tuple. Use with <code>Parameters&lt;typeof fn&gt;[0]</code> to get the first parameter's type.`,
+  };
+
+  const EXAMPLES: Record<UtilityType, string> = {
+    Partial: `// API PATCH endpoint — not all fields required
+async function updateUser(id: number, data: Partial<User>) {
+  // data.name might be undefined — that's fine
+  await db.users.update({ where: { id }, data });
+}
+
+// Merge with defaults
+function withDefaults(opts: Partial<User>): User {
+  return { id: 0, name: '', email: '', role: 'user',
+           createdAt: new Date(), updatedAt: new Date(), ...opts };
+}`,
+    Required: `// After merging optional config with defaults,
+// assert everything is now present
+type AppConfig = {
+  apiUrl?: string;
+  timeout?: number;
+  retries?: number;
+};
+
+function loadConfig(partial: AppConfig): Required<AppConfig> {
+  return {
+    apiUrl: partial.apiUrl ?? 'https://api.example.com',
+    timeout: partial.timeout ?? 5000,
+    retries: partial.retries ?? 3,
+  };
+}`,
+    Readonly: `// Prevent accidental mutation of config
+const APP_CONFIG: Readonly<User> = {
+  id: 1,
+  name: 'System',
+  email: 'system@app.com',
+  role: 'admin',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+// TypeScript error: Cannot assign to 'name' because it is read-only
+// APP_CONFIG.name = 'hacked'; // ❌`,
+    Pick: `// Form only needs name + email — not full User
+type UserFormData = Pick<User, 'name' | 'email'>;
+
+// Props only needs id + role for an avatar badge
+type AvatarProps = Pick<User, 'id' | 'role'>;
+
+function UserAvatar({ id, role }: AvatarProps) {
+  return <div>#{id} [{role}]</div>;
+}`,
+    Omit: `// Insert payload: no id or timestamps (DB generates those)
+type CreateUserInput = Omit<User, 'id' | 'createdAt' | 'updatedAt'>;
+
+// Public profile: no email
+type PublicProfile = Omit<User, 'email'>;
+
+async function createUser(input: CreateUserInput): Promise<User> {
+  return db.users.create({ data: input });
+}`,
+    Exclude: `// Remove 'guest' from role union for admin routes
+type AdminRole = Exclude<User['role'], 'guest'>;
+// Result: 'admin' | 'user'
+
+// Remove null/undefined from a nullable type
+type NonNullable<T> = Exclude<T, null | undefined>;
+type StrictId = NonNullable<number | null | undefined>;
+// Result: number`,
+    Extract: `// Get only string types from a mixed union
+type StringLike = Extract<string | number | boolean, string>;
+// Result: string
+
+// Filter role to only privileged roles
+type PrivilegedRole = Extract<User['role'], 'admin'>;
+// Result: 'admin'`,
+    ReturnType: `// Infer the response type from an async function
+async function fetchUser(id: number) {
+  const res = await fetch(\`/api/users/\${id}\`);
+  return res.json() as Promise<User>;
+}
+
+// No need to manually write the return type!
+type FetchUserResult = ReturnType<typeof fetchUser>;
+// Result: Promise<User>
+
+type UnwrappedUser = Awaited<ReturnType<typeof fetchUser>>;
+// Result: User`,
+    Parameters: `// Extract the first parameter type of a function
+function createUser(name: string, role: User['role']): User {
+  return { id: Date.now(), name, email: '', role,
+           createdAt: new Date(), updatedAt: new Date() };
+}
+
+type CreateUserParams = Parameters<typeof createUser>;
+// Result: [name: string, role: 'admin' | 'user' | 'guest']
+
+type FirstParam = Parameters<typeof createUser>[0];
+// Result: string`,
+  };
+
+  function parseInterface(src: string): { name: string; props: Array<{key: string; optional: boolean; type: string}> } | null {
+    const nameMatch = src.match(/(?:interface|type)\s+(\w+)/);
+    if (!nameMatch) return null;
+    const name = nameMatch[1];
+
+    // Extract body between first { and last }
+    const bodyMatch = src.match(/\{([\s\S]*)\}/);
+    if (!bodyMatch) return null;
+    const body = bodyMatch[1];
+
+    const props: Array<{key: string; optional: boolean; type: string}> = [];
+    // Match property lines: key?: type; or key: type;
+    const propRegex = /^\s*(\w+)(\?)?\s*:\s*(.+?)\s*;?\s*$/gm;
+    let m;
+    while ((m = propRegex.exec(body)) !== null) {
+      props.push({ key: m[1], optional: !!m[2], type: m[3].trim() });
+    }
+    return { name, props };
+  }
+
+  function renderUtilityGrid(): void {
+    const grid = document.getElementById('utility-grid')!;
+    grid.innerHTML = UTILITIES.map(u => {
+      const isActive = u.name === selectedUtility;
+      const cls = isActive ? activeColorMap[u.color] : colorMap[u.color];
+      return `<button data-util="${u.name}" class="util-btn text-sm font-mono px-2 py-1.5 rounded-lg border transition-colors ${cls}">${u.name}</button>`;
+    }).join('');
+
+    grid.querySelectorAll('.util-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedUtility = (btn as HTMLElement).dataset.util as UtilityType;
+        selectedKeys.clear();
+        renderUtilityGrid();
+        renderKeyPicker();
+        generate();
+      });
+    });
+  }
+
+  function renderKeyPicker(): void {
+    const section = document.getElementById('key-picker-section')!;
+    const unionSection = document.getElementById('union-input-section')!;
+    const needsKeys = ['Pick', 'Omit'].includes(selectedUtility);
+    const needsUnion = ['Exclude', 'Extract'].includes(selectedUtility);
+
+    section.classList.toggle('hidden', !needsKeys);
+    unionSection.classList.toggle('hidden', !needsUnion);
+
+    if (!needsKeys) return;
+
+    const src = (document.getElementById('interface-input') as HTMLTextAreaElement).value;
+    const parsed = parseInterface(src);
+    const label = document.getElementById('key-picker-label')!;
+    label.textContent = `— for ${selectedUtility}<T, K>`;
+
+    if (!parsed || parsed.props.length === 0) {
+      document.getElementById('key-checkboxes')!.innerHTML = '<span class="text-xs text-text-muted">Parse your interface first to see keys.</span>';
+      return;
+    }
+
+    const cb = document.getElementById('key-checkboxes')!;
+    cb.innerHTML = parsed.props.map(p => `
+      <label class="flex items-center gap-1.5 text-sm cursor-pointer bg-bg-card border border-border rounded-lg px-2.5 py-1 hover:border-primary transition-colors">
+        <input type="checkbox" value="${p.key}" ${selectedKeys.has(p.key) ? 'checked' : ''} class="key-cb rounded" />
+        <span class="font-mono text-xs">${p.key}</span>
+        <span class="text-text-muted text-xs">${p.optional ? '?' : ''}</span>
+      </label>
+    `).join('');
+
+    cb.querySelectorAll('.key-cb').forEach(cb2 => {
+      cb2.addEventListener('change', () => {
+        const inp = cb2 as HTMLInputElement;
+        if (inp.checked) selectedKeys.add(inp.value);
+        else selectedKeys.delete(inp.value);
+        generate();
+      });
+    });
+  }
+
+  function generate(): void {
+    const src = (document.getElementById('interface-input') as HTMLTextAreaElement).value.trim();
+    const errorEl = document.getElementById('parse-error')!;
+
+    if (!src) {
+      document.getElementById('result-output')!.textContent = '// Paste a TypeScript interface above to get started';
+      document.getElementById('description-output')!.innerHTML = DESCRIPTIONS[selectedUtility];
+      document.getElementById('example-output')!.textContent = EXAMPLES[selectedUtility];
+      errorEl.classList.add('hidden');
+      return;
+    }
+
+    const parsed = parseInterface(src);
+    if (!parsed) {
+      errorEl.textContent = 'Could not parse interface. Make sure it starts with "interface Name {" or "type Name = {"';
+      errorEl.classList.remove('hidden');
+      document.getElementById('result-output')!.textContent = '// Parse error — see message above';
+      return;
+    }
+    errorEl.classList.add('hidden');
+
+    const { name, props } = parsed;
+    let result = '';
+
+    const needsKeys = ['Pick', 'Omit'].includes(selectedUtility);
+    const keys = [...selectedKeys];
+    const needsUnion = ['Exclude', 'Extract'].includes(selectedUtility);
+    const unionVal = (document.getElementById('union-input') as HTMLInputElement).value.trim() || "'value1' | 'value2'";
+
+    switch (selectedUtility) {
+      case 'Partial': {
+        const lines = props.map(p => `  ${p.key}?: ${p.type};`);
+        result = `type ${selectedUtility}${name} = Partial<${name}>;\n\n// Equivalent to:\ninterface ${selectedUtility}${name} {\n${lines.join('\n')}\n}`;
+        break;
+      }
+      case 'Required': {
+        const lines = props.map(p => `  ${p.key}: ${p.type};`);
+        result = `type ${selectedUtility}${name} = Required<${name}>;\n\n// Equivalent to:\ninterface ${selectedUtility}${name} {\n${lines.join('\n')}\n}`;
+        break;
+      }
+      case 'Readonly': {
+        const lines = props.map(p => `  readonly ${p.key}${p.optional ? '?' : ''}: ${p.type};`);
+        result = `type ${selectedUtility}${name} = Readonly<${name}>;\n\n// Equivalent to:\ninterface ${selectedUtility}${name} {\n${lines.join('\n')}\n}`;
+        break;
+      }
+      case 'Pick': {
+        if (keys.length === 0) {
+          result = `// Select keys from the key picker on the left\ntype Picked${name} = Pick<${name}, 'key1' | 'key2'>;`;
+        } else {
+          const keysStr = keys.map(k => `'${k}'`).join(' | ');
+          const pickedProps = props.filter(p => keys.includes(p.key));
+          const lines = pickedProps.map(p => `  ${p.key}${p.optional ? '?' : ''}: ${p.type};`);
+          result = `type Picked${name} = Pick<${name}, ${keysStr}>;\n\n// Equivalent to:\ninterface Picked${name} {\n${lines.join('\n')}\n}`;
+        }
+        break;
+      }
+      case 'Omit': {
+        if (keys.length === 0) {
+          result = `// Select keys to omit from the key picker on the left\ntype Omitted${name} = Omit<${name}, 'id' | 'createdAt'>;`;
+        } else {
+          const keysStr = keys.map(k => `'${k}'`).join(' | ');
+          const remainingProps = props.filter(p => !keys.includes(p.key));
+          const lines = remainingProps.map(p => `  ${p.key}${p.optional ? '?' : ''}: ${p.type};`);
+          result = `type Omitted${name} = Omit<${name}, ${keysStr}>;\n\n// Equivalent to:\ninterface Omitted${name} {\n${lines.join('\n')}\n}`;
+        }
+        break;
+      }
+      case 'Exclude': {
+        result = `// Exclude works on union types, not object keys\n// Example with ${name}'s string properties:\ntype Excluded = Exclude<${name}[keyof ${name}], ${unionVal}>;\n\n// Common pattern with role types:\ntype Role = 'admin' | 'user' | 'guest';\ntype NonGuest = Exclude<Role, 'guest'>;\n// Result: 'admin' | 'user'`;
+        break;
+      }
+      case 'Extract': {
+        result = `// Extract works on union types, not object keys\n// Example with ${name}'s property values:\ntype Extracted = Extract<${name}[keyof ${name}], ${unionVal}>;\n\n// Common pattern:\ntype Role = 'admin' | 'user' | 'guest';\ntype AdminOnly = Extract<Role, 'admin' | 'moderator'>;\n// Result: 'admin'`;
+        break;
+      }
+      case 'ReturnType': {
+        result = `// ReturnType extracts the return type of a function\n// First, define a function that uses ${name}:\nasync function fetch${name}(id: number): Promise<${name}> {\n  const res = await fetch(\`/api/${name.toLowerCase()}s/\${id}\`);\n  return res.json();\n}\n\ntype Fetch${name}Result = ReturnType<typeof fetch${name}>;\n// Result: Promise<${name}>\n\ntype Unwrapped${name} = Awaited<ReturnType<typeof fetch${name}>>;\n// Result: ${name}`;
+        break;
+      }
+      case 'Parameters': {
+        const paramLines = props.slice(0, 3).map(p => `${p.key}: ${p.type}`).join(', ');
+        result = `// Parameters extracts function argument types as a tuple\nfunction create${name}(${paramLines}): ${name} {\n  // ...\n  return {} as ${name};\n}\n\ntype Create${name}Params = Parameters<typeof create${name}>;\n// Result: [${paramLines}]\n\ntype FirstParam = Parameters<typeof create${name}>[0];\n// Result: ${props[0]?.type ?? 'unknown'}`;
+        break;
+      }
+    }
+
+    document.getElementById('result-output')!.textContent = result;
+    document.getElementById('description-output')!.innerHTML = DESCRIPTIONS[selectedUtility];
+    document.getElementById('example-output')!.textContent = EXAMPLES[selectedUtility];
+  }
+
+  function makeCopyBtn(btnId: string, sourceId: string) {
+    document.getElementById(btnId)!.addEventListener('click', () => {
+      const text = document.getElementById(sourceId)!.textContent ?? '';
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById(btnId)!;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+      });
+    });
+  }
+  makeCopyBtn('copy-result-btn', 'result-output');
+  makeCopyBtn('copy-example-btn', 'example-output');
+
+  document.getElementById('load-example-btn')!.addEventListener('click', () => {
+    (document.getElementById('interface-input') as HTMLTextAreaElement).value = EXAMPLE_INTERFACE;
+    selectedKeys.clear();
+    renderKeyPicker();
+    generate();
+  });
+
+  document.getElementById('clear-btn')!.addEventListener('click', () => {
+    (document.getElementById('interface-input') as HTMLTextAreaElement).value = '';
+    selectedKeys.clear();
+    renderKeyPicker();
+    generate();
+  });
+
+  document.getElementById('interface-input')!.addEventListener('input', () => {
+    selectedKeys.clear();
+    renderKeyPicker();
+    generate();
+  });
+
+  document.getElementById('union-input')!.addEventListener('input', generate);
+
+  renderUtilityGrid();
+  generate();
+
+  // Load example on first render
+  (document.getElementById('interface-input') as HTMLTextAreaElement).value = EXAMPLE_INTERFACE;
+  renderKeyPicker();
+  generate();
+</script>
