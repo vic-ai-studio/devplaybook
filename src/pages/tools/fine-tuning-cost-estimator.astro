@@ -1,0 +1,229 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How much does fine-tuning GPT-4o cost?", answer: "As of 2025, GPT-4o fine-tuning costs approximately $25 per 1M training tokens. A typical fine-tuning run with 100K examples at 500 tokens each = 50M tokens = ~$1,250 for training. Plus inference costs are higher for fine-tuned models ($3.75/1M input vs $2.50 for base). Factor in multiple training runs for experimentation." },
+  { question: "When should I fine-tune instead of using prompting?", answer: "Fine-tune when: (1) prompt engineering isn't achieving consistent style/format, (2) you need to reduce prompt length significantly (cost savings), (3) you need very specific domain knowledge baked in, (4) inference latency from long prompts is too high. Don't fine-tune for knowledge injection — RAG is better for facts that change. Fine-tune for style, format, and tone." },
+  { question: "What is the difference between full fine-tuning and LoRA?", answer: "Full fine-tuning updates all model weights — expensive but achieves the best results. LoRA (Low-Rank Adaptation) freezes most weights and trains small adapter matrices — 10-100x less memory and compute. QLoRA adds 4-bit quantization for even lower memory. For self-hosted models, LoRA on Llama 3 70B can run on a single A100. For most use cases, LoRA results are nearly as good as full fine-tuning." },
+  { question: "How many training examples do I need?", answer: "Minimum viable: 50-100 examples (for simple style changes). Good results: 500-1000 examples. Strong performance: 1000-5000 examples. Diminishing returns after 10K for most tasks. Quality beats quantity — 200 excellent examples often outperforms 2000 mediocre ones. For GPT-3.5 style tasks, 500-1000 examples typically gives solid results." },
+  { question: "What GPU do I need for self-hosted fine-tuning?", answer: "Llama 3 8B full fine-tune: 2x A100 80GB recommended. With LoRA: 1x A6000 48GB or A100 40GB. Llama 3 70B full fine-tune: 8x A100 80GB. With LoRA: 2-4x A100 80GB. Cloud costs: A100 80GB on Lambda Labs ~$1.99/hr, on AWS p4d.24xlarge (8x A100) ~$32/hr. Most fine-tuning runs take 1-24 hours depending on dataset size." },
+];
+---
+
+<BaseLayout
+  title="Fine-Tuning Cost Estimator — LLM Fine-Tuning Calculator 2025"
+  description="Estimate the cost of fine-tuning LLMs including GPT-4o, Claude, Llama, and Mistral. Calculate training costs, GPU hours, and compare fine-tuning vs prompting ROI."
+  tool="Fine-Tuning Cost Calculator, LLM Fine-Tuning Estimator, GPT Fine-Tuning Cost, LoRA Cost Calculator, Model Training Cost"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">LLM Fine-Tuning Cost Estimator</h1>
+  <p class="text-text-muted mb-4">Calculate the true cost of fine-tuning language models. Compare managed APIs vs self-hosted LoRA. Estimate GPU hours, training costs, and breakeven vs prompting.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Managed API pricing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Self-hosted GPU costs</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Fine-tune vs RAG comparison</span>
+  </div>
+
+  <!-- Method Selection -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Fine-Tuning Method</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Method</label>
+        <select id="method" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="managed">Managed API (OpenAI / Together / Replicate)</option>
+          <option value="selfhosted">Self-Hosted GPU (LoRA / QLoRA)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Base Model</label>
+        <select id="base-model" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="gpt4o" data-train="25" data-infer-in="3.75" data-infer-out="15" data-type="managed">GPT-4o Fine-Tune ($25/1M train tokens)</option>
+          <option value="gpt4omini" data-train="3" data-infer-in="0.30" data-infer-out="1.20" data-type="managed">GPT-4o mini Fine-Tune ($3/1M train tokens)</option>
+          <option value="gpt35" data-train="8" data-infer-in="3" data-infer-out="6" data-type="managed">GPT-3.5 Turbo Fine-Tune ($8/1M train tokens)</option>
+          <option value="llama8b" data-train="0" data-infer-in="0.05" data-infer-out="0.08" data-gpu="1" data-vram="24" data-type="selfhosted">Llama 3.1 8B (LoRA — 1x A100 40GB)</option>
+          <option value="llama70b" data-train="0" data-infer-in="0.23" data-infer-out="0.40" data-gpu="4" data-vram="80" data-type="selfhosted">Llama 3.3 70B (QLoRA — 4x A100 80GB)</option>
+          <option value="mistral7b" data-train="0" data-infer-in="0.07" data-infer-out="0.07" data-gpu="1" data-vram="24" data-type="selfhosted">Mistral 7B (LoRA — 1x RTX 4090)</option>
+          <option value="mistral22b" data-train="0" data-infer-in="0.10" data-infer-out="0.30" data-gpu="2" data-vram="80" data-type="selfhosted">Mistral Small 22B (LoRA — 2x A100)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dataset Configuration -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Training Dataset</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Training Examples</label>
+        <input id="num-examples" type="number" value="1000" min="50" step="50"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Recommended: 500–5000 for good results</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Avg Tokens Per Example</label>
+        <input id="tokens-per-example" type="number" value="500" min="50" max="8000"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Input + output combined</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Training Epochs</label>
+        <input id="epochs" type="number" value="3" min="1" max="20"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Typical: 2–5 epochs. More = more cost</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Self-Hosted Config (shown conditionally) -->
+  <div id="selfhosted-config" class="bg-bg-card border border-border rounded-xl p-5 mb-5 hidden">
+    <h2 class="text-base font-semibold mb-4">GPU Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">GPU Type</label>
+        <select id="gpu-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="0.50">RTX 4090 (24GB) — ~$0.50/hr cloud</option>
+          <option value="0.80">A10G (24GB) — ~$0.80/hr cloud</option>
+          <option value="1.99" selected>A100 40GB — ~$1.99/hr cloud</option>
+          <option value="2.99">A100 80GB — ~$2.99/hr cloud</option>
+          <option value="4.00">H100 80GB — ~$4.00/hr cloud</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of GPUs</label>
+        <input id="num-gpus" type="number" value="1" min="1" max="16"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Estimated Training Hours</label>
+        <input id="train-hours" type="number" value="4" min="0.5" step="0.5"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">8B LoRA ~1-4hr, 70B QLoRA ~8-24hr</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inference Usage -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Expected Inference Usage (to calculate ROI)</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Daily Inference Calls</label>
+        <input id="daily-infer" type="number" value="5000" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Avg Input Tokens / Call</label>
+        <input id="infer-input" type="number" value="200" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Should be lower after fine-tuning (less prompt)</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Avg Output Tokens / Call</label>
+        <input id="infer-output" type="number" value="150" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Cost Estimate</h2>
+    <div id="results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"></div>
+    <div id="breakdown" class="text-sm space-y-1 border-t border-border pt-4 text-text-muted"></div>
+  </div>
+
+  <!-- Recommendation -->
+  <div id="recommendation" class="bg-bg-card border border-border rounded-xl p-5 mb-5"></div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+function fmt(n) { return n < 1 ? '$'+n.toFixed(3) : '$'+n.toFixed(2); }
+function fmtK(n) { return n >= 1000 ? (n/1000).toFixed(1)+'K' : n.toFixed(0); }
+
+function calculate() {
+  const method = document.getElementById('method').value;
+  const modelEl = document.getElementById('base-model');
+  const selectedOption = modelEl.options[modelEl.selectedIndex];
+
+  const numExamples = parseInt(document.getElementById('num-examples').value) || 1000;
+  const tokensPerExample = parseInt(document.getElementById('tokens-per-example').value) || 500;
+  const epochs = parseInt(document.getElementById('epochs').value) || 3;
+  const totalTrainTokens = numExamples * tokensPerExample * epochs;
+
+  // Training cost
+  let trainingCost = 0;
+  if (method === 'managed') {
+    const trainCostPer1M = parseFloat(selectedOption.dataset.train) || 0;
+    trainingCost = (totalTrainTokens / 1_000_000) * trainCostPer1M;
+  } else {
+    const gpuHourCost = parseFloat(document.getElementById('gpu-type').value) || 1.99;
+    const numGpus = parseInt(document.getElementById('num-gpus').value) || 1;
+    const trainHours = parseFloat(document.getElementById('train-hours').value) || 4;
+    trainingCost = gpuHourCost * numGpus * trainHours;
+  }
+
+  // Inference cost
+  const inInfer = parseFloat(selectedOption.dataset.inferIn) || 3;
+  const outInfer = parseFloat(selectedOption.dataset.inferOut) || 15;
+  const dailyInfer = parseInt(document.getElementById('daily-infer').value) || 5000;
+  const inferInput = parseInt(document.getElementById('infer-input').value) || 200;
+  const inferOutput = parseInt(document.getElementById('infer-output').value) || 150;
+
+  const monthlyInferCost = (dailyInfer * 30 * inferInput / 1_000_000 * inInfer) +
+                           (dailyInfer * 30 * inferOutput / 1_000_000 * outInfer);
+
+  const selfHostedInferNote = method === 'selfhosted' ? ' (via self-hosted endpoint)' : '';
+
+  // Display
+  const results = document.getElementById('results');
+  results.innerHTML = [
+    { label: 'Training Cost', value: fmt(trainingCost), sub: `${fmtK(totalTrainTokens/1000)}K total train tokens`, color: 'text-blue-400' },
+    { label: 'Monthly Inference', value: fmt(monthlyInferCost), sub: `${fmtK(dailyInfer)} calls/day${selfHostedInferNote}`, color: 'text-green-400' },
+    { label: 'Year 1 Total', value: fmt(trainingCost + monthlyInferCost * 12), sub: 'Training + 12mo inference', color: 'text-primary' },
+    { label: 'Breakeven (months)', value: monthlyInferCost > 0 ? (trainingCost / Math.max(monthlyInferCost * 0.3, 0.01)).toFixed(1) : 'N/A', sub: 'vs 30% cost reduction from fine-tuning', color: 'text-yellow-400' },
+  ].map(r => `
+    <div class="bg-bg-elevated rounded-lg p-4">
+      <div class="text-xs text-text-muted mb-1">${r.label}</div>
+      <div class="text-2xl font-bold ${r.color}">${r.value}</div>
+      <div class="text-xs text-text-muted mt-1">${r.sub}</div>
+    </div>
+  `).join('');
+
+  const breakdown = document.getElementById('breakdown');
+  breakdown.innerHTML = [
+    `• Dataset: ${numExamples.toLocaleString()} examples × ${tokensPerExample} tokens × ${epochs} epochs = ${(totalTrainTokens/1000).toFixed(0)}K training tokens`,
+    method === 'managed' ? `• Training cost: ${(totalTrainTokens/1_000_000).toFixed(2)}M tokens × ${fmt(parseFloat(selectedOption.dataset.train)||0)}/1M = ${fmt(trainingCost)}`
+      : `• GPU cost: ${document.getElementById('num-gpus').value}x GPU × ${fmt(parseFloat(document.getElementById('gpu-type').value))} /hr × ${document.getElementById('train-hours').value}hr = ${fmt(trainingCost)}`,
+    `• Monthly inference: ${dailyInfer.toLocaleString()} calls/day × 30 days × (${inferInput}in + ${inferOutput}out tokens) = ${fmt(monthlyInferCost)}/month`,
+  ].map(l => `<p>${l}</p>`).join('');
+
+  // Recommendation
+  const rec = document.getElementById('recommendation');
+  let advice = '';
+  if (trainingCost > 500) {
+    advice = `<span class="text-yellow-400 font-medium">Consider cheaper options:</span> Training cost is significant at ${fmt(trainingCost)}. For lower cost, try GPT-4o mini fine-tuning or self-hosted Llama 8B with LoRA.`;
+  } else if (numExamples < 200) {
+    advice = `<span class="text-yellow-400 font-medium">Dataset may be too small:</span> ${numExamples} examples is below the recommended minimum of 200-500. Consider: (1) generating synthetic data, (2) using few-shot prompting instead, (3) prompt engineering with Claude/GPT-4o.`;
+  } else {
+    advice = `<span class="text-green-400 font-medium">Good configuration.</span> ${numExamples} examples at ${tokensPerExample} tokens each should yield solid fine-tuning results. Expect 2-4 iterations to reach target quality.`;
+  }
+  rec.innerHTML = `<h2 class="text-base font-semibold mb-2">Recommendation</h2><p class="text-sm">${advice}</p>`;
+
+  // Toggle self-hosted config
+  document.getElementById('selfhosted-config').classList.toggle('hidden', method !== 'selfhosted');
+}
+
+document.querySelectorAll('select, input').forEach(el => {
+  el.addEventListener('change', calculate);
+  el.addEventListener('input', calculate);
+});
+
+calculate();
+</script>

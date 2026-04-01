@@ -1,0 +1,258 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is multi-agent memory and why does it matter?", answer: "In multi-agent systems, each agent needs its own memory budget: working memory (in-context tokens), long-term storage (vector DB), and shared state (message bus or DB). Without careful budgeting, costs explode as agents scale. A system with 10 agents each running 1000 calls/day at 2000 tokens each = 20M tokens/day, which at GPT-4o pricing is ~$50/day." },
+  { question: "What is the difference between shared and agent-local memory?", answer: "Agent-local memory: each agent has its own context and history — simpler, no coordination overhead, but no cross-agent knowledge sharing. Shared memory: a central vector database or key-value store that all agents can read/write — enables collaboration but adds latency (DB query per call) and requires conflict resolution. Most production systems use both: local working memory + shared long-term store." },
+  { question: "How do I prevent memory bloat in long-running agents?", answer: "Strategies: (1) Sliding window — keep only last N messages in context. (2) Summarization — compress old conversations into a summary every K turns. (3) Selective retrieval — only retrieve relevant context via RAG instead of keeping everything. (4) Memory tiers — hot (in-context), warm (recent cache), cold (vector DB). Most frameworks like LangChain, CrewAI, and AutoGen implement sliding window by default." },
+  { question: "What vector database should I use for multi-agent memory?", answer: "For local/single-agent: ChromaDB (free, embedded) or LanceDB. For production multi-agent: Pinecone (managed, fast) or Qdrant (self-hostable). For high-scale: Weaviate or Milvus. Key metrics: query latency (Pinecone <10ms), consistency guarantees, and cost per query. Most managed DBs charge ~$0.10 per 1M queries + storage." },
+  { question: "How many agents can I run before costs become prohibitive?", answer: "It depends on token usage per agent. At $2.50/1M input tokens (GPT-4o): 1 agent doing 1000 calls/day at 500 tokens each = ~$1.25/day ($37/month). 10 agents = $370/month. 100 agents = $3,700/month. To scale cheaply: use faster/cheaper models for simple agents (Haiku $0.80/1M), reserve expensive models for complex reasoning agents." },
+];
+---
+
+<BaseLayout
+  title="AI Agent Memory Budget Calculator — Multi-Agent System Cost Planner"
+  description="Budget memory and compute costs for multi-agent AI systems. Calculate per-agent memory usage, shared vector storage, and total monthly costs for your AI agent fleet."
+  tool="Multi-Agent Memory Calculator, AI Agent Budget Planner, Agent Memory Cost, LangChain Memory Budget, AutoGen Cost Calculator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Agent Memory Budget Calculator</h1>
+  <p class="text-text-muted mb-4">Plan and budget memory costs for multi-agent AI systems. Calculate per-agent context costs, shared vector memory, and total fleet operating expenses.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Per-agent memory breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Shared vector DB cost</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Monthly fleet cost</span>
+  </div>
+
+  <!-- Agent Fleet Config -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Agent Fleet Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Agents</label>
+        <input id="num-agents" type="number" value="5" min="1" max="1000"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Total agents in your system</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">LLM Model</label>
+        <select id="model" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="2.5,10">GPT-4o ($2.50/$10 per 1M)</option>
+          <option value="0.15,0.60">GPT-4o mini ($0.15/$0.60 per 1M)</option>
+          <option value="3,15">Claude 3.5 Sonnet ($3/$15 per 1M)</option>
+          <option value="0.80,4">Claude 3.5 Haiku ($0.80/$4 per 1M)</option>
+          <option value="15,75">Claude 3 Opus ($15/$75 per 1M)</option>
+          <option value="1.25,5">Gemini 1.5 Pro ($1.25/$5 per 1M)</option>
+          <option value="0.075,0.30">Gemini 1.5 Flash ($0.075/$0.30 per 1M)</option>
+          <option value="0.23,0.40">Llama 3.3 70B via API ($0.23/$0.40 per 1M)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Calls Per Agent Per Day</label>
+        <input id="calls-per-agent" type="number" value="200" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Per-Agent Memory Config -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Per-Agent Memory Allocation (tokens)</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">System Prompt</label>
+        <input id="sys-prompt" type="number" value="800" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Tool Definitions</label>
+        <input id="tool-defs" type="number" value="600" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Conversation History (sliding window)</label>
+        <input id="conv-history" type="number" value="2000" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Keep last N turns in context</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Retrieved RAG Context (per call)</label>
+        <input id="rag-context" type="number" value="1500" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Avg tokens retrieved from vector DB</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">User Input (avg)</label>
+        <input id="user-input" type="number" value="300" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Agent Output (avg)</label>
+        <input id="agent-output" type="number" value="400" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared Memory Config -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Shared Memory (Vector Database)</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Total Vectors Stored</label>
+        <input id="total-vectors" type="number" value="50000" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Total documents in shared memory</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Vector DB Provider</label>
+        <select id="vector-db" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="0,0">ChromaDB / LanceDB (self-hosted, free)</option>
+          <option value="0.096,0.10">Pinecone Serverless (~$0.096/1M vectors + $0.10/1M queries)</option>
+          <option value="0,0.04">Qdrant Cloud (~$0.04/1M queries, free storage tier)</option>
+          <option value="0.05,0.08">Weaviate Cloud (~$0.05/1M vectors + $0.08/1M queries)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Queries Per Agent Call</label>
+        <input id="queries-per-call" type="number" value="2" min="0" max="20"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Vector DB lookups per LLM call</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results Dashboard -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Memory Budget Results</h2>
+    <div id="results-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5"></div>
+
+    <!-- Context Breakdown Bar -->
+    <h3 class="text-sm font-medium mb-3">Per-Call Context Breakdown</h3>
+    <div id="context-bar" class="mb-5"></div>
+
+    <!-- Agent Tier Table -->
+    <h3 class="text-sm font-medium mb-3">Cost Scaling by Fleet Size</h3>
+    <div id="scale-table" class="overflow-x-auto"></div>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+function fmt(n) { return '$' + (n < 10 ? n.toFixed(2) : n.toFixed(0)); }
+
+const COLORS = ['bg-blue-500','bg-green-500','bg-yellow-500','bg-purple-500','bg-red-400','bg-cyan-500'];
+
+function calculate() {
+  const numAgents = parseInt(document.getElementById('num-agents').value) || 5;
+  const callsPerAgent = parseInt(document.getElementById('calls-per-agent').value) || 200;
+  const [inPricePer1M, outPricePer1M] = document.getElementById('model').value.split(',').map(parseFloat);
+
+  const sysPrompt = parseInt(document.getElementById('sys-prompt').value) || 0;
+  const toolDefs = parseInt(document.getElementById('tool-defs').value) || 0;
+  const convHistory = parseInt(document.getElementById('conv-history').value) || 0;
+  const ragContext = parseInt(document.getElementById('rag-context').value) || 0;
+  const userInput = parseInt(document.getElementById('user-input').value) || 0;
+  const agentOutput = parseInt(document.getElementById('agent-output').value) || 0;
+
+  const totalVectors = parseInt(document.getElementById('total-vectors').value) || 0;
+  const [vecStoragePer1M, vecQueryPer1M] = document.getElementById('vector-db').value.split(',').map(parseFloat);
+  const queriesPerCall = parseInt(document.getElementById('queries-per-call').value) || 0;
+
+  // Per-call token breakdown
+  const inputTokensPerCall = sysPrompt + toolDefs + convHistory + ragContext + userInput;
+  const outputTokensPerCall = agentOutput;
+  const totalTokensPerCall = inputTokensPerCall + outputTokensPerCall;
+
+  // Daily fleet costs
+  const totalCallsPerDay = numAgents * callsPerAgent;
+  const dailyInputTokens = totalCallsPerDay * inputTokensPerCall;
+  const dailyOutputTokens = totalCallsPerDay * outputTokensPerCall;
+  const dailyLLMCost = (dailyInputTokens / 1_000_000 * inPricePer1M) + (dailyOutputTokens / 1_000_000 * outPricePer1M);
+
+  // Vector DB costs
+  const monthlyVecStorage = (totalVectors / 1_000_000) * vecStoragePer1M;
+  const dailyVecQueries = totalCallsPerDay * queriesPerCall;
+  const monthlyVecQueries = (dailyVecQueries * 30 / 1_000_000) * vecQueryPer1M;
+  const monthlyVecTotal = monthlyVecStorage + monthlyVecQueries;
+
+  const monthlyLLMCost = dailyLLMCost * 30;
+  const monthlyTotal = monthlyLLMCost + monthlyVecTotal;
+
+  // Results grid
+  const grid = document.getElementById('results-grid');
+  grid.innerHTML = [
+    { label: 'Tokens Per Call', value: totalTokensPerCall.toLocaleString(), sub: `${inputTokensPerCall} in + ${outputTokensPerCall} out`, color: 'text-blue-400' },
+    { label: 'Daily LLM Cost', value: fmt(dailyLLMCost), sub: `${(totalCallsPerDay).toLocaleString()} total calls`, color: 'text-green-400' },
+    { label: 'Monthly LLM Cost', value: fmt(monthlyLLMCost), sub: `${numAgents} agents × ${callsPerAgent} calls/day`, color: 'text-primary' },
+    { label: 'Monthly Total (incl. DB)', value: fmt(monthlyTotal), sub: `+${fmt(monthlyVecTotal)} vector DB`, color: 'text-yellow-400' },
+  ].map(r => `
+    <div class="bg-bg-elevated rounded-lg p-4">
+      <div class="text-xs text-text-muted mb-1">${r.label}</div>
+      <div class="text-xl font-bold ${r.color}">${r.value}</div>
+      <div class="text-xs text-text-muted mt-1">${r.sub}</div>
+    </div>
+  `).join('');
+
+  // Context breakdown bar
+  const segments = [
+    { label: 'System Prompt', tokens: sysPrompt },
+    { label: 'Tool Defs', tokens: toolDefs },
+    { label: 'Conv History', tokens: convHistory },
+    { label: 'RAG Context', tokens: ragContext },
+    { label: 'User Input', tokens: userInput },
+    { label: 'Output', tokens: agentOutput },
+  ].filter(s => s.tokens > 0);
+
+  const barEl = document.getElementById('context-bar');
+  barEl.innerHTML = `
+    <div class="flex rounded-full overflow-hidden h-5 mb-2">
+      ${segments.map((s, i) => `<div class="${COLORS[i%COLORS.length]}" style="width:${(s.tokens/totalTokensPerCall*100).toFixed(1)}%" title="${s.label}: ${s.tokens}"></div>`).join('')}
+    </div>
+    <div class="flex flex-wrap gap-3 text-xs text-text-muted">
+      ${segments.map((s, i) => `<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full inline-block ${COLORS[i%COLORS.length]}"></span>${s.label}: ${s.tokens.toLocaleString()} (${(s.tokens/totalTokensPerCall*100).toFixed(0)}%)</span>`).join('')}
+    </div>
+  `;
+
+  // Scale table
+  const scales = [1, 5, 10, 25, 50, 100];
+  const scaleEl = document.getElementById('scale-table');
+  scaleEl.innerHTML = `
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-text-muted border-b border-border">
+        <th class="pb-2 pr-4">Agents</th>
+        <th class="pb-2 pr-4">Daily Calls</th>
+        <th class="pb-2 pr-4">Monthly LLM</th>
+        <th class="pb-2 pr-4">Monthly DB</th>
+        <th class="pb-2">Monthly Total</th>
+      </tr></thead>
+      <tbody class="divide-y divide-border">
+        ${scales.map(n => {
+          const d = n * callsPerAgent;
+          const llm = ((d * inputTokensPerCall / 1_000_000 * inPricePer1M) + (d * outputTokensPerCall / 1_000_000 * outPricePer1M)) * 30;
+          const db = monthlyVecStorage + (d * 30 * queriesPerCall / 1_000_000 * vecQueryPer1M);
+          return `<tr class="${n === numAgents ? 'text-primary font-medium' : ''}">
+            <td class="py-2 pr-4">${n}</td>
+            <td class="py-2 pr-4">${(d).toLocaleString()}</td>
+            <td class="py-2 pr-4">${fmt(llm)}</td>
+            <td class="py-2 pr-4">${fmt(db)}</td>
+            <td class="py-2 font-medium">${fmt(llm + db)}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+document.querySelectorAll('select, input').forEach(el => {
+  el.addEventListener('change', calculate);
+  el.addEventListener('input', calculate);
+});
+
+calculate();
+</script>

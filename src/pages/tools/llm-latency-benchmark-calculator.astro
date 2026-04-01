@@ -1,0 +1,246 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is TTFT and why does it matter?", answer: "TTFT (Time To First Token) is how long the API takes before streaming the first token of the response. For interactive chat, users perceive TTFT as 'responsiveness' — anything above 1-2 seconds feels slow. For batch processing, TTFT matters less than total throughput (tokens/second). Most LLM APIs have TTFT of 200ms-1500ms depending on model size and server load." },
+  { question: "How is tokens per second (TPS) measured for LLMs?", answer: "TPS is the streaming rate after the first token arrives — how fast the model generates output tokens. Smaller models (8B) can hit 80-150 TPS via API. Larger models (GPT-4o, Claude 3.5 Sonnet) typically stream at 30-60 TPS. Self-hosted models on A100 can achieve 40-80 TPS for 70B models with optimized inference (vLLM, TGI). TPS directly determines how long a long response takes." },
+  { question: "What factors affect LLM API latency?", answer: "Key factors: (1) Model size — larger models are slower. (2) Server load — peak hours add 50-200ms. (3) Input length — longer prompts take longer to process before generation starts. (4) Output length — more tokens = more time to complete. (5) Region — API servers have geographic latency. (6) Batching — shared inference infrastructure adds queue time. For latency-critical apps, dedicated endpoints or caching are common solutions." },
+  { question: "How do I reduce latency in LLM applications?", answer: "Techniques: (1) Use faster/smaller models where quality allows (Haiku, Flash, GPT-4o-mini). (2) Enable streaming so UX starts immediately. (3) Cache frequent prompts (OpenAI prompt caching, Anthropic cache_control). (4) Reduce input token count with prompt compression. (5) Use parallel calls for independent tasks. (6) Set max_tokens to limit output. (7) Use edge deployment (Cloudflare Workers AI, Vercel AI SDK) for lower geographic latency." },
+  { question: "What is the p99 latency and why is it important?", answer: "P99 latency is the worst-case latency that 99% of requests fall under — the 1% slowest requests. Average latency can be 300ms but p99 might be 3000ms due to cold starts, server congestion, or long queues. For SLA commitments, p95/p99 matter more than averages. Most LLM providers publish only average latencies; tools like LLMPerf or custom monitoring are needed to measure true p99." },
+];
+---
+
+<BaseLayout
+  title="LLM Latency & Throughput Calculator — API Response Time Estimator"
+  description="Calculate expected latency and throughput for LLM API calls. Estimate TTFT, tokens per second, total response time, and concurrent request capacity for your AI application."
+  tool="LLM Latency Calculator, API Response Time Estimator, Tokens Per Second Calculator, LLM Throughput Planner, AI API Performance"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">LLM Latency & Throughput Calculator</h1>
+  <p class="text-text-muted mb-4">Estimate response times, streaming throughput, and concurrent capacity for LLM API calls. Plan infrastructure for latency-sensitive AI applications.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> TTFT + total latency</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Tokens/second benchmark</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Concurrent capacity planner</span>
+  </div>
+
+  <!-- Model & Request Config -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Model & Request Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">LLM Model</label>
+        <select id="model" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="350,55,2.5,10">GPT-4o (TTFT~350ms, ~55 TPS)</option>
+          <option value="250,80,0.15,0.6">GPT-4o mini (TTFT~250ms, ~80 TPS)</option>
+          <option value="500,30,15,60">o1 / o3 (reasoning — TTFT~500ms, ~30 TPS)</option>
+          <option value="400,60,3,15">Claude 3.5 Sonnet (TTFT~400ms, ~60 TPS)</option>
+          <option value="300,90,0.8,4">Claude 3.5 Haiku (TTFT~300ms, ~90 TPS)</option>
+          <option value="600,25,15,75">Claude 3 Opus (TTFT~600ms, ~25 TPS)</option>
+          <option value="300,70,1.25,5">Gemini 1.5 Pro (TTFT~300ms, ~70 TPS)</option>
+          <option value="200,120,0.075,0.3">Gemini 1.5 Flash (TTFT~200ms, ~120 TPS)</option>
+          <option value="150,100,0.075,0.3">Gemini 2.0 Flash (TTFT~150ms, ~100 TPS)</option>
+          <option value="400,50,0.23,0.4">Llama 3.3 70B (API) (TTFT~400ms, ~50 TPS)</option>
+          <option value="200,120,0.05,0.08">Llama 3.1 8B (API) (TTFT~200ms, ~120 TPS)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Input Tokens</label>
+        <input id="input-tokens" type="number" value="500" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">System prompt + user message</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Expected Output Tokens</label>
+        <input id="output-tokens" type="number" value="300" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Avg response length</p>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Network Latency Overhead (ms)</label>
+        <select id="network" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="20">Same region (~20ms)</option>
+          <option value="50" selected>Cross-region US (~50ms)</option>
+          <option value="100">US-Europe (~100ms)</option>
+          <option value="180">US-Asia (~180ms)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Load Condition</label>
+        <select id="load" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="0">Off-peak (baseline)</option>
+          <option value="100" selected>Normal hours (+100ms)</option>
+          <option value="300">Peak hours (+300ms)</option>
+          <option value="600">High load / rate limited (+600ms)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Concurrent Capacity -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Concurrency & Throughput Planning</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Target RPS (requests/second)</label>
+        <input id="target-rps" type="number" value="10" min="0.1" step="0.5"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Max Acceptable Latency (ms)</label>
+        <input id="max-latency" type="number" value="3000" min="100"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">User-facing SLA target</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Streaming Mode</label>
+        <select id="streaming" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="true">Streaming enabled (better UX)</option>
+          <option value="false">Non-streaming (wait for full response)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Latency Results -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Latency Estimates</h2>
+    <div id="latency-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5"></div>
+
+    <!-- Timeline visualization -->
+    <h3 class="text-sm font-medium mb-3">Response Timeline (streaming)</h3>
+    <div id="timeline" class="mb-4"></div>
+
+    <!-- Throughput table -->
+    <h3 class="text-sm font-medium mb-3">Throughput Scaling</h3>
+    <div id="throughput-table" class="overflow-x-auto"></div>
+  </div>
+
+  <!-- SLA Check -->
+  <div id="sla-check" class="bg-bg-card border border-border rounded-xl p-5 mb-5"></div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+function ms(n) { return n >= 1000 ? (n/1000).toFixed(2)+'s' : n.toFixed(0)+'ms'; }
+
+function calculate() {
+  const [baseTTFT, baseTPS, inPrice, outPrice] = document.getElementById('model').value.split(',').map(parseFloat);
+  const inputTokens = parseInt(document.getElementById('input-tokens').value) || 500;
+  const outputTokens = parseInt(document.getElementById('output-tokens').value) || 300;
+  const network = parseInt(document.getElementById('network').value) || 50;
+  const load = parseInt(document.getElementById('load').value) || 100;
+  const targetRPS = parseFloat(document.getElementById('target-rps').value) || 10;
+  const maxLatency = parseInt(document.getElementById('max-latency').value) || 3000;
+  const streaming = document.getElementById('streaming').value === 'true';
+
+  // Input processing adds ~0.1ms per 100 tokens to TTFT
+  const inputProcessingMs = inputTokens * 0.001 * 10;
+  const ttft = baseTTFT + network + load + inputProcessingMs;
+  const generationTime = (outputTokens / baseTPS) * 1000;
+  const totalLatencyStreaming = ttft + generationTime;
+  const totalLatencyNonStreaming = ttft + generationTime;
+  const perceivedLatency = streaming ? ttft : totalLatencyNonStreaming;
+
+  // Cost per call
+  const costPerCall = (inputTokens / 1_000_000 * inPrice) + (outputTokens / 1_000_000 * outPrice);
+
+  // Concurrent connections needed for target RPS
+  const avgCallDuration = totalLatencyStreaming / 1000;
+  const concurrentNeeded = Math.ceil(targetRPS * avgCallDuration);
+  const actualRPS = concurrentNeeded / avgCallDuration;
+
+  // Display results
+  const grid = document.getElementById('latency-grid');
+  grid.innerHTML = [
+    { label: 'Time to First Token', value: ms(ttft), sub: `${ms(baseTTFT)} base + ${ms(network)} net + ${ms(load)} load`, color: 'text-blue-400' },
+    { label: 'Generation Time', value: ms(generationTime), sub: `${outputTokens} tokens ÷ ${baseTPS} TPS`, color: 'text-green-400' },
+    { label: streaming ? 'Perceived Latency' : 'Total Wait Time', value: ms(perceivedLatency), sub: streaming ? 'TTFT (streaming starts)' : 'Full response wait', color: 'text-primary' },
+    { label: 'Cost Per Call', value: '$'+costPerCall.toFixed(5), sub: `$${inPrice}/1M in, $${outPrice}/1M out`, color: 'text-yellow-400' },
+  ].map(r => `
+    <div class="bg-bg-elevated rounded-lg p-4">
+      <div class="text-xs text-text-muted mb-1">${r.label}</div>
+      <div class="text-xl font-bold ${r.color}">${r.value}</div>
+      <div class="text-xs text-text-muted mt-1">${r.sub}</div>
+    </div>
+  `).join('');
+
+  // Timeline bar
+  const totalViz = ttft + generationTime;
+  const timeline = document.getElementById('timeline');
+  const ttftPct = (ttft / totalViz * 100).toFixed(1);
+  const genPct = (generationTime / totalViz * 100).toFixed(1);
+  timeline.innerHTML = `
+    <div class="flex rounded-full overflow-hidden h-6 mb-2">
+      <div class="bg-blue-500 flex items-center justify-center text-xs text-white font-medium" style="width:${ttftPct}%" title="TTFT: ${ms(ttft)}">TTFT</div>
+      <div class="bg-green-500 flex items-center justify-center text-xs text-white font-medium" style="width:${genPct}%" title="Generation: ${ms(generationTime)}">Gen</div>
+    </div>
+    <div class="flex gap-6 text-xs text-text-muted">
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-blue-500 inline-block"></span>TTFT: ${ms(ttft)} (${ttftPct}%)</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-green-500 inline-block"></span>Generation: ${ms(generationTime)} (${genPct}%)</span>
+      <span>Total: ${ms(totalViz)}</span>
+    </div>
+    ${streaming ? `<p class="text-xs text-green-400 mt-2">✓ With streaming: user sees first text at ${ms(ttft)} — perceived as highly responsive</p>` : `<p class="text-xs text-yellow-400 mt-2">⚠ Without streaming: user waits ${ms(totalViz)} for any response — consider enabling streaming</p>`}
+  `;
+
+  // Throughput table
+  const rpsList = [1, 5, 10, 25, 50, 100];
+  const table = document.getElementById('throughput-table');
+  table.innerHTML = `
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-text-muted border-b border-border">
+        <th class="pb-2 pr-4">Target RPS</th>
+        <th class="pb-2 pr-4">Concurrent Connections</th>
+        <th class="pb-2 pr-4">Tokens/sec (out)</th>
+        <th class="pb-2 pr-4">Monthly Cost</th>
+        <th class="pb-2">Feasibility</th>
+      </tr></thead>
+      <tbody class="divide-y divide-border">
+        ${rpsList.map(rps => {
+          const conc = Math.ceil(rps * avgCallDuration);
+          const tps = rps * outputTokens;
+          const monthlyCost = rps * 86400 * 30 * costPerCall;
+          const feasible = totalLatencyStreaming <= maxLatency;
+          return `<tr class="${rps === targetRPS ? 'text-primary font-medium' : ''}">
+            <td class="py-2 pr-4">${rps}</td>
+            <td class="py-2 pr-4">${conc}</td>
+            <td class="py-2 pr-4">${tps.toLocaleString()}</td>
+            <td class="py-2 pr-4">$${(monthlyCost).toFixed(0)}</td>
+            <td class="py-2 ${feasible ? 'text-green-400' : 'text-red-400'}">${feasible ? '✓ OK' : '⚠ Slow'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+
+  // SLA check
+  const sla = document.getElementById('sla-check');
+  const passes = (streaming ? ttft : totalLatencyNonStreaming) <= maxLatency;
+  sla.innerHTML = `
+    <h2 class="text-base font-semibold mb-3">SLA Check</h2>
+    <div class="flex items-start gap-3">
+      <span class="text-2xl">${passes ? '✅' : '⚠️'}</span>
+      <div class="text-sm">
+        ${passes
+          ? `<p class="text-green-400 font-medium">Latency target met</p><p class="text-text-muted mt-1">Expected ${streaming ? 'TTFT' : 'full latency'} of ${ms(streaming ? ttft : totalLatencyNonStreaming)} is within your ${ms(maxLatency)} SLA target.</p>`
+          : `<p class="text-yellow-400 font-medium">Latency target may be exceeded</p><p class="text-text-muted mt-1">Expected ${ms(streaming ? ttft : totalLatencyNonStreaming)} exceeds your ${ms(maxLatency)} target. Consider: (1) Enable streaming to improve perceived latency to ${ms(ttft)}, (2) Switch to a faster model (e.g. Gemini Flash or Haiku), (3) Reduce output tokens with max_tokens, (4) Cache frequent prompts.</p>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+document.querySelectorAll('select, input').forEach(el => {
+  el.addEventListener('change', calculate);
+  el.addEventListener('input', calculate);
+});
+
+calculate();
+</script>
