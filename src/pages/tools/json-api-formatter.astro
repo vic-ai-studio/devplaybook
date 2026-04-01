@@ -1,0 +1,176 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the JSON:API specification?", answer: "JSON:API is a standardized specification for building APIs in JSON. It defines exactly how resources, relationships, errors, and metadata should be structured in request and response bodies. By following a shared convention, clients and servers can interoperate without per-API custom documentation for basic CRUD operations." },
+  { question: "What is the required Content-Type for JSON:API?", answer: "JSON:API requires the Content-Type header to be application/vnd.api+json for both requests and responses. Sending a plain application/json Content-Type header with a JSON:API body is technically non-conformant, though many implementations accept both in practice." },
+  { question: "How does JSON:API handle relationships between resources?", answer: "Relationships are represented in a relationships object on the resource. Each relationship contains a data object with the related resource's type and id. The full related resource data can optionally be included in a top-level included array in the same response, which avoids N+1 requests from the client side." },
+  { question: "What is sparse fieldsets in JSON:API?", answer: "Sparse fieldsets let clients request only specific fields of a resource using the fields[type]=field1,field2 query parameter. This reduces response payload size significantly for resources with many attributes, similar to how GraphQL lets you select specific fields in a query." },
+  { question: "How does JSON:API pagination work?", answer: "JSON:API does not mandate a specific pagination strategy, but it standardizes the link objects returned: first, last, prev, and next. The server decides whether to use page-based (page[number]=2&page[size]=10), cursor-based, or offset-based pagination internally, and communicates navigation via the links object." },
+  { question: "Is JSON:API suitable for every project?", answer: "JSON:API shines in larger applications with complex resource relationships, multiple client types (web, mobile, third-party), or teams that want a strict shared contract. For simple CRUD microservices with a single client, the verbosity of JSON:API may add overhead without proportional benefit. REST without a strict spec or tRPC is often simpler for small internal APIs." },
+];
+---
+<BaseLayout
+  title="JSON:API Specification: Format Guide & Implementation"
+  description="Complete JSON:API guide: resource objects, relationships, included resources, filtering, sorting, pagination, and a JSON:API vs REST vs GraphQL comparison table."
+  tool="JSON:API specification, REST serialization, JSON:API format guide, API specification, JSON:API relationships"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "JSON:API Specification: Format Guide & Implementation",
+    "url": "https://devplaybook.cc/tools/json-api-formatter",
+    "description": "Complete JSON:API guide covering resource objects, relationships, filtering, sorting, and pagination.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">JSON:API Specification: Format Guide & Implementation</h1>
+  <p class="text-text-muted mb-6">JSON:API is a battle-tested specification for structuring JSON responses from REST APIs. It standardizes resource objects, relationships, links, filtering, sorting, and pagination so that clients and servers speak the same language without custom conventions.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Standardized resource structure</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Relationship & sideloading support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Built-in filtering & sparse fieldsets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Client-agnostic pagination links</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Core Resource Object Structure</h2>
+  <p class="text-text-muted mb-4">Every JSON:API response wraps resources in a top-level <code class="bg-bg-surface px-1 rounded">data</code> key. Each resource has a <code class="bg-bg-surface px-1 rounded">type</code>, <code class="bg-bg-surface px-1 rounded">id</code>, <code class="bg-bg-surface px-1 rounded">attributes</code>, and optionally <code class="bg-bg-surface px-1 rounded">relationships</code> and <code class="bg-bg-surface px-1 rounded">links</code>:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// GET /articles/1
+// Content-Type: application/vnd.api+json
+
+&#123;
+  "data": &#123;
+    "type": "articles",
+    "id": "1",
+    "attributes": &#123;
+      "title": "JSON:API Explained",
+      "body": "JSON:API standardizes your REST responses...",
+      "published-at": "2026-01-15T10:00:00Z"
+    &#125;,
+    "relationships": &#123;
+      "author": &#123;
+        "data": &#123; "type": "people", "id": "9" &#125;
+      &#125;,
+      "tags": &#123;
+        "data": [
+          &#123; "type": "tags", "id": "2" &#125;,
+          &#123; "type": "tags", "id": "7" &#125;
+        ]
+      &#125;
+    &#125;,
+    "links": &#123;
+      "self": "/articles/1"
+    &#125;
+  &#125;
+&#125;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Sideloading Related Resources (included)</h2>
+  <p class="text-text-muted mb-4">Avoid N+1 requests by including related resources in the same response using the <code class="bg-bg-surface px-1 rounded">included</code> array. Clients request this with the <code class="bg-bg-surface px-1 rounded">include</code> query parameter:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// GET /articles/1?include=author,tags
+
+&#123;
+  "data": &#123;
+    "type": "articles",
+    "id": "1",
+    "attributes": &#123; "title": "JSON:API Explained" &#125;,
+    "relationships": &#123;
+      "author": &#123; "data": &#123; "type": "people", "id": "9" &#125; &#125;
+    &#125;
+  &#125;,
+  "included": [
+    &#123;
+      "type": "people",
+      "id": "9",
+      "attributes": &#123; "name": "Vic Chen", "twitter": "@vicdev" &#125;
+    &#125;,
+    &#123;
+      "type": "tags",
+      "id": "2",
+      "attributes": &#123; "name": "api-design" &#125;
+    &#125;
+  ]
+&#125;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Filtering, Sorting & Sparse Fieldsets</h2>
+  <p class="text-text-muted mb-4">JSON:API recommends standard query parameter patterns for common operations. Implementations define the exact filter syntax, but the parameter names are standardized:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code># Filter articles by status
+GET /articles?filter[status]=published
+
+# Sort ascending by title, descending by published date
+GET /articles?sort=title,-published-at
+
+# Sparse fieldsets: only return title and body attributes
+GET /articles?fields[articles]=title,body
+
+# Combine: paginate + filter + include author
+GET /articles?page[number]=2&amp;page[size]=10&amp;filter[status]=published&amp;include=author
+
+# Response includes pagination links
+# &#123;
+#   "data": [...],
+#   "links": &#123;
+#     "first": "/articles?page[number]=1&page[size]=10",
+#     "prev": "/articles?page[number]=1&page[size]=10",
+#     "next": "/articles?page[number]=3&page[size]=10",
+#     "last": "/articles?page[number]=12&page[size]=10"
+#   &#125;
+# &#125;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">JSON:API vs REST vs GraphQL</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Feature</th>
+          <th class="text-left px-4 py-3 font-semibold">JSON:API</th>
+          <th class="text-left px-4 py-3 font-semibold">Plain REST</th>
+          <th class="text-left px-4 py-3 font-semibold">GraphQL</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Response shape</td>
+          <td class="px-4 py-3">Standardized</td>
+          <td class="px-4 py-3">Custom per API</td>
+          <td class="px-4 py-3">Query-defined</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Relationships</td>
+          <td class="px-4 py-3 text-green-500">Built-in + sideloading</td>
+          <td class="px-4 py-3">Manual nesting</td>
+          <td class="px-4 py-3 text-green-500">Native graph</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Over-fetching</td>
+          <td class="px-4 py-3">Sparse fieldsets</td>
+          <td class="px-4 py-3">Common problem</td>
+          <td class="px-4 py-3 text-green-500">Eliminated</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Learning curve</td>
+          <td class="px-4 py-3">Medium</td>
+          <td class="px-4 py-3 text-green-500">Low</td>
+          <td class="px-4 py-3">High</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Caching (HTTP)</td>
+          <td class="px-4 py-3 text-green-500">Full HTTP cache</td>
+          <td class="px-4 py-3 text-green-500">Full HTTP cache</td>
+          <td class="px-4 py-3">POST-based, harder</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Client libraries</td>
+          <td class="px-4 py-3">ember-data, jsonapi-js</td>
+          <td class="px-4 py-3">Any HTTP client</td>
+          <td class="px-4 py-3">Apollo, urql</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="json-api-formatter" relatedTags={['api', 'rest', 'json', 'serialization', 'backend']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

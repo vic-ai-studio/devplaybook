@@ -1,0 +1,177 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is tRPC and why use it over REST?", answer: "tRPC is a TypeScript RPC framework that gives you end-to-end type safety between your server and client without needing to generate code or maintain a separate schema. When you change a backend procedure's input or output type, TypeScript immediately flags errors in the frontend. This eliminates an entire class of runtime bugs that REST APIs are prone to." },
+  { question: "Does tRPC require GraphQL or OpenAPI?", answer: "No. tRPC is its own protocol that works directly over HTTP. It does not use GraphQL schemas, OpenAPI specs, or any code generation step. The type safety comes purely from TypeScript inference — the client imports the router type directly from the server code." },
+  { question: "Can tRPC work with frameworks other than Next.js?", answer: "Yes. tRPC has adapters for Express, Fastify, Nuxt, SvelteKit, SolidStart, and any fetch-compatible runtime including Cloudflare Workers and Deno. The Next.js integration is the most popular but it is not required." },
+  { question: "What is Zod used for in tRPC?", answer: "Zod is used for runtime input validation on procedures. Even though TypeScript provides compile-time safety, tRPC uses Zod schemas to validate incoming request data at runtime, reject malformed requests with clear error messages, and infer TypeScript types automatically from the schema so you don't define types twice." },
+  { question: "What is the difference between a query and a mutation in tRPC?", answer: "Queries are read-only operations that fetch data — they map to HTTP GET requests and are safe to cache. Mutations are write operations that change state — they map to HTTP POST requests. This mirrors the REST and GraphQL distinction. Use publicProcedure.query() for fetches and publicProcedure.mutation() for creates, updates, and deletes." },
+  { question: "How does tRPC handle authentication?", answer: "Authentication is handled via middleware. You create a protectedProcedure by chaining .use() on a base procedure, check the session or JWT inside the middleware, and throw a TRPCError with code UNAUTHORIZED if the check fails. This protectedProcedure is then used instead of publicProcedure for any route that requires auth." },
+];
+---
+<BaseLayout
+  title="tRPC: Type-Safe APIs Without Schema Definition — Setup Guide"
+  description="Complete tRPC setup guide: router configuration, procedure types, Zod validation, Next.js integration, and a tRPC vs REST vs GraphQL comparison table."
+  tool="tRPC setup guide, TypeScript type-safe API, tRPC Next.js integration, Zod validation, tRPC router"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "tRPC: Type-Safe APIs Without Schema Definition",
+    "url": "https://devplaybook.cc/tools/trpc-setup-guide",
+    "description": "Complete tRPC setup guide covering router configuration, procedure types, Zod validation, and Next.js integration.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">tRPC: Type-Safe APIs Without Schema Definition</h1>
+  <p class="text-text-muted mb-6">tRPC lets you build fully type-safe APIs by sharing TypeScript types directly between server and client — no code generation, no schema files, no runtime surprises. If your backend changes, TypeScript tells you instantly.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> End-to-end TypeScript inference</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Zod runtime validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Next.js App Router support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> No code generation step</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation & Project Setup</h2>
+  <p class="text-text-muted mb-4">Install tRPC server, client, React Query integration, and Zod for input validation:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>npm install @trpc/server @trpc/client @trpc/react-query @tanstack/react-query zod
+
+# For Next.js specifically
+npm install @trpc/next</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Defining Your Router</h2>
+  <p class="text-text-muted mb-4">Create the tRPC instance, define procedures with Zod schemas, and export the router type for the client to import:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// server/trpc.ts
+import &#123; initTRPC &#125; from '@trpc/server';
+import &#123; z &#125; from 'zod';
+
+const t = initTRPC.create();
+
+export const router = t.router;
+export const publicProcedure = t.procedure;
+
+// server/routers/user.ts
+import &#123; router, publicProcedure &#125; from '../trpc';
+
+export const userRouter = router(&#123;
+  getById: publicProcedure
+    .input(z.object(&#123; id: z.string() &#125;))
+    .query(async (&#123; input &#125;) => &#123;
+      return db.user.findUnique(&#123; where: &#123; id: input.id &#125; &#125;);
+    &#125;),
+
+  create: publicProcedure
+    .input(z.object(&#123; name: z.string().min(2), email: z.string().email() &#125;))
+    .mutation(async (&#123; input &#125;) => &#123;
+      return db.user.create(&#123; data: input &#125;);
+    &#125;),
+&#125;);
+
+// server/root.ts — merge all sub-routers
+import &#123; router &#125; from './trpc';
+import &#123; userRouter &#125; from './routers/user';
+
+export const appRouter = router(&#123; user: userRouter &#125;);
+export type AppRouter = typeof appRouter;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Next.js App Router Integration</h2>
+  <p class="text-text-muted mb-4">Wire up the tRPC handler as a Next.js API route and create the client-side hook wrapper:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// app/api/trpc/[trpc]/route.ts
+import &#123; fetchRequestHandler &#125; from '@trpc/server/adapters/fetch';
+import &#123; appRouter &#125; from '@/server/root';
+
+const handler = (req: Request) =>
+  fetchRequestHandler(&#123;
+    endpoint: '/api/trpc',
+    req,
+    router: appRouter,
+    createContext: () => (&#123;&#125;),
+  &#125;);
+
+export &#123; handler as GET, handler as POST &#125;;
+
+// utils/trpc.ts — client-side hooks
+import &#123; createTRPCReact &#125; from '@trpc/react-query';
+import type &#123; AppRouter &#125; from '@/server/root';
+
+export const trpc = createTRPCReact&lt;AppRouter&gt;();
+
+// In a component:
+// const user = trpc.user.getById.useQuery(&#123; id: '123' &#125;);
+// const create = trpc.user.create.useMutation();</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">tRPC vs REST vs GraphQL</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Criteria</th>
+          <th class="text-left px-4 py-3 font-semibold">tRPC</th>
+          <th class="text-left px-4 py-3 font-semibold">REST</th>
+          <th class="text-left px-4 py-3 font-semibold">GraphQL</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Type Safety</td>
+          <td class="px-4 py-3 text-green-500">End-to-end (no gen)</td>
+          <td class="px-4 py-3 text-yellow-500">Manual / OpenAPI gen</td>
+          <td class="px-4 py-3 text-yellow-500">Schema + codegen</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Learning Curve</td>
+          <td class="px-4 py-3">Low (TypeScript only)</td>
+          <td class="px-4 py-3">Very Low</td>
+          <td class="px-4 py-3">High</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Cross-language</td>
+          <td class="px-4 py-3 text-red-400">TypeScript only</td>
+          <td class="px-4 py-3 text-green-500">Any language</td>
+          <td class="px-4 py-3 text-green-500">Any language</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Caching</td>
+          <td class="px-4 py-3">React Query built-in</td>
+          <td class="px-4 py-3">HTTP cache headers</td>
+          <td class="px-4 py-3">Apollo / urql cache</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Best For</td>
+          <td class="px-4 py-3">Full-stack TS monorepos</td>
+          <td class="px-4 py-3">Public APIs, microservices</td>
+          <td class="px-4 py-3">Complex data graphs</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Schema file</td>
+          <td class="px-4 py-3 text-green-500">None needed</td>
+          <td class="px-4 py-3">OpenAPI (optional)</td>
+          <td class="px-4 py-3">Required (.graphql)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Protected Procedures & Middleware</h2>
+  <p class="text-text-muted mb-4">Add authentication by creating a reusable protected procedure via tRPC middleware:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// Extend the context to include session
+const t = initTRPC.context&lt;&#123; session: Session | null &#125;&gt;().create();
+
+// Middleware that throws if not authenticated
+const enforceAuth = t.middleware((&#123; ctx, next &#125;) => &#123;
+  if (!ctx.session?.user) &#123;
+    throw new TRPCError(&#123; code: 'UNAUTHORIZED' &#125;);
+  &#125;
+  return next(&#123; ctx: &#123; ...ctx, session: ctx.session &#125; &#125;);
+&#125;);
+
+// Reusable protected procedure
+export const protectedProcedure = t.procedure.use(enforceAuth);</code></pre>
+
+  <ToolPageCta currentTool="trpc-setup-guide" relatedTags={['trpc', 'typescript', 'api', 'nextjs', 'backend']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

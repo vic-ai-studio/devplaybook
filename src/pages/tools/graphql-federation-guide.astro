@@ -1,0 +1,180 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Apollo Federation?", answer: "Apollo Federation is an architecture for composing multiple GraphQL services (subgraphs) into a single unified API (supergraph). Instead of one monolithic GraphQL schema, each team owns their own subgraph. The Apollo Router or Apollo Gateway combines them into one schema that clients query as if it were a single service." },
+  { question: "What is the difference between Federation 1 and Federation 2?", answer: "Federation 2 (Apollo Federation v2) introduced shareable types, removing the restriction that only one subgraph can define a given type. It replaced the @external directive with a simpler @shareable model, improved entity resolution with @interfaceObject, and introduced the rover CLI for schema composition and Rover Studio for visualization. Federation 1 is still supported but new projects should use Federation 2." },
+  { question: "What is a subgraph @key directive?", answer: "The @key directive marks which field(s) uniquely identify an entity type in a subgraph. When other subgraphs reference the same entity, they use @key to declare how to resolve a reference to that entity. For example, @key(fields: 'id') on a User type means any subgraph can provide more fields for User as long as they can resolve it by id." },
+  { question: "Can subgraphs be written in different languages?", answer: "Yes. Apollo Federation is language-agnostic at the protocol level. Subgraphs communicate via standard GraphQL and a federation specification extension. Libraries exist for Node.js, Java (DGS), Python (strawberry-graphql), Go, Rust, and more. Each subgraph just needs to implement the _entities query and the federation SDL directives." },
+  { question: "What is the Rover CLI used for?", answer: "Rover is Apollo's CLI tool for managing supergraph schemas. You use rover subgraph publish to push a subgraph's schema to Apollo Studio, rover supergraph compose to compose a supergraph schema locally for development, and rover graph check to run schema checks against your registered schema before deploying." },
+  { question: "What is schema stitching and why choose federation over it?", answer: "Schema stitching is an older approach to combining GraphQL schemas where a gateway manually merges type definitions and delegates resolvers. Federation improves on this by making subgraphs self-describing — each subgraph declares its own entity keys and relationships without the gateway needing custom configuration per type. Federation is more maintainable at scale and is the recommended approach for new projects." },
+];
+---
+<BaseLayout
+  title="Apollo Federation: GraphQL Supergraph Architecture Guide"
+  description="Complete Apollo Federation guide: subgraph setup, @key directive, rover CLI, gateway configuration, and Federation 1 vs 2 comparison with schema stitching."
+  tool="Apollo Federation guide, GraphQL supergraph, subgraph setup, schema federation, rover CLI, Apollo Gateway"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Apollo Federation: GraphQL Supergraph Architecture Guide",
+    "url": "https://devplaybook.cc/tools/graphql-federation-guide",
+    "description": "Complete Apollo Federation guide covering subgraph setup, @key directive, rover CLI, and gateway configuration.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Apollo Federation: GraphQL Supergraph Architecture Guide</h1>
+  <p class="text-text-muted mb-6">Apollo Federation lets you split a large GraphQL schema across independent services (subgraphs) owned by separate teams, then compose them into one unified supergraph. Clients see a single API; your teams stay decoupled.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Team-owned subgraphs</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Entity references across services</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Apollo Router for high performance</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Rover CLI for schema management</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Subgraph Definition with @key</h2>
+  <p class="text-text-muted mb-4">Each subgraph declares its entity types with <code class="bg-bg-surface px-1 rounded">@key</code>. The Users subgraph owns the User entity; the Orders subgraph extends it with order data:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code># users-subgraph schema.graphql
+type User @key(fields: "id") &#123;
+  id: ID!
+  name: String!
+  email: String!
+&#125;
+
+type Query &#123;
+  user(id: ID!): User
+  me: User
+&#125;
+
+# orders-subgraph schema.graphql
+# Reference User without redefining all its fields
+type User @key(fields: "id") &#123;
+  id: ID!
+  orders: [Order!]!
+&#125;
+
+type Order &#123;
+  id: ID!
+  total: Float!
+  status: OrderStatus!
+  createdAt: String!
+&#125;
+
+enum OrderStatus &#123; PENDING SHIPPED DELIVERED &#125;
+
+type Query &#123;
+  order(id: ID!): Order
+&#125;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Subgraph Server Setup (Node.js)</h2>
+  <p class="text-text-muted mb-4">Use <code class="bg-bg-surface px-1 rounded">@apollo/subgraph</code> to build each federation-aware subgraph and implement the <code class="bg-bg-surface px-1 rounded">__resolveReference</code> function for entity resolution:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>import &#123; ApolloServer &#125; from '@apollo/server';
+import &#123; buildSubgraphSchema &#125; from '@apollo/subgraph';
+import &#123; gql &#125; from 'graphql-tag';
+
+const typeDefs = gql`
+  type User @key(fields: "id") &#123;
+    id: ID!
+    name: String!
+    email: String!
+  &#125;
+  type Query &#123; user(id: ID!): User &#125;
+`;
+
+const resolvers = &#123;
+  User: &#123;
+    // Called when another subgraph references this entity by key
+    __resolveReference(ref: &#123; id: string &#125;) &#123;
+      return db.users.findById(ref.id);
+    &#125;,
+  &#125;,
+  Query: &#123;
+    user: (_: unknown, &#123; id &#125;: &#123; id: string &#125;) => db.users.findById(id),
+  &#125;,
+&#125;;
+
+const server = new ApolloServer(&#123;
+  schema: buildSubgraphSchema(&#123; typeDefs, resolvers &#125;),
+&#125;);
+
+// Start on a unique port per subgraph, e.g. 4001</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Composing with Rover CLI</h2>
+  <p class="text-text-muted mb-4">Use <code class="bg-bg-surface px-1 rounded">rover supergraph compose</code> to combine subgraph schemas locally, or publish to Apollo Studio for managed composition:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code># supergraph.yaml — compose config
+federation_version: =2.4.0
+subgraphs:
+  users:
+    routing_url: http://users-service:4001/graphql
+    schema:
+      subgraph_url: http://users-service:4001/graphql
+  orders:
+    routing_url: http://orders-service:4002/graphql
+    schema:
+      subgraph_url: http://orders-service:4002/graphql
+
+# Compose locally and output the supergraph SDL
+rover supergraph compose --config supergraph.yaml > supergraph.graphql
+
+# Start the Apollo Router with the composed schema
+./router --supergraph supergraph.graphql --config router.yaml
+
+# Publish a subgraph schema to Apollo Studio (CI step)
+rover subgraph publish my-graph@prod \
+  --name users \
+  --schema ./users-schema.graphql \
+  --routing-url https://users.prod.internal/graphql</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Federation vs Schema Stitching vs Monolith</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Criteria</th>
+          <th class="text-left px-4 py-3 font-semibold">Federation 2</th>
+          <th class="text-left px-4 py-3 font-semibold">Schema Stitching</th>
+          <th class="text-left px-4 py-3 font-semibold">Monolith Schema</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Team ownership</td>
+          <td class="px-4 py-3 text-green-500">Per-subgraph</td>
+          <td class="px-4 py-3">Partial</td>
+          <td class="px-4 py-3">Shared codebase</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Entity references</td>
+          <td class="px-4 py-3 text-green-500">@key directive</td>
+          <td class="px-4 py-3">Manual mergeTypes</td>
+          <td class="px-4 py-3">N/A (co-located)</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Schema checks</td>
+          <td class="px-4 py-3 text-green-500">rover graph check</td>
+          <td class="px-4 py-3">Manual</td>
+          <td class="px-4 py-3">TypeScript types</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Performance</td>
+          <td class="px-4 py-3">Apollo Router (Rust)</td>
+          <td class="px-4 py-3">Node.js gateway</td>
+          <td class="px-4 py-3">Direct resolvers</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Best for</td>
+          <td class="px-4 py-3">Large orgs, microservices</td>
+          <td class="px-4 py-3">Legacy migration</td>
+          <td class="px-4 py-3">Small teams, startups</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="graphql-federation-guide" relatedTags={['graphql', 'api', 'microservices', 'apollo', 'backend']} />
+  <FaqSection faq={faq} />
+</BaseLayout>
