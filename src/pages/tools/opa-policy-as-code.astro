@@ -1,0 +1,251 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is the difference between OPA and Gatekeeper?",
+    answer: "OPA (Open Policy Agent) is a general-purpose policy engine that can evaluate Rego policies against any JSON input — it works for API authorization, Terraform plan validation, SSH access control, and more. Gatekeeper is a Kubernetes-specific admission webhook built on top of OPA. It introduces Kubernetes CRDs (ConstraintTemplate and Constraint) that make it easier to deploy, manage, and audit OPA policies as native Kubernetes objects. If you only need Kubernetes policy enforcement, use Gatekeeper. If you need policy enforcement across multiple systems (API + K8s + Terraform), use OPA directly."
+  },
+  {
+    question: "What is Rego and how hard is it to learn?",
+    answer: "Rego is OPA's purpose-built policy language. It's a declarative logic language inspired by Datalog — you define what conditions make a policy decision true rather than writing procedural steps. The learning curve is moderate: basic allow/deny rules are simple to write in an hour, but mastering complex rules with comprehensions, partial rules, and recursive data traversal takes 1-2 days of practice. The OPA Playground (play.openpolicyagent.org) provides an interactive environment to experiment without any installation. The most common confusion for beginners is understanding that Rego evaluates to undefined (not false) when no rule matches."
+  },
+  {
+    question: "How do I test OPA policies?",
+    answer: "OPA has a built-in test framework using files named *_test.rego. Write test cases using test_ prefixed rules and run them with 'opa test ./policies/' — it prints pass/fail for each test. Use 'opa test --coverage' to see which lines of your policy are covered. For CI integration, 'opa test' exits with code 0 on pass and 1 on failure, making it easy to use in GitHub Actions or any CI pipeline. The OPA REPL ('opa run') is useful for interactive debugging — load your policy and data, then evaluate queries manually."
+  },
+  {
+    question: "How do I use OPA for REST API authorization?",
+    answer: "Run OPA as a sidecar or standalone service. Your API middleware sends a JSON payload to OPA's REST API (POST /v1/data/myapp/authz/allow) containing the request details: method, path, user, and any relevant data. OPA evaluates the policy and returns {result: true} or {result: false}. This decouples authorization logic from your application code — policy changes don't require redeploying the app. Use OPA bundles to distribute policies and data from a central registry (S3, OCI registry) to multiple OPA instances."
+  },
+  {
+    question: "What is a ConstraintTemplate in Gatekeeper?",
+    answer: "A ConstraintTemplate is a Kubernetes CRD that defines: (1) a new custom resource type (the 'Constraint kind') and (2) the Rego policy logic for that constraint. Once you apply a ConstraintTemplate, you can create Constraint objects that apply the policy to specific resource types and namespaces. For example, a 'RequiredLabels' ConstraintTemplate lets you create Constraint objects that enforce different required labels on different namespaces — policy logic is written once in the template, and instances are configured declaratively."
+  },
+  {
+    question: "OPA vs Kyverno for Kubernetes policy — which should I choose?",
+    answer: "Choose Kyverno if you want Kubernetes-native policy authoring without learning Rego — Kyverno policies are YAML-based and declarative, making them accessible to platform engineers who know Kubernetes but not Rego. Choose OPA/Gatekeeper if you need complex logic (multi-step conditions, data joins, external data lookups), want to reuse policies across non-Kubernetes systems, or already have OPA policies in your stack. Kyverno also supports policy generation (automatically creating resources) and mutation, which OPA/Gatekeeper handles less elegantly. For organizations already using OPA for API authorization, Gatekeeper is a natural extension."
+  },
+];
+---
+
+<BaseLayout
+  title="OPA Policy as Code: Rego Rules, Gatekeeper & CI Enforcement Guide"
+  description="Open Policy Agent (OPA) guide: write Rego policies, enforce Kubernetes admission with Gatekeeper, integrate OPA in API authorization, and test policies in CI."
+  tool="OPA, Open Policy Agent, Rego, Gatekeeper, policy as code, Kubernetes admission, authorization"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "OPA Policy as Code: Rego Rules, Gatekeeper & CI Enforcement Guide",
+    "url": "https://devplaybook.cc/tools/opa-policy-as-code",
+    "description": "Open Policy Agent (OPA) guide: write Rego policies, enforce Kubernetes admission with Gatekeeper, integrate OPA in API authorization, and test policies in CI.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">OPA Policy as Code: Rego Rules, Gatekeeper & CI Enforcement Guide</h1>
+  <p class="text-text-muted mb-6">Open Policy Agent (OPA) is a CNCF graduated general-purpose policy engine that decouples policy decisions from application code. Write authorization rules, Kubernetes admission policies, and infrastructure guardrails in Rego — a declarative language designed for expressing complex policy logic as testable, versionable code.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CNCF graduated project</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Kubernetes + API + Terraform</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Built-in test framework</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Policy bundles via OCI/S3</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> REST API for policy queries</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">What is OPA and Policy as Code?</h2>
+  <p class="text-text-muted mb-4">Policy as Code means expressing your authorization rules, compliance requirements, and infrastructure guardrails as code files that can be version-controlled, reviewed, and tested — just like application code. Without policy as code, authorization logic is scattered across application code, Kubernetes RBAC YAML, Terraform configurations, and tribal knowledge in ops runbooks. OPA provides a single engine that evaluates policies consistently across all these systems.</p>
+  <p class="text-text-muted mb-4">OPA answers one question: <strong>is this request allowed?</strong> Your application (or webhook, or CI pipeline) sends a JSON object describing what is happening, and OPA returns a policy decision based on your Rego rules and any external data you've loaded.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Rego Language Basics</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># policy.rego — basic allow/deny
+package myapp.authz
+
+import rego.v1
+
+# Default deny — undefined rules evaluate as false
+default allow := false
+
+# Allow if user is admin
+allow if &#123;
+  input.user.role == "admin"
+&#125;
+
+# Allow GET requests to public paths
+allow if &#123;
+  input.method == "GET"
+  input.path[0] == "public"
+&#125;
+
+# Allow users to access their own resources
+allow if &#123;
+  input.method == "GET"
+  input.path[0] == "users"
+  input.path[1] == input.user.id
+&#125;</code></pre>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Query OPA (input is passed as JSON)
+echo '&#123;
+  "input": &#123;
+    "user": &#123;"id": "alice", "role": "admin"&#125;,
+    "method": "DELETE",
+    "path": ["users", "bob"]
+  &#125;
+&#125;' | opa eval -d policy.rego -I 'data.myapp.authz.allow'
+# Output: &#123;"result": [&#123;"expressions": [&#123;"value": true&#125;]&#125;]&#125;</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">OPA Playground and opa eval</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Install OPA
+curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+chmod +x opa && sudo mv opa /usr/local/bin/
+
+# Evaluate a policy from CLI
+opa eval \
+  --data policy.rego \
+  --data data.json \
+  --input input.json \
+  'data.myapp.authz.allow'
+
+# Start OPA as REST server
+opa run --server --addr :8181 policy.rego data.json
+
+# Query via REST API
+curl -X POST http://localhost:8181/v1/data/myapp/authz/allow \
+  -H "Content-Type: application/json" \
+  -d '&#123;"input": &#123;"user": &#123;"role": "admin"&#125;, "method": "GET"&#125;&#125;'</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Kubernetes Gatekeeper: ConstraintTemplate Example</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Install Gatekeeper
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.15/deploy/gatekeeper.yaml
+
+# ConstraintTemplate — defines the policy logic
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: requiredlabels
+spec:
+  crd:
+    spec:
+      names:
+        kind: RequiredLabels
+      validation:
+        openAPIV3Schema:
+          properties:
+            labels:
+              type: array
+              items: &#123;type: string&#125;
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package requiredlabels
+        violation[&#123;"msg": msg&#125;] &#123;
+          provided := &#123;label | input.review.object.metadata.labels[label]&#125;
+          required := &#123;label | label := input.parameters.labels[_]&#125;
+          missing := required - provided
+          count(missing) > 0
+          msg := sprintf("Missing required labels: &#37;v", [missing])
+        &#125;</code></pre>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Constraint — applies the policy to Pods in production namespace
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: RequiredLabels
+metadata:
+  name: pod-must-have-owner
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["production"]
+  parameters:
+    labels: ["owner", "team", "environment"]</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">OPA for API Authorization</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code">// Express.js middleware — query OPA before processing requests
+const axios = require('axios');
+
+async function opaAuthz(req, res, next) &#123;
+  const input = &#123;
+    user: req.user,         // from JWT middleware
+    method: req.method,
+    path: req.path.split('/').filter(Boolean),
+    resource: req.params.id,
+  &#125;;
+
+  const response = await axios.post('http://opa:8181/v1/data/myapp/authz/allow', &#123;
+    input,
+  &#125;);
+
+  if (response.data.result !== true) &#123;
+    return res.status(403).json(&#123; error: 'Forbidden' &#125;);
+  &#125;
+  next();
+&#125;
+
+app.use('/api', opaAuthz);</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Testing Rego Policies</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># policy_test.rego
+package myapp.authz_test
+
+import data.myapp.authz
+
+test_admin_can_delete if &#123;
+  authz.allow with input as &#123;
+    "user": &#123;"role": "admin"&#125;,
+    "method": "DELETE",
+    "path": ["users", "alice"],
+  &#125;
+&#125;
+
+test_viewer_cannot_delete if &#123;
+  not authz.allow with input as &#123;
+    "user": &#123;"role": "viewer"&#125;,
+    "method": "DELETE",
+    "path": ["users", "alice"],
+  &#125;
+&#125;
+
+# Run tests
+# opa test ./policies/ --verbose --coverage</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">CI Integration</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code"># .github/workflows/opa.yml
+- name: Run OPA tests
+  uses: open-policy-agent/setup-opa@v2
+  with:
+    version: latest
+
+- name: Test policies
+  run: opa test ./policies/ --coverage --format=json > coverage.json
+
+- name: Check Terraform plan (Conftest)
+  run: |
+    terraform plan -out=plan.tfplan
+    terraform show -json plan.tfplan > plan.json
+    conftest test plan.json --policy policies/terraform/</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">OPA vs Kyverno vs Casbin</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Tool</th>
+          <th class="text-left py-2 pr-4 font-semibold">Language</th>
+          <th class="text-left py-2 pr-4 font-semibold">Kubernetes</th>
+          <th class="text-left py-2 pr-4 font-semibold">API authz</th>
+          <th class="text-left py-2 pr-4 font-semibold">Best for</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-medium text-text">OPA</td><td class="py-2 pr-4">Rego (declarative)</td><td class="py-2 pr-4">Via Gatekeeper</td><td class="py-2 pr-4">Yes</td><td class="py-2 pr-4">Multi-system policy</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-medium text-text">Kyverno</td><td class="py-2 pr-4">YAML</td><td class="py-2 pr-4">Native CRD</td><td class="py-2 pr-4">No</td><td class="py-2 pr-4">K8s-only, no Rego</td></tr>
+        <tr><td class="py-2 pr-4 font-medium text-text">Casbin</td><td class="py-2 pr-4">PERM model + CSV</td><td class="py-2 pr-4">No</td><td class="py-2 pr-4">Yes (library)</td><td class="py-2 pr-4">In-app RBAC/ABAC</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

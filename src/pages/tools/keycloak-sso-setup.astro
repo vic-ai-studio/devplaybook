@@ -1,0 +1,201 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is the difference between a realm and a client in Keycloak?",
+    answer: "A realm is an isolated administrative domain — it contains its own set of users, roles, groups, identity providers, and client applications. Think of it as a tenant. A client is an application that is registered within a realm and can request authentication. For example, you might have a 'company' realm containing clients for 'frontend-app', 'backend-api', and 'admin-dashboard'. Users authenticate within a realm and then access multiple clients via SSO without re-entering credentials."
+  },
+  {
+    question: "How do I connect Keycloak to Active Directory via LDAP?",
+    answer: "In your realm, go to User Federation > Add provider > LDAP. Set the vendor to 'Active Directory', provide the Connection URL (ldap://your-ad-server:389 or ldaps:// for TLS), Bind DN (e.g. cn=svc-keycloak,ou=service-accounts,dc=corp,dc=com), and Bind Credential. Set the Users DN to the OU containing your users. Under Sync Settings, enable Periodic Full Sync and Periodic Changed Users Sync. Keycloak will map AD attributes to its user model — email, firstName, lastName, and username can all be mapped from AD attributes."
+  },
+  {
+    question: "What is the difference between OIDC and SAML in Keycloak?",
+    answer: "OIDC (OpenID Connect) is a JSON/JWT-based identity layer on top of OAuth2 — it's lightweight, works natively with browsers and mobile apps, and uses Bearer tokens in HTTP headers. SAML 2.0 is an XML-based standard commonly required by enterprise applications and older SaaS tools. Keycloak supports both. Use OIDC for new applications you control; use SAML when integrating with legacy enterprise apps (Salesforce, Office 365, etc.) that require SAML assertions. Keycloak can act as both a SAML IdP and a SAML SP (brokering to another IdP)."
+  },
+  {
+    question: "How do I deploy Keycloak in production (not dev mode)?",
+    answer: "Never use --dev mode in production. Production deployment requires: (1) a production-grade database — configure KC_DB=postgres with KC_DB_URL, KC_DB_USERNAME, KC_DB_PASSWORD; (2) a hostname set via KC_HOSTNAME; (3) TLS termination — either at the load balancer (KC_PROXY=edge) or directly in Keycloak with a certificate; (4) running keycloak start instead of start-dev. For Kubernetes, use the official Keycloak Operator or the Bitnami Helm chart with an external Postgres (e.g., RDS or CloudSQL). Always run at least 2 replicas with sticky sessions or infinispan clustering."
+  },
+  {
+    question: "How do I add MFA to Keycloak?",
+    answer: "In your realm, go to Authentication > Flows and copy the 'browser' flow. Add an 'OTP Form' execution step set to Required, or add the Conditional OTP subflow with conditions (e.g., require OTP only for admin roles). Assign the modified flow as your Browser Flow under Authentication > Bindings. Users will be prompted to configure Google Authenticator or any TOTP app on first login. For hardware keys (WebAuthn), Keycloak 18+ includes a built-in WebAuthn Authenticator that can be added as a required execution step."
+  },
+  {
+    question: "Keycloak vs Auth0 for self-hosted SSO — which should I choose?",
+    answer: "Choose Keycloak if you need full control over data residency, must integrate with on-premises Active Directory/LDAP, are in a regulated industry that prohibits cloud identity providers, or need to avoid per-MAU pricing at scale. Keycloak is free and self-hosted but requires you to manage infrastructure, apply security patches, and handle HA clustering. Choose Auth0 if you want a managed service with minimal ops overhead, have a cloud-native stack, and the per-MAU pricing is acceptable for your scale. Auth0's developer experience and documentation are generally better; Keycloak's flexibility and data sovereignty are unmatched."
+  },
+];
+---
+
+<BaseLayout
+  title="Keycloak SSO Setup: Realm Config, LDAP Integration & OIDC Guide"
+  description="Keycloak SSO setup guide: create realms and clients, configure LDAP/AD integration, set up OIDC flows, add SAML, manage user federation, and deploy with Docker."
+  tool="Keycloak, SSO, LDAP, OIDC, SAML, realm configuration, user federation, Docker Keycloak"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Keycloak SSO Setup: Realm Config, LDAP Integration & OIDC Guide",
+    "url": "https://devplaybook.cc/tools/keycloak-sso-setup",
+    "description": "Keycloak SSO setup guide: create realms and clients, configure LDAP/AD integration, set up OIDC flows, add SAML, manage user federation, and deploy with Docker.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Keycloak SSO Setup: Realm Config, LDAP Integration & OIDC Guide</h1>
+  <p class="text-text-muted mb-6">Keycloak is an open-source Identity and Access Management solution that provides Single Sign-On, OIDC, SAML 2.0, LDAP federation, and fine-grained authorization — all self-hosted with no per-MAU fees. This guide covers Docker quickstart, realm and client configuration, Active Directory integration, and production deployment patterns.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Self-hosted, no per-user fees</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OIDC + SAML 2.0 support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> LDAP / Active Directory federation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Kubernetes Operator available</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Fine-grained authorization</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">What is Keycloak and When to Use It?</h2>
+  <p class="text-text-muted mb-4">Keycloak is backed by Red Hat (now part of IBM) and is the upstream project for Red Hat Single Sign-On (RH-SSO). It handles user authentication, token issuance, consent flows, and identity federation entirely within your infrastructure. Organizations choose Keycloak over cloud identity providers primarily for data sovereignty (GDPR, HIPAA, FedRAMP), on-premises Active Directory integration, or to avoid the cost scaling of per-MAU pricing at tens of thousands of users.</p>
+  <p class="text-text-muted mb-4">Keycloak is not the easiest solution to operate — it requires a database, clustering for HA, and regular upgrades. It's most appropriate for enterprise environments with a dedicated DevOps team or for regulated industries where cloud identity providers are not permitted.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Docker Quickstart</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Start Keycloak in development mode (NOT for production)
+docker run -p 8080:8080 \
+  -e KEYCLOAK_ADMIN=admin \
+  -e KEYCLOAK_ADMIN_PASSWORD=admin \
+  quay.io/keycloak/keycloak:24.0.3 \
+  start-dev
+
+# Access admin console at http://localhost:8080
+# Login with admin / admin</code></pre>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Production-ready Docker with Postgres
+docker run -p 8443:8443 \
+  -e KC_DB=postgres \
+  -e KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak \
+  -e KC_DB_USERNAME=keycloak \
+  -e KC_DB_PASSWORD=secret \
+  -e KC_HOSTNAME=auth.yourcompany.com \
+  -e KC_PROXY=edge \
+  -e KEYCLOAK_ADMIN=admin \
+  -e KEYCLOAK_ADMIN_PASSWORD=StrongPassword123! \
+  quay.io/keycloak/keycloak:24.0.3 \
+  start</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Realm and Client Configuration</h2>
+  <p class="text-text-muted mb-4">After login, create a new realm (avoid using the 'master' realm for applications — it's for Keycloak administration only). Within your realm, create clients for each application:</p>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Create realm and client via Keycloak Admin CLI
+# (kcadm.sh is bundled in the Docker image)
+
+# Authenticate
+/opt/keycloak/bin/kcadm.sh config credentials \
+  --server http://localhost:8080 \
+  --realm master \
+  --user admin --password admin
+
+# Create realm
+/opt/keycloak/bin/kcadm.sh create realms \
+  -s realm=myapp \
+  -s enabled=true
+
+# Create OIDC client
+/opt/keycloak/bin/kcadm.sh create clients -r myapp \
+  -s clientId=myapp-frontend \
+  -s publicClient=true \
+  -s 'redirectUris=["https://app.yourcompany.com/*"]' \
+  -s 'webOrigins=["https://app.yourcompany.com"]'</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">User Federation with LDAP / Active Directory</h2>
+  <p class="text-text-muted mb-4">Navigate to <strong>User Federation &gt; Add ldap provider</strong>. Key settings for Active Directory:</p>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Setting</th>
+          <th class="text-left py-2 pr-4 font-semibold">Value</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Vendor</td><td class="py-2 pr-4">Active Directory</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Connection URL</td><td class="py-2 pr-4">ldaps://your-ad-server:636</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Users DN</td><td class="py-2 pr-4">ou=Users,dc=corp,dc=com</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Bind DN</td><td class="py-2 pr-4">cn=svc-keycloak,ou=Service,dc=corp,dc=com</td></tr>
+        <tr><td class="py-2 pr-4">Sync mode</td><td class="py-2 pr-4">FORCE (overwrite Keycloak with LDAP)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">OIDC Flow Setup and Token Inspection</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># OIDC Discovery endpoint (provides all config automatically)
+curl https://auth.yourcompany.com/realms/myapp/.well-known/openid-configuration
+
+# Token endpoint — exchange authorization code for tokens
+curl -X POST https://auth.yourcompany.com/realms/myapp/protocol/openid-connect/token \
+  -d grant_type=authorization_code \
+  -d code=AUTH_CODE \
+  -d redirect_uri=https://app.yourcompany.com/callback \
+  -d client_id=myapp-frontend
+
+# Introspect a token
+curl -X POST https://auth.yourcompany.com/realms/myapp/protocol/openid-connect/token/introspect \
+  -d token=ACCESS_TOKEN \
+  -u myapp-backend:client_secret</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Protecting a Node.js API</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code>// npm install keycloak-connect express-session
+const Keycloak = require('keycloak-connect');
+const session = require('express-session');
+
+const memoryStore = new session.MemoryStore();
+app.use(session(&#123;
+  secret: 'some secret',
+  resave: false,
+  saveUninitialized: true,
+  store: memoryStore
+&#125;));
+
+const keycloak = new Keycloak(&#123; store: memoryStore &#125;, &#123;
+  realm: 'myapp',
+  'auth-server-url': 'https://auth.yourcompany.com',
+  'ssl-required': 'external',
+  resource: 'myapp-backend',
+  credentials: &#123; secret: 'your-client-secret' &#125;
+&#125;);
+
+app.use(keycloak.middleware());
+
+// Protect route — requires authentication
+app.get('/api/protected', keycloak.protect(), (req, res) =&gt; &#123;
+  res.json(&#123; message: 'Authenticated!', user: req.kauth.grant.access_token.content &#125;);
+&#125;);
+
+// Protect route — requires role
+app.get('/api/admin', keycloak.protect('realm:admin'), (req, res) =&gt; &#123;
+  res.json(&#123; message: 'Admin access granted' &#125;);
+&#125;);</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Keycloak vs Auth0 vs Authentik</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Feature</th>
+          <th class="text-left py-2 pr-4 font-semibold">Keycloak</th>
+          <th class="text-left py-2 pr-4 font-semibold">Auth0</th>
+          <th class="text-left py-2 pr-4 font-semibold">Authentik</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Hosting</td><td class="py-2 pr-4">Self-hosted</td><td class="py-2 pr-4">Cloud (SaaS)</td><td class="py-2 pr-4">Self-hosted</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Pricing</td><td class="py-2 pr-4">Free (OSS)</td><td class="py-2 pr-4">Per MAU</td><td class="py-2 pr-4">Free (OSS)</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">LDAP/AD Federation</td><td class="py-2 pr-4">Excellent</td><td class="py-2 pr-4">Good</td><td class="py-2 pr-4">Good</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Admin UI</td><td class="py-2 pr-4">Complex</td><td class="py-2 pr-4">Excellent</td><td class="py-2 pr-4">Modern, clean</td></tr>
+        <tr><td class="py-2 pr-4">Ops complexity</td><td class="py-2 pr-4">High</td><td class="py-2 pr-4">Low</td><td class="py-2 pr-4">Medium</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>
