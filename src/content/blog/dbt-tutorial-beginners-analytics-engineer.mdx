@@ -1,0 +1,321 @@
+---
+title: "dbt Tutorial: Transform Your Data Like a Senior Analytics Engineer"
+description: "Learn dbt from scratch: models, tests, documentation, ref(), sources, incremental models, and Jinja templating with real SQL examples to build production-grade data pipelines."
+date: "2026-04-01"
+readingTime: "10 min read"
+tags: ["dbt", "data-engineering", "analytics", "sql", "data-warehouse"]
+slug: "dbt-tutorial-beginners-analytics-engineer"
+---
+
+dbt (data build tool) transformed how analytics engineers work. Instead of writing brittle SQL scripts that nobody understands, dbt brings software engineering practices—version control, testing, documentation, modularity—to data transformation. This tutorial gets you building real dbt models in under an hour.
+
+## What Is dbt?
+
+dbt handles the **T in ELT**. Your data warehouse (BigQuery, Snowflake, Redshift, DuckDB) already has raw data loaded by tools like Fivetran or Airbyte. dbt transforms that raw data into clean, modeled tables that analysts can trust.
+
+What dbt is **not**: it doesn't extract data, it doesn't load data, and it doesn't run Python. It compiles SQL + Jinja templates and runs them against your warehouse.
+
+## Installing dbt Locally
+
+```bash
+# Install dbt with your warehouse adapter
+pip install dbt-core dbt-duckdb   # DuckDB for local dev
+# or
+pip install dbt-core dbt-bigquery
+pip install dbt-core dbt-snowflake
+
+# Initialize a project
+dbt init my_analytics_project
+cd my_analytics_project
+```
+
+Your project structure:
+
+```
+my_analytics_project/
+├── dbt_project.yml       # project config
+├── profiles.yml          # database connections (outside git)
+├── models/               # your SQL transformations
+│   ├── staging/          # clean raw data
+│   ├── intermediate/     # business logic
+│   └── marts/            # final tables for analysts
+├── tests/                # custom data tests
+├── macros/               # reusable Jinja functions
+└── seeds/                # small CSV files loaded as tables
+```
+
+## Your First Model
+
+A dbt model is just a `.sql` file. Create `models/staging/stg_orders.sql`:
+
+```sql
+-- models/staging/stg_orders.sql
+-- Cleans raw orders from our source system
+
+select
+    id                          as order_id,
+    customer_id,
+    created_at                  as order_date,
+    status,
+    amount / 100.0              as order_amount_usd,  -- cents to dollars
+    lower(trim(currency))       as currency
+
+from {{ source('raw', 'orders') }}
+
+where created_at >= '2020-01-01'
+  and status != 'test'
+```
+
+Run it:
+
+```bash
+dbt run --select stg_orders
+```
+
+dbt compiles this to a `CREATE TABLE` or `CREATE VIEW` statement and runs it. By default, models are views. Configure materialization in `dbt_project.yml`:
+
+```yaml
+# dbt_project.yml
+models:
+  my_analytics_project:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
+```
+
+## The ref() Function
+
+`ref()` is the most important function in dbt. It creates dependencies between models:
+
+```sql
+-- models/intermediate/int_orders_with_customers.sql
+
+select
+    o.order_id,
+    o.order_date,
+    o.order_amount_usd,
+    c.customer_name,
+    c.customer_email,
+    c.country
+
+from {{ ref('stg_orders') }} o
+left join {{ ref('stg_customers') }} c
+    on o.customer_id = c.customer_id
+```
+
+When you run `dbt run`, dbt builds a DAG from all `ref()` calls and runs models in the correct order. `stg_orders` and `stg_customers` will always run before `int_orders_with_customers`.
+
+## Defining Sources
+
+Sources declare where your raw data lives. Create `models/staging/sources.yml`:
+
+```yaml
+version: 2
+
+sources:
+  - name: raw
+    database: my_database
+    schema: raw_data
+    tables:
+      - name: orders
+        description: "Raw orders from the e-commerce platform"
+        columns:
+          - name: id
+            description: "Primary key"
+            tests:
+              - unique
+              - not_null
+      - name: customers
+        description: "Customer accounts"
+```
+
+Now `{{ source('raw', 'orders') }}` resolves to `my_database.raw_data.orders`. Change the database once in the YAML and all models update automatically.
+
+## Writing Tests
+
+dbt has two types of tests:
+
+**Schema tests** (declarative, in YAML):
+
+```yaml
+# models/staging/schema.yml
+version: 2
+
+models:
+  - name: stg_orders
+    description: "Cleaned orders from the source system"
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - not_null
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['pending', 'shipped', 'delivered', 'cancelled']
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+```
+
+**Singular tests** (custom SQL in `tests/` directory):
+
+```sql
+-- tests/assert_order_amounts_positive.sql
+-- This test fails if any rows are returned
+
+select order_id, order_amount_usd
+from {{ ref('stg_orders') }}
+where order_amount_usd <= 0
+```
+
+Run tests:
+
+```bash
+dbt test                    # run all tests
+dbt test --select stg_orders  # test one model
+```
+
+## Incremental Models
+
+For large tables, you don't want to rebuild everything on every run. Incremental models only process new or updated records:
+
+```sql
+-- models/marts/fct_daily_revenue.sql
+
+{{
+  config(
+    materialized='incremental',
+    unique_key='order_date',
+    incremental_strategy='merge'
+  )
+}}
+
+select
+    date_trunc('day', order_date)   as order_date,
+    count(order_id)                 as order_count,
+    sum(order_amount_usd)           as total_revenue,
+    avg(order_amount_usd)           as avg_order_value
+
+from {{ ref('int_orders_with_customers') }}
+
+{% if is_incremental() %}
+  -- Only process the last 3 days to handle late-arriving data
+  where order_date >= dateadd('day', -3, current_date)
+{% endif %}
+
+group by 1
+```
+
+On the first run, dbt builds the full table. Subsequent runs use the `{% if is_incremental() %}` filter to process only recent data.
+
+## Jinja Templating
+
+dbt's Jinja layer enables dynamic SQL:
+
+```sql
+-- Using variables
+select *
+from {{ ref('stg_orders') }}
+where order_date >= '{{ var("start_date", "2020-01-01") }}'
+```
+
+```bash
+dbt run --vars '{"start_date": "2025-01-01"}'
+```
+
+**Macros** are reusable Jinja functions:
+
+```sql
+-- macros/cents_to_dollars.sql
+{% macro cents_to_dollars(column_name) %}
+    ({{ column_name }} / 100.0)
+{% endmacro %}
+```
+
+Use it in any model:
+
+```sql
+select
+    {{ cents_to_dollars('amount') }} as order_amount_usd
+from {{ source('raw', 'orders') }}
+```
+
+## Running dbt Locally with DuckDB
+
+DuckDB is perfect for learning dbt without a cloud warehouse. Create `profiles.yml`:
+
+```yaml
+# ~/.dbt/profiles.yml
+my_analytics_project:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: /tmp/my_database.duckdb
+```
+
+Seed some sample data:
+
+```bash
+# Create seeds/raw_orders.csv then run:
+dbt seed
+dbt run
+dbt test
+dbt docs generate && dbt docs serve  # browse docs at localhost:8080
+```
+
+## dbt Documentation
+
+Add descriptions to everything—dbt generates a browsable data catalog:
+
+```yaml
+models:
+  - name: fct_daily_revenue
+    description: >
+      Daily revenue aggregated from cleaned orders.
+      Updated incrementally every hour.
+      Primary source for the Finance dashboard.
+    columns:
+      - name: order_date
+        description: "Calendar date of the orders (UTC)"
+      - name: total_revenue
+        description: "Sum of order amounts in USD, excluding tax"
+```
+
+`dbt docs serve` gives you a searchable, lineage-aware documentation site. Show it to stakeholders instead of sending spreadsheets.
+
+## The dbt Development Workflow
+
+```bash
+# 1. Pull latest data from upstream
+dbt source freshness
+
+# 2. Develop a new model, then run only it and its dependencies
+dbt run --select +my_new_model
+
+# 3. Test it
+dbt test --select my_new_model
+
+# 4. Check the full lineage
+dbt ls --select +my_new_model+  # upstream+ and +downstream
+
+# 5. Run everything in production
+dbt build  # runs models, tests, seeds, and snapshots in dependency order
+```
+
+## What Makes a Senior Analytics Engineer
+
+The difference between junior and senior dbt work isn't SQL complexity—it's **trust**. Senior work means:
+
+- Every model has tests that would catch data issues before analysts notice
+- Incremental models handle late-arriving data with a lookback window
+- Sources have freshness alerts so stale data doesn't silently corrupt reports
+- Documentation is maintained as part of the PR, not as an afterthought
+- Model names follow a consistent naming convention (`stg_`, `int_`, `fct_`, `dim_`)
+
+dbt makes all of this achievable. The tool is just SQL and YAML—the discipline is what separates production-grade pipelines from scripts that break on Fridays.

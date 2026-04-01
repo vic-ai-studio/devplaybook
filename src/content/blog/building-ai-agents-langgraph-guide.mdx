@@ -1,0 +1,346 @@
+---
+title: "Building AI Agents with LangGraph: A Practical Guide"
+description: "Learn how to build production-ready AI agents using LangGraph's StateGraph. Covers nodes, edges, checkpointing, tool use, and deployment with TypeScript code examples."
+date: "2026-04-01"
+readingTime: "11 min read"
+tags: ["LangGraph", "AI Agents", "LangChain", "TypeScript", "LLM", "Python"]
+slug: "building-ai-agents-langgraph-guide"
+---
+
+Building AI agents that reliably complete multi-step tasks is one of the hardest problems in applied AI. A raw LLM call works for single-turn tasks, but falls apart when you need looping, branching, tool use, and state memory across steps. LangGraph solves this with a graph-based execution model that gives you explicit control over every transition.
+
+This guide walks through LangGraph's core concepts and builds a production-ready agent from scratch.
+
+## What is LangGraph?
+
+LangGraph is a library built on top of LangChain for creating **stateful, multi-step AI agents** as directed graphs. Instead of a linear chain (prompt → LLM → output), you define:
+
+- **Nodes** — individual processing steps (LLM calls, tool executions, logic)
+- **Edges** — transitions between nodes (fixed or conditional)
+- **State** — a shared object that flows through the graph and accumulates results
+- **Checkpoints** — persistent state snapshots that enable pause/resume and human-in-the-loop
+
+The mental model is a finite state machine where the LLM drives transitions.
+
+## Why LangGraph Over LangChain Chains?
+
+| Feature | LangChain Chains | LangGraph |
+|---|---|---|
+| Execution model | Linear | Graph (loops, branches) |
+| State management | Per-call | Persistent across steps |
+| Checkpointing | ❌ | ✅ |
+| Human-in-the-loop | ❌ | ✅ |
+| Streaming | Partial | Full node-level |
+| Debugging visibility | Limited | Full graph trace |
+
+Use LangChain chains for simple, linear pipelines. Use LangGraph when you need cycles, conditional branching, or persistent memory.
+
+## Core Concepts: StateGraph
+
+The fundamental building block is `StateGraph`. You define a state type (TypeScript interface or Python TypedDict), then add nodes and edges.
+
+```typescript
+import { StateGraph, Annotation } from "@langchain/langgraph";
+import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
+
+// Define the state shape
+const StateAnnotation = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: (x, y) => x.concat(y),  // append new messages
+  }),
+  currentStep: Annotation<string>({
+    default: () => "start",
+    reducer: (_, y) => y,
+  }),
+  toolResults: Annotation<Record<string, unknown>>({
+    default: () => ({}),
+    reducer: (x, y) => ({ ...x, ...y }),
+  }),
+});
+
+type State = typeof StateAnnotation.State;
+```
+
+The `Annotation` approach is LangGraph's way of defining how state fields are updated. The `reducer` function specifies how new values merge with existing state.
+
+## Building Your First Agent
+
+Let's build a research agent that can search the web, analyze results, and produce a summary.
+
+### Step 1: Define Nodes
+
+Each node is a function that takes the current state and returns state updates.
+
+```typescript
+const model = new ChatOpenAI({ model: "gpt-4o", temperature: 0 });
+
+// Node: call the LLM
+async function callModel(state: State): Promise<Partial<State>> {
+  const response = await model.invoke(state.messages);
+  return {
+    messages: [response],
+    currentStep: "decide",
+  };
+}
+
+// Node: execute a tool
+async function executeTool(state: State): Promise<Partial<State>> {
+  const lastMessage = state.messages[state.messages.length - 1] as AIMessage;
+  const toolCalls = lastMessage.tool_calls ?? [];
+
+  const results: Record<string, unknown> = {};
+  for (const call of toolCalls) {
+    if (call.name === "search") {
+      results[call.id] = await searchWeb(call.args.query as string);
+    }
+  }
+
+  return { toolResults: results, currentStep: "continue" };
+}
+
+// Node: produce final output
+async function generateSummary(state: State): Promise<Partial<State>> {
+  const summaryPrompt = `Based on the research results, write a comprehensive summary.`;
+  const response = await model.invoke([
+    ...state.messages,
+    new HumanMessage(summaryPrompt),
+  ]);
+  return { messages: [response], currentStep: "done" };
+}
+```
+
+### Step 2: Add Conditional Edges
+
+Conditional edges let the graph branch based on state.
+
+```typescript
+// Router function: decide next node based on state
+function shouldContinue(state: State): "tools" | "summarize" | "__end__" {
+  const lastMessage = state.messages[state.messages.length - 1] as AIMessage;
+
+  // If the model made tool calls, run them
+  if (lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+    return "tools";
+  }
+
+  // If we have enough context, summarize
+  if (state.messages.length > 6) {
+    return "summarize";
+  }
+
+  // Otherwise end
+  return "__end__";
+}
+```
+
+### Step 3: Assemble the Graph
+
+```typescript
+import { END, START } from "@langchain/langgraph";
+
+const workflow = new StateGraph(StateAnnotation)
+  .addNode("agent", callModel)
+  .addNode("tools", executeTool)
+  .addNode("summarize", generateSummary)
+  .addEdge(START, "agent")
+  .addConditionalEdges("agent", shouldContinue, {
+    tools: "tools",
+    summarize: "summarize",
+    __end__: END,
+  })
+  .addEdge("tools", "agent")  // loop back after tool execution
+  .addEdge("summarize", END);
+
+const app = workflow.compile();
+```
+
+The `addEdge("tools", "agent")` creates the loop: after running tools, control returns to the agent node.
+
+## Checkpointing: Persistent State
+
+Checkpointing is LangGraph's killer feature for production agents. It saves graph state at every node, enabling:
+
+- **Resume after failure** — restart from the last checkpoint
+- **Human-in-the-loop** — pause, await human input, continue
+- **Debugging** — replay from any point in history
+
+```typescript
+import { MemorySaver, PostgresSaver } from "@langchain/langgraph";
+
+// In-memory (dev/testing)
+const memorySaver = new MemorySaver();
+
+// Postgres (production)
+const postgresSaver = PostgresSaver.fromConnString(
+  process.env.DATABASE_URL!
+);
+
+const appWithMemory = workflow.compile({ checkpointer: memorySaver });
+
+// Each run has a thread_id for state isolation
+const config = { configurable: { thread_id: "user-session-42" } };
+
+const result = await appWithMemory.invoke(
+  { messages: [new HumanMessage("Research quantum computing breakthroughs in 2026")] },
+  config
+);
+
+// Resume the same conversation
+const followUp = await appWithMemory.invoke(
+  { messages: [new HumanMessage("Summarize the key takeaways in bullet points")] },
+  config  // same thread_id = same memory context
+);
+```
+
+## Human-in-the-Loop Interrupts
+
+For sensitive operations, you can pause execution and await human approval.
+
+```typescript
+// Compile with interrupt points
+const supervisedApp = workflow.compile({
+  checkpointer: memorySaver,
+  interruptBefore: ["tools"],  // pause before executing tools
+});
+
+// First invoke: runs until the interrupt
+const partialResult = await supervisedApp.invoke(initialInput, config);
+console.log("Paused at tools node. Pending tool calls:", partialResult.messages.at(-1));
+
+// Human reviews and approves
+const humanApproved = await humanReviewSystem.awaitApproval(config.configurable.thread_id);
+
+if (humanApproved) {
+  // Resume from checkpoint — null input continues from where we left off
+  const finalResult = await supervisedApp.invoke(null, config);
+}
+```
+
+## Tool Binding
+
+Bind tools to the model so it knows which capabilities are available.
+
+```typescript
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+
+const searchTool = tool(
+  async ({ query }) => {
+    // Real implementation: call Tavily, SerpAPI, etc.
+    return `Search results for: ${query}`;
+  },
+  {
+    name: "search",
+    description: "Search the web for current information about a topic",
+    schema: z.object({
+      query: z.string().describe("The search query"),
+    }),
+  }
+);
+
+const codeExecutorTool = tool(
+  async ({ code, language }) => {
+    // Execute code in a sandbox
+    return await sandbox.execute(code, language);
+  },
+  {
+    name: "execute_code",
+    description: "Execute code in Python or JavaScript sandbox",
+    schema: z.object({
+      code: z.string().describe("The code to execute"),
+      language: z.enum(["python", "javascript"]).describe("Programming language"),
+    }),
+  }
+);
+
+// Bind tools to the model
+const modelWithTools = model.bindTools([searchTool, codeExecutorTool]);
+```
+
+## Streaming
+
+LangGraph supports streaming at the node level, showing intermediate results as they happen.
+
+```typescript
+// Stream events from the graph
+for await (const event of await app.streamEvents(input, config, { version: "v2" })) {
+  if (event.event === "on_chat_model_stream") {
+    // Stream LLM tokens
+    process.stdout.write(event.data.chunk.content);
+  }
+  if (event.event === "on_tool_start") {
+    console.log(`\nRunning tool: ${event.name}`);
+  }
+  if (event.event === "on_tool_end") {
+    console.log(`Tool result: ${JSON.stringify(event.data.output)}`);
+  }
+}
+```
+
+## Production Deployment
+
+### LangGraph Cloud (Managed)
+
+LangGraph Cloud is Anthropic/LangChain's managed deployment service for LangGraph agents. Deploy from GitHub, get a persistent API endpoint, automatic scaling, and a built-in Studio UI for debugging.
+
+```yaml
+# langgraph.json
+{
+  "dependencies": ["."],
+  "graphs": {
+    "research_agent": "./src/agent.ts:app"
+  },
+  "env": ".env"
+}
+```
+
+### Self-Hosted (LangGraph Server)
+
+```bash
+pip install langgraph-cli
+langgraph up  # starts a local server
+```
+
+The LangGraph Server exposes REST endpoints (`POST /runs`, `GET /runs/{id}`) and WebSocket streaming, making it easy to integrate with any frontend or backend.
+
+## Best Practices
+
+**1. Keep nodes single-responsibility.** Each node should do one thing. Don't mix LLM calls with database writes in the same node — it makes debugging harder.
+
+**2. Use typed state.** Always define explicit state types. This catches bugs at development time and makes graph logic readable.
+
+**3. Handle retries at the graph level.** Add a retry node that catches errors and routes back to the failed node. Don't retry inside nodes.
+
+**4. Set max iterations.** Add a counter to your state and a conditional edge that routes to END after N iterations to prevent infinite loops.
+
+```typescript
+function checkIterationLimit(state: State): "continue" | "__end__" {
+  return (state.iterationCount ?? 0) >= 10 ? "__end__" : "continue";
+}
+```
+
+**5. Use subgraphs for complex agents.** Compose multiple StateGraphs as subgraphs. Each subgraph can have its own state schema and checkpointer, enabling parallel execution.
+
+## When to Use LangGraph
+
+Use LangGraph for:
+- **Code generation agents** that write, run, and fix code in a loop
+- **Research agents** that search, analyze, and synthesize information
+- **Agentic RAG** where the agent decides what to retrieve
+- **Multi-agent orchestration** with supervisor/worker patterns
+- **Any task requiring > 2 LLM calls** with shared state
+
+The main trade-off is complexity. For simple prompt → response flows, a plain LangChain chain or direct API call is faster to build and easier to debug.
+
+## Summary
+
+LangGraph brings determinism to AI agents through explicit graph structure. Key concepts:
+
+- **StateGraph** = your agent's execution model with typed state
+- **Nodes** = processing units (LLM, tools, logic)
+- **Edges** = transitions, including conditional branching and loops
+- **Checkpointing** = persistent state for production reliability
+- **Interrupts** = human-in-the-loop at any node
+
+Start with a simple two-node graph (agent + tools), add checkpointing early, and grow complexity as needed. The graph model pays off when you need to debug why your agent made a particular decision — you have the full execution trace.

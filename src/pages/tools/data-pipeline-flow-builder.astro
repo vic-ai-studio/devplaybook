@@ -1,0 +1,272 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a DAG in data pipelines?", answer: "A Directed Acyclic Graph (DAG) represents a pipeline where nodes are processing steps and edges are data flows between them. 'Acyclic' means no circular dependencies — data always moves forward. Tools like Apache Airflow, Prefect, and Dagster all model pipelines as DAGs. A DAG guarantees that tasks can be executed in a valid order (topological sort) without infinite loops." },
+  { question: "What is the difference between ETL and ELT?", answer: "ETL (Extract-Transform-Load) transforms data before loading into the destination. ELT (Extract-Load-Transform) loads raw data first, then transforms inside the data warehouse. ETL is better when the destination can't handle raw data or transformation is complex. ELT is preferred with modern cloud warehouses (Snowflake, BigQuery, Redshift) since they have abundant compute for in-warehouse SQL transformations. dbt is the leading ELT transformation tool." },
+  { question: "What are the main step types in a data pipeline?", answer: "Source: reads from databases, APIs, files, streams. Transform: reshapes, cleans, enriches data. Filter: removes rows that don't match criteria. Aggregate: groups and summarizes (SUM, COUNT, AVG). Join: combines two datasets by a key. Sink: writes to destination (database, data lake, API). A well-structured pipeline has clear separation between these concerns to make each step testable and replaceable." },
+  { question: "How do I handle pipeline failures and retries?", answer: "Production pipelines need idempotent steps (running twice produces the same result), retry logic with exponential backoff, dead-letter queues for poison messages, and alerting on failures. Tools like Airflow support retry_delay and max_retries per task. For Kafka pipelines, use consumer group offsets to resume from the last committed position. Always design for at-least-once delivery and make sinks idempotent." },
+  { question: "What is the difference between batch and streaming pipelines?", answer: "Batch pipelines process large data chunks on a schedule (hourly, daily) — simpler, easier to backfill, good for analytics. Streaming pipelines process events in real time (sub-second latency) — more complex, better for operational use cases like fraud detection. Tools: Airflow/dbt for batch, Apache Flink/Spark Streaming/Kafka Streams for streaming. Many modern platforms (Databricks, Snowflake) support both via micro-batching." },
+];
+---
+
+<BaseLayout
+  title="Data Pipeline DAG Builder — Visual ETL/ELT Flow Designer"
+  description="Visually design data pipeline DAGs with source, transform, filter, aggregate, join, and sink steps. Generate JSON DAG config for Airflow, Prefect, or custom orchestrators."
+  tool="Data Pipeline Builder, DAG Designer, ETL Flow Builder, ELT Pipeline Visualizer, Airflow DAG Generator, Data Engineering Tool"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Data Pipeline Flow Builder",
+    "url": "https://devplaybook.cc/tools/data-pipeline-flow-builder",
+    "description": "Design data pipeline DAGs visually and generate JSON config for Airflow, Prefect, or custom orchestrators.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Data Pipeline Flow Builder</h1>
+  <p class="text-text-muted mb-4">Design your data pipeline DAG by adding steps and defining connections. Export a JSON DAG config compatible with Airflow, Prefect, Dagster, or your own orchestrator.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 6 step types</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Edge / dependency builder</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JSON DAG export</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Pipeline meta + add step -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Pipeline Settings</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="pipeline-name">Pipeline Name</label>
+          <input id="pipeline-name" type="text" value="my_pipeline"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="pipeline-schedule">Schedule (cron)</label>
+          <input id="pipeline-schedule" type="text" value="0 2 * * *"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+      </div>
+
+      <h3 class="font-medium text-sm mb-3">Add Step</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1" for="step-name">Step Name</label>
+          <input id="step-name" type="text" placeholder="e.g. read_orders"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1" for="step-type">Type</label>
+          <select id="step-type" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="source">source</option>
+            <option value="transform">transform</option>
+            <option value="filter">filter</option>
+            <option value="aggregate">aggregate</option>
+            <option value="join">join</option>
+            <option value="sink">sink</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1" for="step-desc">Description</label>
+          <input id="step-desc" type="text" placeholder="What does this step do?"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+      </div>
+      <button id="add-step-btn" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/80 transition-colors">+ Add Step</button>
+    </div>
+
+    <!-- Steps list -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-3">Pipeline Steps</h2>
+      <div id="steps-list" class="space-y-2 mb-4">
+        <p class="text-text-muted text-sm italic" id="no-steps-msg">No steps yet. Add your first step above.</p>
+      </div>
+
+      <!-- Add edge -->
+      <div id="edge-section" class="hidden border-t border-border pt-4 mt-4">
+        <h3 class="font-medium text-sm mb-3">Add Connection (Edge)</h3>
+        <div class="flex gap-3 flex-wrap items-end">
+          <div>
+            <label class="block text-xs text-text-muted mb-1" for="edge-from">From</label>
+            <select id="edge-from" class="bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"></select>
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1" for="edge-to">To</label>
+            <select id="edge-to" class="bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"></select>
+          </div>
+          <button id="add-edge-btn" class="bg-bg border border-border px-4 py-2 rounded-lg text-sm hover:bg-primary/10 hover:border-primary/40 transition-colors">+ Connect</button>
+        </div>
+        <div id="edges-list" class="mt-3 flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div id="output-section" class="hidden bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">JSON DAG Config</h2>
+        <button id="copy-dag" class="text-xs px-3 py-1 rounded-lg border border-border hover:bg-primary/10 hover:border-primary/40 transition-colors">Copy</button>
+      </div>
+      <pre id="dag-output" class="bg-bg rounded-lg p-4 text-xs font-mono text-primary overflow-x-auto whitespace-pre-wrap max-h-96"></pre>
+    </div>
+
+    <button id="generate-btn" class="hidden bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">Generate DAG JSON</button>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Data Pipeline Flow Builder" relatedTags={['data', 'etl', 'pipeline', 'airflow', 'dag', 'data-engineering']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var steps = [];
+  var edges = [];
+
+  var TYPE_COLORS = {
+    source: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+    transform: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+    filter: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
+    aggregate: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
+    join: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+    sink: 'bg-green-500/20 text-green-300 border-green-500/40',
+  };
+
+  function renderSteps() {
+    var list = document.getElementById('steps-list');
+    var noMsg = document.getElementById('no-steps-msg');
+    var edgeSection = document.getElementById('edge-section');
+    var genBtn = document.getElementById('generate-btn');
+    var outputSection = document.getElementById('output-section');
+
+    if (steps.length === 0) {
+      list.innerHTML = '';
+      list.appendChild(noMsg);
+      noMsg.classList.remove('hidden');
+      edgeSection.classList.add('hidden');
+      genBtn.classList.add('hidden');
+      outputSection.classList.add('hidden');
+      return;
+    }
+    noMsg.classList.add('hidden');
+    edgeSection.classList.remove('hidden');
+    genBtn.classList.remove('hidden');
+
+    list.innerHTML = '';
+    steps.forEach(function (s, i) {
+      var div = document.createElement('div');
+      div.className = 'flex items-center gap-3 p-3 bg-bg rounded-lg border border-border';
+      var colorCls = TYPE_COLORS[s.type] || 'bg-gray-500/20 text-gray-300 border-gray-500/40';
+      div.innerHTML = '<span class="text-sm font-mono font-medium flex-1">' + s.name + '</span>'
+        + '<span class="text-xs px-2 py-0.5 rounded-full border ' + colorCls + '">' + s.type + '</span>'
+        + '<span class="text-xs text-text-muted flex-1 truncate">' + (s.description || '') + '</span>'
+        + '<button class="text-xs text-red-400 hover:text-red-300 transition-colors" data-idx="' + i + '">Remove</button>';
+      div.querySelector('button').addEventListener('click', function (e) {
+        var idx = parseInt(e.target.getAttribute('data-idx'));
+        var removedName = steps[idx].name;
+        steps.splice(idx, 1);
+        edges = edges.filter(function (ed) { return ed.from !== removedName && ed.to !== removedName; });
+        renderSteps();
+        renderEdges();
+        updateEdgeSelects();
+      });
+      list.appendChild(div);
+    });
+
+    updateEdgeSelects();
+  }
+
+  function updateEdgeSelects() {
+    var fromSel = document.getElementById('edge-from');
+    var toSel = document.getElementById('edge-to');
+    var options = steps.map(function (s) { return '<option value="' + s.name + '">' + s.name + '</option>'; }).join('');
+    fromSel.innerHTML = options;
+    toSel.innerHTML = options;
+  }
+
+  function renderEdges() {
+    var edgesList = document.getElementById('edges-list');
+    edgesList.innerHTML = '';
+    edges.forEach(function (ed, i) {
+      var span = document.createElement('span');
+      span.className = 'flex items-center gap-1 text-xs bg-bg border border-border rounded-full px-3 py-1';
+      span.innerHTML = '<span class="font-mono">' + ed.from + '</span>'
+        + '<span class="text-text-muted mx-1">→</span>'
+        + '<span class="font-mono">' + ed.to + '</span>'
+        + '<button class="ml-2 text-red-400 hover:text-red-300" data-idx="' + i + '">✕</button>';
+      span.querySelector('button').addEventListener('click', function (e) {
+        var idx = parseInt(e.target.getAttribute('data-idx'));
+        edges.splice(idx, 1);
+        renderEdges();
+      });
+      edgesList.appendChild(span);
+    });
+  }
+
+  document.getElementById('add-step-btn').addEventListener('click', function () {
+    var name = document.getElementById('step-name').value.trim().replace(/\s+/g, '_');
+    var type = document.getElementById('step-type').value;
+    var desc = document.getElementById('step-desc').value.trim();
+    if (!name) { alert('Please enter a step name.'); return; }
+    if (steps.find(function (s) { return s.name === name; })) { alert('Step name must be unique.'); return; }
+    steps.push({ name: name, type: type, description: desc });
+    document.getElementById('step-name').value = '';
+    document.getElementById('step-desc').value = '';
+    renderSteps();
+  });
+
+  document.getElementById('add-edge-btn').addEventListener('click', function () {
+    var from = document.getElementById('edge-from').value;
+    var to = document.getElementById('edge-to').value;
+    if (from === to) { alert('From and To must be different steps.'); return; }
+    if (edges.find(function (e) { return e.from === from && e.to === to; })) { alert('This connection already exists.'); return; }
+    edges.push({ from: from, to: to });
+    renderEdges();
+  });
+
+  document.getElementById('generate-btn').addEventListener('click', function () {
+    var pipelineName = document.getElementById('pipeline-name').value.trim() || 'my_pipeline';
+    var schedule = document.getElementById('pipeline-schedule').value.trim() || '0 2 * * *';
+    var dag = {
+      pipeline: {
+        name: pipelineName,
+        schedule: schedule,
+        steps: steps.map(function (s) { return { id: s.name, type: s.type, description: s.description || '' }; }),
+        edges: edges.map(function (e) { return { from: e.from, to: e.to }; })
+      }
+    };
+    var json = JSON.stringify(dag, null, 2);
+    document.getElementById('dag-output').textContent = json;
+    document.getElementById('output-section').classList.remove('hidden');
+    document.getElementById('copy-dag').onclick = function () {
+      navigator.clipboard.writeText(json).then(function () {
+        var btn = document.getElementById('copy-dag');
+        btn.textContent = 'Copied!';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+      });
+    };
+    document.getElementById('output-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  // Seed with an example pipeline
+  steps = [
+    { name: 'read_postgres', type: 'source', description: 'Read orders from PostgreSQL' },
+    { name: 'clean_nulls', type: 'transform', description: 'Remove null order_id rows' },
+    { name: 'filter_recent', type: 'filter', description: 'Keep last 30 days only' },
+    { name: 'aggregate_daily', type: 'aggregate', description: 'Sum revenue by day' },
+    { name: 'write_warehouse', type: 'sink', description: 'Load into BigQuery' },
+  ];
+  edges = [
+    { from: 'read_postgres', to: 'clean_nulls' },
+    { from: 'clean_nulls', to: 'filter_recent' },
+    { from: 'filter_recent', to: 'aggregate_daily' },
+    { from: 'aggregate_daily', to: 'write_warehouse' },
+  ];
+  renderSteps();
+  renderEdges();
+})();
+</script>

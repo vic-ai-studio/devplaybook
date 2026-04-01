@@ -1,0 +1,210 @@
+---
+title: "Apache Kafka vs RabbitMQ: Which Message Broker Should You Choose?"
+description: "Compare Apache Kafka and RabbitMQ architecture, throughput, delivery semantics, and use cases with real Python code examples to help you pick the right message broker."
+date: "2026-04-01"
+readingTime: "9 min read"
+tags: ["kafka", "rabbitmq", "message-broker", "distributed-systems", "python"]
+slug: "kafka-vs-rabbitmq-message-broker-comparison"
+---
+
+Choosing the wrong message broker can haunt a team for years. Apache Kafka and RabbitMQ are both battle-tested, but they solve fundamentally different problems. This guide breaks down the real differences so you can make a decision you won't regret.
+
+## Core Architecture Differences
+
+**RabbitMQ** is a traditional message broker built around AMQP (Advanced Message Queuing Protocol). It follows a push model: the broker routes messages from producers to consumers via exchanges and queues. Once a message is consumed and acknowledged, it's gone.
+
+**Apache Kafka** is a distributed log. Messages (called events or records) are appended to partitioned, replicated topics. Consumers read from offsets and the data stays in the log for a configurable retention period. Kafka uses a pull model—consumers fetch at their own pace.
+
+The fundamental distinction: **RabbitMQ is a queue, Kafka is a log.**
+
+## Throughput and Performance
+
+Kafka was designed at LinkedIn to handle millions of events per second. It achieves this through:
+- Sequential disk writes (append-only log)
+- Zero-copy data transfer via `sendfile()`
+- Batching at the producer and consumer level
+- Partition-level parallelism
+
+RabbitMQ is fast for typical workloads—tens of thousands of messages per second per node—but it's not built for the same scale. Its in-memory-first model and per-message routing overhead limit throughput compared to Kafka.
+
+**Winner for raw throughput: Kafka**, often by 10-100x at high volumes.
+
+## Message Ordering Guarantees
+
+Kafka guarantees ordering **within a partition**. If you partition by user ID, all events for a given user arrive in order. Across partitions, there's no ordering guarantee.
+
+RabbitMQ guarantees ordering within a single queue with a single consumer. Add competing consumers to a queue and ordering is lost unless you use consistent hashing exchange plugins.
+
+## Delivery Semantics
+
+Both brokers support the three standard delivery guarantees:
+
+| Semantic | Kafka | RabbitMQ |
+|---|---|---|
+| At-most-once | Auto-commit offsets | Auto-ack |
+| At-least-once | Manual commit after processing | Manual ack after processing |
+| Exactly-once | Transactions + idempotent producers | Not natively supported |
+
+Kafka's exactly-once semantics (EOS) via transactions make it the stronger choice for financial systems where duplicate processing is catastrophic.
+
+## Python Code Examples
+
+### RabbitMQ Producer and Consumer
+
+Install the library: `pip install pika`
+
+```python
+# rabbitmq_producer.py
+import pika
+import json
+
+connection = pika.BlockingConnection(
+    pika.ConnectionParameters(host='localhost')
+)
+channel = connection.channel()
+
+channel.queue_declare(queue='orders', durable=True)
+
+def publish_order(order_id: str, amount: float):
+    message = json.dumps({"order_id": order_id, "amount": amount})
+    channel.basic_publish(
+        exchange='',
+        routing_key='orders',
+        body=message,
+        properties=pika.BasicProperties(delivery_mode=2)  # persistent
+    )
+    print(f"Published order {order_id}")
+
+publish_order("ORD-001", 99.99)
+connection.close()
+```
+
+```python
+# rabbitmq_consumer.py
+import pika
+import json
+
+def process_order(ch, method, properties, body):
+    order = json.loads(body)
+    print(f"Processing order: {order['order_id']}")
+    # Do work here
+    ch.basic_ack(delivery_tag=method.delivery_tag)  # manual ack
+
+connection = pika.BlockingConnection(
+    pika.ConnectionParameters(host='localhost')
+)
+channel = connection.channel()
+channel.queue_declare(queue='orders', durable=True)
+channel.basic_qos(prefetch_count=1)  # fair dispatch
+channel.basic_consume(queue='orders', on_message_callback=process_order)
+
+print("Waiting for messages...")
+channel.start_consuming()
+```
+
+### Kafka Producer and Consumer
+
+Install the library: `pip install confluent-kafka`
+
+```python
+# kafka_producer.py
+from confluent_kafka import Producer
+import json
+
+producer = Producer({'bootstrap.servers': 'localhost:9092'})
+
+def delivery_report(err, msg):
+    if err:
+        print(f"Delivery failed: {err}")
+    else:
+        print(f"Delivered to {msg.topic()} [{msg.partition()}] @ offset {msg.offset()}")
+
+def publish_event(user_id: str, event_type: str, data: dict):
+    payload = json.dumps({"event": event_type, "data": data}).encode('utf-8')
+    producer.produce(
+        topic='user-events',
+        key=user_id.encode('utf-8'),  # partition by user for ordering
+        value=payload,
+        callback=delivery_report
+    )
+    producer.poll(0)
+
+publish_event("user-123", "page_view", {"url": "/products"})
+producer.flush()
+```
+
+```python
+# kafka_consumer.py
+from confluent_kafka import Consumer
+import json
+
+consumer = Consumer({
+    'bootstrap.servers': 'localhost:9092',
+    'group.id': 'analytics-service',
+    'auto.offset.reset': 'earliest',
+    'enable.auto.commit': False  # manual commit for at-least-once
+})
+
+consumer.subscribe(['user-events'])
+
+try:
+    while True:
+        msg = consumer.poll(timeout=1.0)
+        if msg is None:
+            continue
+        if msg.error():
+            print(f"Consumer error: {msg.error()}")
+            continue
+
+        event = json.loads(msg.value().decode('utf-8'))
+        print(f"Processing event: {event['event']} for user {msg.key().decode()}")
+
+        # Do work here
+        consumer.commit(message=msg)  # commit after processing
+finally:
+    consumer.close()
+```
+
+## When to Use RabbitMQ
+
+- **Task queues**: Background jobs, email sending, image processing—classic worker patterns
+- **Complex routing**: Route messages to different queues based on headers, topic patterns, or direct routing keys
+- **Request/reply patterns**: RPC-style communication where you need a response
+- **Short-lived messages**: Notifications, transient jobs where replay isn't needed
+- **Low-to-medium volume**: Up to ~50k messages/sec without specialized infrastructure
+
+RabbitMQ shines when you need flexible routing logic and want messages to disappear after processing.
+
+## When to Use Kafka
+
+- **Event streaming at scale**: Clickstreams, IoT telemetry, application logs
+- **Event sourcing**: Build system state from an immutable event log
+- **Multiple independent consumers**: Each microservice reads the same event stream at its own pace
+- **Audit trails and replay**: Replay events to rebuild state or feed new services
+- **Stream processing**: Combine with Kafka Streams or Apache Flink for real-time analytics
+- **High volume**: Millions of events per second across a cluster
+
+Kafka shines when events have long-term value, when multiple services consume the same stream, or when you need replay capability.
+
+## Decision Matrix
+
+| Requirement | RabbitMQ | Kafka |
+|---|---|---|
+| Task queue / job processing | ✅ Best | ⚠️ Overkill |
+| Complex message routing | ✅ Native | ❌ Limited |
+| Millions of events/sec | ❌ Struggles | ✅ Built for this |
+| Message replay / rewind | ❌ Messages deleted | ✅ Log retention |
+| Multiple consumers same stream | ⚠️ Competing | ✅ Consumer groups |
+| Exactly-once semantics | ❌ Hard | ✅ Native transactions |
+| Simple setup / small team | ✅ Easier | ⚠️ More ops overhead |
+| Event sourcing | ❌ Not designed for | ✅ Perfect fit |
+
+## The Honest Answer
+
+If you're building **task queues, background jobs, or service-to-service RPC**, use RabbitMQ. It's simpler to operate and purpose-built for those patterns.
+
+If you're building **event-driven microservices, data pipelines, or need replay/audit capability**, use Kafka. The operational complexity is worth it at scale.
+
+Many mature architectures use both: RabbitMQ for job queues and internal service communication, Kafka for the event backbone that ties microservices together.
+
+Don't cargo-cult either choice. Start with the simplest tool that fits your throughput and durability requirements.

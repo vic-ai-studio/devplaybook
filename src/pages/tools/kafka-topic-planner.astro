@@ -1,0 +1,198 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How many partitions should I use for a Kafka topic?", answer: "Partitions determine parallelism. A common rule: number of partitions = max(target throughput / single-partition throughput, num consumers in consumer group). Start conservatively (e.g. 6–12) because you can increase partitions later but cannot decrease them without recreating the topic. More partitions mean more file handles and leader elections, so avoid over-partitioning." },
+  { question: "What is the replication factor in Kafka?", answer: "Replication factor controls how many broker copies exist for each partition. A factor of 3 means 1 leader + 2 followers — the industry standard for production clusters. The broker count must be >= replication factor. Higher replication improves fault tolerance (tolerate N-1 broker failures) but increases storage and network usage proportionally." },
+  { question: "How does Kafka retention work?", answer: "Kafka retains messages based on time (retention.ms) or size (retention.bytes). When a segment exceeds the retention window, it is eligible for deletion. Default is 7 days (604800000 ms). For event sourcing or audit logs you might set retention to weeks or months. Compacted topics use log compaction instead — keeping only the latest value per key indefinitely." },
+  { question: "What is the max.message.bytes setting?", answer: "max.message.bytes controls the maximum size of a single message (default 1 MB). If your pipeline produces large payloads (images, documents), increase this alongside fetch.message.max.bytes on consumers and replica.fetch.max.bytes on brokers. For very large payloads consider storing data externally and passing a reference key via Kafka instead." },
+  { question: "How do I estimate Kafka storage requirements?", answer: "Storage per partition = (throughput MB/s per partition) × (retention seconds). Total storage = storage per partition × num partitions × replication factor. Add 20–30% overhead for index files and segment gaps. For a topic with 100 MB/s throughput, 10 partitions, replication factor 3, and 24h retention: (10 MB/s × 86400s × 3) ≈ 2.5 TB across the cluster." },
+];
+---
+
+<BaseLayout
+  title="Kafka Topic Planner — Partition, Replication & Retention Calculator"
+  description="Plan Apache Kafka topics with the right partition count, replication factor, and retention. Calculate storage estimates and generate kafka-topics.sh create commands instantly."
+  tool="Kafka Topic Planner, Kafka Partition Calculator, Kafka Retention Estimator, Apache Kafka Topic Creator, Kafka Command Generator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Kafka Topic Planner",
+    "url": "https://devplaybook.cc/tools/kafka-topic-planner",
+    "description": "Plan Apache Kafka topics: calculate storage, throughput, and generate kafka-topics.sh commands.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Kafka Topic Planner</h1>
+  <p class="text-text-muted mb-4">Configure your Apache Kafka topic parameters — partition count, replication factor, retention, and message size. Get storage estimates, throughput capacity, and a ready-to-run <code class="bg-bg-card px-1 rounded text-primary">kafka-topics.sh</code> create command.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Storage estimator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Throughput calculator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CLI command generator</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Inputs -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Topic Configuration</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="topic-name">Topic Name</label>
+          <input id="topic-name" type="text" value="my-events"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Alphanumeric, hyphens, underscores</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="partitions">Partitions</label>
+          <input id="partitions" type="number" min="1" max="100" step="1" value="6"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">1 – 100</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="replication">Replication Factor</label>
+          <input id="replication" type="number" min="1" max="5" step="1" value="3"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">1 – 5 (3 recommended for production)</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="retention-hours">Retention (hours)</label>
+          <input id="retention-hours" type="number" min="1" max="720" step="1" value="168"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">1 – 720 hours (168 = 7 days)</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="msg-size-kb">Max Message Size (KB)</label>
+          <input id="msg-size-kb" type="number" min="1" max="10240" step="1" value="1024"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Default 1024 KB (1 MB)</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="throughput-mbs">Expected Throughput (MB/s)</label>
+          <input id="throughput-mbs" type="number" min="0.1" max="10000" step="0.1" value="10"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">For storage estimate</div>
+        </div>
+      </div>
+      <button id="plan-btn" class="mt-5 bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
+        Generate Plan
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden space-y-4">
+      <!-- Stats -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="stats-grid"></div>
+
+      <!-- Command -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold">kafka-topics.sh Command</h2>
+          <button id="copy-cmd" class="text-xs px-3 py-1 rounded-lg border border-border hover:bg-primary/10 hover:border-primary/40 transition-colors">Copy</button>
+        </div>
+        <pre id="cmd-output" class="bg-bg rounded-lg p-4 text-sm font-mono text-primary overflow-x-auto whitespace-pre-wrap"></pre>
+      </div>
+
+      <!-- Config notes -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold mb-3">Broker Config Recommendations</h2>
+        <div id="config-notes" class="space-y-2 text-sm"></div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Kafka Topic Planner" relatedTags={['kafka', 'data', 'streaming', 'messaging', 'devops']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  function fmtBytes(bytes) {
+    if (bytes >= 1e12) return (bytes / 1e12).toFixed(2) + ' TB';
+    if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
+    if (bytes >= 1e6) return (bytes / 1e6).toFixed(2) + ' MB';
+    return (bytes / 1e3).toFixed(2) + ' KB';
+  }
+
+  function plan() {
+    var topicName = document.getElementById('topic-name').value.trim() || 'my-topic';
+    var partitions = parseInt(document.getElementById('partitions').value) || 6;
+    var replication = parseInt(document.getElementById('replication').value) || 3;
+    var retentionHours = parseInt(document.getElementById('retention-hours').value) || 168;
+    var msgSizeKb = parseInt(document.getElementById('msg-size-kb').value) || 1024;
+    var throughputMbs = parseFloat(document.getElementById('throughput-mbs').value) || 10;
+
+    partitions = Math.max(1, Math.min(100, partitions));
+    replication = Math.max(1, Math.min(5, replication));
+    retentionHours = Math.max(1, Math.min(720, retentionHours));
+
+    var retentionMs = retentionHours * 3600 * 1000;
+    var retentionSec = retentionHours * 3600;
+    var throughputPerPartition = throughputMbs / partitions;
+    var totalStorageBytes = throughputMbs * 1e6 * retentionSec * replication;
+    var msgPerSec = Math.round((throughputMbs * 1024 * 1024) / (msgSizeKb * 1024));
+
+    // Stats
+    var statsGrid = document.getElementById('stats-grid');
+    statsGrid.innerHTML = '';
+    var stats = [
+      { label: 'Total Storage', value: fmtBytes(totalStorageBytes), sub: 'across cluster', color: 'text-primary' },
+      { label: 'Throughput / Partition', value: throughputPerPartition.toFixed(2) + ' MB/s', sub: 'write throughput', color: 'text-blue-400' },
+      { label: 'Messages / Second', value: msgPerSec.toLocaleString(), sub: 'at max msg size', color: 'text-green-400' },
+      { label: 'Retention', value: retentionHours >= 24 ? (retentionHours / 24).toFixed(1) + 'd' : retentionHours + 'h', sub: retentionMs.toLocaleString() + ' ms', color: 'text-orange-400' },
+    ];
+    stats.forEach(function (s) {
+      var el = document.createElement('div');
+      el.className = 'bg-bg-card border border-border rounded-xl p-4';
+      el.innerHTML = '<div class="text-xs text-text-muted mb-1">' + s.label + '</div>'
+        + '<div class="text-xl font-bold ' + s.color + '">' + s.value + '</div>'
+        + '<div class="text-xs text-text-muted">' + s.sub + '</div>';
+      statsGrid.appendChild(el);
+    });
+
+    // Command
+    var cmd = 'kafka-topics.sh \\\n'
+      + '  --create \\\n'
+      + '  --bootstrap-server localhost:9092 \\\n'
+      + '  --topic ' + topicName + ' \\\n'
+      + '  --partitions ' + partitions + ' \\\n'
+      + '  --replication-factor ' + replication + ' \\\n'
+      + '  --config retention.ms=' + retentionMs + ' \\\n'
+      + '  --config max.message.bytes=' + (msgSizeKb * 1024);
+    document.getElementById('cmd-output').textContent = cmd;
+
+    // Copy button
+    document.getElementById('copy-cmd').onclick = function () {
+      navigator.clipboard.writeText(cmd).then(function () {
+        var btn = document.getElementById('copy-cmd');
+        btn.textContent = 'Copied!';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+      });
+    };
+
+    // Config notes
+    var notesEl = document.getElementById('config-notes');
+    var notes = [];
+    if (replication < 3) notes.push({ type: 'warn', msg: 'Replication factor < 3 is not recommended for production — broker failure means data loss.' });
+    if (partitions > 50) notes.push({ type: 'warn', msg: 'High partition count (' + partitions + ') increases leader election overhead. Ensure your cluster has enough brokers.' });
+    if (msgSizeKb > 1024) notes.push({ type: 'info', msg: 'Large messages: also set <code>replica.fetch.max.bytes=' + (msgSizeKb * 1024 * 2) + '</code> and <code>fetch.message.max.bytes=' + (msgSizeKb * 1024 * 2) + '</code> on consumers.' });
+    if (totalStorageBytes > 1e12) notes.push({ type: 'warn', msg: 'Estimated cluster storage exceeds 1 TB — verify your broker disk capacity and consider shorter retention or compression (snappy/lz4).' });
+    notes.push({ type: 'info', msg: 'Add <code>--config compression.type=snappy</code> to reduce storage by 40–60% for text/JSON payloads.' });
+    notesEl.innerHTML = notes.map(function (n) {
+      var color = n.type === 'warn' ? 'border-orange-500/40 bg-orange-500/5 text-orange-300' : 'border-blue-500/40 bg-blue-500/5 text-blue-300';
+      return '<div class="border rounded-lg p-3 ' + color + ' text-xs font-mono">' + n.msg + '</div>';
+    }).join('');
+
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('plan-btn').addEventListener('click', plan);
+  plan();
+})();
+</script>
