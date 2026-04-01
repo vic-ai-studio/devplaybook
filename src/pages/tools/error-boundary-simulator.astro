@@ -3,6 +3,139 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import ToolPageCta from '../../components/ToolPageCta.astro';
 import FaqSection from '../../components/FaqSection.astro';
 
+const codeClass = `import React, { Component, ErrorInfo, ReactNode } from 'react';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+}
+
+interface State {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    // Called during render phase — update state to show fallback UI
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // Called after render — use for logging
+    this.props.onError?.(error, errorInfo);
+    console.error('ErrorBoundary caught:', error, errorInfo.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? (
+        <div role="alert" className="error-fallback">
+          <h2>Something went wrong</h2>
+          <button onClick={() => this.setState({ hasError: false, error: null })}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Usage:
+// <ErrorBoundary fallback={<p>Failed to load</p>}>
+//   <MyWidget />
+// </ErrorBoundary>
+
+export default ErrorBoundary;`;
+
+const codeHook = `// npm install react-error-boundary
+import { ErrorBoundary, useErrorBoundary } from 'react-error-boundary';
+
+// ── Declarative wrapping ────────────────────────────────────
+function App() {
+  return (
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onError={(error, info) => logToSentry(error, info)}
+      onReset={() => { /* reset app state */ }}
+    >
+      <MainContent />
+    </ErrorBoundary>
+  );
+}
+
+function ErrorFallback({ error, resetErrorBoundary }: {
+  error: Error;
+  resetErrorBoundary: () => void;
+}) {
+  return (
+    <div role="alert">
+      <p>Error: {error.message}</p>
+      <button onClick={resetErrorBoundary}>Try again</button>
+    </div>
+  );
+}
+
+// ── Trigger boundary from async code / event handlers ──────
+function DataLoader() {
+  const { showBoundary } = useErrorBoundary();
+
+  async function fetchData() {
+    try {
+      const data = await api.getData();
+      setData(data);
+    } catch (error) {
+      // This triggers the nearest parent ErrorBoundary
+      showBoundary(error);
+    }
+  }
+
+  return <button onClick={fetchData}>Load Data</button>;
+}`;
+
+const codeLogging = `// Error logging with Sentry + structured context
+import * as Sentry from '@sentry/react';
+import { ErrorInfo } from 'react';
+
+function logErrorToBoundary(error: Error, errorInfo: ErrorInfo): void {
+  // 1. Sentry with component stack
+  Sentry.withScope((scope) => {
+    scope.setExtra('componentStack', errorInfo.componentStack);
+    scope.setLevel('error');
+    Sentry.captureException(error);
+  });
+
+  // 2. Console for development
+  if (process.env.NODE_ENV === 'development') {
+    console.group('ErrorBoundary caught an error');
+    console.error('Error:', error);
+    console.error('Component Stack:', errorInfo.componentStack);
+    console.groupEnd();
+  }
+
+  // 3. Custom analytics / observability
+  analytics.track('error_boundary_triggered', {
+    message: error.message,
+    stack: error.stack?.slice(0, 500),
+    component: errorInfo.componentStack?.split('\\n')[1]?.trim(),
+    url: window.location.href,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+// Sentry also provides a built-in error boundary:
+// import { ErrorBoundary } from '@sentry/react';
+// <ErrorBoundary fallback={<p>An error has occurred</p>}>
+//   <App />
+// </ErrorBoundary>`;
+
 const faq = [
   { question: "What is an error boundary in React?", answer: "An error boundary is a React component that catches JavaScript errors in its child component tree, logs them, and displays a fallback UI instead of crashing the entire app. Error boundaries catch errors during rendering, in lifecycle methods, and in constructors of child components — but NOT in event handlers, async code, or server-side rendering." },
   { question: "Why can't I use hooks to create error boundaries?", answer: "React error boundaries must be class components because they use the getDerivedStateFromError and componentDidCatch lifecycle methods, which have no hook equivalents. The React team is working on a future hook-based API (useErrorBoundary exists in some libraries), but as of React 18, class components are required for defining boundaries. You can use the 'react-error-boundary' library as a wrapper." },
@@ -94,57 +227,7 @@ const faq = [
         <span class="text-xs text-text-muted font-mono">typescript</span>
         <button class="eb-copy text-xs text-primary hover:underline" data-target="code-class">Copy</button>
       </div>
-      <pre id="code-class" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted">import React, { Component, ErrorInfo, ReactNode } from 'react';
-
-interface Props {
-  children: ReactNode;
-  fallback?: ReactNode;
-  onError?: (error: Error, errorInfo: ErrorInfo) => void;
-}
-
-interface State {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class ErrorBoundary extends Component&lt;Props, State&gt; {
-  constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error): State {
-    // Called during render phase — update state to show fallback UI
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    // Called after render — use for logging
-    this.props.onError?.(error, errorInfo);
-    console.error('ErrorBoundary caught:', error, errorInfo.componentStack);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback ?? (
-        &lt;div role="alert" className="error-fallback"&gt;
-          &lt;h2&gt;Something went wrong&lt;/h2&gt;
-          &lt;button onClick={() =&gt; this.setState({ hasError: false, error: null })}&gt;
-            Try again
-          &lt;/button&gt;
-        &lt;/div&gt;
-      );
-    }
-    return this.props.children;
-  }
-}
-
-// Usage:
-// &lt;ErrorBoundary fallback={&lt;p&gt;Failed to load&lt;/p&gt;}&gt;
-//   &lt;MyWidget /&gt;
-// &lt;/ErrorBoundary&gt;
-
-export default ErrorBoundary;</pre>
+      <pre id="code-class" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted" set:text={codeClass}></pre>
     </div>
 
     <div id="eb-code-hook" class="eb-code-panel hidden">
@@ -152,50 +235,7 @@ export default ErrorBoundary;</pre>
         <span class="text-xs text-text-muted font-mono">typescript</span>
         <button class="eb-copy text-xs text-primary hover:underline" data-target="code-hook">Copy</button>
       </div>
-      <pre id="code-hook" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted">// npm install react-error-boundary
-import { ErrorBoundary, useErrorBoundary } from 'react-error-boundary';
-
-// ── Declarative wrapping ────────────────────────────────────
-function App() {
-  return (
-    &lt;ErrorBoundary
-      FallbackComponent={ErrorFallback}
-      onError={(error, info) =&gt; logToSentry(error, info)}
-      onReset={() =&gt; { /* reset app state */ }}
-    &gt;
-      &lt;MainContent /&gt;
-    &lt;/ErrorBoundary&gt;
-  );
-}
-
-function ErrorFallback({ error, resetErrorBoundary }: {
-  error: Error;
-  resetErrorBoundary: () =&gt; void;
-}) {
-  return (
-    &lt;div role="alert"&gt;
-      &lt;p&gt;Error: {error.message}&lt;/p&gt;
-      &lt;button onClick={resetErrorBoundary}&gt;Try again&lt;/button&gt;
-    &lt;/div&gt;
-  );
-}
-
-// ── Trigger boundary from async code / event handlers ──────
-function DataLoader() {
-  const { showBoundary } = useErrorBoundary();
-
-  async function fetchData() {
-    try {
-      const data = await api.getData();
-      setData(data);
-    } catch (error) {
-      // This triggers the nearest parent ErrorBoundary
-      showBoundary(error);
-    }
-  }
-
-  return &lt;button onClick={fetchData}&gt;Load Data&lt;/button&gt;;
-}</pre>
+      <pre id="code-hook" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted" set:text={codeHook}></pre>
     </div>
 
     <div id="eb-code-logging" class="eb-code-panel hidden">
@@ -203,41 +243,7 @@ function DataLoader() {
         <span class="text-xs text-text-muted font-mono">typescript</span>
         <button class="eb-copy text-xs text-primary hover:underline" data-target="code-logging">Copy</button>
       </div>
-      <pre id="code-logging" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted">// Error logging with Sentry + structured context
-import * as Sentry from '@sentry/react';
-import { ErrorInfo } from 'react';
-
-function logErrorToBoundary(error: Error, errorInfo: ErrorInfo): void {
-  // 1. Sentry with component stack
-  Sentry.withScope((scope) =&gt; {
-    scope.setExtra('componentStack', errorInfo.componentStack);
-    scope.setLevel('error');
-    Sentry.captureException(error);
-  });
-
-  // 2. Console for development
-  if (process.env.NODE_ENV === 'development') {
-    console.group('ErrorBoundary caught an error');
-    console.error('Error:', error);
-    console.error('Component Stack:', errorInfo.componentStack);
-    console.groupEnd();
-  }
-
-  // 3. Custom analytics / observability
-  analytics.track('error_boundary_triggered', {
-    message: error.message,
-    stack: error.stack?.slice(0, 500),
-    component: errorInfo.componentStack?.split('\n')[1]?.trim(),
-    url: window.location.href,
-    timestamp: new Date().toISOString(),
-  });
-}
-
-// Sentry also provides a built-in error boundary:
-// import { ErrorBoundary } from '@sentry/react';
-// &lt;ErrorBoundary fallback={&lt;p&gt;An error has occurred&lt;/p&gt;}&gt;
-//   &lt;App /&gt;
-// &lt;/ErrorBoundary&gt;</pre>
+      <pre id="code-logging" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted" set:text={codeLogging}></pre>
     </div>
   </div>
 
