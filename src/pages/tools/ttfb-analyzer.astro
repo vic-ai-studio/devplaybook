@@ -1,0 +1,268 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is TTFB and why does it matter?", answer: "TTFB (Time to First Byte) is the time from when the browser sends an HTTP request to when it receives the first byte of the response. It includes DNS lookup, TCP connection, TLS handshake, server processing time, and network transmission. Google's PageSpeed Insights flags TTFB over 800ms as 'needs improvement'. A high TTFB directly delays LCP because the browser can't start parsing HTML or loading subresources until the first byte arrives." },
+  { question: "What causes slow TTFB?", answer: "Common causes: 1) Slow server processing (database queries, ORM N+1 problems, no query caching). 2) No server-side or CDN caching — every request triggers a full page render. 3) Geographic distance — user is far from the server (fix: use a CDN). 4) Slow DNS resolution (fix: use a fast DNS provider and DNS prefetch). 5) TLS handshake overhead (fix: TLS 1.3 reduces this significantly). 6) Resource-intensive backend (heavy middleware, external API calls in the critical path)." },
+  { question: "How do I reduce TTFB?", answer: "1) Use a CDN to serve cached HTML from edge nodes near users — this is the single biggest win. 2) Cache server-rendered pages (Redis, Varnish, or CDN full-page caching). 3) Optimize database queries: add indexes, use query caching, avoid N+1. 4) Reduce server-side computation in the critical path — defer to background jobs. 5) Use HTTP/2 or HTTP/3. 6) Enable TLS 1.3 for faster handshakes. 7) Use HTTP 103 Early Hints to start loading subresources before TTFB completes." },
+  { question: "What is HTTP 103 Early Hints?", answer: "HTTP 103 Early Hints is a status code that allows servers to send preliminary response headers (like preload Link headers) before the final 200 response is ready. While the server processes the request, the browser can start loading critical resources (fonts, CSS, hero images). This effectively reduces the perceived impact of TTFB on LCP — resources start loading in parallel with server processing. Supported by Cloudflare, Fastly, and modern browsers (Chrome 103+, Firefox 120+)." },
+  { question: "What is the difference between TTFB, FCP, and LCP?", answer: "TTFB is the first byte of the HTML document. FCP (First Contentful Paint) is when the browser renders the first text or image — typically 200–800ms after TTFB. LCP (Largest Contentful Paint) is when the largest visible element finishes rendering. TTFB is a server metric; FCP and LCP are user-facing paint metrics. Reducing TTFB improves all subsequent metrics proportionally, since everything depends on the HTML arriving first. A TTFB of 200ms vs 2000ms means FCP and LCP are also 1800ms slower." },
+];
+---
+
+<BaseLayout
+  title="TTFB Analyzer — Time to First Byte Breakdown & Optimization Tool"
+  description="Analyze your TTFB components: DNS, TCP, TLS, and server processing time. Enter timing values to get a breakdown, pass/fail vs Google thresholds, and actionable optimization recommendations."
+  tool="TTFB analyzer, time to first byte tool, server response time checker, DNS TCP TLS breakdown, web performance TTFB optimizer"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "TTFB Analyzer",
+    "url": "https://devplaybook.cc/tools/ttfb-analyzer",
+    "description": "Break down TTFB into DNS, TCP, TLS, and server processing components. Get pass/fail status and optimization recommendations.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">TTFB Analyzer</h1>
+  <p class="text-text-muted mb-4">Break down your Time to First Byte into DNS lookup, TCP handshake, TLS negotiation, and server processing components. Get pass/fail status vs Google thresholds and targeted optimization tips for each bottleneck.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> DNS / TCP / TLS / Server breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Google threshold check</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Per-component tips</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Input form -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-2">Enter Timing Components (ms)</h2>
+      <p class="text-xs text-text-muted mb-4">Find these values in Chrome DevTools → Network tab → select the HTML document → Timing panel.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="ttfb-dns">DNS Lookup (ms)</label>
+          <input id="ttfb-dns" type="number" min="0" step="1" value="15"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Domain name resolution time</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="ttfb-tcp">TCP Handshake (ms)</label>
+          <input id="ttfb-tcp" type="number" min="0" step="1" value="20"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Connection establishment</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="ttfb-tls">TLS Negotiation (ms)</label>
+          <input id="ttfb-tls" type="number" min="0" step="1" value="40"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">SSL/TLS handshake (HTTPS only)</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="ttfb-server">Server Processing (ms)</label>
+          <input id="ttfb-server" type="number" min="0" step="1" value="450"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">Request + render + response</div>
+        </div>
+      </div>
+
+      <!-- Presets -->
+      <div class="mt-4">
+        <div class="text-xs text-text-muted mb-2 font-medium uppercase tracking-wide">Scenario Presets</div>
+        <div class="flex flex-wrap gap-2" id="ttfb-presets"></div>
+      </div>
+
+      <button id="ttfb-calc-btn" class="mt-4 bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
+        Analyze TTFB
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="ttfb-results" class="hidden space-y-4">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="ttfb-summary"></div>
+
+      <!-- Waterfall breakdown -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold mb-4">Timing Breakdown</h2>
+        <div class="space-y-3" id="ttfb-breakdown"></div>
+      </div>
+
+      <!-- Tips -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold mb-3">Optimization Recommendations</h2>
+        <div id="ttfb-tips" class="space-y-3"></div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="TTFB Analyzer" relatedTags={['performance', 'ttfb', 'server', 'lcp', 'web-vitals', 'cdn']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var GOOD_TTFB = 800;
+  var POOR_TTFB = 1800;
+
+  var THRESHOLDS = {
+    dns:    { good: 20,  poor: 100,  label: 'DNS Lookup',        color: 'bg-blue-500/60' },
+    tcp:    { good: 50,  poor: 200,  label: 'TCP Handshake',     color: 'bg-purple-500/60' },
+    tls:    { good: 80,  poor: 300,  label: 'TLS Negotiation',   color: 'bg-indigo-500/60' },
+    server: { good: 600, poor: 1400, label: 'Server Processing', color: 'bg-orange-500/60' },
+  };
+
+  var PRESETS = [
+    { label: 'CDN-cached page', dns: 5, tcp: 10, tls: 20, server: 30 },
+    { label: 'Fast server (no cache)', dns: 15, tcp: 20, tls: 40, server: 300 },
+    { label: 'Typical CMS', dns: 20, tcp: 30, tls: 60, server: 700 },
+    { label: 'Slow server', dns: 80, tcp: 150, tls: 250, server: 1500 },
+  ];
+
+  var presetsEl = document.getElementById('ttfb-presets');
+  PRESETS.forEach(function (p) {
+    var btn = document.createElement('button');
+    btn.className = 'px-3 py-1 text-xs rounded-lg border border-border bg-bg hover:bg-primary/10 hover:border-primary/40 transition-colors';
+    btn.textContent = p.label;
+    btn.addEventListener('click', function () {
+      document.getElementById('ttfb-dns').value = p.dns;
+      document.getElementById('ttfb-tcp').value = p.tcp;
+      document.getElementById('ttfb-tls').value = p.tls;
+      document.getElementById('ttfb-server').value = p.server;
+      analyze();
+    });
+    presetsEl.appendChild(btn);
+  });
+
+  var TIPS = {
+    dns: [
+      { threshold: 20, tip: 'DNS is fast. Use dns-prefetch for third-party origins to pre-resolve them.' },
+      { threshold: 100, tip: 'DNS lookup is slow. Switch to a faster DNS provider (Cloudflare 1.1.1.1, Google 8.8.8.8). Enable DNS prefetch: <link rel="dns-prefetch" href="//example.com">.' },
+      { threshold: Infinity, tip: 'DNS is very slow. Check your DNS provider\'s performance, reduce DNS TTL for faster updates, and use a premium DNS service with Anycast routing.' },
+    ],
+    tcp: [
+      { threshold: 50, tip: 'TCP connection is fast — good network proximity or keep-alive reuse.' },
+      { threshold: 200, tip: 'TCP handshake is slow, indicating geographic distance. Use a CDN to serve from edge locations closer to users.' },
+      { threshold: Infinity, tip: 'Very high TCP time. Users are far from your server. A CDN is essential — it can reduce TCP time by 80%+ by connecting from nearby edge nodes.' },
+    ],
+    tls: [
+      { threshold: 80, tip: 'TLS negotiation is fast. Ensure TLS 1.3 is enabled for even faster session resumption.' },
+      { threshold: 300, tip: 'TLS negotiation is adding latency. Enable TLS 1.3 (eliminates 1 round trip), use OCSP stapling, and consider session ticket resumption.' },
+      { threshold: Infinity, tip: 'Very slow TLS. Enable TLS 1.3 immediately, configure OCSP stapling, use a faster certificate authority, and enable 0-RTT for repeat visitors.' },
+    ],
+    server: [
+      { threshold: 200, tip: 'Server response is excellent. You may be serving from CDN cache.' },
+      { threshold: 600, tip: 'Server processing time is acceptable. Keep monitoring as traffic grows.' },
+      { threshold: 1400, tip: 'Server is slow to respond. Profile backend queries, add Redis caching for expensive operations, and consider full-page CDN caching for static content.' },
+      { threshold: Infinity, tip: 'Server processing is critical. Audit database queries (look for N+1 patterns), add query result caching (Redis/Memcached), move heavy computation to background jobs, and enable full-page CDN caching.' },
+    ],
+  };
+
+  function getTip(key, val) {
+    var tips = TIPS[key];
+    for (var i = 0; i < tips.length; i++) {
+      if (val < tips[i].threshold) return tips[i].tip;
+    }
+    return tips[tips.length - 1].tip;
+  }
+
+  function statusColor(val, good, poor) {
+    if (val <= good) return { text: 'text-green-400', label: 'Good' };
+    if (val <= poor) return { text: 'text-yellow-400', label: 'Slow' };
+    return { text: 'text-red-400', label: 'Very Slow' };
+  }
+
+  function analyze() {
+    var dns = parseFloat(document.getElementById('ttfb-dns').value) || 0;
+    var tcp = parseFloat(document.getElementById('ttfb-tcp').value) || 0;
+    var tls = parseFloat(document.getElementById('ttfb-tls').value) || 0;
+    var server = parseFloat(document.getElementById('ttfb-server').value) || 0;
+    var total = dns + tcp + tls + server;
+
+    var totalStatus = total <= GOOD_TTFB ? 'good' : total <= POOR_TTFB ? 'ni' : 'poor';
+    var totalColor = totalStatus === 'good' ? 'text-green-400' : totalStatus === 'ni' ? 'text-yellow-400' : 'text-red-400';
+    var totalLabel = totalStatus === 'good' ? 'PASS' : totalStatus === 'ni' ? 'Needs Improvement' : 'Poor';
+
+    // Summary cards
+    var summary = document.getElementById('ttfb-summary');
+    summary.innerHTML = '';
+    var cards = [
+      { label: 'Total TTFB', value: total + 'ms', color: totalColor },
+      { label: 'Assessment', value: totalLabel, color: totalColor },
+      { label: 'Server Time', value: server + 'ms', color: statusColor(server, 600, 1400).text },
+      { label: 'Network (DNS+TCP+TLS)', value: (dns + tcp + tls) + 'ms', color: statusColor(dns + tcp + tls, 150, 400).text },
+    ];
+    cards.forEach(function (c) {
+      var card = document.createElement('div');
+      card.className = 'bg-bg-card border border-border rounded-xl p-4';
+      card.innerHTML = '<div class="text-xs text-text-muted mb-1">' + c.label + '</div>'
+        + '<div class="text-xl font-bold ' + c.color + '">' + c.value + '</div>';
+      summary.appendChild(card);
+    });
+
+    // Breakdown waterfall
+    var breakdown = document.getElementById('ttfb-breakdown');
+    breakdown.innerHTML = '';
+    var components = [
+      { key: 'dns', val: dns },
+      { key: 'tcp', val: tcp },
+      { key: 'tls', val: tls },
+      { key: 'server', val: server },
+    ];
+    components.forEach(function (c) {
+      var t = THRESHOLDS[c.key];
+      var pct = total > 0 ? (c.val / total * 100) : 0;
+      var st = statusColor(c.val, t.good, t.poor);
+      var row = document.createElement('div');
+      row.innerHTML = '<div class="flex items-center justify-between mb-1">'
+        + '<span class="text-sm font-medium">' + t.label + '</span>'
+        + '<div class="flex gap-3 items-center">'
+        + '<span class="font-mono text-sm">' + c.val + ' ms</span>'
+        + '<span class="text-xs font-mono text-text-muted">' + pct.toFixed(0) + '%</span>'
+        + '<span class="text-xs ' + st.text + '">' + st.label + '</span>'
+        + '</div></div>'
+        + '<div class="h-5 bg-bg rounded overflow-hidden">'
+        + '<div class="h-full rounded ' + t.color + ' flex items-center justify-end pr-2 transition-all" style="width:' + Math.max(pct, 1) + '%">'
+        + (pct > 15 ? '<span class="text-xs text-white/80 font-mono">' + c.val + 'ms</span>' : '')
+        + '</div></div>';
+      breakdown.appendChild(row);
+    });
+
+    // Total bar
+    var totalBar = document.createElement('div');
+    totalBar.className = 'pt-2 border-t border-border mt-2';
+    totalBar.innerHTML = '<div class="flex items-center justify-between">'
+      + '<span class="text-sm font-semibold">Total TTFB</span>'
+      + '<div class="flex gap-3">'
+      + '<span class="font-mono font-bold ' + totalColor + '">' + total + ' ms</span>'
+      + '<span class="text-xs text-text-muted">Google good: ≤800ms</span>'
+      + '</div></div>';
+    breakdown.appendChild(totalBar);
+
+    // Tips
+    var tipsEl = document.getElementById('ttfb-tips');
+    tipsEl.innerHTML = '';
+    components.forEach(function (c) {
+      var t = THRESHOLDS[c.key];
+      var st = statusColor(c.val, t.good, t.poor);
+      var tipText = getTip(c.key, c.val);
+      var div = document.createElement('div');
+      div.className = 'flex gap-3 p-3 bg-bg rounded-lg';
+      div.innerHTML = '<div class="shrink-0 mt-0.5 w-2 h-2 rounded-full mt-1.5 ' + st.text.replace('text-', 'bg-') + '"></div>'
+        + '<div>'
+        + '<div class="text-sm font-medium mb-0.5">' + t.label + '</div>'
+        + '<div class="text-sm text-text-muted">' + tipText + '</div>'
+        + '</div>';
+      tipsEl.appendChild(div);
+    });
+
+    document.getElementById('ttfb-results').classList.remove('hidden');
+    document.getElementById('ttfb-results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('ttfb-calc-btn').addEventListener('click', analyze);
+  analyze();
+})();
+</script>

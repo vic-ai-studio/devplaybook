@@ -1,0 +1,295 @@
+---
+title: "Core Web Vitals Checklist 2026: Complete Developer Guide"
+description: "Complete 2026 guide to LCP, INP, and CLS — what causes poor scores, specific code fixes, measurement tools, and how to pass Google's performance thresholds."
+date: "2026-04-01"
+readingTime: "9 min read"
+tags: ["core-web-vitals", "web-performance", "lcp", "inp", "cls", "seo"]
+slug: "core-web-vitals-checklist-2026"
+---
+
+Core Web Vitals directly affect your Google rankings and user experience. A site that fails these metrics loses organic traffic—Google confirmed CWV is a ranking signal. Here's every fix you need organized by metric, with specific code changes you can make today.
+
+## The Three Metrics That Matter
+
+| Metric | What It Measures | Good | Needs Work | Poor |
+|---|---|---|---|---|
+| **LCP** | Largest Contentful Paint | ≤ 2.5s | 2.5–4.0s | > 4.0s |
+| **INP** | Interaction to Next Paint | ≤ 200ms | 200–500ms | > 500ms |
+| **CLS** | Cumulative Layout Shift | ≤ 0.1 | 0.1–0.25 | > 0.25 |
+
+INP replaced FID (First Input Delay) in March 2024. If you're still optimizing FID, you're solving the wrong problem.
+
+## LCP: Largest Contentful Paint
+
+LCP measures how long it takes for the largest visible element (usually a hero image or headline) to render.
+
+### What Hurts LCP
+
+- Hero image not preloaded
+- Render-blocking CSS or JavaScript
+- Slow server response (TTFB > 600ms)
+- Image not sized for the viewport
+- No CDN for static assets
+
+### Fix 1: Preload Your Hero Image
+
+```html
+<!-- Add this in <head> before any scripts -->
+<link
+  rel="preload"
+  as="image"
+  href="/images/hero.webp"
+  fetchpriority="high"
+  imagesrcset="/images/hero-400.webp 400w, /images/hero-800.webp 800w, /images/hero-1200.webp 1200w"
+  imagesizes="100vw"
+/>
+```
+
+### Fix 2: Mark the LCP Image with fetchpriority
+
+```html
+<!-- The LCP image should NEVER be lazy loaded -->
+<img
+  src="/images/hero.webp"
+  alt="Hero image"
+  width="1200"
+  height="600"
+  fetchpriority="high"
+  loading="eager"
+/>
+```
+
+Never put `loading="lazy"` on above-the-fold images. This is the single most common LCP mistake.
+
+### Fix 3: Eliminate Render-Blocking Resources
+
+```html
+<!-- Bad: blocks rendering -->
+<link rel="stylesheet" href="/styles/all.css" />
+<script src="/app.js"></script>
+
+<!-- Good: critical CSS inline, defer non-critical -->
+<style>/* critical above-fold styles here */</style>
+<link rel="preload" href="/styles/app.css" as="style" onload="this.rel='stylesheet'">
+<script src="/app.js" defer></script>
+```
+
+### Fix 4: Optimize TTFB
+
+```javascript
+// Next.js: use stale-while-revalidate for pages
+export const revalidate = 3600; // ISR: revalidate every hour
+
+// Or set Cache-Control headers on your CDN/server
+// Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+```
+
+### Fix 5: Use Modern Image Formats
+
+```html
+<picture>
+  <source srcset="/images/hero.avif" type="image/avif" />
+  <source srcset="/images/hero.webp" type="image/webp" />
+  <img src="/images/hero.jpg" alt="Hero" width="1200" height="600" />
+</picture>
+```
+
+AVIF is 50% smaller than WebP at equivalent quality. WebP is 25-30% smaller than JPEG.
+
+## INP: Interaction to Next Paint
+
+INP measures responsiveness. It captures the worst interaction delay across the entire page visit—not just the first one.
+
+### What Hurts INP
+
+- Heavy JavaScript on the main thread
+- Long tasks blocking user input processing
+- Synchronous DOM reads/writes causing layout thrash
+- Third-party scripts (analytics, chat widgets, ads)
+
+### Fix 1: Break Up Long Tasks
+
+```javascript
+// Bad: 300ms blocking task
+function processLargeList(items) {
+  items.forEach(item => expensiveOperation(item));
+}
+
+// Good: yield to main thread with scheduler
+async function processLargeList(items) {
+  for (let i = 0; i < items.length; i++) {
+    expensiveOperation(items[i]);
+
+    // Yield every 50 items to keep INP responsive
+    if (i % 50 === 0) {
+      await scheduler.yield(); // or: await new Promise(r => setTimeout(r, 0))
+    }
+  }
+}
+```
+
+### Fix 2: Avoid Layout Thrash
+
+```javascript
+// Bad: alternating reads and writes forces multiple reflows
+function badResize(elements) {
+  elements.forEach(el => {
+    const height = el.offsetHeight; // read (triggers reflow)
+    el.style.height = height * 2 + 'px'; // write (invalidates layout)
+    const width = el.offsetWidth; // read again (triggers another reflow!)
+  });
+}
+
+// Good: batch reads then writes
+function goodResize(elements) {
+  const heights = elements.map(el => el.offsetHeight); // batch reads
+  elements.forEach((el, i) => {
+    el.style.height = heights[i] * 2 + 'px'; // batch writes
+  });
+}
+```
+
+### Fix 3: Defer Third-Party Scripts
+
+```html
+<!-- Load analytics after page is interactive -->
+<script>
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      const script = document.createElement('script');
+      script.src = 'https://analytics.example.com/script.js';
+      document.body.appendChild(script);
+    }, 3000); // 3s delay after load
+  });
+</script>
+```
+
+### Fix 4: Use Web Workers for Heavy Computation
+
+```javascript
+// main.js - offload computation to worker
+const worker = new Worker('/workers/compute.js');
+
+button.addEventListener('click', () => {
+  worker.postMessage({ data: largeDataset });
+  worker.onmessage = (e) => updateUI(e.data);
+  // main thread stays responsive while worker computes
+});
+```
+
+## CLS: Cumulative Layout Shift
+
+CLS measures visual stability. Every time content moves unexpectedly, the score increases.
+
+### What Causes Layout Shift
+
+- Images without explicit width/height
+- Ads, embeds, iframes without reserved space
+- Dynamically injected content above existing content
+- Web fonts causing text reflow (FOUT)
+
+### Fix 1: Always Set Image Dimensions
+
+```html
+<!-- Bad: browser doesn't know size until image loads -->
+<img src="/product.jpg" alt="Product" />
+
+<!-- Good: aspect ratio reserved immediately -->
+<img
+  src="/product.jpg"
+  alt="Product"
+  width="800"
+  height="600"
+/>
+```
+
+For responsive images, use CSS aspect-ratio as a fallback:
+
+```css
+img {
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 4/3; /* fallback if width/height not set */
+}
+```
+
+### Fix 2: Reserve Space for Ads and Embeds
+
+```css
+/* Reserve minimum space for ad slots */
+.ad-container {
+  min-height: 250px; /* standard ad unit height */
+  width: 100%;
+  contain: layout; /* prevent ad from affecting outside layout */
+}
+```
+
+### Fix 3: Prevent Font Flash
+
+```css
+/* Use font-display: optional to avoid layout shift */
+@font-face {
+  font-family: 'MyFont';
+  src: url('/fonts/myfont.woff2') format('woff2');
+  font-display: optional; /* no FOUT, no layout shift */
+}
+```
+
+Alternatively, preload your critical fonts:
+
+```html
+<link rel="preload" href="/fonts/myfont.woff2" as="font" type="font/woff2" crossorigin />
+```
+
+### Fix 4: Avoid Inserting Content Above Existing Content
+
+```javascript
+// Bad: pushes content down
+document.body.insertBefore(banner, document.body.firstChild);
+
+// Good: reserve space for dynamic content at page load
+// Use a fixed-height container that's always present
+document.getElementById('notification-slot').innerHTML = banner.outerHTML;
+```
+
+## Measurement Tools
+
+**In development:**
+- Chrome DevTools → Performance panel → record and look for LCP, INP, CLS markers
+- Lighthouse (DevTools or `npm install -g lighthouse`) — run `lighthouse https://yoursite.com`
+- Web Vitals Chrome Extension — shows real-time field data
+
+**In production:**
+- Google Search Console → Core Web Vitals report (field data, 28-day rolling)
+- PageSpeed Insights — combines lab (Lighthouse) and field (CrUX) data
+- `web-vitals` JavaScript library for custom monitoring:
+
+```javascript
+import { onLCP, onINP, onCLS } from 'web-vitals';
+
+function sendToAnalytics({ name, value, rating }) {
+  fetch('/analytics', {
+    method: 'POST',
+    body: JSON.stringify({ metric: name, value, rating }),
+  });
+}
+
+onLCP(sendToAnalytics);
+onINP(sendToAnalytics);
+onCLS(sendToAnalytics);
+```
+
+## Quick Wins Checklist
+
+Before diving into complex optimizations, check these first:
+
+- [ ] Hero image has `fetchpriority="high"` and no `loading="lazy"`
+- [ ] Hero image preloaded in `<head>`
+- [ ] All images have explicit `width` and `height` attributes
+- [ ] No render-blocking scripts in `<head>` (use `defer` or `async`)
+- [ ] Web fonts use `font-display: swap` or `optional`
+- [ ] Third-party scripts loaded after page interactive
+- [ ] CDN serving static assets with long cache headers
+- [ ] Ad slots have reserved minimum heights
+
+Fix these eight issues and you'll likely move from red to green on most pages. CWV is not magic—it's disciplined attention to the basics.

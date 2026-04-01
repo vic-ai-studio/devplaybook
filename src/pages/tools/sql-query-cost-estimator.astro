@@ -1,0 +1,353 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What does EXPLAIN do in SQL?", answer: "EXPLAIN shows the query execution plan — how the database engine plans to execute your query. It reveals whether indexes are used (Index Scan vs Seq Scan), join strategies (hash join, nested loop, merge join), estimated row counts, and cost estimates. EXPLAIN ANALYZE actually runs the query and shows real execution times. Reading EXPLAIN output is the most important skill for query optimization." },
+  { question: "What is a sequential scan and when is it a problem?", answer: "A sequential scan (Seq Scan) reads every row in a table regardless of the WHERE clause. It's fine for small tables or queries that return most rows. It's a problem when you have millions of rows and only need a few — that's when an index scan would be 100-1000x faster. The query planner chooses Seq Scan when: no suitable index exists, the table is small, or the query returns a large percentage of rows (typically >10-20%)." },
+  { question: "How do indexes affect query performance?", answer: "Indexes trade write performance for read performance. A B-tree index allows O(log n) lookups instead of O(n) sequential scans. Composite indexes (a, b, c) support queries filtering on the leading columns. Partial indexes add a WHERE clause and are smaller. Covering indexes include all queried columns (index-only scans avoid table reads entirely). Over-indexing hurts INSERT/UPDATE/DELETE performance and increases storage." },
+  { question: "How do JOIN strategies affect performance?", answer: "Nested Loop Join: O(n*m) — fast for small tables or when inner side is indexed. Hash Join: O(n+m) — builds hash table on smaller side, good for large unsorted tables. Merge Join: O(n log n + m log m) — requires both sides sorted, good for ordered data or sort-merge operations. The query planner picks the best strategy based on statistics. Wrong choices happen when table statistics are stale — run ANALYZE regularly." },
+  { question: "What is the difference between rows examined vs rows returned?", answer: "Rows examined: how many rows the engine reads from storage (or index). Rows returned: how many rows match the query filters. A ratio of examined/returned > 100 is a red flag — you're scanning many rows to find few. This ratio is a key metric in MySQL's slow query log and EXPLAIN output. A good index reduces this ratio toward 1:1. High ratios indicate missing indexes, poor selectivity, or queries that need redesigning." },
+];
+---
+
+<BaseLayout
+  title="SQL Query Cost Estimator — Rows Scanned, Joins & EXPLAIN Hints"
+  description="Estimate SQL query cost by analyzing table size, join count, and index usage. Get EXPLAIN hints and optimization recommendations to improve query performance."
+  tool="SQL Query Cost Estimator, SQL EXPLAIN Generator, Query Performance Analyzer, Index Optimization Tool, SQL Query Optimizer"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "SQL Query Cost Estimator",
+    "url": "https://devplaybook.cc/tools/sql-query-cost-estimator",
+    "description": "Estimate SQL query cost and generate EXPLAIN hints for query optimization.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">SQL Query Cost Estimator</h1>
+  <p class="text-text-muted mb-4">Estimate your SQL query's execution cost by describing your tables, joins, and index usage. Get a cost score, optimization recommendations, and ready-to-run EXPLAIN commands.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost score calculator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Index impact analysis</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> EXPLAIN hints generator</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Tables -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Tables in Query</h2>
+      <p class="text-xs text-text-muted mb-3">Add each table referenced in your query (FROM, JOIN clauses).</p>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-text-muted mb-1" for="tbl-name">Table Name</label>
+          <input id="tbl-name" type="text" placeholder="orders"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1" for="tbl-rows">Row Count</label>
+          <input id="tbl-rows" type="number" min="1" step="1" placeholder="1000000"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1" for="tbl-indexed">Indexed Column Used</label>
+          <select id="tbl-indexed" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="none">No index</option>
+            <option value="partial">Partial index</option>
+            <option value="index">Full index</option>
+            <option value="covering">Covering index</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1" for="tbl-selectivity">Filter Selectivity %</label>
+          <input id="tbl-selectivity" type="number" min="0.01" max="100" step="1" value="10"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+          <div class="text-xs text-text-muted mt-1">% of rows returned</div>
+        </div>
+      </div>
+      <button id="add-table-btn" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/80 transition-colors">+ Add Table</button>
+
+      <div id="tables-list" class="mt-4 space-y-2"></div>
+    </div>
+
+    <!-- Query options -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Query Characteristics</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="join-count">Number of JOINs</label>
+          <input id="join-count" type="number" min="0" max="20" step="1" value="1"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="join-type">Join Strategy</label>
+          <select id="join-type" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="hash">Hash Join (large tables)</option>
+            <option value="nested">Nested Loop (indexed)</option>
+            <option value="merge">Merge Join (pre-sorted)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="has-group">GROUP BY / ORDER BY?</label>
+          <select id="has-group" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="none">Neither</option>
+            <option value="order">ORDER BY only</option>
+            <option value="group">GROUP BY only</option>
+            <option value="both">Both</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="has-subquery">Subqueries?</label>
+          <select id="has-subquery" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="none">None</option>
+            <option value="where">WHERE IN subquery</option>
+            <option value="correlated">Correlated subquery</option>
+            <option value="cte">CTE (WITH clause)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="db-engine">Database Engine</label>
+          <select id="db-engine" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="postgresql">PostgreSQL</option>
+            <option value="mysql">MySQL</option>
+            <option value="bigquery">BigQuery</option>
+            <option value="snowflake">Snowflake</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-muted mb-1" for="main-table">Main Table (for EXPLAIN)</label>
+          <input id="main-table" type="text" value="orders"
+            class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+      </div>
+      <button id="estimate-btn" class="mt-5 bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">Estimate Cost</button>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden space-y-4">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="cost-stats"></div>
+
+      <!-- Recommendations -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold mb-3">Optimization Recommendations</h2>
+        <div id="recommendations" class="space-y-2"></div>
+      </div>
+
+      <!-- EXPLAIN hints -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold">EXPLAIN Commands</h2>
+          <button id="copy-explain" class="text-xs px-3 py-1 rounded-lg border border-border hover:bg-primary/10 hover:border-primary/40 transition-colors">Copy</button>
+        </div>
+        <pre id="explain-output" class="bg-bg rounded-lg p-4 text-xs font-mono text-primary overflow-x-auto whitespace-pre-wrap"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="SQL Query Cost Estimator" relatedTags={['sql', 'database', 'performance', 'postgresql', 'mysql', 'query-optimization']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var tables = [];
+
+  function fmtNum(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  var INDEX_MULTIPLIER = { none: 1.0, partial: 0.4, index: 0.1, covering: 0.05 };
+
+  function renderTables() {
+    var list = document.getElementById('tables-list');
+    list.innerHTML = '';
+    tables.forEach(function (t, i) {
+      var div = document.createElement('div');
+      div.className = 'flex items-center gap-3 p-3 bg-bg rounded-lg border border-border text-sm';
+      var idxColor = { none: 'text-red-400', partial: 'text-yellow-400', index: 'text-blue-400', covering: 'text-green-400' };
+      div.innerHTML = '<span class="font-mono font-medium flex-1">' + t.name + '</span>'
+        + '<span class="text-text-muted">' + fmtNum(t.rows) + ' rows</span>'
+        + '<span class="' + (idxColor[t.indexed] || 'text-text-muted') + ' text-xs">' + t.indexed + ' index</span>'
+        + '<span class="text-text-muted text-xs">' + t.selectivity + '% returned</span>'
+        + '<button class="text-red-400 hover:text-red-300 text-xs ml-2" data-idx="' + i + '">Remove</button>';
+      div.querySelector('button').addEventListener('click', function (e) {
+        tables.splice(parseInt(e.target.getAttribute('data-idx')), 1);
+        renderTables();
+      });
+      list.appendChild(div);
+    });
+  }
+
+  document.getElementById('add-table-btn').addEventListener('click', function () {
+    var name = document.getElementById('tbl-name').value.trim();
+    var rows = parseInt(document.getElementById('tbl-rows').value) || 100000;
+    var indexed = document.getElementById('tbl-indexed').value;
+    var selectivity = parseFloat(document.getElementById('tbl-selectivity').value) || 10;
+    if (!name) { alert('Please enter a table name.'); return; }
+    tables.push({ name: name, rows: rows, indexed: indexed, selectivity: selectivity });
+    document.getElementById('tbl-name').value = '';
+    document.getElementById('tbl-rows').value = '';
+    renderTables();
+  });
+
+  document.getElementById('estimate-btn').addEventListener('click', function () {
+    var joinCount = parseInt(document.getElementById('join-count').value) || 0;
+    var joinType = document.getElementById('join-type').value;
+    var hasGroup = document.getElementById('has-group').value;
+    var hasSubquery = document.getElementById('has-subquery').value;
+    var dbEngine = document.getElementById('db-engine').value;
+    var mainTable = document.getElementById('main-table').value.trim() || 'my_table';
+
+    var workingTables = tables.slice();
+    if (workingTables.length === 0) {
+      workingTables = [{ name: mainTable, rows: 1000000, indexed: 'none', selectivity: 10 }];
+    }
+
+    // Estimate rows scanned per table
+    var totalRowsScanned = 0;
+    var totalRowsReturned = 0;
+    workingTables.forEach(function (t) {
+      var multiplier = INDEX_MULTIPLIER[t.indexed] || 1.0;
+      var scanned = Math.ceil(t.rows * multiplier);
+      var returned = Math.ceil(t.rows * (t.selectivity / 100));
+      totalRowsScanned += scanned;
+      totalRowsReturned += returned;
+    });
+
+    // Join cost multiplier
+    var joinMultiplier = 1;
+    if (joinCount > 0) {
+      if (joinType === 'nested') joinMultiplier = Math.pow(1.5, joinCount);
+      else if (joinType === 'hash') joinMultiplier = 1 + joinCount * 0.3;
+      else joinMultiplier = 1 + joinCount * 0.2;
+    }
+    totalRowsScanned = Math.ceil(totalRowsScanned * joinMultiplier);
+
+    // Subquery cost
+    var subqueryCost = { none: 1, where: 1.5, correlated: 3, cte: 1.1 };
+    totalRowsScanned = Math.ceil(totalRowsScanned * (subqueryCost[hasSubquery] || 1));
+
+    // Group/sort overhead (memory + CPU)
+    var sortCost = { none: 1, order: 1.2, group: 1.4, both: 1.6 };
+    var overallCost = totalRowsScanned * (sortCost[hasGroup] || 1);
+
+    // Score 0-100 (log scale)
+    var costScore = Math.min(100, Math.round(Math.log10(overallCost + 1) * 20));
+    var scoreColor = costScore < 30 ? 'text-green-400' : costScore < 60 ? 'text-yellow-400' : 'text-red-400';
+    var scoreLabel = costScore < 30 ? 'Efficient' : costScore < 60 ? 'Moderate' : 'Expensive';
+
+    // Stats
+    var statsGrid = document.getElementById('cost-stats');
+    statsGrid.innerHTML = '';
+    var stats = [
+      { label: 'Cost Score', value: costScore + '/100', sub: scoreLabel, color: scoreColor },
+      { label: 'Rows Scanned', value: fmtNum(totalRowsScanned), sub: 'estimated', color: 'text-primary' },
+      { label: 'Rows Returned', value: fmtNum(totalRowsReturned), sub: 'after filters', color: 'text-blue-400' },
+      { label: 'Scan Ratio', value: totalRowsReturned > 0 ? (totalRowsScanned / totalRowsReturned).toFixed(0) + ':1' : 'N/A', sub: 'examined:returned', color: totalRowsScanned / Math.max(totalRowsReturned, 1) > 100 ? 'text-red-400' : 'text-green-400' },
+    ];
+    stats.forEach(function (s) {
+      var el = document.createElement('div');
+      el.className = 'bg-bg-card border border-border rounded-xl p-4';
+      el.innerHTML = '<div class="text-xs text-text-muted mb-1">' + s.label + '</div>'
+        + '<div class="text-xl font-bold ' + s.color + '">' + s.value + '</div>'
+        + '<div class="text-xs text-text-muted">' + s.sub + '</div>';
+      statsGrid.appendChild(el);
+    });
+
+    // Recommendations
+    var recs = [];
+    workingTables.forEach(function (t) {
+      if (t.indexed === 'none' && t.rows > 10000) {
+        recs.push({ type: 'error', msg: 'Table <code>' + t.name + '</code> has no index and ' + fmtNum(t.rows) + ' rows. Add an index on your WHERE/JOIN columns.' });
+      }
+      if (t.selectivity > 50 && t.indexed !== 'none') {
+        recs.push({ type: 'warn', msg: 'Table <code>' + t.name + '</code> returns ' + t.selectivity + '% of rows — the planner may prefer a Seq Scan over the index.' });
+      }
+    });
+    if (hasSubquery === 'correlated') {
+      recs.push({ type: 'error', msg: 'Correlated subqueries execute once per outer row. Replace with a JOIN or CTE for dramatic speedup.' });
+    }
+    if (joinType === 'nested' && joinCount > 2) {
+      recs.push({ type: 'warn', msg: 'Nested Loop with ' + joinCount + ' joins can be slow without indexes on all join columns. Verify index coverage.' });
+    }
+    if (hasGroup === 'both' || hasGroup === 'order') {
+      recs.push({ type: 'info', msg: 'Adding an index on ORDER BY column(s) can eliminate sort operations entirely (index scan provides sorted output).' });
+    }
+    if (totalRowsScanned / Math.max(totalRowsReturned, 1) > 1000) {
+      recs.push({ type: 'error', msg: 'Scan ratio > 1000:1 — you are reading ' + fmtNum(totalRowsScanned) + ' rows to return ' + fmtNum(totalRowsReturned) + '. This query needs better indexes or query restructuring.' });
+    }
+    recs.push({ type: 'info', msg: 'Run <code>ANALYZE ' + (workingTables[0] && workingTables[0].name || mainTable) + ';</code> to update table statistics and help the planner make better decisions.' });
+
+    var recsEl = document.getElementById('recommendations');
+    var colors = { error: 'border-red-500/40 bg-red-500/5 text-red-300', warn: 'border-orange-500/40 bg-orange-500/5 text-orange-300', info: 'border-blue-500/40 bg-blue-500/5 text-blue-300' };
+    recsEl.innerHTML = recs.map(function (r) {
+      return '<div class="border rounded-lg p-3 text-xs ' + (colors[r.type] || colors.info) + '">' + r.msg + '</div>';
+    }).join('');
+
+    // EXPLAIN commands
+    var explainLines = [];
+    if (dbEngine === 'postgresql') {
+      explainLines.push('-- PostgreSQL: Full analysis with timing and buffers');
+      explainLines.push('EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)');
+      explainLines.push('SELECT * FROM ' + mainTable + ' WHERE /* your conditions */;');
+      explainLines.push('');
+      explainLines.push('-- Check index usage on table');
+      explainLines.push('SELECT indexname, idx_scan, idx_tup_read, idx_tup_fetch');
+      explainLines.push("FROM pg_stat_user_indexes WHERE relname = '" + mainTable + "';");
+    } else if (dbEngine === 'mysql') {
+      explainLines.push('-- MySQL: Extended explain');
+      explainLines.push('EXPLAIN FORMAT=JSON SELECT * FROM ' + mainTable + ' WHERE /* your conditions */;');
+      explainLines.push('');
+      explainLines.push('-- Show index statistics');
+      explainLines.push('SHOW INDEX FROM ' + mainTable + ';');
+      explainLines.push('ANALYZE TABLE ' + mainTable + ';');
+    } else if (dbEngine === 'bigquery') {
+      explainLines.push('-- BigQuery: Query execution plan (in console)');
+      explainLines.push('-- Go to: Query Results > Execution Details tab');
+      explainLines.push('');
+      explainLines.push('-- Check table size');
+      explainLines.push("SELECT table_name, row_count, size_bytes / 1e9 AS size_gb");
+      explainLines.push("FROM `project.dataset.INFORMATION_SCHEMA.TABLE_STORAGE`");
+      explainLines.push("WHERE table_name = '" + mainTable + "';");
+    } else if (dbEngine === 'snowflake') {
+      explainLines.push('-- Snowflake: Explain plan');
+      explainLines.push('EXPLAIN SELECT * FROM ' + mainTable + ' WHERE /* your conditions */;');
+      explainLines.push('');
+      explainLines.push('-- Query history with cost');
+      explainLines.push('SELECT query_text, total_elapsed_time, bytes_scanned, rows_produced');
+      explainLines.push('FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY');
+      explainLines.push("WHERE query_text ILIKE '%" + mainTable + "%'");
+      explainLines.push('ORDER BY total_elapsed_time DESC LIMIT 10;');
+    }
+
+    var explainCode = explainLines.join('\n');
+    document.getElementById('explain-output').textContent = explainCode;
+    document.getElementById('copy-explain').onclick = function () {
+      navigator.clipboard.writeText(explainCode).then(function () {
+        var btn = document.getElementById('copy-explain');
+        btn.textContent = 'Copied!';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+      });
+    };
+
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  // Seed example tables
+  tables = [
+    { name: 'orders', rows: 5000000, indexed: 'index', selectivity: 5 },
+    { name: 'customers', rows: 200000, indexed: 'covering', selectivity: 100 },
+    { name: 'order_items', rows: 20000000, indexed: 'none', selectivity: 5 },
+  ];
+  renderTables();
+})();
+</script>

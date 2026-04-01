@@ -1,0 +1,298 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the difference between Parquet and Avro?", answer: "Parquet is a columnar storage format optimized for analytical reads — great for SELECT queries on a subset of columns in data lakes (S3, GCS). Avro is a row-based format optimized for serialization and streaming — ideal for Kafka messages and event schemas. Rule of thumb: Avro for writing/streaming, Parquet for reading/analytics. Many pipelines use Avro in Kafka and convert to Parquet when landing in a data lake." },
+  { question: "What is schema evolution in Avro?", answer: "Schema evolution allows you to change the schema over time while maintaining backward/forward compatibility. Avro supports: adding optional fields (with defaults), removing optional fields, renaming via aliases. Breaking changes: changing field types, removing required fields, reordering fields. Use a Schema Registry (Confluent) to manage schema versions and enforce compatibility rules across producers and consumers." },
+  { question: "How are JSON types mapped to Avro types?", answer: "JSON string → Avro 'string'. JSON number (integer) → Avro 'long' or 'int'. JSON number (float) → Avro 'double' or 'float'. JSON boolean → Avro 'boolean'. JSON null → Avro 'null'. JSON object → Avro 'record'. JSON array → Avro 'array'. Avro also supports 'bytes', 'fixed', 'enum', 'map', and 'union' types not directly representable in JSON." },
+  { question: "How are JSON types mapped to PyArrow Parquet types?", answer: "JSON string → pa.string() or pa.large_string(). JSON integer → pa.int64(). JSON float → pa.float64(). JSON boolean → pa.bool_(). JSON null → optional field (pa.field nullable=True). JSON object → pa.struct(). JSON array → pa.list_(). PyArrow infers the best type from data. Use pa.schema() to enforce strict types and catch schema violations early in your pipeline." },
+  { question: "Should I store nested JSON as-is or flatten it?", answer: "Storing nested JSON as-is in Parquet (using struct/list types) preserves structure but complicates queries in SQL engines. Flattening (expanding nested fields to top-level columns) improves query performance and compatibility but loses the hierarchy. Best practice: flatten one level deep for frequently-queried fields, keep rare nested data as JSON string. BigQuery and Snowflake both support STRUCT natively, making nested Parquet efficient for those platforms." },
+];
+---
+
+<BaseLayout
+  title="Parquet & Avro Schema Generator — JSON Sample to Schema Converter"
+  description="Paste JSON sample data and instantly generate Avro schema, PyArrow Parquet schema, and Python code to create your schemas. Supports nested objects and arrays."
+  tool="Parquet Schema Generator, Avro Schema Generator, JSON to Avro Schema, PyArrow Schema Creator, Data Lake Schema Tool"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Parquet & Avro Schema Generator",
+    "url": "https://devplaybook.cc/tools/parquet-avro-schema-generator",
+    "description": "Paste JSON sample data to generate Avro and Parquet schemas with Python code.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Parquet / Avro Schema Generator</h1>
+  <p class="text-text-muted mb-4">Paste a JSON sample and automatically detect field names and types. Get an Avro schema (JSON), PyArrow Parquet schema, and Python code to create both — including support for nested objects and arrays.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Avro JSON schema</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PyArrow Parquet schema</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Nested objects & arrays</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Input -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">JSON Sample Data</h2>
+        <button id="load-example" class="text-xs px-3 py-1 rounded-lg border border-border hover:bg-primary/10 hover:border-primary/40 transition-colors">Load Example</button>
+      </div>
+      <textarea id="json-input" rows="10" spellcheck="false"
+        class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"
+        placeholder='Paste JSON object or array here, e.g. {"id": 1, "name": "Alice", "score": 9.5}'></textarea>
+      <div id="json-error" class="hidden mt-2 text-red-400 text-xs font-mono"></div>
+      <div class="mt-3 flex gap-3">
+        <button id="generate-btn" class="bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">Generate Schemas</button>
+      </div>
+    </div>
+
+    <!-- Detected Fields -->
+    <div id="fields-section" class="hidden bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-3">Detected Fields</h2>
+      <div id="fields-table" class="overflow-x-auto"></div>
+    </div>
+
+    <!-- Schema outputs -->
+    <div id="schemas-section" class="hidden space-y-4">
+      <!-- Tab buttons -->
+      <div class="flex gap-2">
+        <button id="tab-avro" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white">Avro Schema</button>
+        <button id="tab-parquet" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-bg border border-border hover:bg-primary/10 transition-colors">PyArrow Schema</button>
+        <button id="tab-python" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-bg border border-border hover:bg-primary/10 transition-colors">Python Code</button>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold" id="schema-tab-title">Avro Schema</h2>
+          <button id="copy-schema" class="text-xs px-3 py-1 rounded-lg border border-border hover:bg-primary/10 hover:border-primary/40 transition-colors">Copy</button>
+        </div>
+        <pre id="schema-output" class="bg-bg rounded-lg p-4 text-xs font-mono text-primary overflow-x-auto whitespace-pre-wrap max-h-96"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Parquet Avro Schema Generator" relatedTags={['parquet', 'avro', 'data', 'schema', 'data-lake', 'data-engineering']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var detectedFields = [];
+  var currentTab = 'avro';
+  var generatedSchemas = {};
+
+  var EXAMPLE_JSON = JSON.stringify({
+    "order_id": 12345,
+    "customer": {
+      "id": "cust_001",
+      "name": "Alice Johnson",
+      "email": "alice@example.com"
+    },
+    "items": [
+      { "sku": "PROD-001", "qty": 2, "price": 19.99 }
+    ],
+    "total": 39.98,
+    "paid": true,
+    "created_at": "2024-01-15T10:30:00Z",
+    "notes": null
+  }, null, 2);
+
+  document.getElementById('load-example').addEventListener('click', function () {
+    document.getElementById('json-input').value = EXAMPLE_JSON;
+  });
+
+  function inferType(val) {
+    if (val === null || val === undefined) return 'null';
+    if (typeof val === 'boolean') return 'boolean';
+    if (typeof val === 'number') return Number.isInteger(val) ? 'integer' : 'float';
+    if (typeof val === 'string') return 'string';
+    if (Array.isArray(val)) return 'array';
+    if (typeof val === 'object') return 'object';
+    return 'string';
+  }
+
+  function extractFields(obj, prefix) {
+    prefix = prefix || '';
+    var fields = [];
+    Object.keys(obj).forEach(function (key) {
+      var val = obj[key];
+      var type = inferType(val);
+      var fieldName = prefix ? prefix + '.' + key : key;
+      if (type === 'object' && val !== null) {
+        fields.push({ name: fieldName, type: 'object', nullable: false });
+        extractFields(val, fieldName).forEach(function (f) { fields.push(f); });
+      } else if (type === 'array') {
+        var itemType = val.length > 0 ? inferType(val[0]) : 'string';
+        fields.push({ name: fieldName, type: 'array<' + itemType + '>', nullable: false });
+      } else {
+        fields.push({ name: fieldName, type: type, nullable: type === 'null' });
+      }
+    });
+    return fields;
+  }
+
+  function typeToAvro(type, nullable) {
+    var baseMap = { 'string': 'string', 'integer': 'long', 'float': 'double', 'boolean': 'boolean', 'null': 'null' };
+    var base = baseMap[type] || 'string';
+    if (type.startsWith('array<')) {
+      var itemT = type.slice(6, -1);
+      var avroItem = baseMap[itemT] || 'string';
+      return nullable ? ['null', { type: 'array', items: avroItem }] : { type: 'array', items: avroItem };
+    }
+    if (type === 'object') return nullable ? ['null', 'string'] : 'string';
+    return nullable ? ['null', base] : base;
+  }
+
+  function typeToArrow(type) {
+    var typeMap = { 'string': 'pa.string()', 'integer': 'pa.int64()', 'float': 'pa.float64()', 'boolean': 'pa.bool_()', 'null': 'pa.null()' };
+    if (type.startsWith('array<')) {
+      var itemT = type.slice(6, -1);
+      return 'pa.list_(' + (typeMap[itemT] || 'pa.string()') + ')';
+    }
+    if (type === 'object') return 'pa.string()  # serialized JSON';
+    return typeMap[type] || 'pa.string()';
+  }
+
+  function buildAvroSchema(fields, recordName) {
+    recordName = recordName || 'Record';
+    var topFields = fields.filter(function (f) { return !f.name.includes('.'); });
+    return {
+      type: 'record',
+      name: recordName,
+      namespace: 'com.example',
+      fields: topFields.map(function (f) {
+        return { name: f.name, type: typeToAvro(f.type, f.nullable), default: f.nullable ? null : undefined };
+      }).filter(function (f) { return f !== null; })
+    };
+  }
+
+  function buildArrowSchema(fields) {
+    var topFields = fields.filter(function (f) { return !f.name.includes('.'); });
+    return topFields.map(function (f) {
+      return "pa.field('" + f.name + "', " + typeToArrow(f.type) + (f.nullable ? ', nullable=True' : '') + ')';
+    });
+  }
+
+  function buildPythonCode(fields, recordName) {
+    recordName = recordName || 'my_record';
+    var avroFields = fields.filter(function (f) { return !f.name.includes('.'); });
+    var arrowFields = buildArrowSchema(fields);
+    var lines = [
+      'import pyarrow as pa',
+      'import json',
+      '',
+      '# ─── Avro Schema ───',
+      'avro_schema = json.dumps({',
+      '    "type": "record",',
+      '    "name": "' + recordName + '",',
+      '    "namespace": "com.example",',
+      '    "fields": [',
+    ];
+    avroFields.forEach(function (f, i) {
+      var avroType = JSON.stringify(typeToAvro(f.type, f.nullable));
+      var comma = i < avroFields.length - 1 ? ',' : '';
+      lines.push('        {"name": "' + f.name + '", "type": ' + avroType + '}' + comma);
+    });
+    lines.push('    ]');
+    lines.push('}, indent=2)');
+    lines.push('');
+    lines.push('# ─── PyArrow Parquet Schema ───');
+    lines.push('parquet_schema = pa.schema([');
+    arrowFields.forEach(function (f, i) {
+      lines.push('    ' + f + (i < arrowFields.length - 1 ? ',' : ''));
+    });
+    lines.push('])');
+    lines.push('');
+    lines.push('# Write Parquet file');
+    lines.push('import pyarrow.parquet as pq');
+    lines.push('table = pa.table(your_data, schema=parquet_schema)');
+    lines.push("pq.write_table(table, 'output.parquet', compression='snappy')");
+    return lines.join('\n');
+  }
+
+  function setTab(tab) {
+    currentTab = tab;
+    var tabs = { avro: 'Avro Schema', parquet: 'PyArrow Schema', python: 'Python Code' };
+    document.getElementById('schema-tab-title').textContent = tabs[tab];
+    ['avro', 'parquet', 'python'].forEach(function (t) {
+      var btn = document.getElementById('tab-' + t);
+      if (t === tab) {
+        btn.className = 'tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white';
+      } else {
+        btn.className = 'tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-bg border border-border hover:bg-primary/10 transition-colors';
+      }
+    });
+    var code = generatedSchemas[tab] || '';
+    document.getElementById('schema-output').textContent = code;
+    document.getElementById('copy-schema').onclick = function () {
+      navigator.clipboard.writeText(code).then(function () {
+        var btn = document.getElementById('copy-schema');
+        btn.textContent = 'Copied!';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+      });
+    };
+  }
+
+  document.getElementById('tab-avro').addEventListener('click', function () { setTab('avro'); });
+  document.getElementById('tab-parquet').addEventListener('click', function () { setTab('parquet'); });
+  document.getElementById('tab-python').addEventListener('click', function () { setTab('python'); });
+
+  document.getElementById('generate-btn').addEventListener('click', function () {
+    var raw = document.getElementById('json-input').value.trim();
+    var errEl = document.getElementById('json-error');
+    errEl.classList.add('hidden');
+    var parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      errEl.textContent = 'Invalid JSON: ' + e.message;
+      errEl.classList.remove('hidden');
+      return;
+    }
+    if (Array.isArray(parsed)) { parsed = parsed[0]; }
+    if (typeof parsed !== 'object' || parsed === null) {
+      errEl.textContent = 'Please provide a JSON object or array of objects.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    detectedFields = extractFields(parsed, '');
+
+    // Render fields table
+    var fieldsHtml = '<table class="w-full text-xs"><thead><tr class="text-text-muted border-b border-border"><th class="text-left py-2 pr-4">Field</th><th class="text-left py-2 pr-4">Detected Type</th><th class="text-left py-2 pr-4">Avro Type</th><th class="text-left py-2">Arrow Type</th></tr></thead><tbody class="divide-y divide-border">';
+    detectedFields.forEach(function (f) {
+      var indent = (f.name.match(/\./g) || []).length;
+      var displayName = indent > 0 ? '&nbsp;&nbsp;&nbsp;&nbsp;'.repeat(indent) + '└ ' + f.name.split('.').pop() : f.name;
+      fieldsHtml += '<tr><td class="py-1.5 pr-4 font-mono">' + displayName + '</td>'
+        + '<td class="py-1.5 pr-4 text-text-muted">' + f.type + '</td>'
+        + '<td class="py-1.5 pr-4 text-blue-300">' + JSON.stringify(typeToAvro(f.type, f.nullable)) + '</td>'
+        + '<td class="py-1.5 text-orange-300">' + typeToArrow(f.type) + '</td></tr>';
+    });
+    fieldsHtml += '</tbody></table>';
+    document.getElementById('fields-table').innerHTML = fieldsHtml;
+    document.getElementById('fields-section').classList.remove('hidden');
+
+    // Generate schemas
+    var avroObj = buildAvroSchema(detectedFields, 'Record');
+    generatedSchemas.avro = JSON.stringify(avroObj, null, 2);
+
+    var arrowFields = buildArrowSchema(detectedFields);
+    generatedSchemas.parquet = 'import pyarrow as pa\n\nschema = pa.schema([\n'
+      + arrowFields.map(function (f) { return '    ' + f; }).join(',\n')
+      + '\n])';
+
+    generatedSchemas.python = buildPythonCode(detectedFields, 'MyRecord');
+
+    document.getElementById('schemas-section').classList.remove('hidden');
+    setTab(currentTab);
+    document.getElementById('schemas-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+})();
+</script>

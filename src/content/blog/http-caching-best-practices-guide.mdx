@@ -1,0 +1,295 @@
+---
+title: "HTTP Caching Best Practices: Speed Up Your App Without Breaking It"
+description: "Master HTTP caching with Cache-Control headers, ETags, CDN strategies, cache busting, and stale-while-revalidate patterns to make your app blazing fast and always fresh."
+date: "2026-04-01"
+readingTime: "9 min read"
+tags: ["http-caching", "web-performance", "cdn", "cache-control", "backend"]
+slug: "http-caching-best-practices-guide"
+---
+
+Bad caching is one of the two hardest problems in computer science (the other being naming things and off-by-one errors). Done right, caching makes your app feel instant. Done wrong, users see stale data for days or your CDN gets bypassed entirely. Here's everything you need to cache correctly.
+
+## How HTTP Caching Works
+
+When a browser or CDN receives a response, it reads the caching headers to decide:
+1. Should I store this response?
+2. How long is it valid?
+3. How do I check if it's still fresh?
+
+Three places cache your responses: **browser cache**, **CDN/proxy cache**, and **server-side cache** (Redis, Varnish). Understanding which layer you're targeting changes which headers you use.
+
+## Cache-Control: The Master Header
+
+`Cache-Control` is the primary way to communicate caching intent. Here are the directives you actually use:
+
+```http
+# Public: CDN + browser can cache
+Cache-Control: public, max-age=3600
+
+# Private: only browser caches (user-specific data)
+Cache-Control: private, max-age=3600
+
+# Never cache (sensitive data)
+Cache-Control: no-store
+
+# Cache but always revalidate before use
+Cache-Control: no-cache
+
+# Cache for 1 hour; serve stale for 1 day while revalidating in background
+Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+# Cache for 1 hour; if origin is down, serve stale for up to 1 day
+Cache-Control: public, max-age=3600, stale-if-error=86400
+```
+
+### The Directive You're Probably Misusing: no-cache
+
+`Cache-Control: no-cache` does **not** mean "don't cache." It means "cache this, but always check with the server before serving it." To actually prevent caching, use `no-store`.
+
+```http
+# Wrong: user thinks this disables caching
+Cache-Control: no-cache
+
+# Correct: truly prevents storing the response
+Cache-Control: no-store, no-cache, must-revalidate
+```
+
+## ETags: Efficient Revalidation
+
+ETags let clients ask "has this changed?" without downloading the full response:
+
+```http
+# Server sends ETag with first response
+HTTP/1.1 200 OK
+Cache-Control: no-cache
+ETag: "abc123def456"
+Content-Type: application/json
+
+{"users": [...]}
+```
+
+On subsequent requests, the browser sends:
+
+```http
+GET /api/users HTTP/1.1
+If-None-Match: "abc123def456"
+```
+
+If nothing changed, the server responds with `304 Not Modified`—no body, just headers. The browser uses its cached copy.
+
+### Implementing ETags in Node.js/Express
+
+```javascript
+import express from 'express';
+import crypto from 'crypto';
+
+const app = express();
+
+// Express has built-in ETag support for static files
+app.use(express.static('public', { etag: true, lastModified: true }));
+
+// For API responses, generate ETags manually
+app.get('/api/products', async (req, res) => {
+  const products = await db.getProducts();
+  const data = JSON.stringify(products);
+
+  const etag = `"${crypto.createHash('md5').update(data).digest('hex')}"`;
+
+  if (req.headers['if-none-match'] === etag) {
+    return res.status(304).end(); // Not Modified
+  }
+
+  res.setHeader('ETag', etag);
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+  res.json(products);
+});
+```
+
+### Last-Modified as an Alternative
+
+```javascript
+app.get('/api/article/:id', async (req, res) => {
+  const article = await db.getArticle(req.params.id);
+  const lastModified = new Date(article.updatedAt).toUTCString();
+
+  if (req.headers['if-modified-since'] === lastModified) {
+    return res.status(304).end();
+  }
+
+  res.setHeader('Last-Modified', lastModified);
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.json(article);
+});
+```
+
+Use ETags when content changes unpredictably. Use `Last-Modified` for time-based content.
+
+## CDN Caching Strategy
+
+CDNs (Cloudflare, CloudFront, Fastly) cache at the edge, close to users. The key is differentiating what CDNs should cache vs. what only browsers should cache:
+
+```http
+# Static assets: cache everywhere, long TTL
+Cache-Control: public, max-age=31536000, immutable
+
+# API responses: CDN caches, browser revalidates
+Cache-Control: public, s-maxage=300, max-age=60
+
+# User-specific data: only browser cache
+Cache-Control: private, max-age=3600
+
+# HTML pages: CDN short TTL, stale-while-revalidate
+Cache-Control: public, s-maxage=600, stale-while-revalidate=3600
+```
+
+The `s-maxage` directive applies only to shared caches (CDNs, proxies). `max-age` applies to all caches. This lets you set different TTLs for CDN vs. browser.
+
+### Vary Header for Personalization
+
+Tell the CDN to cache separate versions based on request headers:
+
+```http
+# Cache different versions per language
+Vary: Accept-Language
+
+# Cache different versions per content type
+Vary: Accept-Encoding
+
+# Cache different versions per auth state (be careful—this can miss cache)
+Vary: Cookie
+```
+
+Avoid `Vary: Cookie` on CDNs—it often prevents CDN caching entirely since cookies are unique per user.
+
+## Cache Busting for Static Assets
+
+Static assets (JS, CSS, images) should be cached forever—but you need a way to force updates when they change. The standard solution: **content-hash filenames**.
+
+```bash
+# Build output with content hashes
+app.abc123.js        # hash changes when content changes
+styles.def456.css
+logo.ghi789.webp
+```
+
+```http
+# These files can be cached forever
+Cache-Control: public, max-age=31536000, immutable
+```
+
+The `immutable` directive tells browsers not to even check for updates during the max-age window—it can't change.
+
+### Webpack/Vite Configuration
+
+```javascript
+// vite.config.js
+export default {
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name].[hash].js',
+        chunkFileNames: 'assets/[chunk].[hash].js',
+        assetFileNames: 'assets/[name].[hash][extname]',
+      }
+    }
+  }
+}
+```
+
+For HTML files (which reference the hashed assets), use short or no caching:
+
+```http
+# HTML: no CDN cache, short browser cache
+Cache-Control: no-cache
+
+# Or: very short TTL
+Cache-Control: public, max-age=60
+```
+
+## stale-while-revalidate: The Best of Both Worlds
+
+`stale-while-revalidate` lets you serve cached content instantly while refreshing it in the background:
+
+```http
+Cache-Control: public, max-age=60, stale-while-revalidate=600
+```
+
+This means:
+- For the first 60 seconds: serve from cache, no network request
+- 60–660 seconds: serve stale cache **immediately**, but trigger a background revalidation
+- After 660 seconds: must revalidate before serving
+
+The user never waits. The cache refreshes in the background. This is the pattern most modern CDNs and Next.js ISR use.
+
+```javascript
+// Next.js ISR using stale-while-revalidate semantics
+export async function getStaticProps() {
+  const data = await fetchData();
+  return {
+    props: { data },
+    revalidate: 60, // revalidate in background every 60 seconds
+  };
+}
+
+// Or with the App Router
+export const revalidate = 60;
+```
+
+## Browser Cache vs CDN vs Server: Which Layer?
+
+| Data Type | Browser Cache | CDN Cache | Server Cache |
+|---|---|---|---|
+| Static assets (JS/CSS/images) | ✅ Long TTL | ✅ Long TTL | ❌ Not needed |
+| Public API responses | ✅ Short TTL | ✅ Short TTL | ✅ Redis/memory |
+| User-specific API data | ✅ Private | ❌ Never | ✅ User-keyed Redis |
+| HTML pages | ✅ Short/no-cache | ✅ Short TTL | ✅ Full-page cache |
+| Auth tokens / sessions | ❌ no-store | ❌ Never | ✅ Session store |
+| Real-time data | ❌ no-store | ❌ Never | ❌ Not cached |
+
+## Common Caching Mistakes
+
+**Mistake 1: Caching user data in CDN**
+```http
+# Dangerous: CDN serves User A's data to User B
+Cache-Control: public, max-age=3600
+Set-Cookie: session=abc123
+
+# Fix: private data should never hit CDN
+Cache-Control: private, max-age=3600
+```
+
+**Mistake 2: No cache on static assets**
+```http
+# Most frameworks default — wastes bandwidth
+Cache-Control: no-cache
+
+# Fix: use content-hash filenames + immutable
+Cache-Control: public, max-age=31536000, immutable
+```
+
+**Mistake 3: Forgetting to purge CDN cache on deploy**
+Always purge or tag-invalidate CDN cached HTML on every deployment. Static assets don't need purging if you use content hashes.
+
+## Quick Reference: Caching Recipes
+
+```http
+# Static assets (JS/CSS/fonts/images with hash in filename)
+Cache-Control: public, max-age=31536000, immutable
+
+# Static assets without content hash
+Cache-Control: public, max-age=86400
+
+# Public API — 5 min CDN, 1 min browser
+Cache-Control: public, s-maxage=300, max-age=60, stale-while-revalidate=3600
+
+# HTML pages — short CDN TTL, background refresh
+Cache-Control: public, s-maxage=300, stale-while-revalidate=86400
+
+# Private API responses
+Cache-Control: private, max-age=60
+
+# Never cache
+Cache-Control: no-store
+```
+
+Good caching is invisible to users—pages load instantly and content is always fresh. Bad caching either makes sites feel slow (too conservative) or shows stale data (too aggressive). The patterns above give you the right defaults for 90% of use cases.
