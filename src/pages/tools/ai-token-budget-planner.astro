@@ -1,0 +1,232 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How do I estimate tokens per request?", answer: "A rough rule: 1 token ≈ 0.75 words or 4 characters. A short question is ~50-100 tokens. A full document summary may use 2,000-8,000 tokens. Count system prompt, conversation history, and output separately. Most providers offer token counting APIs (tiktoken for OpenAI, claude_tokenizer for Anthropic) for accurate estimates." },
+  { question: "Why are input and output tokens priced differently?", answer: "Output tokens require the model to generate each token sequentially, which is computationally more expensive than reading input. Typically output tokens cost 3-5x more than input tokens. This is why minimizing verbosity in responses has a big impact on cost." },
+  { question: "What model should I choose?", answer: "For simple classification or extraction: use Haiku or GPT-4o mini. For complex reasoning, code generation, or long-context tasks: use Sonnet or GPT-4o. For the hardest tasks requiring maximum intelligence: use Opus or o1. Most production apps use a tiered approach — cheap models for simple tasks, expensive models only for complex ones." },
+  { question: "How do context window caching features affect cost?", answer: "Anthropic's Prompt Caching and OpenAI's cached tokens reduce costs by reusing repeated prefix tokens (like system prompts). If your system prompt is 2,000 tokens and you make 1,000 calls/day, caching can save ~90% of input costs on that portion. Factor this into real estimates if you use caching." },
+  { question: "What is a realistic daily request count?", answer: "A small internal tool: 10-100 calls/day. A production SaaS with 100 users: 500-5,000 calls/day. A high-traffic consumer app: 10,000-100,000+ calls/day. Start with your p50 user and multiply by active users. Add headroom for retries and background tasks." },
+];
+
+const MODELS = [
+  { name: 'Claude Sonnet 4.6', provider: 'Anthropic', input: 3.00, output: 15.00, context: 200 },
+  { name: 'Claude Haiku 4.5', provider: 'Anthropic', input: 0.80, output: 4.00, context: 200 },
+  { name: 'Claude Opus 4.6', provider: 'Anthropic', input: 15.00, output: 75.00, context: 200 },
+  { name: 'GPT-4o', provider: 'OpenAI', input: 5.00, output: 15.00, context: 128 },
+  { name: 'GPT-4o mini', provider: 'OpenAI', input: 0.15, output: 0.60, context: 128 },
+  { name: 'o1', provider: 'OpenAI', input: 15.00, output: 60.00, context: 200 },
+  { name: 'Gemini 2.0 Flash', provider: 'Google', input: 0.10, output: 0.40, context: 1000 },
+  { name: 'Gemini 1.5 Pro', provider: 'Google', input: 3.50, output: 10.50, context: 2000 },
+];
+---
+
+<BaseLayout
+  title="AI Token Budget Planner — Monthly LLM Cost Calculator"
+  description="Estimate your daily and monthly LLM API costs. Input request volume, token counts per request, and model selection to get accurate budget projections for OpenAI, Anthropic, and Google."
+  tool="AI Token Budget Planner, LLM Cost Calculator, AI API Budget, OpenAI Cost Estimator, Claude Token Budget"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Token Budget Planner</h1>
+  <p class="text-text-muted mb-4">Calculate your daily and monthly LLM API costs. Configure request volume, token counts, and model to get accurate spend projections.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GPT-4o, Claude, Gemini pricing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Daily + monthly projections</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-tier model comparison</span>
+  </div>
+
+  <!-- Config panel -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Usage Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div>
+        <label class="block text-sm font-medium mb-1">Model</label>
+        <select id="model-select" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          {MODELS.map(m => <option value={m.name}>{m.provider} — {m.name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Daily Requests</label>
+        <input id="daily-requests" type="number" value="1000" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Avg Input Tokens / Request</label>
+        <input id="input-tokens" type="number" value="500" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Includes system prompt + user message</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Avg Output Tokens / Request</label>
+        <input id="output-tokens" type="number" value="300" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Avg tokens in the model's response</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results cards -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+    <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+      <div id="cost-per-request" class="text-xl font-bold text-primary">—</div>
+      <div class="text-xs text-text-muted mt-1">Cost / Request</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+      <div id="daily-cost" class="text-xl font-bold text-primary">—</div>
+      <div class="text-xs text-text-muted mt-1">Daily Cost</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+      <div id="monthly-cost" class="text-xl font-bold text-primary">—</div>
+      <div class="text-xs text-text-muted mt-1">Monthly Cost</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+      <div id="yearly-cost" class="text-xl font-bold text-primary">—</div>
+      <div class="text-xs text-text-muted mt-1">Yearly Cost</div>
+    </div>
+  </div>
+
+  <!-- Token breakdown -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Cost Breakdown</h2>
+    <div id="breakdown-table" class="space-y-2 text-sm"></div>
+  </div>
+
+  <!-- Model comparison -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">Model Comparison (Same Usage)</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[500px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Model</th>
+            <th class="text-right pb-2 pr-4">$/Request</th>
+            <th class="text-right pb-2 pr-4">Daily</th>
+            <th class="text-right pb-2">Monthly</th>
+          </tr>
+        </thead>
+        <tbody id="comparison-body" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Token Budget Planner" relatedTags={['ai', 'llm', 'openai', 'claude', 'cost', 'budget', 'tokens']} />
+</BaseLayout>
+
+<script>
+  interface Model {
+    name: string;
+    provider: string;
+    input: number;
+    output: number;
+    context: number;
+  }
+
+  const MODELS: Model[] = [
+    { name: 'Claude Sonnet 4.6', provider: 'Anthropic', input: 3.00, output: 15.00, context: 200 },
+    { name: 'Claude Haiku 4.5', provider: 'Anthropic', input: 0.80, output: 4.00, context: 200 },
+    { name: 'Claude Opus 4.6', provider: 'Anthropic', input: 15.00, output: 75.00, context: 200 },
+    { name: 'GPT-4o', provider: 'OpenAI', input: 5.00, output: 15.00, context: 128 },
+    { name: 'GPT-4o mini', provider: 'OpenAI', input: 0.15, output: 0.60, context: 128 },
+    { name: 'o1', provider: 'OpenAI', input: 15.00, output: 60.00, context: 200 },
+    { name: 'Gemini 2.0 Flash', provider: 'Google', input: 0.10, output: 0.40, context: 1000 },
+    { name: 'Gemini 1.5 Pro', provider: 'Google', input: 3.50, output: 10.50, context: 2000 },
+  ];
+
+  function fmt(n: number): string {
+    if (n < 0.001) return `$${(n * 1000).toFixed(3)}m`;
+    if (n < 1) return `$${n.toFixed(4)}`;
+    if (n < 10) return `$${n.toFixed(3)}`;
+    if (n < 1000) return `$${n.toFixed(2)}`;
+    return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  }
+
+  function calcCost(model: Model, inputTok: number, outputTok: number, daily: number) {
+    const perRequest = (inputTok / 1_000_000) * model.input + (outputTok / 1_000_000) * model.output;
+    const dailyCost = perRequest * daily;
+    return { perRequest, dailyCost, monthly: dailyCost * 30, yearly: dailyCost * 365 };
+  }
+
+  function update() {
+    const modelName = (document.getElementById('model-select') as HTMLSelectElement).value;
+    const daily = parseInt((document.getElementById('daily-requests') as HTMLInputElement).value) || 0;
+    const inputTok = parseInt((document.getElementById('input-tokens') as HTMLInputElement).value) || 0;
+    const outputTok = parseInt((document.getElementById('output-tokens') as HTMLInputElement).value) || 0;
+
+    const model = MODELS.find(m => m.name === modelName) || MODELS[0];
+    const { perRequest, dailyCost, monthly, yearly } = calcCost(model, inputTok, outputTok, daily);
+
+    document.getElementById('cost-per-request')!.textContent = fmt(perRequest);
+    document.getElementById('daily-cost')!.textContent = fmt(dailyCost);
+    document.getElementById('monthly-cost')!.textContent = fmt(monthly);
+    document.getElementById('yearly-cost')!.textContent = fmt(yearly);
+
+    const inputCostDaily = (inputTok / 1_000_000) * model.input * daily;
+    const outputCostDaily = (outputTok / 1_000_000) * model.output * daily;
+    const totalInput = inputTok * daily;
+    const totalOutput = outputTok * daily;
+
+    document.getElementById('breakdown-table')!.innerHTML = `
+      <div class="flex justify-between py-2 border-b border-border">
+        <span class="text-text-muted">Input tokens/day</span>
+        <span class="font-mono">${totalInput.toLocaleString()} tokens → ${fmt(inputCostDaily)}</span>
+      </div>
+      <div class="flex justify-between py-2 border-b border-border">
+        <span class="text-text-muted">Output tokens/day</span>
+        <span class="font-mono">${totalOutput.toLocaleString()} tokens → ${fmt(outputCostDaily)}</span>
+      </div>
+      <div class="flex justify-between py-2 border-b border-border">
+        <span class="text-text-muted">Input price</span>
+        <span class="font-mono">$${model.input.toFixed(2)} / 1M tokens</span>
+      </div>
+      <div class="flex justify-between py-2 border-b border-border">
+        <span class="text-text-muted">Output price</span>
+        <span class="font-mono">$${model.output.toFixed(2)} / 1M tokens</span>
+      </div>
+      <div class="flex justify-between py-2 border-b border-border">
+        <span class="text-text-muted">Context window</span>
+        <span class="font-mono">${model.context}K tokens</span>
+      </div>
+      <div class="flex justify-between py-2 font-semibold">
+        <span>Monthly total (30 days)</span>
+        <span class="text-primary">${fmt(monthly)}</span>
+      </div>
+    `;
+
+    const sorted = [...MODELS].map(m => ({
+      ...m,
+      ...calcCost(m, inputTok, outputTok, daily),
+    })).sort((a, b) => a.monthly - b.monthly);
+
+    const cheapest = sorted[0].monthly;
+    document.getElementById('comparison-body')!.innerHTML = sorted.map(m => {
+      const isSelected = m.name === modelName;
+      const mult = cheapest > 0 ? m.monthly / cheapest : 1;
+      return `
+        <tr class="${isSelected ? 'bg-primary/5' : ''}">
+          <td class="py-2 pr-4">
+            <span class="font-medium">${m.name}</span>
+            <span class="text-xs text-text-muted ml-1">(${m.provider})</span>
+            ${isSelected ? '<span class="text-xs text-primary ml-1">← selected</span>' : ''}
+          </td>
+          <td class="text-right py-2 pr-4 font-mono">${fmt(m.perRequest)}</td>
+          <td class="text-right py-2 pr-4 font-mono">${fmt(m.dailyCost)}</td>
+          <td class="text-right py-2 font-mono">
+            ${fmt(m.monthly)}
+            ${mult > 1 ? `<span class="text-xs text-text-muted ml-1">${mult.toFixed(1)}x</span>` : '<span class="text-xs text-green-400 ml-1">cheapest</span>'}
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('model-select')!.addEventListener('change', update);
+  document.getElementById('daily-requests')!.addEventListener('input', update);
+  document.getElementById('input-tokens')!.addEventListener('input', update);
+  document.getElementById('output-tokens')!.addEventListener('input', update);
+
+  update();
+</script>

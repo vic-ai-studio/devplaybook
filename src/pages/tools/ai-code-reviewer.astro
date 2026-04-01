@@ -1,0 +1,259 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What heuristics does this tool check?", answer: "The tool runs static pattern analysis across four categories: Security Issues (hardcoded secrets, SQL injection risks, eval usage, XSS vectors), Performance Smells (nested loops, synchronous file I/O, missing memoization), Style Issues (magic numbers, overly long functions, commented-out code), and Best Practices (missing error handling, console.log in production, unhandled promises)." },
+  { question: "Does this send my code anywhere?", answer: "No. All analysis runs entirely in your browser using JavaScript pattern matching. Your code never leaves your device. This tool uses regex heuristics, not an LLM — it's instant and private." },
+  { question: "Can this replace a real code review?", answer: "No. This tool catches common patterns but misses context-dependent issues, logic errors, and architectural problems. Use it as a first-pass sanity check before human or AI review. For AI-assisted review, combine with tools like GitHub Copilot Code Review, CodeRabbit, or Claude/ChatGPT with your full codebase context." },
+  { question: "What languages does it support?", answer: "The heuristics are language-agnostic and work best on JavaScript, TypeScript, Python, and similar scripting languages. Some checks (SQL injection, XSS) are web-specific. The tool highlights patterns to investigate — always verify findings in context of your actual language and framework." },
+  { question: "How are severity levels determined?", answer: "Critical: issues that likely represent exploitable security vulnerabilities (hardcoded secrets, eval with user input). High: patterns that frequently cause bugs or security issues in production. Medium: code quality issues that make maintenance harder. Low: style preferences and minor improvements. Severity is heuristic — use judgment." },
+];
+---
+
+<BaseLayout
+  title="AI Code Reviewer — Static Code Review Checklist Tool"
+  description="Paste any code snippet for instant static analysis. Detect security issues, performance smells, style problems, and best practice violations with no API calls required."
+  tool="AI Code Reviewer, Static Code Analysis, Code Review Checklist, Security Code Scan, Code Quality Checker"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Code Reviewer</h1>
+  <p class="text-text-muted mb-4">Paste code for instant static analysis. Detects security issues, performance smells, style violations, and best practice gaps — all in your browser, no API needed.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Security issue detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Performance smell analysis</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Best practice checklist</span>
+  </div>
+
+  <!-- Code input -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">Paste Your Code</h2>
+      <div class="flex gap-2">
+        <button id="load-example" class="text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary transition-colors">Load Example</button>
+        <button id="clear-code" class="text-xs px-3 py-1.5 border border-border rounded-lg hover:border-red-400 transition-colors">Clear</button>
+      </div>
+    </div>
+    <textarea id="code-input" rows="14" placeholder="Paste your code here..." class="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-primary resize-y"></textarea>
+    <div class="flex items-center justify-between mt-3">
+      <span id="line-count" class="text-xs text-text-muted">0 lines</span>
+      <button id="analyze-btn" class="px-5 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/80 transition-colors">Analyze Code →</button>
+    </div>
+  </div>
+
+  <!-- Results summary -->
+  <div id="results-summary" class="hidden grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+    <div class="bg-bg-card border border-red-500/30 rounded-xl p-4 text-center">
+      <div id="count-critical" class="text-2xl font-bold text-red-400">0</div>
+      <div class="text-xs text-text-muted mt-1">Critical</div>
+    </div>
+    <div class="bg-bg-card border border-orange-500/30 rounded-xl p-4 text-center">
+      <div id="count-high" class="text-2xl font-bold text-orange-400">0</div>
+      <div class="text-xs text-text-muted mt-1">High</div>
+    </div>
+    <div class="bg-bg-card border border-yellow-500/30 rounded-xl p-4 text-center">
+      <div id="count-medium" class="text-2xl font-bold text-yellow-400">0</div>
+      <div class="text-xs text-text-muted mt-1">Medium</div>
+    </div>
+    <div class="bg-bg-card border border-blue-500/30 rounded-xl p-4 text-center">
+      <div id="count-low" class="text-2xl font-bold text-blue-400">0</div>
+      <div class="text-xs text-text-muted mt-1">Low</div>
+    </div>
+  </div>
+
+  <!-- Category results -->
+  <div id="results-container" class="space-y-4 mb-6"></div>
+
+  <!-- Score banner -->
+  <div id="score-banner" class="hidden bg-bg-card border border-border rounded-xl p-5 mb-6 text-center">
+    <div id="score-label" class="text-lg font-semibold mb-1"></div>
+    <div id="score-bar-wrap" class="w-full bg-border rounded-full h-2 mt-2 mb-1 max-w-xs mx-auto">
+      <div id="score-bar" class="h-2 rounded-full transition-all duration-500"></div>
+    </div>
+    <div id="score-desc" class="text-sm text-text-muted mt-2"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Code Reviewer" relatedTags={['ai', 'code', 'security', 'review', 'static-analysis', 'devtools']} />
+</BaseLayout>
+
+<script>
+  interface Finding {
+    id: string;
+    severity: 'critical' | 'high' | 'medium' | 'low';
+    category: string;
+    title: string;
+    description: string;
+    lineHint?: string;
+  }
+
+  const EXAMPLE_CODE = `async function getUserData(userId, db) {
+  // TODO: remove this debug log
+  console.log("fetching user", userId);
+
+  const query = "SELECT * FROM users WHERE id = " + userId;
+  const result = await db.query(query);
+
+  const apiKey = "sk-prod-abc123xyz789secret";
+
+  for (let i = 0; i < result.length; i++) {
+    for (let j = 0; j < result[i].permissions.length; j++) {
+      processPermission(result[i].permissions[j]);
+    }
+  }
+
+  eval(result[0].userScript);
+
+  return result;
+}
+
+function renderProfile(user) {
+  document.getElementById('profile').innerHTML = user.bio;
+}`;
+
+  interface Rule {
+    id: string;
+    severity: 'critical' | 'high' | 'medium' | 'low';
+    category: string;
+    title: string;
+    description: string;
+    pattern: RegExp;
+  }
+
+  const RULES: Rule[] = [
+    // Security - Critical
+    { id: 's1', severity: 'critical', category: 'Security Issues', title: 'Hardcoded Secret / API Key', description: 'Found what looks like a hardcoded secret, API key, or password. Secrets in source code can be leaked via version control. Use environment variables instead.', pattern: /(api[_-]?key|secret|password|token|auth)\s*=\s*["'][^"']{8,}/i },
+    { id: 's2', severity: 'critical', category: 'Security Issues', title: 'SQL Injection Risk', description: 'String concatenation in a SQL query detected. This is a classic SQL injection vector. Use parameterized queries or prepared statements.', pattern: /query\s*=\s*["'][^"']*"\s*\+|["'][^"']*WHERE[^"']*"\s*\+/i },
+    { id: 's3', severity: 'critical', category: 'Security Issues', title: 'eval() Usage', description: 'eval() executes arbitrary code at runtime. If the input is user-controlled or externally sourced, this is a code injection vulnerability. Refactor to avoid eval().', pattern: /\beval\s*\(/ },
+    { id: 's4', severity: 'high', category: 'Security Issues', title: 'XSS via innerHTML', description: 'Assigning to innerHTML with dynamic content can cause Cross-Site Scripting (XSS). Use textContent for plain text, or sanitize HTML with DOMPurify.', pattern: /\.innerHTML\s*=\s*[^"'`]/ },
+    { id: 's5', severity: 'high', category: 'Security Issues', title: 'Disabled TLS Verification', description: 'Disabling TLS/SSL certificate verification removes protection against MITM attacks. Never disable in production.', pattern: /rejectUnauthorized\s*:\s*false|verify\s*=\s*False|ssl_verify\s*=\s*false/i },
+    // Performance
+    { id: 'p1', severity: 'high', category: 'Performance Smells', title: 'Nested Loop (O(n²) risk)', description: 'Nested for/while loops detected. This can lead to O(n²) or worse time complexity. Consider using a Map/Set for lookups or refactoring to reduce nesting.', pattern: /for\s*\([^)]+\)\s*\{[^}]*for\s*\(|while\s*\([^)]+\)\s*\{[^}]*while\s*\(/ },
+    { id: 'p2', severity: 'medium', category: 'Performance Smells', title: 'Synchronous File I/O', description: 'Synchronous filesystem operations (readFileSync, writeFileSync) block the event loop. Use async alternatives in production Node.js code.', pattern: /readFileSync|writeFileSync|execSync/ },
+    { id: 'p3', severity: 'low', category: 'Performance Smells', title: 'Missing Memoization Opportunity', description: 'Detected what looks like a recursive function without caching. Consider memoization to avoid redundant computations.', pattern: /function\s+\w+\([^)]*\)\s*\{[\s\S]*\1\s*\(/ },
+    { id: 'p4', severity: 'medium', category: 'Performance Smells', title: 'Array in Hot Loop', description: 'Calling .length inside a loop condition re-evaluates each iteration. Cache the length in a variable for better performance.', pattern: /for\s*\([^;]+;\s*\w+\s*<\s*\w+\.length/ },
+    // Style
+    { id: 'st1', severity: 'low', category: 'Style Issues', title: 'Magic Number', description: 'Unexplained numeric literals in logic make code hard to maintain. Extract to named constants with clear intent.', pattern: /(?<![.\w])[2-9]\d{2,}(?![.\d])/ },
+    { id: 'st2', severity: 'low', category: 'Style Issues', title: 'Commented-Out Code', description: 'Commented-out code clutters the codebase and causes confusion. Remove it — version control preserves history.', pattern: /^\s*\/\/\s*(var|let|const|function|return|if|for)\s/m },
+    { id: 'st3', severity: 'low', category: 'Style Issues', title: 'TODO / FIXME / HACK Comment', description: 'TODO or FIXME comments indicate unfinished work. Ensure these are tracked in your issue tracker and not forgotten.', pattern: /\/\/\s*(TODO|FIXME|HACK|XXX)\b/i },
+    // Best Practices
+    { id: 'b1', severity: 'high', category: 'Best Practices', title: 'console.log Left in Code', description: 'console.log statements left in production code leak internal details and impact performance. Use a proper logging library with log levels.', pattern: /console\.(log|debug|info)\s*\(/ },
+    { id: 'b2', severity: 'high', category: 'Best Practices', title: 'Unhandled Promise / Missing await', description: 'An async function is called without await or .catch(). Unhandled promise rejections can cause silent failures and crashes.', pattern: /(?<!await\s)(?<!return\s)\b\w+\s*\([^)]*\)\s*\.then\s*\((?![^)]*catch)/ },
+    { id: 'b3', severity: 'medium', category: 'Best Practices', title: 'Empty catch Block', description: 'An empty catch block silently swallows errors. Always handle errors or at least log them with context.', pattern: /catch\s*\([^)]*\)\s*\{\s*\}/ },
+    { id: 'b4', severity: 'medium', category: 'Best Practices', title: 'var Usage (use let/const)', description: 'var has function scope and hoisting behavior that causes bugs. Use const by default, let when reassignment is needed.', pattern: /\bvar\s+\w/ },
+  ];
+
+  const CATEGORIES = ['Security Issues', 'Performance Smells', 'Style Issues', 'Best Practices'];
+  const SEV_COLOR: Record<string, string> = {
+    critical: 'text-red-400 bg-red-500/10 border-red-500/30',
+    high: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
+    medium: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
+    low: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+  };
+
+  function analyze(code: string): Finding[] {
+    const findings: Finding[] = [];
+    for (const rule of RULES) {
+      if (rule.pattern.test(code)) {
+        const match = code.match(rule.pattern);
+        let lineHint = '';
+        if (match && match.index !== undefined) {
+          const lineNum = code.substring(0, match.index).split('\n').length;
+          lineHint = `~line ${lineNum}`;
+        }
+        findings.push({ ...rule, lineHint });
+      }
+    }
+    return findings;
+  }
+
+  function render(findings: Finding[], totalLines: number) {
+    const summary = document.getElementById('results-summary')!;
+    const container = document.getElementById('results-container')!;
+    const banner = document.getElementById('score-banner')!;
+
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const f of findings) counts[f.severity]++;
+
+    document.getElementById('count-critical')!.textContent = String(counts.critical);
+    document.getElementById('count-high')!.textContent = String(counts.high);
+    document.getElementById('count-medium')!.textContent = String(counts.medium);
+    document.getElementById('count-low')!.textContent = String(counts.low);
+    summary.classList.remove('hidden');
+
+    const grouped: Record<string, Finding[]> = {};
+    for (const cat of CATEGORIES) grouped[cat] = [];
+    for (const f of findings) {
+      if (!grouped[f.category]) grouped[f.category] = [];
+      grouped[f.category].push(f);
+    }
+
+    container.innerHTML = CATEGORIES.map(cat => {
+      const items = grouped[cat] || [];
+      const passed = items.length === 0;
+      return `
+        <div class="bg-bg-card border ${passed ? 'border-green-500/20' : 'border-border'} rounded-xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-semibold">${cat}</h2>
+            <span class="text-xs px-2 py-1 rounded-full ${passed ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}">
+              ${passed ? '✓ All clear' : `${items.length} issue${items.length > 1 ? 's' : ''}`}
+            </span>
+          </div>
+          ${passed ? '<p class="text-sm text-text-muted">No issues detected in this category.</p>' :
+            items.map(f => `
+              <div class="border ${SEV_COLOR[f.severity]} rounded-lg p-3 mb-2 last:mb-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-xs font-semibold uppercase px-2 py-0.5 rounded ${SEV_COLOR[f.severity]} border">${f.severity}</span>
+                  <span class="text-sm font-medium">${f.title}</span>
+                  ${f.lineHint ? `<span class="text-xs text-text-muted ml-auto font-mono">${f.lineHint}</span>` : ''}
+                </div>
+                <p class="text-xs text-text-muted">${f.description}</p>
+              </div>
+            `).join('')
+          }
+        </div>
+      `;
+    }).join('');
+
+    // Score
+    const penalty = counts.critical * 30 + counts.high * 15 + counts.medium * 7 + counts.low * 3;
+    const score = Math.max(0, 100 - penalty);
+    const bar = document.getElementById('score-bar')!;
+    bar.style.width = score + '%';
+    bar.className = `h-2 rounded-full transition-all duration-500 ${score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`;
+    document.getElementById('score-label')!.textContent = `Code Health Score: ${score}/100`;
+    document.getElementById('score-desc')!.textContent = score >= 80 ? 'Good quality — minor issues only.' : score >= 50 ? 'Some issues found — review before shipping.' : 'Significant issues detected — do not ship without fixing critical/high findings.';
+    banner.classList.remove('hidden');
+  }
+
+  const codeInput = document.getElementById('code-input') as HTMLTextAreaElement;
+  const lineCount = document.getElementById('line-count')!;
+
+  codeInput.addEventListener('input', () => {
+    const lines = codeInput.value ? codeInput.value.split('\n').length : 0;
+    lineCount.textContent = `${lines} line${lines !== 1 ? 's' : ''}`;
+  });
+
+  document.getElementById('analyze-btn')!.addEventListener('click', () => {
+    const code = codeInput.value.trim();
+    if (!code) return;
+    const findings = analyze(code);
+    const lines = code.split('\n').length;
+    render(findings, lines);
+  });
+
+  document.getElementById('load-example')!.addEventListener('click', () => {
+    codeInput.value = EXAMPLE_CODE;
+    codeInput.dispatchEvent(new Event('input'));
+  });
+
+  document.getElementById('clear-code')!.addEventListener('click', () => {
+    codeInput.value = '';
+    lineCount.textContent = '0 lines';
+    document.getElementById('results-summary')!.classList.add('hidden');
+    document.getElementById('results-container')!.innerHTML = '';
+    document.getElementById('score-banner')!.classList.add('hidden');
+  });
+</script>
