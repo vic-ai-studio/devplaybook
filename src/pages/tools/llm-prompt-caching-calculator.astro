@@ -1,0 +1,332 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is prompt caching in LLMs?",
+    answer: "Prompt caching lets you store and reuse a processed portion of your prompt (usually the system prompt or static context) across multiple API calls. Instead of re-processing thousands of tokens each time, the model reuses its cached KV (key-value) state. Anthropic charges 10% of the normal input price for cache read hits, and 125% for the initial cache write. OpenAI offers automatic caching at 50% discount for prompts over 1,024 tokens."
+  },
+  {
+    question: "How much can prompt caching save?",
+    answer: "Savings depend heavily on your system prompt length and cache hit rate. A 10,000-token system prompt with Claude 3.5 Sonnet normally costs $0.03 per call. With caching at 80% hit rate, the effective cost drops to about $0.006 per call — an 80% reduction. For high-volume applications (1M+ calls/day), this can translate to thousands of dollars monthly."
+  },
+  {
+    question: "How does Anthropic prompt caching work?",
+    answer: "To use Anthropic caching: add cache_control: {type: 'ephemeral'} to the system prompt content block. The first call writes to cache (costs 1.25x normal). Subsequent calls within the TTL (5 minutes, extendable by each use) pay 0.1x normal input price. Cache is per-prompt prefix — changing even one token invalidates the cache. You need Claude 3 Haiku, Sonnet, or Opus."
+  },
+  {
+    question: "How does OpenAI prompt caching work?",
+    answer: "OpenAI enables automatic prompt caching for prompts over 1,024 tokens. When the prefix of a prompt matches a recently used prompt, you're charged 50% of the normal input token price for those cached tokens. Unlike Anthropic, there's no explicit API call needed — OpenAI handles caching automatically. Available for GPT-4o, GPT-4o Mini, and o1 models."
+  },
+  {
+    question: "What content is good to cache?",
+    answer: "Best to cache: (1) Long system prompts with tool definitions, company policies, or knowledge bases. (2) Few-shot examples that rarely change. (3) Document context that's the same across many queries. (4) Conversation history for stateful applications. Worst to cache: dynamic content, user-specific data, or anything that changes per request. The static prefix must come before dynamic content."
+  }
+];
+---
+
+<BaseLayout
+  title="LLM Prompt Caching Calculator — Calculate Token Savings with Anthropic & OpenAI"
+  description="Calculate cost savings from LLM prompt caching. Compare Anthropic Claude and OpenAI GPT-4 caching pricing. Estimate monthly savings based on call volume and cache hit rate."
+  tool="llm prompt caching calculator, anthropic prompt caching, openai prompt caching, claude caching cost, gpt-4 caching savings"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "LLM Prompt Caching Calculator",
+    "url": "https://devplaybook.cc/tools/llm-prompt-caching-calculator",
+    "description": "Calculate cost savings from prompt caching with Anthropic Claude and OpenAI GPT-4. Estimate monthly savings based on token counts, call volume, and cache hit rates.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">LLM Prompt Caching Calculator</h1>
+  <p class="text-text-muted mb-4">
+    Estimate token savings and cost reductions from LLM prompt caching with Anthropic Claude and OpenAI GPT-4.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Anthropic & OpenAI caching</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Monthly savings estimate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Breakeven analysis</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Inputs -->
+    <div class="space-y-5">
+      <!-- Model selector -->
+      <div>
+        <label class="block text-sm font-medium mb-2">Model</label>
+        <div class="grid grid-cols-2 gap-2" id="model-buttons">
+          <button class="model-btn active text-sm py-2 px-3 rounded-lg border border-primary bg-primary/10 text-primary" data-model="claude-sonnet">Claude 3.5 Sonnet</button>
+          <button class="model-btn text-sm py-2 px-3 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary" data-model="claude-haiku">Claude 3.5 Haiku</button>
+          <button class="model-btn text-sm py-2 px-3 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary" data-model="gpt4o">GPT-4o</button>
+          <button class="model-btn text-sm py-2 px-3 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary" data-model="gpt4o-mini">GPT-4o Mini</button>
+        </div>
+      </div>
+
+      <!-- Token inputs -->
+      <div class="space-y-3">
+        <div>
+          <label class="flex justify-between text-sm mb-1">
+            <span class="font-medium">Cached Prefix Tokens</span>
+            <span id="cached-token-display" class="text-text-muted font-mono text-xs">5,000</span>
+          </label>
+          <input type="range" id="cached-tokens" class="w-full accent-primary" min="1000" max="100000" step="1000" value="5000">
+          <div class="flex justify-between text-xs text-text-muted mt-1"><span>1K</span><span>100K</span></div>
+          <p class="text-xs text-text-muted mt-1">System prompt + tool definitions + static context</p>
+        </div>
+        <div>
+          <label class="flex justify-between text-sm mb-1">
+            <span class="font-medium">Dynamic Tokens Per Call</span>
+            <span id="dynamic-token-display" class="text-text-muted font-mono text-xs">500</span>
+          </label>
+          <input type="range" id="dynamic-tokens" class="w-full accent-primary" min="100" max="10000" step="100" value="500">
+          <div class="flex justify-between text-xs text-text-muted mt-1"><span>100</span><span>10K</span></div>
+          <p class="text-xs text-text-muted mt-1">User messages + conversation history (per call)</p>
+        </div>
+        <div>
+          <label class="flex justify-between text-sm mb-1">
+            <span class="font-medium">Output Tokens Per Call</span>
+            <span id="output-token-display" class="text-text-muted font-mono text-xs">300</span>
+          </label>
+          <input type="range" id="output-tokens" class="w-full accent-primary" min="50" max="4000" step="50" value="300">
+          <div class="flex justify-between text-xs text-text-muted mt-1"><span>50</span><span>4K</span></div>
+        </div>
+      </div>
+
+      <!-- Volume & hit rate -->
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Daily API Calls</label>
+          <input type="number" id="daily-calls" class="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50" value="1000" min="1">
+        </div>
+        <div>
+          <label class="flex justify-between text-sm mb-1">
+            <span class="font-medium">Cache Hit Rate</span>
+            <span id="hit-rate-display" class="text-text-muted font-mono text-xs">80%</span>
+          </label>
+          <input type="range" id="hit-rate" class="w-full accent-primary mt-1" min="0" max="100" step="5" value="80">
+          <div class="flex justify-between text-xs text-text-muted mt-1"><span>0%</span><span>100%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="space-y-4">
+      <!-- Model info -->
+      <div id="model-info" class="bg-surface border border-border rounded-xl p-4 text-xs space-y-1.5"></div>
+
+      <!-- Cost comparison -->
+      <div class="border border-border rounded-xl p-4 space-y-3">
+        <h3 class="text-sm font-semibold">Cost Per 1,000 Calls</h3>
+        <div class="space-y-2">
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-text-muted">Without caching</span>
+            <span id="cost-no-cache" class="font-mono font-bold">$0.00</span>
+          </div>
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-text-muted">With caching</span>
+            <span id="cost-with-cache" class="font-mono font-bold text-green-400">$0.00</span>
+          </div>
+          <div class="flex justify-between items-center text-sm border-t border-border pt-2">
+            <span class="font-medium">Savings per 1K calls</span>
+            <span id="savings-1k" class="font-mono font-bold text-primary">$0.00</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monthly projection -->
+      <div class="border border-border rounded-xl p-4 space-y-3">
+        <h3 class="text-sm font-semibold">Monthly Projection</h3>
+        <div class="space-y-2">
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-text-muted">Monthly calls</span>
+            <span id="monthly-calls" class="font-mono">0</span>
+          </div>
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-text-muted">Without caching</span>
+            <span id="monthly-no-cache" class="font-mono font-bold">$0.00</span>
+          </div>
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-text-muted">With caching</span>
+            <span id="monthly-with-cache" class="font-mono font-bold text-green-400">$0.00</span>
+          </div>
+          <div class="flex justify-between items-center text-sm border-t border-border pt-2">
+            <span class="font-medium">Monthly savings</span>
+            <span id="monthly-savings" class="font-mono font-bold text-primary text-lg">$0.00</span>
+          </div>
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-text-muted">Savings %</span>
+            <span id="savings-pct" class="font-mono font-bold">0%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Breakeven -->
+      <div id="breakeven-box" class="border border-border rounded-xl p-4 text-sm">
+        <div class="font-medium mb-1">Breakeven Analysis</div>
+        <div id="breakeven-text" class="text-xs text-text-muted"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Implementation guide -->
+  <div class="border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">Implementation Guide</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <div class="text-sm font-medium mb-2 text-orange-400">Anthropic (Claude)</div>
+        <pre class="text-xs font-mono text-accent bg-surface rounded-lg p-3 overflow-x-auto whitespace-pre">{`import anthropic
+client = anthropic.Anthropic()
+
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=1024,
+    system=[{
+        "type": "text",
+        "text": "Your long system prompt here...",
+        "cache_control": {"type": "ephemeral"}
+    }],
+    messages=[{"role": "user", "content": query}]
+)
+# cache_read_input_tokens in usage`}</pre>
+      </div>
+      <div>
+        <div class="text-sm font-medium mb-2 text-green-400">OpenAI (GPT-4o)</div>
+        <pre class="text-xs font-mono text-accent bg-surface rounded-lg p-3 overflow-x-auto whitespace-pre">{`from openai import OpenAI
+client = OpenAI()
+
+# Caching is AUTOMATIC for prompts > 1024 tokens
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": long_system_prompt},
+        {"role": "user", "content": query}
+    ]
+)
+# cached_tokens in usage.prompt_tokens_details`}</pre>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit />
+  <ToolPageCta />
+
+<script>
+(() => {
+  const MODELS = {
+    'claude-sonnet': { name: 'Claude 3.5 Sonnet', inputPerM: 3.00, outputPerM: 15.00, cacheWriteMultiplier: 1.25, cacheReadMultiplier: 0.10, cacheType: 'anthropic', minCacheTokens: 1024 },
+    'claude-haiku': { name: 'Claude 3.5 Haiku', inputPerM: 0.80, outputPerM: 4.00, cacheWriteMultiplier: 1.25, cacheReadMultiplier: 0.10, cacheType: 'anthropic', minCacheTokens: 2048 },
+    'gpt4o': { name: 'GPT-4o', inputPerM: 5.00, outputPerM: 15.00, cacheWriteMultiplier: 1.00, cacheReadMultiplier: 0.50, cacheType: 'openai', minCacheTokens: 1024 },
+    'gpt4o-mini': { name: 'GPT-4o Mini', inputPerM: 0.15, outputPerM: 0.60, cacheWriteMultiplier: 1.00, cacheReadMultiplier: 0.50, cacheType: 'openai', minCacheTokens: 1024 },
+  };
+
+  let activeModel = 'claude-sonnet';
+
+  function fmt(n) { return '$' + n.toFixed(n >= 1 ? 2 : n >= 0.01 ? 4 : 6); }
+
+  function calc() {
+    const model = MODELS[activeModel];
+    const cachedTok = parseInt(document.getElementById('cached-tokens').value);
+    const dynamicTok = parseInt(document.getElementById('dynamic-tokens').value);
+    const outputTok = parseInt(document.getElementById('output-tokens').value);
+    const dailyCalls = parseInt(document.getElementById('daily-calls').value) || 1;
+    const hitRate = parseInt(document.getElementById('hit-rate').value) / 100;
+
+    const totalInputPerCall = cachedTok + dynamicTok;
+    const pricePerM = model.inputPerM;
+
+    // Without caching: all input tokens at full price every call
+    const costNoCachePer1K = ((totalInputPerCall / 1_000_000) * pricePerM + (outputTok / 1_000_000) * model.outputPerM) * 1000;
+
+    // With caching:
+    // cache miss = first call or after TTL: write at 1.25x (Anthropic) or 1x (OpenAI, no write fee)
+    // cache hit = cached tokens at cacheReadMultiplier, dynamic at full price
+    const cacheMissRate = 1 - hitRate;
+    const cacheHitRate = hitRate;
+
+    // Cost per call (hit): cached tokens at read price + dynamic at full
+    const costPerCallHit = (cachedTok / 1_000_000) * pricePerM * model.cacheReadMultiplier
+      + (dynamicTok / 1_000_000) * pricePerM
+      + (outputTok / 1_000_000) * model.outputPerM;
+
+    // Cost per call (miss): all input at write price + dynamic at full
+    const costPerCallMiss = (cachedTok / 1_000_000) * pricePerM * model.cacheWriteMultiplier
+      + (dynamicTok / 1_000_000) * pricePerM
+      + (outputTok / 1_000_000) * model.outputPerM;
+
+    const costWithCachePer1K = (cacheHitRate * costPerCallHit + cacheMissRate * costPerCallMiss) * 1000;
+
+    const savings1k = costNoCachePer1K - costWithCachePer1K;
+    const savingsPct = costNoCachePer1K > 0 ? (savings1k / costNoCachePer1K) * 100 : 0;
+
+    const monthlyCalls = dailyCalls * 30;
+    const monthlyNoCacheCost = (costNoCachePer1K / 1000) * monthlyCalls;
+    const monthlyWithCacheCost = (costWithCachePer1K / 1000) * monthlyCalls;
+    const monthlySavings = monthlyNoCacheCost - monthlyWithCacheCost;
+
+    document.getElementById('cost-no-cache').textContent = fmt(costNoCachePer1K);
+    document.getElementById('cost-with-cache').textContent = fmt(costWithCachePer1K);
+    document.getElementById('savings-1k').textContent = fmt(savings1k);
+    document.getElementById('monthly-calls').textContent = monthlyCalls.toLocaleString();
+    document.getElementById('monthly-no-cache').textContent = fmt(monthlyNoCacheCost);
+    document.getElementById('monthly-with-cache').textContent = fmt(monthlyWithCacheCost);
+    document.getElementById('monthly-savings').textContent = fmt(monthlySavings);
+    document.getElementById('savings-pct').textContent = savingsPct.toFixed(1) + '%';
+
+    const breakeven = cachedTok >= model.minCacheTokens
+      ? `Caching is eligible (min ${model.minCacheTokens.toLocaleString()} tokens required). ${hitRate >= 0.5 ? 'At ' + (hitRate*100).toFixed(0) + '% hit rate, caching saves ' + savingsPct.toFixed(0) + '% of input token costs.' : 'Increase cache hit rate above 50% to maximize savings.'}`
+      : `⚠ Caching requires ≥${model.minCacheTokens.toLocaleString()} tokens in the cached prefix. Current: ${cachedTok.toLocaleString()} tokens. Add more content to your system prompt.`;
+    document.getElementById('breakeven-text').textContent = breakeven;
+
+    document.getElementById('model-info').innerHTML = `
+      <div class="grid grid-cols-2 gap-1.5">
+        <span class="text-text-muted">Input price</span><span class="font-mono">$${model.inputPerM}/1M</span>
+        <span class="text-text-muted">Cache write</span><span class="font-mono">$${(model.inputPerM * model.cacheWriteMultiplier).toFixed(2)}/1M (${(model.cacheWriteMultiplier * 100).toFixed(0)}%)</span>
+        <span class="text-text-muted">Cache read</span><span class="font-mono text-green-400">$${(model.inputPerM * model.cacheReadMultiplier).toFixed(3)}/1M (${(model.cacheReadMultiplier * 100).toFixed(0)}%)</span>
+        <span class="text-text-muted">Output price</span><span class="font-mono">$${model.outputPerM}/1M</span>
+        <span class="text-text-muted">Cache type</span><span>${model.cacheType === 'anthropic' ? '🟠 Explicit (cache_control)' : '🟢 Automatic (>1024 tokens)'}</span>
+      </div>
+    `;
+  }
+
+  // Range display updates
+  document.getElementById('cached-tokens').addEventListener('input', e => {
+    document.getElementById('cached-token-display').textContent = parseInt(e.target.value).toLocaleString();
+    calc();
+  });
+  document.getElementById('dynamic-tokens').addEventListener('input', e => {
+    document.getElementById('dynamic-token-display').textContent = parseInt(e.target.value).toLocaleString();
+    calc();
+  });
+  document.getElementById('output-tokens').addEventListener('input', e => {
+    document.getElementById('output-token-display').textContent = parseInt(e.target.value).toLocaleString();
+    calc();
+  });
+  document.getElementById('hit-rate').addEventListener('input', e => {
+    document.getElementById('hit-rate-display').textContent = e.target.value + '%';
+    calc();
+  });
+  document.getElementById('daily-calls').addEventListener('input', calc);
+
+  document.querySelectorAll('.model-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active', 'border-primary', 'text-primary', 'bg-primary/10'));
+      btn.classList.add('active', 'border-primary', 'text-primary', 'bg-primary/10');
+      activeModel = btn.dataset.model;
+      calc();
+    });
+  });
+
+  calc();
+})();
+</script>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

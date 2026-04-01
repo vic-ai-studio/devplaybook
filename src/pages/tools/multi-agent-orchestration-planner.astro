@@ -1,0 +1,351 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is multi-agent orchestration?",
+    answer: "Multi-agent orchestration is the coordination of multiple AI agents to accomplish complex tasks that are too large, too specialized, or too risky for a single agent. An orchestrator decomposes a goal into sub-tasks, assigns them to specialized agents, manages information flow between agents, handles failures, and synthesizes final results. Examples: a research orchestrator that uses researcher, critic, and writer agents in sequence."
+  },
+  {
+    question: "When should I use multiple agents vs a single agent?",
+    answer: "Use multiple agents when: (1) The task is too long for one context window. (2) Different sub-tasks require different tools or expertise. (3) Parallel execution would meaningfully speed up the work. (4) Independent verification is needed (one agent generates, another reviews). (5) Failure isolation is important — one failing agent shouldn't crash everything. Use a single agent for tasks that fit in one context and don't benefit from specialization."
+  },
+  {
+    question: "What are the main multi-agent patterns?",
+    answer: "Key patterns: (1) Sequential/pipeline — agent A passes output to agent B, which passes to agent C. Simple but slow. (2) Parallel — independent agents work simultaneously, orchestrator merges results. Fast for independent tasks. (3) Hierarchical — manager agent delegates to worker agents, can recursively delegate. (4) Critic/reviewer — one agent generates, another critiques and improves. (5) Role-based crew — agents have persistent roles (researcher, writer, editor) and collaborate on shared goals."
+  },
+  {
+    question: "How do I handle agent failures in a pipeline?",
+    answer: "Failure strategies: (1) Retry with backoff — retry the failed agent 2-3 times before escalating. (2) Fallback agent — a simpler/cheaper backup agent handles the task if the primary fails. (3) Human escalation — route to human review when agents fail after max retries. (4) Graceful degradation — return partial results with a clear indication of what failed. (5) Dead letter queue — save failed tasks for later retry or analysis."
+  },
+  {
+    question: "What frameworks support multi-agent orchestration?",
+    answer: "Popular frameworks: LangGraph (graph-based state machines, from LangChain), CrewAI (role-based crews with delegation), AutoGen (Microsoft, conversation-based multi-agent), Swarm (OpenAI, lightweight agent handoffs), LlamaIndex Workflows, Agno (formerly Phidata), and Pydantic AI. Claude Code itself operates as an agent and can be orchestrated via its SDK. For production, LangGraph and CrewAI are most mature."
+  }
+];
+---
+
+<BaseLayout
+  title="Multi-Agent Orchestration Planner — Decompose Goals into Agent Workflows"
+  description="Plan multi-agent AI workflows: input a goal, get agent breakdown, task dependencies, data flow, and generated code. Supports LangGraph, CrewAI, and custom orchestration patterns."
+  tool="multi-agent orchestration planner, multi-agent workflow designer, langchain agent decomposer, crewai planner, ai agent workflow builder"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Multi-Agent Orchestration Planner",
+    "url": "https://devplaybook.cc/tools/multi-agent-orchestration-planner",
+    "description": "Decompose complex goals into multi-agent workflows. Plan agent roles, task dependencies, data flow, and generate orchestration code for LangGraph, CrewAI, and custom frameworks.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Multi-Agent Orchestration Planner</h1>
+  <p class="text-text-muted mb-4">
+    Decompose complex goals into agent workflows. Plan roles, task dependencies, and data flow, then generate orchestration code.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Goal decomposition</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Agent role design</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Code generation</span>
+  </div>
+
+  <!-- Goal input -->
+  <div class="space-y-4 mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium mb-2">Goal / Task Description</label>
+        <textarea id="goal-input" class="w-full h-24 px-3 py-2 bg-surface border border-border rounded-lg text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-text-muted"
+          placeholder="e.g. Research competitors, write a market analysis report, and create a presentation"></textarea>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-2">Framework</label>
+          <select id="framework" class="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:outline-none">
+            <option value="langgraph">LangGraph</option>
+            <option value="crewai">CrewAI</option>
+            <option value="autogen">AutoGen</option>
+            <option value="custom">Custom Python</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-2">Pattern</label>
+          <select id="pattern" class="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:outline-none">
+            <option value="sequential">Sequential Pipeline</option>
+            <option value="parallel">Parallel Fan-out</option>
+            <option value="hierarchical">Hierarchical</option>
+            <option value="critic">Generator + Critic</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+      <button id="btn-plan" class="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">Generate Plan</button>
+      <button class="example-btn text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary" data-ex="research">Research Report</button>
+      <button class="example-btn text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary" data-ex="content">Content Pipeline</button>
+      <button class="example-btn text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary" data-ex="code">Code Review</button>
+      <button class="example-btn text-xs px-3 py-1.5 border border-border rounded-lg hover:border-primary hover:text-primary" data-ex="analysis">Data Analysis</button>
+    </div>
+  </div>
+
+  <!-- Plan output -->
+  <div id="plan-output" class="hidden space-y-6">
+    <!-- Agent breakdown -->
+    <div class="border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-3">Agent Breakdown</h2>
+      <div id="agent-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    </div>
+
+    <!-- Task flow -->
+    <div class="border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-3">Task Flow</h2>
+      <div id="task-flow" class="space-y-2"></div>
+    </div>
+
+    <!-- Generated code -->
+    <div class="border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Generated Code</h2>
+        <button id="btn-copy-code" class="text-xs px-3 py-1 bg-surface border border-border rounded hover:border-primary hover:text-primary transition-colors">Copy</button>
+      </div>
+      <pre id="generated-code" class="text-xs font-mono text-accent bg-surface rounded-lg p-4 overflow-x-auto whitespace-pre max-h-96"></pre>
+    </div>
+  </div>
+
+  <AdUnit />
+  <ToolPageCta />
+
+<script>
+(() => {
+  const EXAMPLES = {
+    research: {
+      goal: 'Research the latest trends in AI coding tools, analyze competitor features, and produce a comprehensive market analysis report with recommendations.',
+      pattern: 'sequential',
+      framework: 'crewai'
+    },
+    content: {
+      goal: 'Take a product description, research SEO keywords, write an optimized blog post, review it for quality, and format it for publication.',
+      pattern: 'sequential',
+      framework: 'crewai'
+    },
+    code: {
+      goal: 'Analyze a GitHub repository for bugs, generate fixes, write tests for the fixes, and produce a summary PR description.',
+      pattern: 'critic',
+      framework: 'langgraph'
+    },
+    analysis: {
+      goal: 'Collect data from multiple sources in parallel, clean and normalize it, run statistical analysis, generate visualizations, and produce an executive summary.',
+      pattern: 'parallel',
+      framework: 'langgraph'
+    }
+  };
+
+  const PATTERNS = {
+    sequential: {
+      name: 'Sequential Pipeline',
+      description: 'Agents run one after another, each receiving the output of the previous.',
+      getAgents: (goal) => [
+        { role: 'Input Processor', goal: 'Parse and validate the input. Extract key requirements.', tools: [], output: 'Structured task brief' },
+        { role: 'Research Agent', goal: 'Gather relevant information and data for the task.', tools: ['SerperDevTool', 'ScrapeWebsiteTool'], output: 'Research findings' },
+        { role: 'Execution Agent', goal: 'Perform the core task using research findings.', tools: ['FileWriterTool'], output: 'Primary deliverable' },
+        { role: 'Quality Reviewer', goal: 'Review output for accuracy, completeness, and quality.', tools: [], output: 'Reviewed final output' },
+      ]
+    },
+    parallel: {
+      name: 'Parallel Fan-out',
+      description: 'Multiple agents work simultaneously on independent sub-tasks, an aggregator merges results.',
+      getAgents: (goal) => [
+        { role: 'Orchestrator', goal: 'Decompose the goal and coordinate parallel workers.', tools: [], output: 'Task assignments' },
+        { role: 'Worker Agent A', goal: 'Handle sub-task A in parallel.', tools: ['SerperDevTool'], output: 'Sub-task A results' },
+        { role: 'Worker Agent B', goal: 'Handle sub-task B in parallel.', tools: ['SerperDevTool'], output: 'Sub-task B results' },
+        { role: 'Worker Agent C', goal: 'Handle sub-task C in parallel.', tools: ['ScrapeWebsiteTool'], output: 'Sub-task C results' },
+        { role: 'Aggregator', goal: 'Merge and synthesize all parallel worker outputs.', tools: [], output: 'Unified final result' },
+      ]
+    },
+    hierarchical: {
+      name: 'Hierarchical',
+      description: 'A manager agent delegates to specialized workers, can recursively delegate.',
+      getAgents: (goal) => [
+        { role: 'Manager Agent', goal: 'Oversee the workflow, delegate tasks, resolve blockers.', tools: [], output: 'Delegation decisions + final synthesis', isManager: true },
+        { role: 'Domain Expert A', goal: 'Handle specialized domain tasks as delegated by manager.', tools: ['SerperDevTool', 'ScrapeWebsiteTool'], output: 'Domain expertise output' },
+        { role: 'Domain Expert B', goal: 'Handle specialized domain tasks as delegated by manager.', tools: ['CodeInterpreterTool'], output: 'Domain expertise output' },
+        { role: 'Execution Worker', goal: 'Carry out concrete implementation tasks.', tools: ['FileWriterTool'], output: 'Implemented artifacts' },
+      ]
+    },
+    critic: {
+      name: 'Generator + Critic',
+      description: 'A generator produces output, a critic reviews and provides feedback, loop until quality threshold is met.',
+      getAgents: (goal) => [
+        { role: 'Generator Agent', goal: 'Produce high-quality initial output for the given task.', tools: ['SerperDevTool'], output: 'Initial draft' },
+        { role: 'Critic Agent', goal: 'Evaluate quality, identify issues, provide specific improvement feedback.', tools: [], output: 'Critique + improvement requests' },
+        { role: 'Revisor Agent', goal: 'Apply critic feedback to improve the output.', tools: [], output: 'Revised version' },
+        { role: 'Final Reviewer', goal: 'Approve or request one final round of revisions.', tools: [], output: 'Approval decision + final output' },
+      ]
+    }
+  };
+
+  function generateLangGraphCode(agents, pattern) {
+    const agentVars = agents.map(a => a.role.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''));
+    let code = `from langgraph.graph import StateGraph, END
+from typing import TypedDict, Annotated
+import operator
+
+class WorkflowState(TypedDict):
+    goal: str
+    results: Annotated[list, operator.add]
+    current_output: str
+    approved: bool
+
+`;
+    agents.forEach((a, i) => {
+      code += `def ${agentVars[i]}(state: WorkflowState) -> WorkflowState:
+    """${a.role}: ${a.goal}"""
+    # TODO: implement ${a.role} logic
+    # Output: ${a.output}
+    return {"current_output": f"${a.role} output", "results": ["${a.role} completed"]}\n\n`;
+    });
+
+    if (pattern === 'critic') {
+      code += `def should_revise(state: WorkflowState) -> str:
+    """Route based on critic approval"""
+    # TODO: implement quality check logic
+    return "revise" if not state.get("approved") else "approve"\n\n`;
+    }
+
+    code += `# Build workflow\nworkflow = StateGraph(WorkflowState)\n\n`;
+    agents.forEach((a, i) => { code += `workflow.add_node("${a.role.toLowerCase().replace(/\s+/g, '_')}", ${agentVars[i]})\n`; });
+    code += `\n# Entry point\nworkflow.set_entry_point("${agentVars[0]}")\n\n`;
+
+    if (pattern === 'sequential' || pattern === 'hierarchical') {
+      agents.slice(0, -1).forEach((a, i) => {
+        code += `workflow.add_edge("${a.role.toLowerCase().replace(/\s+/g, '_')}", "${agents[i+1].role.toLowerCase().replace(/\s+/g, '_')}")\n`;
+      });
+      code += `workflow.add_edge("${agents[agents.length-1].role.toLowerCase().replace(/\s+/g, '_')}", END)\n`;
+    } else if (pattern === 'parallel') {
+      const workers = agents.slice(1, -1);
+      code += `# Parallel fan-out\nfrom langgraph.graph import Send\n`;
+      code += `workflow.add_conditional_edges("${agentVars[0]}", lambda s: [Send("${workers.map(w => w.role.toLowerCase().replace(/\s+/g, '_')).join('"), Send("')}")])\n`;
+      workers.forEach(w => { code += `workflow.add_edge("${w.role.toLowerCase().replace(/\s+/g, '_')}", "${agentVars[agentVars.length-1]}")\n`; });
+      code += `workflow.add_edge("${agentVars[agentVars.length-1]}", END)\n`;
+    } else if (pattern === 'critic') {
+      code += `workflow.add_edge("${agentVars[0]}", "${agentVars[1]}")\n`;
+      code += `workflow.add_conditional_edges("${agentVars[1]}", should_revise, {"revise": "${agentVars[2]}", "approve": "${agentVars[3]}"})\n`;
+      code += `workflow.add_edge("${agentVars[2]}", "${agentVars[1]}")\n`;
+      code += `workflow.add_edge("${agentVars[3]}", END)\n`;
+    }
+
+    code += `\napp = workflow.compile()\nresult = app.invoke({"goal": "your goal here", "results": [], "current_output": "", "approved": False})\n`;
+    return code;
+  }
+
+  function generateCrewAICode(agents, pattern) {
+    let code = `from crewai import Agent, Task, Crew, Process
+from crewai_tools import SerperDevTool, ScrapeWebsiteTool
+
+# Tools
+search_tool = SerperDevTool()
+scrape_tool = ScrapeWebsiteTool()
+
+# Agents\n`;
+    agents.forEach(a => {
+      const varName = a.role.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      const tools = a.tools.map(t => t.replace('Tool', '_tool').toLowerCase());
+      code += `${varName} = Agent(\n    role="${a.role}",\n    goal="${a.goal}",\n    backstory="Expert in this domain with years of experience.",\n    verbose=True,\n    allow_delegation=${a.isManager ? 'True' : 'False'},\n`;
+      if (tools.length > 0) code += `    tools=[${tools.join(', ')}],\n`;
+      code += `)\n\n`;
+    });
+
+    code += `# Tasks\n`;
+    agents.forEach((a, i) => {
+      const varName = a.role.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      code += `task_${i+1} = Task(\n    description="${a.goal}",\n    expected_output="${a.output}",\n    agent=${varName},\n)\n\n`;
+    });
+
+    const agentVars = agents.map(a => a.role.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''));
+    const taskVars = agents.map((_, i) => `task_${i+1}`);
+    const proc = pattern === 'hierarchical' ? 'Process.hierarchical' : 'Process.sequential';
+    code += `# Crew\ncrew = Crew(\n    agents=[${agentVars.join(', ')}],\n    tasks=[${taskVars.join(', ')}],\n    process=${proc},\n    verbose=True,\n)\n\nresult = crew.kickoff()\nprint(result)\n`;
+    return code;
+  }
+
+  function renderPlan(goal, pattern, framework) {
+    const patternDef = PATTERNS[pattern];
+    const agents = patternDef.getAgents(goal);
+
+    // Render agent cards
+    document.getElementById('agent-cards').innerHTML = agents.map((a, i) => `
+      <div class="border border-border rounded-lg p-3">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-bold shrink-0">${i+1}</span>
+          <span class="text-sm font-semibold">${a.role}</span>
+          ${a.isManager ? '<span class="text-xs px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">Manager</span>' : ''}
+        </div>
+        <p class="text-xs text-text-muted mb-2">${a.goal}</p>
+        <div class="text-xs">
+          <span class="text-text-muted">Output:</span> <span>${a.output}</span>
+        </div>
+        ${a.tools.length > 0 ? `<div class="flex flex-wrap gap-1 mt-2">${a.tools.map(t => `<span class="text-xs px-1 py-0.5 rounded bg-blue-500/10 text-blue-400">${t}</span>`).join('')}</div>` : ''}
+      </div>
+    `).join('');
+
+    // Render task flow
+    const flowItems = pattern === 'parallel'
+      ? [
+          `<div class="flex items-center gap-2 text-sm"><span class="text-primary font-mono">1.</span><span>${agents[0].role}</span><span class="text-text-muted text-xs">→ decomposes goal</span></div>`,
+          `<div class="ml-4 flex items-center gap-2 text-sm text-text-muted"><span>├─</span><span>${agents[1]?.role}</span><span class="text-xs">║ parallel</span></div>`,
+          `<div class="ml-4 flex items-center gap-2 text-sm text-text-muted"><span>├─</span><span>${agents[2]?.role}</span><span class="text-xs">║ parallel</span></div>`,
+          agents[3] && agents[3].role !== agents[agents.length-1].role ? `<div class="ml-4 flex items-center gap-2 text-sm text-text-muted"><span>└─</span><span>${agents[3]?.role}</span><span class="text-xs">║ parallel</span></div>` : '',
+          `<div class="flex items-center gap-2 text-sm"><span class="text-primary font-mono">${agents.length}.</span><span>${agents[agents.length-1].role}</span><span class="text-text-muted text-xs">→ merges results</span></div>`,
+        ]
+      : agents.map((a, i) => `<div class="flex items-center gap-2 text-sm"><span class="text-primary font-mono">${i+1}.</span><span>${a.role}</span>${i < agents.length-1 ? '<span class="text-text-muted text-xs">→</span>' : ''}</div>`);
+
+    document.getElementById('task-flow').innerHTML = flowItems.filter(Boolean).join('');
+
+    // Generate code
+    let code;
+    if (framework === 'langgraph' || framework === 'autogen') {
+      code = generateLangGraphCode(agents, pattern);
+    } else {
+      code = generateCrewAICode(agents, pattern);
+    }
+    document.getElementById('generated-code').textContent = code;
+    document.getElementById('plan-output').classList.remove('hidden');
+    document.getElementById('plan-output').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  document.getElementById('btn-plan').addEventListener('click', () => {
+    const goal = document.getElementById('goal-input').value.trim();
+    if (!goal) return;
+    const pattern = document.getElementById('pattern').value;
+    const framework = document.getElementById('framework').value;
+    renderPlan(goal, pattern, framework);
+  });
+
+  document.querySelectorAll('.example-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ex = EXAMPLES[btn.dataset.ex];
+      document.getElementById('goal-input').value = ex.goal;
+      document.getElementById('pattern').value = ex.pattern;
+      document.getElementById('framework').value = ex.framework;
+    });
+  });
+
+  document.getElementById('btn-copy-code').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('generated-code').textContent).then(() => {
+      const btn = document.getElementById('btn-copy-code');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  });
+})();
+</script>
+
+  <FaqSection faq={faq} />
+</BaseLayout>
