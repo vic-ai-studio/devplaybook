@@ -1,0 +1,462 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What are HTTP security headers and why do they matter?",
+    answer: "HTTP security headers are response headers that instruct browsers to enable built-in security protections. They defend against XSS, clickjacking, MIME sniffing, and data leakage attacks. Unlike application-level fixes, security headers can be added in minutes and immediately improve your security posture. A missing Content-Security-Policy, for example, leaves you vulnerable to XSS attacks that could steal user data or session cookies."
+  },
+  {
+    question: "What is Content-Security-Policy and how do I set it up?",
+    answer: "CSP (Content-Security-Policy) tells browsers which sources of scripts, styles, images, and other resources are allowed to load on your page. It's the most powerful XSS defense available. Start with a report-only policy: Content-Security-Policy-Report-Only: default-src 'self'. Watch your browser console and report endpoint for violations. Gradually tighten until violations stop, then switch to enforcing mode. A strict CSP: default-src 'self'; script-src 'self' 'nonce-{random}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;"
+  },
+  {
+    question: "What does Strict-Transport-Security (HSTS) do?",
+    answer: "HSTS tells browsers to only connect to your site over HTTPS, even if users type http://. It prevents SSL stripping attacks and protocol downgrade attacks. After a browser sees HSTS, it will automatically upgrade HTTP requests to HTTPS for the duration of max-age. Include 'includeSubDomains' if all your subdomains support HTTPS. Use 'preload' only after you're confident HTTPS works perfectly — preload list entries are hard to remove. Start with max-age=300, then increase to 31536000 (1 year) once stable."
+  },
+  {
+    question: "Is X-XSS-Protection still useful in 2026?",
+    answer: "X-XSS-Protection is deprecated and should be disabled by setting it to 0. The browser's built-in XSS auditor (which this header controlled) has been removed from Chrome/Firefox. Worse, in some browsers it could actually introduce vulnerabilities by interfering with page rendering. Rely on Content-Security-Policy for XSS protection instead — it's far more comprehensive and modern."
+  },
+  {
+    question: "How do I add security headers in common server setups?",
+    answer: "Nginx: add headers in your server{} block with 'add_header Header-Name value always;'. Apache: use Header set or Header always set in .htaccess or httpd.conf. Express.js: use the helmet npm package — it sets most headers automatically with sensible defaults. Cloudflare: use Transform Rules or Workers to add headers. Vercel/Netlify: use headers in vercel.json or _headers file. Always test after adding headers as CSP especially can break functionality."
+  }
+];
+---
+
+<BaseLayout
+  title="HTTP Security Headers Grader — Analyze & Grade Your Security Headers"
+  description="Paste HTTP response headers and get an A-F grade for Content-Security-Policy, HSTS, X-Frame-Options, and more. Get a security score, missing header list, and recommended values."
+  tool="http security headers grader, security headers checker, csp checker, hsts validator, http headers security analyzer"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "HTTP Security Headers Grader",
+    "url": "https://devplaybook.cc/tools/http-security-headers-grader",
+    "description": "Analyze HTTP response headers for security best practices. Get letter grades per header, overall score, missing headers list, and recommended values for CSP, HSTS, X-Frame-Options, and more.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">HTTP Security Headers Grader</h1>
+  <p class="text-text-muted mb-4">
+    Paste your HTTP response headers to get a security grade. Analyzes Content-Security-Policy, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, and more.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> A-F grading per header</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Overall security score</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Recommended values</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Missing headers list</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Impact score per fix</span>
+  </div>
+
+  <!-- How to get headers -->
+  <div class="bg-surface border border-border rounded-lg p-3 mb-4 text-xs text-text-muted">
+    <strong class="text-foreground">How to get your headers:</strong>
+    In Chrome DevTools → Network tab → click any request → Response Headers section.
+    Or in terminal: <code class="bg-bg-card px-1.5 py-0.5 rounded font-mono">curl -I https://yourdomain.com</code>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <label class="text-sm font-medium">HTTP Response Headers</label>
+      <div class="flex gap-2">
+        <button id="btn-sample-good" class="px-3 py-1 bg-surface border border-border rounded text-xs text-text-muted hover:border-primary transition-colors">Good example</button>
+        <button id="btn-sample-bad" class="px-3 py-1 bg-surface border border-border rounded text-xs text-text-muted hover:border-primary transition-colors">Bad example</button>
+        <button id="btn-clear" class="px-3 py-1 bg-surface border border-border rounded text-xs text-text-muted hover:border-primary transition-colors">Clear</button>
+      </div>
+    </div>
+    <textarea id="headers-input" rows="10" placeholder="Content-Type: text/html; charset=utf-8&#10;Server: nginx/1.24&#10;X-Frame-Options: DENY&#10;Content-Security-Policy: default-src 'self'&#10;..." class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-y"></textarea>
+    <button id="btn-grade" class="mt-3 w-full px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">Grade Security Headers</button>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="hidden space-y-4">
+    <!-- Overall score -->
+    <div id="overall-card" class="rounded-lg p-5 border">
+      <div class="flex items-center gap-6">
+        <div id="overall-grade" class="text-5xl font-bold w-20 h-20 flex items-center justify-center rounded-xl shrink-0"></div>
+        <div class="flex-1">
+          <div class="text-lg font-semibold mb-1">Overall Security Grade</div>
+          <div id="overall-desc" class="text-sm text-text-muted mb-2"></div>
+          <div class="w-full bg-surface rounded-full h-2">
+            <div id="score-bar" class="h-2 rounded-full transition-all"></div>
+          </div>
+          <div id="score-text" class="text-xs text-text-muted mt-1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-header grades -->
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-medium mb-3">Header Analysis</h2>
+      <div id="header-grades" class="space-y-3"></div>
+    </div>
+
+    <!-- Missing headers -->
+    <div id="missing-section" class="bg-bg-card border border-border rounded-lg p-4 hidden">
+      <h2 class="text-sm font-medium mb-3">Missing Security Headers</h2>
+      <div id="missing-list" class="space-y-2"></div>
+    </div>
+
+    <!-- Quick wins -->
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-medium mb-3">Priority Fixes (Sorted by Impact)</h2>
+      <div id="priority-list" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="HTTP Security Headers Grader" relatedTags={['security', 'http', 'headers', 'csp', 'web-security', 'devops']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  const HEADER_RULES = [
+    {
+      key: 'content-security-policy',
+      display: 'Content-Security-Policy',
+      weight: 30,
+      shortDesc: 'Controls which resources can be loaded — primary XSS defense',
+      grade: (val) => {
+        if (!val) return { grade: 'F', score: 0, note: 'Missing — high XSS risk' };
+        const v = val.toLowerCase();
+        if (v.includes("'unsafe-inline'") && v.includes("'unsafe-eval'")) return { grade: 'D', score: 40, note: "Contains both 'unsafe-inline' and 'unsafe-eval' — mostly ineffective" };
+        if (v.includes("'unsafe-inline'") && !v.includes('nonce-') && !v.includes('hash-')) return { grade: 'C', score: 55, note: "'unsafe-inline' weakens XSS protection significantly" };
+        if (v.includes("'unsafe-eval'")) return { grade: 'C', score: 60, note: "'unsafe-eval' allows dynamic code execution — remove if possible" };
+        if (v.includes('default-src') && !v.includes('unsafe')) return { grade: 'A', score: 95, note: 'Strong policy with no unsafe directives' };
+        if (v.includes('default-src')) return { grade: 'B', score: 75, note: 'Good base policy — review for unsafe directives' };
+        return { grade: 'C', score: 55, note: 'Partial CSP — add default-src directive' };
+      },
+      recommended: "default-src 'self'; script-src 'self' 'nonce-{random}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; frame-ancestors 'none';",
+      impact: 30
+    },
+    {
+      key: 'strict-transport-security',
+      display: 'Strict-Transport-Security',
+      weight: 20,
+      shortDesc: 'Enforces HTTPS-only connections — prevents SSL stripping',
+      grade: (val) => {
+        if (!val) return { grade: 'F', score: 0, note: 'Missing — allows HTTP downgrade attacks' };
+        const maxAgeMatch = val.match(/max-age=(\d+)/i);
+        const maxAge = maxAgeMatch ? parseInt(maxAgeMatch[1]) : 0;
+        const hasSubDomains = /includeSubDomains/i.test(val);
+        const hasPreload = /preload/i.test(val);
+        if (maxAge >= 31536000 && hasSubDomains && hasPreload) return { grade: 'A+', score: 100, note: 'Excellent: 1yr, includeSubDomains, preload' };
+        if (maxAge >= 31536000 && hasSubDomains) return { grade: 'A', score: 95, note: 'Strong: 1yr with includeSubDomains' };
+        if (maxAge >= 15552000) return { grade: 'B', score: 80, note: `${Math.round(maxAge/86400)}d — consider adding includeSubDomains` };
+        if (maxAge >= 300) return { grade: 'C', score: 55, note: `max-age only ${maxAge}s — increase to at least 31536000 (1 year)` };
+        return { grade: 'D', score: 30, note: 'max-age too short to be effective' };
+      },
+      recommended: 'max-age=31536000; includeSubDomains; preload',
+      impact: 20
+    },
+    {
+      key: 'x-frame-options',
+      display: 'X-Frame-Options',
+      weight: 10,
+      shortDesc: 'Prevents clickjacking by controlling iframe embedding',
+      grade: (val) => {
+        if (!val) return { grade: 'F', score: 0, note: 'Missing — clickjacking vulnerable' };
+        const v = val.trim().toUpperCase();
+        if (v === 'DENY') return { grade: 'A', score: 100, note: 'Optimal: blocks all framing' };
+        if (v === 'SAMEORIGIN') return { grade: 'B', score: 80, note: 'Good: blocks cross-origin framing' };
+        if (v.startsWith('ALLOW-FROM')) return { grade: 'C', score: 50, note: 'ALLOW-FROM is deprecated and ignored in modern browsers — use CSP frame-ancestors instead' };
+        return { grade: 'C', score: 50, note: 'Unknown value — use DENY or SAMEORIGIN' };
+      },
+      recommended: 'DENY',
+      note: 'Note: CSP frame-ancestors supersedes X-Frame-Options in modern browsers. Use both for compatibility.',
+      impact: 10
+    },
+    {
+      key: 'x-content-type-options',
+      display: 'X-Content-Type-Options',
+      weight: 10,
+      shortDesc: 'Prevents MIME type sniffing attacks',
+      grade: (val) => {
+        if (!val) return { grade: 'F', score: 0, note: 'Missing — MIME sniffing attacks possible' };
+        if (val.trim().toLowerCase() === 'nosniff') return { grade: 'A', score: 100, note: 'Correct: prevents MIME type sniffing' };
+        return { grade: 'D', score: 20, note: 'Invalid value — must be exactly "nosniff"' };
+      },
+      recommended: 'nosniff',
+      impact: 10
+    },
+    {
+      key: 'referrer-policy',
+      display: 'Referrer-Policy',
+      weight: 10,
+      shortDesc: 'Controls how much referrer info is sent with requests',
+      grade: (val) => {
+        if (!val) return { grade: 'C', score: 50, note: 'Missing — browser default varies; sensitive URLs may leak in Referer header' };
+        const v = val.trim().toLowerCase();
+        const strictValues = ['no-referrer', 'strict-origin', 'strict-origin-when-cross-origin'];
+        const moderateValues = ['origin', 'origin-when-cross-origin', 'same-origin'];
+        const weakValues = ['unsafe-url', 'no-referrer-when-downgrade'];
+        if (strictValues.includes(v)) return { grade: 'A', score: 100, note: 'Strong privacy protection' };
+        if (moderateValues.includes(v)) return { grade: 'B', score: 75, note: 'Good — consider strict-origin-when-cross-origin' };
+        if (weakValues.includes(v)) return { grade: 'D', score: 25, note: 'Weak policy — full URL sent as Referer to third parties' };
+        return { grade: 'C', score: 55, note: 'Unknown value — check MDN for valid options' };
+      },
+      recommended: 'strict-origin-when-cross-origin',
+      impact: 10
+    },
+    {
+      key: 'permissions-policy',
+      display: 'Permissions-Policy',
+      weight: 10,
+      shortDesc: 'Restricts browser features (camera, location, etc.)',
+      grade: (val) => {
+        if (!val) {
+          // check feature-policy as fallback
+          return { grade: 'C', score: 45, note: 'Missing — browser features unrestricted' };
+        }
+        if (val.includes('camera=()') || val.includes('geolocation=()') || val.includes('microphone=()')) {
+          return { grade: 'A', score: 90, note: 'Explicitly restricts sensitive browser features' };
+        }
+        if (val.length > 20) return { grade: 'B', score: 75, note: 'Some restrictions present — review feature list' };
+        return { grade: 'C', score: 55, note: 'Minimal policy — consider restricting camera, microphone, geolocation' };
+      },
+      recommended: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+      impact: 10
+    },
+    {
+      key: 'x-xss-protection',
+      display: 'X-XSS-Protection',
+      weight: 5,
+      shortDesc: 'Deprecated XSS filter — should be disabled',
+      grade: (val) => {
+        if (!val) return { grade: 'B', score: 80, note: 'Not present (acceptable — deprecated header)' };
+        const v = val.trim();
+        if (v === '0') return { grade: 'A', score: 100, note: 'Correctly disabled — use CSP instead' };
+        if (v.includes('1; mode=block') || v === '1') return { grade: 'D', score: 30, note: 'Deprecated — can cause vulnerabilities in some browsers. Set to 0 and use CSP.' };
+        return { grade: 'C', score: 50, note: 'Deprecated header with non-standard value. Set to 0.' };
+      },
+      recommended: '0',
+      note: 'Deprecated: disable with value "0" and use Content-Security-Policy for XSS protection.',
+      impact: 5
+    },
+    {
+      key: 'cache-control',
+      display: 'Cache-Control (sensitive pages)',
+      weight: 5,
+      shortDesc: 'For auth/sensitive pages: no-store prevents caching credentials',
+      grade: (val) => {
+        if (!val) return { grade: 'C', score: 50, note: 'Missing — verify sensitive pages are not cached' };
+        const v = val.toLowerCase();
+        if (v.includes('no-store')) return { grade: 'A', score: 100, note: 'no-store: sensitive data not cached' };
+        if (v.includes('no-cache') && v.includes('private')) return { grade: 'B', score: 80, note: 'Good: no-cache + private prevents shared caching' };
+        if (v.includes('private')) return { grade: 'B', score: 70, note: 'Private cache only — consider no-store for auth pages' };
+        if (v.includes('public') && (v.includes('max-age') || v.includes('s-maxage'))) return { grade: 'B', score: 75, note: 'Public cache (OK for static assets, not auth pages)' };
+        return { grade: 'C', score: 55, note: 'Review cache settings for sensitive pages' };
+      },
+      recommended: 'no-store, max-age=0 (for auth pages) / public, max-age=31536000, immutable (for static assets)',
+      impact: 5
+    }
+  ];
+
+  const GRADE_STYLE = {
+    'A+': 'bg-green-500 text-white',
+    'A':  'bg-green-500 text-white',
+    'B':  'bg-blue-500 text-white',
+    'C':  'bg-yellow-500 text-black',
+    'D':  'bg-orange-500 text-white',
+    'F':  'bg-red-600 text-white'
+  };
+
+  const GRADE_COLOR = {
+    'A+': 'text-green-400',
+    'A':  'text-green-400',
+    'B':  'text-blue-400',
+    'C':  'text-yellow-400',
+    'D':  'text-orange-400',
+    'F':  'text-red-400'
+  };
+
+  function parseHeaders(raw) {
+    const headers = {};
+    raw.split('\n').forEach(line => {
+      const idx = line.indexOf(':');
+      if (idx > 0) {
+        const key = line.substring(0, idx).trim().toLowerCase();
+        const val = line.substring(idx + 1).trim();
+        headers[key] = val;
+      }
+    });
+    return headers;
+  }
+
+  function scoreToGrade(score) {
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 65) return 'C';
+    if (score >= 50) return 'D';
+    return 'F';
+  }
+
+  function grade(raw) {
+    const headers = parseHeaders(raw);
+    const results = HEADER_RULES.map(rule => {
+      const val = headers[rule.key] || headers[rule.key + 's'] || null;
+      const result = rule.grade(val);
+      return { ...rule, value: val, result };
+    });
+
+    const totalWeight = results.reduce((s, r) => s + r.weight, 0);
+    const weightedScore = results.reduce((s, r) => s + (r.result.score * r.weight), 0) / totalWeight;
+    const overallGrade = scoreToGrade(weightedScore);
+
+    return { results, weightedScore: Math.round(weightedScore), overallGrade, headers };
+  }
+
+  function render(raw) {
+    const { results, weightedScore, overallGrade, headers } = grade(raw);
+    const resultsEl = document.getElementById('results');
+
+    // Overall
+    const gradeEl = document.getElementById('overall-grade');
+    gradeEl.textContent = overallGrade;
+    gradeEl.className = `text-5xl font-bold w-20 h-20 flex items-center justify-center rounded-xl shrink-0 ${GRADE_STYLE[overallGrade] || GRADE_STYLE['F']}`;
+
+    const overallCard = document.getElementById('overall-card');
+    const cardBg = overallGrade === 'A' || overallGrade === 'A+' ? 'bg-green-500/5 border-green-500/20' :
+                   overallGrade === 'B' ? 'bg-blue-500/5 border-blue-500/20' :
+                   overallGrade === 'C' ? 'bg-yellow-500/5 border-yellow-500/20' :
+                   'bg-red-500/5 border-red-500/20';
+    overallCard.className = `rounded-lg p-5 border ${cardBg}`;
+
+    const descMap = {
+      'A': 'Excellent security headers. Keep monitoring for new standards.',
+      'B': 'Good headers. A few improvements will significantly increase protection.',
+      'C': 'Moderate protection. Several important headers need attention.',
+      'D': 'Weak security posture. Multiple critical headers missing.',
+      'F': 'Poor security. Missing most critical security headers.'
+    };
+    document.getElementById('overall-desc').textContent = descMap[overallGrade] || descMap['F'];
+
+    const barColor = overallGrade === 'A' || overallGrade === 'A+' ? 'bg-green-500' :
+                     overallGrade === 'B' ? 'bg-blue-500' :
+                     overallGrade === 'C' ? 'bg-yellow-500' :
+                     overallGrade === 'D' ? 'bg-orange-500' : 'bg-red-600';
+    document.getElementById('score-bar').className = `h-2 rounded-full transition-all ${barColor}`;
+    document.getElementById('score-bar').style.width = weightedScore + '%';
+    document.getElementById('score-text').textContent = `Security score: ${weightedScore}/100`;
+
+    // Per-header grades
+    document.getElementById('header-grades').innerHTML = results.map(r => {
+      const gradeStyle = GRADE_STYLE[r.result.grade] || GRADE_STYLE['F'];
+      const gradeColor = GRADE_COLOR[r.result.grade] || GRADE_COLOR['F'];
+      return `
+        <div class="border border-border rounded-lg p-3">
+          <div class="flex items-start gap-3">
+            <span class="text-sm font-bold px-2.5 py-1 rounded font-mono shrink-0 ${gradeStyle}">${r.result.grade}</span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-0.5 flex-wrap">
+                <span class="text-sm font-medium font-mono">${r.display}</span>
+                <span class="text-xs text-text-muted">${r.shortDesc}</span>
+              </div>
+              ${r.value ? `<div class="text-xs font-mono text-accent bg-surface rounded px-2 py-0.5 mb-1 truncate">${r.value}</div>` : '<div class="text-xs text-red-400 mb-1">Not present</div>'}
+              <div class="text-xs text-text-muted">${r.result.note}</div>
+              ${r.result.grade !== 'A' && r.result.grade !== 'A+' ? `
+                <details class="mt-2">
+                  <summary class="text-xs text-primary cursor-pointer hover:underline">Recommended value</summary>
+                  <pre class="mt-1 bg-surface rounded p-2 text-xs font-mono text-accent whitespace-pre-wrap overflow-x-auto">${r.recommended}</pre>
+                  ${r.note ? `<p class="text-xs text-text-muted mt-1">${r.note}</p>` : ''}
+                </details>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Missing headers
+    const missing = results.filter(r => !r.value && r.result.grade === 'F');
+    const missingSection = document.getElementById('missing-section');
+    const missingList = document.getElementById('missing-list');
+    if (missing.length > 0) {
+      missingSection.classList.remove('hidden');
+      missingList.innerHTML = missing.map(r => `
+        <div class="flex items-center gap-3 py-1.5 border-b border-border/40 last:border-0">
+          <span class="text-red-400 shrink-0">✗</span>
+          <span class="font-mono text-sm text-foreground flex-1">${r.display}</span>
+          <span class="text-xs text-text-muted">+${r.impact} pts if added</span>
+        </div>
+      `).join('');
+    } else {
+      missingSection.classList.add('hidden');
+    }
+
+    // Priority fixes
+    const fixes = results
+      .filter(r => r.result.grade !== 'A' && r.result.grade !== 'A+')
+      .sort((a, b) => b.impact - a.impact);
+
+    document.getElementById('priority-list').innerHTML = fixes.length === 0
+      ? '<div class="text-sm text-green-400">✓ All security headers are properly configured!</div>'
+      : fixes.map((r, i) => `
+          <div class="flex items-center gap-3 py-1.5 border-b border-border/40 last:border-0">
+            <span class="text-xs text-text-muted w-4 shrink-0">${i + 1}.</span>
+            <div class="flex-1">
+              <span class="font-mono text-sm">${r.display}</span>
+              <span class="ml-2 text-xs ${GRADE_COLOR[r.result.grade] || GRADE_COLOR['F']}">${r.result.grade}</span>
+              <div class="text-xs text-text-muted">${r.result.note}</div>
+            </div>
+            <span class="text-xs px-2 py-0.5 bg-primary/20 text-primary rounded-full shrink-0">+${r.impact} pts</span>
+          </div>
+        `).join('');
+
+    resultsEl.classList.remove('hidden');
+  }
+
+  document.getElementById('btn-grade').addEventListener('click', () => {
+    const raw = document.getElementById('headers-input').value.trim();
+    if (!raw) return;
+    render(raw);
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    document.getElementById('headers-input').value = '';
+    document.getElementById('results').classList.add('hidden');
+  });
+
+  const GOOD_HEADERS = `HTTP/2 200 OK
+content-type: text/html; charset=utf-8
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+content-security-policy: default-src 'self'; script-src 'self' 'nonce-abc123'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'
+x-frame-options: DENY
+x-content-type-options: nosniff
+referrer-policy: strict-origin-when-cross-origin
+permissions-policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+x-xss-protection: 0
+cache-control: no-store, max-age=0
+vary: Accept-Encoding`;
+
+  const BAD_HEADERS = `HTTP/1.1 200 OK
+content-type: text/html; charset=utf-8
+server: Apache/2.4.51
+x-powered-by: PHP/8.1.0
+x-xss-protection: 1; mode=block
+cache-control: public, max-age=3600
+set-cookie: session=abc123; Path=/
+date: Wed, 01 Apr 2026 00:00:00 GMT`;
+
+  document.getElementById('btn-sample-good').addEventListener('click', () => {
+    document.getElementById('headers-input').value = GOOD_HEADERS;
+    render(GOOD_HEADERS);
+  });
+
+  document.getElementById('btn-sample-bad').addEventListener('click', () => {
+    document.getElementById('headers-input').value = BAD_HEADERS;
+    render(BAD_HEADERS);
+  });
+})();
+</script>
