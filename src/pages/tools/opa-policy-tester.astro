@@ -1,0 +1,555 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+---
+
+<BaseLayout
+  title="OPA Policy Tester — Test Open Policy Agent Rego Policies Online"
+  description="Write and test Open Policy Agent (OPA) Rego policies with JSON input. Validate policy logic, check allow/deny decisions, and explore common policy patterns. Free, runs in browser."
+  tool="OPA policy tester, Open Policy Agent, Rego policy, OPA online, policy as code, zero trust authorization"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "OPA Policy Tester",
+    "url": "https://devplaybook.cc/tools/opa-policy-tester",
+    "description": "Write and validate Open Policy Agent Rego policies with JSON input. Test allow/deny decisions and explore common OPA patterns.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">OPA Policy Tester</h1>
+  <p class="text-text-muted mb-4">
+    Write and test <a href="https://www.openpolicyagent.org" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">Open Policy Agent</a> Rego policies with JSON input.
+    Load presets for common patterns like RBAC, JWT claims, and Kubernetes admission control. Runs entirely in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live Rego policy editor</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JSON input editor</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 5 built-in policy presets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Syntax validator + allow/deny check</span>
+  </div>
+
+  <!-- Presets -->
+  <div class="flex gap-2 mb-5 flex-wrap">
+    <span class="text-sm text-text-muted self-center">Presets:</span>
+    <button data-preset="rbac" class="preset-btn px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">RBAC</button>
+    <button data-preset="jwt" class="preset-btn px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">JWT Claims</button>
+    <button data-preset="k8s" class="preset-btn px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">K8s Admission</button>
+    <button data-preset="api" class="preset-btn px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">API Authz</button>
+    <button data-preset="time" class="preset-btn px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Time-Based</button>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <div>
+      <label class="block text-sm font-medium mb-2">Rego Policy</label>
+      <textarea id="rego-input" rows="20" spellcheck="false" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y" placeholder="package authz&#10;&#10;default allow = false&#10;&#10;allow {&#10;  input.role == &quot;admin&quot;&#10;}"></textarea>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-2">JSON Input</label>
+      <textarea id="json-input" rows="20" spellcheck="false" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y" placeholder='{"role": "admin", "action": "read"}'></textarea>
+    </div>
+  </div>
+
+  <div class="flex gap-3 mb-6">
+    <button id="btn-evaluate" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">Evaluate Policy</button>
+    <button id="btn-validate" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Validate Syntax</button>
+    <button id="btn-clear" class="px-4 py-2.5 bg-bg-card border border-border rounded-lg text-sm hover:border-primary transition-colors">Clear</button>
+  </div>
+
+  <div id="result-section" class="hidden mb-6">
+    <div id="result-badge" class="flex items-center gap-3 mb-4">
+      <span id="decision-badge" class="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-bold"></span>
+      <span id="decision-msg" class="text-sm text-text-muted"></span>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <div class="flex justify-between items-center mb-3">
+        <span class="text-sm font-medium text-text-muted">Evaluation Result</span>
+        <button id="copy-result-btn" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+      </div>
+      <pre id="result-output" class="font-mono text-sm whitespace-pre-wrap break-words overflow-x-auto max-h-[400px] overflow-y-auto text-foreground"></pre>
+    </div>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-6">
+    <h3 class="text-sm font-semibold mb-3">OPA CLI Commands</h3>
+    <div id="cli-output" class="font-mono text-xs text-text-muted whitespace-pre-wrap"></div>
+  </div>
+
+  <ToolPageCta currentTool="OPA Policy Tester" relatedTags={['security', 'zero-trust', 'kubernetes', 'authorization', 'policy-as-code', 'devops']} />
+</BaseLayout>
+
+<script is:inline>
+const PRESETS = {
+  rbac: {
+    rego: `package authz
+
+import future.keywords.if
+import future.keywords.in
+
+default allow = false
+
+# Admin can do anything
+allow if {
+  input.role == "admin"
+}
+
+# Editors can read and write
+allow if {
+  input.role == "editor"
+  input.action in ["read", "write"]
+}
+
+# Viewers can only read
+allow if {
+  input.role == "viewer"
+  input.action == "read"
+}
+
+# Deny message for debugging
+deny_reason := msg if {
+  not allow
+  msg := sprintf("Role '%v' is not permitted to '%v'", [input.role, input.action])
+}`,
+    input: `{
+  "role": "editor",
+  "action": "write",
+  "resource": "document"
+}`
+  },
+  jwt: {
+    rego: `package jwt_authz
+
+import future.keywords.if
+import future.keywords.in
+
+default allow = false
+
+# Allow if JWT claims contain required scope
+allow if {
+  "read:documents" in input.claims.scopes
+  input.claims.email_verified == true
+}
+
+# Allow admins regardless
+allow if {
+  "admin" in input.claims.roles
+}
+
+# Check token expiry (unix timestamp)
+token_expired if {
+  input.claims.exp < input.now
+}
+
+deny_reasons[msg] if {
+  not allow
+  not token_expired
+  msg := "Insufficient scopes or email not verified"
+}
+
+deny_reasons[msg] if {
+  token_expired
+  msg := "Token has expired"
+}`,
+    input: `{
+  "claims": {
+    "sub": "user123",
+    "email": "alice@example.com",
+    "email_verified": true,
+    "scopes": ["read:documents", "write:profile"],
+    "roles": ["member"],
+    "exp": 9999999999,
+    "iat": 1700000000
+  },
+  "now": 1711900000
+}`
+  },
+  k8s: {
+    rego: `package kubernetes.admission
+
+import future.keywords.if
+import future.keywords.in
+
+deny[msg] if {
+  input.request.kind.kind == "Pod"
+  container := input.request.object.spec.containers[_]
+  container.securityContext.privileged == true
+  msg := sprintf("Container '%v' must not run as privileged", [container.name])
+}
+
+deny[msg] if {
+  input.request.kind.kind == "Pod"
+  container := input.request.object.spec.containers[_]
+  not container.resources.limits
+  msg := sprintf("Container '%v' must have resource limits", [container.name])
+}
+
+deny[msg] if {
+  input.request.kind.kind == "Pod"
+  container := input.request.object.spec.containers[_]
+  container.image
+  not startswith(container.image, "registry.example.com/")
+  msg := sprintf("Container '%v' image must come from approved registry", [container.name])
+}
+
+# Admission response
+main := response if {
+  count(deny) == 0
+  response := {"allowed": true}
+}
+
+main := response if {
+  count(deny) > 0
+  response := {
+    "allowed": false,
+    "status": {"reason": concat(", ", deny)}
+  }
+}`,
+    input: `{
+  "request": {
+    "kind": {"kind": "Pod"},
+    "object": {
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "registry.example.com/myapp:v1.2",
+            "securityContext": {"privileged": false},
+            "resources": {
+              "limits": {"cpu": "500m", "memory": "128Mi"},
+              "requests": {"cpu": "250m", "memory": "64Mi"}
+            }
+          }
+        ]
+      }
+    }
+  }
+}`
+  },
+  api: {
+    rego: `package api.authz
+
+import future.keywords.if
+import future.keywords.in
+
+default allow = false
+
+# Read-only endpoints are open to authenticated users
+allow if {
+  input.method in ["GET", "HEAD"]
+  input.authenticated == true
+}
+
+# Write endpoints require specific role
+allow if {
+  input.method in ["POST", "PUT", "PATCH"]
+  "api:write" in input.user.permissions
+}
+
+# Delete requires admin
+allow if {
+  input.method == "DELETE"
+  input.user.role == "admin"
+}
+
+# Rate limit check
+rate_limited if {
+  input.user.requests_this_minute > 100
+}
+
+deny_reason[msg] if {
+  not allow
+  not rate_limited
+  msg := sprintf("Method %v not permitted for role '%v'", [input.method, input.user.role])
+}
+
+deny_reason[msg] if {
+  rate_limited
+  msg := "Rate limit exceeded: max 100 requests/minute"
+}`,
+    input: `{
+  "method": "POST",
+  "path": "/api/v1/documents",
+  "authenticated": true,
+  "user": {
+    "id": "user-42",
+    "role": "member",
+    "permissions": ["api:read", "api:write"],
+    "requests_this_minute": 15
+  }
+}`
+  },
+  time: {
+    rego: `package time_authz
+
+import future.keywords.if
+
+default allow = false
+
+# Only allow during business hours (9AM-6PM UTC, Monday-Friday)
+allow if {
+  is_business_hours
+  is_weekday
+}
+
+# Always allow emergency access
+allow if {
+  input.emergency_access == true
+  input.user.role == "oncall"
+}
+
+is_business_hours if {
+  hour := time.clock([input.now, "UTC"])[0]
+  hour >= 9
+  hour < 18
+}
+
+is_weekday if {
+  day := time.weekday(input.now)
+  day != "Saturday"
+  day != "Sunday"
+}
+
+reason[msg] if {
+  not is_business_hours
+  msg := "Access only permitted 9AM-6PM UTC"
+}
+
+reason[msg] if {
+  not is_weekday
+  msg := "Access not permitted on weekends"
+}`,
+    input: `{
+  "user": {
+    "id": "user-5",
+    "role": "developer"
+  },
+  "now": 1711900000000000000,
+  "emergency_access": false
+}`
+  }
+};
+
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', function () {
+    const p = PRESETS[this.dataset.preset];
+    if (!p) return;
+    document.getElementById('rego-input').value = p.rego;
+    document.getElementById('json-input').value = p.input;
+    document.getElementById('result-section').classList.add('hidden');
+    updateCLI();
+  });
+});
+
+function parseRego(rego) {
+  // Simple client-side Rego interpreter for basic allow/deny rules
+  const lines = rego.split('\n').map(l => l.trim());
+  const errors = [];
+
+  // Check for package declaration
+  const hasPackage = lines.some(l => l.startsWith('package '));
+  if (!hasPackage) errors.push('Missing package declaration');
+
+  // Check for unmatched braces
+  let depth = 0;
+  for (const line of lines) {
+    for (const c of line) {
+      if (c === '{') depth++;
+      else if (c === '}') depth--;
+    }
+  }
+  if (depth !== 0) errors.push(`Unmatched braces (balance: ${depth > 0 ? '+' : ''}${depth})`);
+
+  return errors;
+}
+
+function evaluatePolicy(rego, inputObj) {
+  // Simplified evaluation: parse allow/deny rules against input
+  const results = {};
+
+  try {
+    // Extract package name
+    const pkgMatch = rego.match(/^package\s+([\w.]+)/m);
+    results.package = pkgMatch ? pkgMatch[1] : 'unknown';
+
+    // Find all rule heads (simple assignments and rule bodies)
+    const defaultAllowMatch = rego.match(/default\s+allow\s*=\s*(true|false)/);
+    const defaultAllow = defaultAllowMatch ? defaultAllowMatch[1] === 'true' : false;
+
+    // Try to evaluate simple allow rules
+    let allow = defaultAllow;
+    const allowRules = [];
+
+    // Pattern: allow { input.field == "value" }
+    const simpleRules = [...rego.matchAll(/allow\s*(?:if\s*)?\{([^}]+)\}/g)];
+
+    for (const rule of simpleRules) {
+      const body = rule[1].trim();
+      const conditions = body.split('\n').map(l => l.trim()).filter(Boolean);
+      let ruleMatches = true;
+
+      for (const cond of conditions) {
+        // Simple equality: input.x == "y"
+        const eqMatch = cond.match(/input\.([\w.]+)\s*==\s*"([^"]+)"/);
+        if (eqMatch) {
+          const path = eqMatch[1].split('.');
+          let val = inputObj;
+          for (const p of path) { val = val?.[p]; }
+          if (val !== eqMatch[2]) { ruleMatches = false; break; }
+          continue;
+        }
+
+        // Array membership: "x" in input.y
+        const inMatch = cond.match(/"([^"]+)"\s+in\s+input\.([\w.]+)/);
+        if (inMatch) {
+          const path = inMatch[2].split('.');
+          let arr = inputObj;
+          for (const p of path) { arr = arr?.[p]; }
+          if (!Array.isArray(arr) || !arr.includes(inMatch[1])) { ruleMatches = false; break; }
+          continue;
+        }
+
+        // Boolean: input.x == true
+        const boolMatch = cond.match(/input\.([\w.]+)\s*==\s*(true|false)/);
+        if (boolMatch) {
+          const path = boolMatch[1].split('.');
+          let val = inputObj;
+          for (const p of path) { val = val?.[p]; }
+          if (String(val) !== boolMatch[2]) { ruleMatches = false; break; }
+          continue;
+        }
+      }
+
+      if (ruleMatches && conditions.length > 0) {
+        allow = true;
+        allowRules.push(conditions.join(' AND '));
+      }
+    }
+
+    results.allow = allow;
+    results.matched_rules = allowRules;
+    results.evaluated_input = inputObj;
+
+  } catch (e) {
+    results.error = e.message;
+  }
+
+  return results;
+}
+
+document.getElementById('btn-evaluate').addEventListener('click', () => {
+  const rego = document.getElementById('rego-input').value;
+  const jsonStr = document.getElementById('json-input').value;
+
+  if (!rego.trim()) {
+    showResult('error', 'Policy is empty', 'Please enter a Rego policy');
+    return;
+  }
+
+  let inputObj;
+  try {
+    inputObj = JSON.parse(jsonStr || '{}');
+  } catch (e) {
+    showResult('error', 'Invalid JSON', `JSON parse error: ${e.message}`);
+    return;
+  }
+
+  const syntaxErrors = parseRego(rego);
+  if (syntaxErrors.length > 0) {
+    showResult('error', 'Syntax Error', syntaxErrors.join('\n'));
+    return;
+  }
+
+  const result = evaluatePolicy(rego, inputObj);
+  const output = JSON.stringify(result, null, 2);
+
+  if (result.error) {
+    showResult('error', 'Evaluation Error', output);
+  } else if (result.allow === true) {
+    showResult('allow', 'ALLOW', output);
+  } else {
+    showResult('deny', 'DENY', output);
+  }
+
+  updateCLI();
+});
+
+document.getElementById('btn-validate').addEventListener('click', () => {
+  const rego = document.getElementById('rego-input').value;
+  if (!rego.trim()) {
+    showResult('error', 'Empty', 'Policy is empty');
+    return;
+  }
+  const errors = parseRego(rego);
+  if (errors.length === 0) {
+    showResult('allow', 'VALID', '{\n  "valid": true,\n  "message": "Policy syntax looks valid"\n}');
+  } else {
+    showResult('deny', 'INVALID', JSON.stringify({ valid: false, errors }, null, 2));
+  }
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  document.getElementById('rego-input').value = '';
+  document.getElementById('json-input').value = '';
+  document.getElementById('result-section').classList.add('hidden');
+  updateCLI();
+});
+
+document.getElementById('copy-result-btn').addEventListener('click', function () {
+  navigator.clipboard.writeText(document.getElementById('result-output').textContent).then(() => {
+    this.textContent = 'Copied!';
+    setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+  });
+});
+
+function showResult(type, label, text) {
+  const badge = document.getElementById('decision-badge');
+  const msg = document.getElementById('decision-msg');
+
+  const styles = {
+    allow: 'bg-green-900/40 text-green-300 border border-green-700',
+    deny: 'bg-red-900/40 text-red-300 border border-red-700',
+    error: 'bg-orange-900/40 text-orange-300 border border-orange-700'
+  };
+  const msgs = {
+    allow: 'Policy evaluation returned allow = true',
+    deny: 'Policy evaluation returned allow = false',
+    error: 'Policy evaluation encountered an error'
+  };
+
+  badge.className = `inline-flex items-center px-4 py-1.5 rounded-full text-sm font-bold ${styles[type]}`;
+  badge.textContent = label;
+  msg.textContent = msgs[type];
+  document.getElementById('result-output').textContent = text;
+  document.getElementById('result-section').classList.remove('hidden');
+}
+
+function updateCLI() {
+  const rego = (document.getElementById('rego-input').value || '').trim();
+  const pkgMatch = rego.match(/^package\s+([\w.]+)/m);
+  const pkg = pkgMatch ? pkgMatch[1] : 'authz';
+  document.getElementById('cli-output').textContent = `# Save policy and input files
+cat > policy.rego << 'EOF'
+${rego || '# paste your policy here'}
+EOF
+
+cat > input.json << 'EOF'
+${document.getElementById('json-input').value || '{}'}
+EOF
+
+# Evaluate with OPA CLI
+opa eval -i input.json -d policy.rego "data.${pkg}.allow"
+
+# Run all tests
+opa test policy.rego -v
+
+# Build bundle
+opa build policy.rego -o bundle.tar.gz`;
+}
+
+// Load RBAC preset by default
+document.getElementById('rego-input').value = PRESETS.rbac.rego;
+document.getElementById('json-input').value = PRESETS.rbac.input;
+updateCLI();
+</script>

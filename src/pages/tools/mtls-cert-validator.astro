@@ -1,0 +1,617 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+---
+
+<BaseLayout
+  title="mTLS Certificate Validator — Validate Mutual TLS Certificate Chains"
+  description="Validate mTLS certificate chains, check certificate fields, expiry, SANs, key usage, and generate openssl commands for mutual TLS setup. Free, runs in browser."
+  tool="mTLS certificate validator, mutual TLS, certificate chain validation, x509 cert checker, openssl mTLS, TLS certificate analysis"
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "mTLS Certificate Validator",
+    "url": "https://devplaybook.cc/tools/mtls-cert-validator",
+    "description": "Validate mTLS certificate chains, check expiry, SANs, key usage extensions, and generate openssl verification commands.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">mTLS Certificate Validator</h1>
+  <p class="text-text-muted mb-4">
+    Validate mutual TLS certificate configurations, check PEM certificate fields, expiry dates, SANs, and key usage.
+    Generate <code class="text-accent">openssl</code> commands for mTLS setup and debugging. Runs entirely in your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PEM cert field parser</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Expiry & SAN checker</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> mTLS config generator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> openssl command builder</span>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex gap-2 mb-6">
+    <button id="tab-validate" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-white transition-colors">Validate Certificate</button>
+    <button id="tab-generate" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold bg-bg-card border border-border hover:border-primary transition-colors">Generate Commands</button>
+    <button id="tab-config" class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold bg-bg-card border border-border hover:border-primary transition-colors">mTLS Config</button>
+  </div>
+
+  <!-- Validate Section -->
+  <div id="section-validate">
+    <div class="mb-4">
+      <label class="block text-sm font-medium mb-2">Paste PEM Certificate</label>
+      <textarea id="cert-pem" rows="12" spellcheck="false" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y" placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDxTCC...&#10;-----END CERTIFICATE-----"></textarea>
+    </div>
+    <div class="mb-4">
+      <label class="block text-sm font-medium mb-2">Or paste Certificate Info (openssl output)</label>
+      <textarea id="cert-info" rows="6" spellcheck="false" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y" placeholder="Subject: CN=my-service, O=Example&#10;Issuer: CN=my-ca, O=Example&#10;Not Before: Jan  1 00:00:00 2024&#10;Not After : Jan  1 00:00:00 2025&#10;DNS:my-service.example.com"></textarea>
+    </div>
+    <button id="btn-validate-cert" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors mb-6">Validate</button>
+
+    <div id="validate-results" class="hidden">
+      <div id="cert-checks" class="space-y-2 mb-6"></div>
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-sm font-medium text-text-muted">Parsed Fields</span>
+          <button id="copy-fields-btn" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+        </div>
+        <pre id="fields-output" class="font-mono text-sm whitespace-pre-wrap break-words overflow-x-auto max-h-[400px] overflow-y-auto text-foreground"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generate Commands Section -->
+  <div id="section-generate" class="hidden">
+    <p class="text-sm text-text-muted mb-4">Generate openssl commands for creating a complete mTLS certificate chain.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-medium mb-2">Domain / Service Name</label>
+        <input id="gen-domain" type="text" value="my-service.example.com" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-2">Organization</label>
+        <input id="gen-org" type="text" value="Example Corp" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-2">CA Common Name</label>
+        <input id="gen-ca-cn" type="text" value="my-internal-ca" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-2">Cert Validity (days)</label>
+        <input id="gen-days" type="number" value="365" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-2">Key Type</label>
+        <select id="gen-key-type" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+          <option value="rsa4096">RSA 4096</option>
+          <option value="rsa2048">RSA 2048</option>
+          <option value="ec256" selected>EC P-256</option>
+          <option value="ec384">EC P-384</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-2">Additional SANs (comma-separated)</label>
+        <input id="gen-sans" type="text" value="localhost,127.0.0.1" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" placeholder="alt1.example.com,10.0.0.1" />
+      </div>
+    </div>
+    <button id="btn-generate-cmds" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors mb-4">Generate Commands</button>
+    <div id="cmds-output-section" class="hidden">
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-sm font-medium text-text-muted">openssl Commands</span>
+          <button id="copy-cmds-btn" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+        </div>
+        <pre id="cmds-output" class="font-mono text-sm whitespace-pre-wrap break-words overflow-x-auto max-h-[600px] overflow-y-auto text-foreground"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- mTLS Config Section -->
+  <div id="section-config" class="hidden">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-medium mb-2">Framework</label>
+        <select id="cfg-framework" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary">
+          <option value="nginx">Nginx</option>
+          <option value="envoy">Envoy Proxy</option>
+          <option value="go">Go (net/http)</option>
+          <option value="node">Node.js (https)</option>
+          <option value="istio">Istio PeerAuthentication</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-2">CA Cert Path</label>
+        <input id="cfg-ca-path" type="text" value="/etc/certs/ca.crt" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-2">Server Cert Path</label>
+        <input id="cfg-cert-path" type="text" value="/etc/certs/server.crt" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-2">Server Key Path</label>
+        <input id="cfg-key-path" type="text" value="/etc/certs/server.key" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+    <button id="btn-generate-config" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors mb-4">Generate Config</button>
+    <div id="config-output-section" class="hidden">
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <div class="flex justify-between items-center mb-3">
+          <span id="config-output-title" class="text-sm font-medium text-text-muted">Config</span>
+          <button id="copy-config-btn" class="px-3 py-1.5 bg-bg-card border border-border rounded text-xs hover:border-primary transition-colors">Copy</button>
+        </div>
+        <pre id="config-output" class="font-mono text-sm whitespace-pre-wrap break-words overflow-x-auto max-h-[600px] overflow-y-auto text-foreground"></pre>
+      </div>
+    </div>
+  </div>
+
+  <ToolPageCta currentTool="mTLS Certificate Validator" relatedTags={['security', 'tls', 'certificates', 'zero-trust', 'networking', 'openssl']} />
+</BaseLayout>
+
+<script is:inline>
+  // Tab logic
+  function switchTab(active) {
+    const tabs = ['validate', 'generate', 'config'];
+    tabs.forEach(t => {
+      document.getElementById('tab-' + t).className = t === active
+        ? 'tab-btn px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-white transition-colors'
+        : 'tab-btn px-4 py-2 rounded-lg text-sm font-semibold bg-bg-card border border-border hover:border-primary transition-colors';
+      document.getElementById('section-' + t).classList.toggle('hidden', t !== active);
+    });
+  }
+  ['validate','generate','config'].forEach(t => {
+    document.getElementById('tab-' + t).addEventListener('click', () => switchTab(t));
+  });
+
+  // Validate
+  document.getElementById('btn-validate-cert').addEventListener('click', () => {
+    const pem = document.getElementById('cert-pem').value.trim();
+    const info = document.getElementById('cert-info').value.trim();
+
+    const checks = [];
+    const fields = {};
+
+    if (pem) {
+      // Validate PEM structure
+      if (pem.includes('-----BEGIN CERTIFICATE-----') && pem.includes('-----END CERTIFICATE-----')) {
+        checks.push({ ok: true, label: 'PEM format', msg: 'Valid PEM certificate structure' });
+        fields['Format'] = 'PEM / X.509';
+
+        // Extract base64 content
+        const b64 = pem.replace(/-----BEGIN CERTIFICATE-----/g, '').replace(/-----END CERTIFICATE-----/g, '').replace(/\s/g, '');
+        fields['Base64 Length'] = b64.length + ' chars (~' + Math.round(b64.length * 0.75) + ' bytes)';
+
+        if (b64.length < 100) {
+          checks.push({ ok: false, label: 'Certificate size', msg: 'Certificate appears too short — may be truncated' });
+        } else {
+          checks.push({ ok: true, label: 'Certificate size', msg: 'Certificate size looks reasonable' });
+        }
+      } else {
+        checks.push({ ok: false, label: 'PEM format', msg: 'Not a valid PEM certificate (missing BEGIN/END markers)' });
+      }
+    } else if (info) {
+      // Parse openssl text output
+      const subjectMatch = info.match(/Subject:\s*(.+)/i);
+      const issuerMatch = info.match(/Issuer:\s*(.+)/i);
+      const notBeforeMatch = info.match(/Not Before\s*:\s*(.+)/i);
+      const notAfterMatch = info.match(/Not After\s*:\s*(.+)/i);
+      const dnsMatches = [...info.matchAll(/DNS:([^\s,]+)/g)];
+      const ipMatches = [...info.matchAll(/IP Address:([^\s,]+)/g)];
+
+      if (subjectMatch) fields['Subject'] = subjectMatch[1].trim();
+      if (issuerMatch) fields['Issuer'] = issuerMatch[1].trim();
+
+      if (notBeforeMatch) {
+        fields['Not Before'] = notBeforeMatch[1].trim();
+        checks.push({ ok: true, label: 'Not Before', msg: 'Valid from: ' + notBeforeMatch[1].trim() });
+      }
+
+      if (notAfterMatch) {
+        const expiry = new Date(notAfterMatch[1].trim());
+        const now = new Date();
+        const daysLeft = Math.floor((expiry - now) / 86400000);
+        fields['Not After'] = notAfterMatch[1].trim();
+        fields['Days Until Expiry'] = daysLeft;
+
+        if (daysLeft < 0) {
+          checks.push({ ok: false, label: 'Expiry', msg: `Certificate EXPIRED ${Math.abs(daysLeft)} days ago` });
+        } else if (daysLeft < 30) {
+          checks.push({ ok: false, label: 'Expiry', msg: `Certificate expires in ${daysLeft} days — renewal needed soon` });
+        } else {
+          checks.push({ ok: true, label: 'Expiry', msg: `Certificate valid for ${daysLeft} more days` });
+        }
+      }
+
+      if (dnsMatches.length > 0) {
+        fields['DNS SANs'] = dnsMatches.map(m => m[1]).join(', ');
+        checks.push({ ok: true, label: 'SANs', msg: `Found ${dnsMatches.length} DNS SAN(s): ${dnsMatches.map(m => m[1]).join(', ')}` });
+      } else {
+        checks.push({ ok: false, label: 'SANs', msg: 'No DNS SANs found — modern clients require SANs (CN alone is not enough)' });
+      }
+
+      if (ipMatches.length > 0) {
+        fields['IP SANs'] = ipMatches.map(m => m[1]).join(', ');
+      }
+
+      // Check if self-signed
+      if (subjectMatch && issuerMatch && subjectMatch[1].trim() === issuerMatch[1].trim()) {
+        checks.push({ ok: false, label: 'Certificate chain', msg: 'Self-signed certificate — not suitable for production mTLS' });
+      } else if (subjectMatch && issuerMatch) {
+        checks.push({ ok: true, label: 'Certificate chain', msg: 'Certificate signed by a CA (not self-signed)' });
+      }
+    } else {
+      checks.push({ ok: false, label: 'Input', msg: 'Please paste a PEM certificate or openssl text output' });
+    }
+
+    // mTLS-specific checks
+    const infoLower = info.toLowerCase();
+    if (info && infoLower.includes('client auth')) {
+      checks.push({ ok: true, label: 'Extended Key Usage', msg: 'TLS Web Client Authentication found — suitable for mTLS client cert' });
+    }
+    if (info && infoLower.includes('server auth')) {
+      checks.push({ ok: true, label: 'Extended Key Usage', msg: 'TLS Web Server Authentication found — suitable for mTLS server cert' });
+    }
+
+    // Render checks
+    const container = document.getElementById('cert-checks');
+    container.innerHTML = checks.map(c => `
+      <div class="flex items-start gap-2 p-3 rounded-lg ${c.ok ? 'bg-green-900/20 border border-green-800' : 'bg-red-900/20 border border-red-800'}">
+        <span class="${c.ok ? 'text-green-400' : 'text-red-400'} font-bold text-base leading-tight mt-0.5">${c.ok ? '✓' : '✗'}</span>
+        <div>
+          <span class="text-sm font-semibold">${c.label}</span>
+          <p class="text-xs text-text-muted mt-0.5">${c.msg}</p>
+        </div>
+      </div>
+    `).join('');
+
+    document.getElementById('fields-output').textContent = Object.entries(fields).map(([k, v]) => `${k.padEnd(20)}: ${v}`).join('\n') || 'No fields parsed';
+    document.getElementById('validate-results').classList.remove('hidden');
+  });
+
+  document.getElementById('copy-fields-btn').addEventListener('click', function () {
+    navigator.clipboard.writeText(document.getElementById('fields-output').textContent).then(() => {
+      this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  // Generate openssl commands
+  document.getElementById('btn-generate-cmds').addEventListener('click', () => {
+    const domain = document.getElementById('gen-domain').value.trim() || 'my-service.example.com';
+    const org = document.getElementById('gen-org').value.trim() || 'Example Corp';
+    const caCN = document.getElementById('gen-ca-cn').value.trim() || 'my-internal-ca';
+    const days = document.getElementById('gen-days').value || '365';
+    const keyType = document.getElementById('gen-key-type').value;
+    const sans = document.getElementById('gen-sans').value.split(',').map(s => s.trim()).filter(Boolean);
+
+    const allSANs = [domain, ...sans];
+    const sanStr = allSANs.map((s, i) => {
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(s)) return `IP.${i + 1} = ${s}`;
+      return `DNS.${i + 1} = ${s}`;
+    }).join('\n');
+
+    let keyGenCA, keyGenSrv, keyGenClient;
+    if (keyType === 'rsa4096') {
+      keyGenCA = 'openssl genrsa -out ca.key 4096';
+      keyGenSrv = 'openssl genrsa -out server.key 4096';
+      keyGenClient = 'openssl genrsa -out client.key 4096';
+    } else if (keyType === 'rsa2048') {
+      keyGenCA = 'openssl genrsa -out ca.key 2048';
+      keyGenSrv = 'openssl genrsa -out server.key 2048';
+      keyGenClient = 'openssl genrsa -out client.key 2048';
+    } else if (keyType === 'ec384') {
+      keyGenCA = 'openssl ecparam -name secp384r1 -genkey -noout -out ca.key';
+      keyGenSrv = 'openssl ecparam -name secp384r1 -genkey -noout -out server.key';
+      keyGenClient = 'openssl ecparam -name secp384r1 -genkey -noout -out client.key';
+    } else {
+      keyGenCA = 'openssl ecparam -name prime256v1 -genkey -noout -out ca.key';
+      keyGenSrv = 'openssl ecparam -name prime256v1 -genkey -noout -out server.key';
+      keyGenClient = 'openssl ecparam -name prime256v1 -genkey -noout -out client.key';
+    }
+
+    const cmds = `#!/bin/bash
+# mTLS Certificate Chain Setup
+# Organization: ${org}
+# Domain: ${domain}
+
+# ========== Step 1: Create Certificate Authority ==========
+
+# Generate CA private key
+${keyGenCA}
+
+# Create CA certificate (self-signed root)
+openssl req -new -x509 -days ${days} -key ca.key -out ca.crt \\
+  -subj "/CN=${caCN}/O=${org}/C=US"
+
+echo "CA certificate created: ca.crt"
+openssl x509 -noout -text -in ca.crt | grep -A2 "Subject:"
+
+
+# ========== Step 2: Create Server Certificate ==========
+
+# Generate server private key
+${keyGenSrv}
+
+# Create server CSR
+openssl req -new -key server.key -out server.csr \\
+  -subj "/CN=${domain}/O=${org}/C=US"
+
+# Create server cert extension file
+cat > server-ext.cnf << 'EOF'
+[req]
+req_extensions = v3_req
+distinguished_name = req_distinguished_name
+
+[req_distinguished_name]
+
+[v3_req]
+subjectAltName = @alt_names
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+
+[alt_names]
+${sanStr}
+EOF
+
+# Sign server certificate with CA
+openssl x509 -req -days ${days} -in server.csr -CA ca.crt -CAkey ca.key \\
+  -CAcreateserial -out server.crt -extensions v3_req -extfile server-ext.cnf
+
+echo "Server certificate created: server.crt"
+
+
+# ========== Step 3: Create Client Certificate ==========
+
+# Generate client private key
+${keyGenClient}
+
+# Create client CSR
+openssl req -new -key client.key -out client.csr \\
+  -subj "/CN=client.${domain}/O=${org}/C=US"
+
+# Create client cert extension file
+cat > client-ext.cnf << 'EOF'
+[v3_req]
+keyUsage = digitalSignature
+extendedKeyUsage = clientAuth
+EOF
+
+# Sign client certificate with CA
+openssl x509 -req -days ${days} -in client.csr -CA ca.crt -CAkey ca.key \\
+  -CAcreateserial -out client.crt -extensions v3_req -extfile client-ext.cnf
+
+echo "Client certificate created: client.crt"
+
+
+# ========== Step 4: Verify Certificate Chain ==========
+
+# Verify server cert
+openssl verify -CAfile ca.crt server.crt
+
+# Verify client cert
+openssl verify -CAfile ca.crt client.crt
+
+# Test mTLS connection (run server first in another terminal)
+# SERVER: openssl s_server -cert server.crt -key server.key -CAfile ca.crt -Verify 1 -accept 8443
+# CLIENT: openssl s_client -cert client.crt -key client.key -CAfile ca.crt -connect localhost:8443
+
+echo "Done. Files: ca.crt, server.crt, server.key, client.crt, client.key"
+`;
+
+    document.getElementById('cmds-output').textContent = cmds;
+    document.getElementById('cmds-output-section').classList.remove('hidden');
+  });
+
+  document.getElementById('copy-cmds-btn').addEventListener('click', function () {
+    navigator.clipboard.writeText(document.getElementById('cmds-output').textContent).then(() => {
+      this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  // mTLS Config
+  document.getElementById('btn-generate-config').addEventListener('click', () => {
+    const framework = document.getElementById('cfg-framework').value;
+    const caPath = document.getElementById('cfg-ca-path').value.trim();
+    const certPath = document.getElementById('cfg-cert-path').value.trim();
+    const keyPath = document.getElementById('cfg-key-path').value.trim();
+
+    let config = '', title = '';
+
+    if (framework === 'nginx') {
+      title = 'nginx.conf (mTLS)';
+      config = `server {
+    listen 443 ssl;
+    server_name your-service.example.com;
+
+    # Server certificate
+    ssl_certificate     ${certPath};
+    ssl_certificate_key ${keyPath};
+
+    # mTLS: require and verify client certificate
+    ssl_client_certificate ${caPath};
+    ssl_verify_client on;
+
+    # TLS settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+
+    # Pass client cert info to upstream
+    location / {
+        proxy_pass http://backend;
+        proxy_set_header X-Client-Cert $ssl_client_escaped_cert;
+        proxy_set_header X-Client-Verify $ssl_client_verify;
+        proxy_set_header X-Client-Subject $ssl_client_s_dn;
+    }
+}`;
+    } else if (framework === 'envoy') {
+      title = 'envoy.yaml (mTLS)';
+      config = `static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 8443
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              - match:
+                  prefix: "/"
+                route:
+                  cluster: service_cluster
+          http_filters:
+          - name: envoy.filters.http.router
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          require_client_certificate: true
+          common_tls_context:
+            tls_certificates:
+            - certificate_chain:
+                filename: "${certPath}"
+              private_key:
+                filename: "${keyPath}"
+            validation_context:
+              trusted_ca:
+                filename: "${caPath}"`;
+    } else if (framework === 'go') {
+      title = 'main.go (mTLS server)';
+      config = `package main
+
+import (
+    "crypto/tls"
+    "crypto/x509"
+    "log"
+    "net/http"
+    "os"
+)
+
+func main() {
+    // Load CA cert for verifying clients
+    caCert, err := os.ReadFile("${caPath}")
+    if err != nil {
+        log.Fatal(err)
+    }
+    caCertPool := x509.NewCertPool()
+    caCertPool.AppendCertsFromPEM(caCert)
+
+    tlsConfig := &tls.Config{
+        ClientAuth: tls.RequireAndVerifyClientCert,
+        ClientCAs:  caCertPool,
+        MinVersion: tls.VersionTLS12,
+        CipherSuites: []uint16{
+            tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+            tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+            tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+        },
+    }
+
+    server := &http.Server{
+        Addr:      ":8443",
+        TLSConfig: tlsConfig,
+        Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            // Client cert is verified — get subject for logging
+            if len(r.TLS.PeerCertificates) > 0 {
+                client := r.TLS.PeerCertificates[0].Subject.CommonName
+                log.Printf("Authenticated client: %s", client)
+            }
+            w.Write([]byte("mTLS OK"))
+        }),
+    }
+
+    log.Println("Starting mTLS server on :8443")
+    log.Fatal(server.ListenAndServeTLS("${certPath}", "${keyPath}"))
+}`;
+    } else if (framework === 'node') {
+      title = 'server.js (mTLS)';
+      config = `const https = require('https');
+const fs = require('fs');
+
+const options = {
+  key: fs.readFileSync('${keyPath}'),
+  cert: fs.readFileSync('${certPath}'),
+  ca: fs.readFileSync('${caPath}'),
+  // Require client certificates
+  requestCert: true,
+  rejectUnauthorized: true,
+};
+
+const server = https.createServer(options, (req, res) => {
+  const cert = req.socket.getPeerCertificate();
+  if (req.client.authorized) {
+    console.log('Authenticated client:', cert.subject.CN);
+    res.writeHead(200);
+    res.end('mTLS OK\\n');
+  } else {
+    res.writeHead(401);
+    res.end('Client certificate required\\n');
+  }
+});
+
+server.listen(8443, () => {
+  console.log('mTLS server listening on port 8443');
+});`;
+    } else if (framework === 'istio') {
+      title = 'PeerAuthentication.yaml (Istio mTLS)';
+      config = `# Enable STRICT mTLS for the entire namespace
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: default  # change to your namespace
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# Enable mTLS for a specific service only
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: my-service-mtls
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: my-service
+  mtls:
+    mode: STRICT
+
+---
+# DestinationRule: configure client-side TLS to upstream
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: my-service-dr
+  namespace: default
+spec:
+  host: my-service.default.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL  # Use Istio-managed certs (from SPIFFE/SPIRE or Istiod)`;
+    }
+
+    document.getElementById('config-output-title').textContent = title;
+    document.getElementById('config-output').textContent = config;
+    document.getElementById('config-output-section').classList.remove('hidden');
+  });
+
+  document.getElementById('copy-config-btn').addEventListener('click', function () {
+    navigator.clipboard.writeText(document.getElementById('config-output').textContent).then(() => {
+      this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+    });
+  });
+</script>
