@@ -1,0 +1,219 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const connectorSetupExample = `# Fivetran Python SDK — manage connectors programmatically
+# pip install fivetran-connector-sdk requests
+
+import requests
+
+FIVETRAN_API_KEY = "your_api_key"
+FIVETRAN_API_SECRET = "your_api_secret"
+BASE_URL = "https://api.fivetran.com/v1"
+
+auth = (FIVETRAN_API_KEY, FIVETRAN_API_SECRET)
+
+# Create a Postgres source connector
+connector_payload = &#123;
+    "service": "postgres",
+    "group_id": "your_destination_group_id",
+    "config": &#123;
+        "host": "db.example.com",
+        "port": 5432,
+        "database": "production",
+        "user": "fivetran_reader",
+        "password": "secure_password",
+        "schema": "public",
+        "update_method": "WAL",            # logical replication (CDC)
+        "publication_name": "fivetran_pub",
+    &#125;,
+&#125;
+
+resp = requests.post(
+    f"&#123;BASE_URL&#125;/connectors",
+    auth=auth,
+    json=connector_payload,
+)
+connector_id = resp.json()["data"]["id"]
+print(f"Connector created: &#123;connector_id&#125;")
+
+# Trigger a manual sync
+requests.post(f"&#123;BASE_URL&#125;/connectors/&#123;connector_id&#125;/force", auth=auth)
+
+# Check sync status
+status = requests.get(
+    f"&#123;BASE_URL&#125;/connectors/&#123;connector_id&#125;",
+    auth=auth
+).json()["data"]["status"]
+print(f"Sync status: &#123;status['sync_state']&#125;")`;
+
+const dbtIntegrationExample = `# Fivetran + dbt Cloud integration — trigger dbt after sync
+# In Fivetran Dashboard: Transformations > dbt Cloud
+
+# Or trigger via dbt Cloud API after Fivetran webhook
+import requests
+
+DBT_CLOUD_TOKEN = "your_dbt_cloud_token"
+DBT_ACCOUNT_ID = "12345"
+DBT_JOB_ID = "67890"
+
+def trigger_dbt_job(event_data):
+    """Called from a webhook receiver after Fivetran sync completes."""
+    if event_data["event_type"] != "sync_end":
+        return
+
+    resp = requests.post(
+        f"https://cloud.getdbt.com/api/v2/accounts/&#123;DBT_ACCOUNT_ID&#125;/jobs/&#123;DBT_JOB_ID&#125;/run/",
+        headers=&#123;
+            "Authorization": f"Token &#123;DBT_CLOUD_TOKEN&#125;",
+            "Content-Type": "application/json",
+        &#125;,
+        json=&#123;"cause": f"Triggered by Fivetran sync &#123;event_data['sync_id']&#125;"&#125;,
+    )
+    run_id = resp.json()["data"]["id"]
+    print(f"dbt job triggered, run_id=&#123;run_id&#125;")`;
+
+const transformExample = `# Fivetran Transformations — built-in dbt Core transformations
+# Configure directly in Fivetran Dashboard > Transformations
+
+# Fivetran runs dbt Core models after each sync.
+# Example dbt model in Fivetran's transformation layer:
+
+-- models/fivetran_staging/stg_stripe_charges.sql
+WITH source AS (
+    SELECT * FROM &#123;&#123; source('stripe', 'charge') &#125;&#125;
+),
+cleaned AS (
+    SELECT
+        id                  AS charge_id,
+        amount / 100.0      AS amount_usd,
+        currency,
+        status,
+        created             AS charged_at,
+        customer            AS customer_id,
+        metadata:order_id   AS order_id     -- JSON field extraction
+    FROM source
+    WHERE _fivetran_deleted = FALSE          -- exclude soft-deleted rows
+)
+SELECT * FROM cleaned;
+
+-- Fivetran adds _fivetran_synced and _fivetran_deleted columns
+-- to every table automatically — always filter on _fivetran_deleted`;
+
+const faq = [
+  { question: "What is Fivetran and how does it differ from traditional ETL?", answer: "Fivetran is a fully managed ELT (Extract, Load, Transform) data movement service. Unlike traditional ETL tools where you build and maintain extraction code, Fivetran provides hundreds of pre-built, pre-maintained connectors for SaaS tools, databases, and cloud services. You configure a source and destination in minutes — no code required. Fivetran handles schema drift, API versioning, incremental sync, and error recovery automatically. The ELT approach loads raw data into the warehouse first, then transforms it with dbt or SQL — giving analysts access to raw data and making transformations auditable." },
+  { question: "What is the difference between Normal, History Mode, and Fivetran-managed connectors?", answer: "Normal mode (Standard sync) replicates current data — each sync updates changed rows and inserts new ones. This is the default and most efficient mode. History Mode preserves every version of every row by adding a valid_from / valid_to timestamp pattern (SCD Type 2), enabling point-in-time analysis of how data changed over time. It uses more storage but supports time-travel queries. Fivetran also distinguishes between Fivetran-managed connectors (fully maintained by Fivetran with automatic updates) and custom connectors (built with the Connector SDK for proprietary or long-tail sources)." },
+  { question: "How does Fivetran handle schema changes in the source?", answer: "Fivetran detects schema changes in the source (new columns, renamed columns, deleted columns, type changes) during each sync and propagates them to the destination automatically. New columns are added to the destination table. Deleted columns are not dropped — they remain with NULL values going forward, preserving historical data. Type changes trigger a column rename and new column to avoid data corruption. Fivetran logs all schema changes in an audit table (_fivetran_log). You can configure alerts for schema changes and optionally block syncs pending manual review." },
+  { question: "What is Fivetran's pricing model?", answer: "Fivetran pricing is primarily based on Monthly Active Rows (MAR) — the number of distinct rows synced or updated in a given month. Each connector tier (Free, Starter, Standard, Enterprise) has different MAR pricing. High-volume connectors like Salesforce or Google Ads can generate millions of MAR. Fivetran also offers a Free tier with limited connectors and MAR, and an Enterprise tier with volume discounts, private deployment, and advanced security features. Estimate costs carefully before going to production — CDC (log-based replication) typically has lower MAR than full table syncs because only changed rows are counted." },
+  { question: "What is the difference between Fivetran, Stitch, and Airbyte?", answer: "Fivetran is the premium managed service — broadest connector catalog, most reliable, best enterprise support, highest price. It is the default choice for enterprises prioritizing reliability and coverage over cost. Stitch (by Talend) is a simpler, more affordable managed ELT service with fewer connectors but a lower price point, good for startups and smaller teams. Airbyte is open-source and free to self-host — maximum flexibility and a large growing connector catalog, but requires infrastructure to run. For teams with engineering capacity, Airbyte's open-source model offers significant cost savings at scale versus Fivetran." },
+  { question: "How do I set up Fivetran for a Postgres source with CDC?", answer: "To use Fivetran with Postgres CDC (Change Data Capture via logical replication): set wal_level=logical in postgresql.conf, create a dedicated replication user with REPLICATION privilege, grant SELECT on all tables to be synced, create a replication publication (CREATE PUBLICATION fivetran_pub FOR ALL TABLES), and configure the connector with update_method=WAL and the publication name. CDC is the preferred update method for production Postgres sources — it captures every INSERT/UPDATE/DELETE in near-real-time with minimal load on the source database, unlike full-table polling." },
+];
+---
+
+<BaseLayout
+  title="Fivetran: Automated Data Movement & ELT Pipeline Guide"
+  description="Complete Fivetran guide: managed connectors, connector setup, Normal vs History mode, dbt integration, schema change handling, and Fivetran vs Stitch vs Airbyte vs custom ETL comparison."
+  tool="Fivetran, ELT, data integration, connectors, data warehouse, automated ETL, data movement"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Fivetran: Automated Data Movement & ELT Pipeline Guide",
+    "url": "https://devplaybook.cc/tools/fivetran",
+    "description": "Complete Fivetran guide covering managed connectors, ELT setup, schema management, dbt integration, pricing, and comparison with Stitch and Airbyte.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Fivetran: Automated Data Movement & ELT Pipeline Guide</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Fivetran</strong> is the leading fully managed ELT platform that moves data from 500+ sources into your data warehouse automatically — handling schema changes, API updates, and incremental sync with zero maintenance on your end.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 500+ managed connectors</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Zero-maintenance schema sync</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CDC (log-based replication)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Native dbt integration</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Fivetran?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Fivetran is a fully managed ELT (Extract, Load, Transform) data movement platform. It provides pre-built, pre-maintained connectors for hundreds of data sources — SaaS applications (Salesforce, HubSpot, Stripe, Google Ads), databases (Postgres, MySQL, SQL Server, Oracle), cloud storage (S3, GCS), and event platforms (Kafka, Segment). Fivetran handles all the infrastructure and maintenance: API authentication, pagination, rate limiting, schema evolution, incremental sync logic, and error recovery.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    The ELT model loads raw, normalized data into your data warehouse first — Snowflake, BigQuery, Redshift, Databricks, or others — and transformations are handled separately with dbt or SQL. This gives your team access to raw data immediately and keeps transformations auditable in version control. Fivetran adds metadata columns to every synced table: <code>_fivetran_synced</code> (last sync timestamp) and <code>_fivetran_deleted</code> (soft delete flag).
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Connector Setup via API</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={connectorSetupExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">dbt Integration & Webhook Trigger</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dbtIntegrationExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Built-in Transformations with dbt Core</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={transformExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Fivetran vs Stitch vs Airbyte vs Custom ETL</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Fivetran</th>
+          <th class="border border-border px-3 py-2 text-left">Stitch</th>
+          <th class="border border-border px-3 py-2 text-left">Airbyte</th>
+          <th class="border border-border px-3 py-2 text-left">Custom ETL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Hosting</td>
+          <td class="border border-border px-3 py-2">Fully managed SaaS</td>
+          <td class="border border-border px-3 py-2">Fully managed SaaS</td>
+          <td class="border border-border px-3 py-2">Open-source / cloud</td>
+          <td class="border border-border px-3 py-2">Self-built</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Connectors</td>
+          <td class="border border-border px-3 py-2">500+ (broadest)</td>
+          <td class="border border-border px-3 py-2">~200</td>
+          <td class="border border-border px-3 py-2">350+ (growing fast)</td>
+          <td class="border border-border px-3 py-2">Whatever you build</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Pricing model</td>
+          <td class="border border-border px-3 py-2">MAR-based (expensive)</td>
+          <td class="border border-border px-3 py-2">Row-based (affordable)</td>
+          <td class="border border-border px-3 py-2">Free (self-hosted)</td>
+          <td class="border border-border px-3 py-2">Engineering time</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">CDC support</td>
+          <td class="border border-border px-3 py-2">Yes (WAL, binlog)</td>
+          <td class="border border-border px-3 py-2">Yes (limited)</td>
+          <td class="border border-border px-3 py-2">Yes (Debezium)</td>
+          <td class="border border-border px-3 py-2">DIY</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Schema management</td>
+          <td class="border border-border px-3 py-2">Automatic</td>
+          <td class="border border-border px-3 py-2">Automatic</td>
+          <td class="border border-border px-3 py-2">Automatic</td>
+          <td class="border border-border px-3 py-2">Manual</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Enterprise, reliability</td>
+          <td class="border border-border px-3 py-2">Startups, budget</td>
+          <td class="border border-border px-3 py-2">Cost-sensitive teams</td>
+          <td class="border border-border px-3 py-2">Proprietary sources</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Fivetran Guide" relatedTags={['fivetran', 'elt', 'data-integration', 'data-warehouse', 'data-engineering']} />
+</BaseLayout>

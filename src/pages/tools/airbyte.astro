@@ -1,0 +1,250 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const selfHostedExample = `# Deploy Airbyte self-hosted with Docker Compose
+# Requirements: Docker, Docker Compose, 4GB+ RAM
+
+git clone https://github.com/airbytehq/airbyte.git
+cd airbyte
+./run-ab-platform.sh
+
+# Airbyte UI available at: http://localhost:8000
+# Default credentials: airbyte / password
+#
+# For production, use Airbyte on Kubernetes:
+helm repo add airbyte https://airbytehq.github.io/helm-charts
+helm install airbyte airbyte/airbyte \\
+  --namespace airbyte \\
+  --set global.edition=community \\
+  --set webapp.service.type=LoadBalancer
+
+# Environment variables for custom config:
+# .env
+AIRBYTE_VERSION=0.63.0
+DATABASE_PASSWORD=your_secure_password
+SECRET_PERSISTENCE=GOOGLE_SECRET_MANAGER  # or AWS_SECRET_MANAGER
+LOG_LEVEL=INFO`;
+
+const apiExample = `# Airbyte API v2 — manage connections programmatically
+# pip install requests
+
+import requests
+
+BASE_URL = "https://api.airbyte.com/v1"
+CLIENT_ID = "your_client_id"
+CLIENT_SECRET = "your_client_secret"
+
+# 1. Get access token
+token_resp = requests.post(
+    "https://api.airbyte.com/v1/applications/token",
+    json=&#123;"client_id": CLIENT_ID, "client_secret": CLIENT_SECRET&#125;,
+)
+token = token_resp.json()["access_token"]
+HEADERS = &#123;"Authorization": f"Bearer &#123;token&#125;"&#125;
+
+# 2. List available source definitions
+sources = requests.get(
+    f"&#123;BASE_URL&#125;/sources",
+    headers=HEADERS,
+).json()
+
+# 3. Create a Postgres source
+new_source = requests.post(
+    f"&#123;BASE_URL&#125;/sources",
+    headers=HEADERS,
+    json=&#123;
+        "name": "Production Postgres",
+        "workspaceId": "your_workspace_id",
+        "definitionId": "decd338e-5647-4c0b-adf4-da0e75f5a750",  # Postgres
+        "configuration": &#123;
+            "sourceType": "postgres",
+            "host": "db.example.com",
+            "port": 5432,
+            "database": "production",
+            "username": "airbyte",
+            "password": "secret",
+            "ssl_mode": &#123;"mode": "require"&#125;,
+            "replication_method": &#123;
+                "method": "CDC",
+                "publication": "airbyte_pub",
+                "replication_slot": "airbyte_slot",
+            &#125;,
+        &#125;,
+    &#125;,
+).json()
+source_id = new_source["sourceId"]
+print(f"Source created: &#123;source_id&#125;")`;
+
+const cdkExample = `# Airbyte CDK — build a custom connector in Python
+# pip install airbyte-cdk
+
+from airbyte_cdk.sources import AbstractSource
+from airbyte_cdk.sources.streams.http import HttpStream
+from airbyte_cdk.models import SyncMode
+from typing import Any, Iterable, List, Mapping, Optional, Tuple
+import requests
+
+class OrdersStream(HttpStream):
+    url_base = "https://api.example.com/"
+    primary_key = "order_id"
+
+    def path(self, **kwargs) -> str:
+        return "orders"
+
+    def next_page_token(self, response: requests.Response) -> Optional[Mapping]:
+        data = response.json()
+        if data.get("next_cursor"):
+            return &#123;"cursor": data["next_cursor"]&#125;
+        return None
+
+    def request_params(self, next_page_token=None, **kwargs) -> Mapping:
+        params = &#123;"limit": 100&#125;
+        if next_page_token:
+            params["cursor"] = next_page_token["cursor"]
+        return params
+
+    def parse_response(self, response: requests.Response, **kwargs) -> Iterable[Mapping]:
+        yield from response.json().get("orders", [])
+
+class MyApiSource(AbstractSource):
+    def check_connection(self, logger, config) -> Tuple[bool, Any]:
+        try:
+            resp = requests.get(
+                "https://api.example.com/health",
+                headers=&#123;"Authorization": f"Bearer &#123;config['api_key']&#125;"&#125;,
+            )
+            return resp.status_code == 200, None
+        except Exception as e:
+            return False, str(e)
+
+    def streams(self, config: Mapping) -> List:
+        auth = &#123;"Authorization": f"Bearer &#123;config['api_key']&#125;"&#125;
+        return [OrdersStream(authenticator=auth)]`;
+
+const faq = [
+  { question: "What is Airbyte and how does it differ from Fivetran and Stitch?", answer: "Airbyte is an open-source ELT data integration platform. Unlike Fivetran and Stitch which are proprietary managed SaaS services, Airbyte's core is open-source under the MIT/Elastic license — you can self-host it for free on Docker Compose or Kubernetes. Airbyte Cloud is the managed offering with per-credit pricing. The key advantages over Fivetran and Stitch are cost (free self-hosted), flexibility (modify or build connectors), and a rapidly growing connector catalog (350+). The trade-off is that self-hosting requires infrastructure management and monitoring that Fivetran/Stitch handle for you." },
+  { question: "What is Airbyte CDK and when should I build a custom connector?", answer: "The Airbyte Connector Development Kit (CDK) is a Python framework for building custom source connectors. Build a custom connector when your data source is not in the official catalog, when an existing community connector is missing features you need, or when you are integrating a proprietary internal API. The CDK handles pagination, authentication (OAuth, API Key, Basic), incremental sync with cursor fields, schema declaration, and error handling. Once built, custom connectors can be published to the Airbyte connector catalog or kept private in your workspace. The process typically takes a few hours for simple REST APIs." },
+  { question: "What is the difference between Full Refresh and Incremental sync in Airbyte?", answer: "Full Refresh sync re-fetches all records from the source every run and either overwrites (Overwrite mode) or appends (Append mode) the destination table. This is simple but expensive for large datasets. Incremental Append sync fetches only records added since the last sync using a cursor field (typically updated_at or an auto-increment ID), appending new rows to the destination. Incremental Deduped History also fetches incrementally but deduplicates rows by primary key in the destination — each row is stored once, updated in-place, with Airbyte maintaining the deduplication logic. Prefer Incremental Deduped for most production use cases." },
+  { question: "How does Airbyte handle schema evolution and data type changes?", answer: "When Airbyte detects new columns in the source, it adds them to the destination table on the next sync. For breaking changes (column type change, column removal), Airbyte's behavior depends on the destination and sync mode — in most cases it preserves historical data by keeping the old column and adding a new one. Airbyte normalizes data through its internal normalization step (using dbt under the hood), which can handle type coercion. You can disable normalization and use raw tables with Airbyte's JSON columns, then apply your own transformations with dbt. The Raw Tables feature stores data in JSON format, maximally preserving schema flexibility." },
+  { question: "What are Airbyte's deployment options and their trade-offs?", answer: "Docker Compose is the simplest deployment — one command starts the full Airbyte platform locally or on a VM. Good for development and small teams. Kubernetes via Helm charts enables horizontal scaling, high availability, and production-grade deployments. Airbyte Cloud is the fully managed option — zero infrastructure management, per-credit pricing, and SLA. For large data volumes with cost sensitivity, Kubernetes self-hosted is the sweet spot: scale workers independently and avoid Airbyte Cloud's per-credit fees. Airbyte Enterprise adds single-tenant cloud hosting with a dedicated environment and enterprise support for teams that want SaaS convenience without the multi-tenancy concerns." },
+  { question: "How does Airbyte integrate with dbt for transformations?", answer: "Airbyte handles the EL (Extract + Load) part of the pipeline — it loads raw data into your warehouse in a schema like airbyte_internal or _airbyte_raw. dbt handles the T (Transform) — it reads from the raw tables and creates clean, tested, documented models in the analytics schema. The standard pattern is: Airbyte sync completes → trigger dbt run (via dbt Cloud webhook, Airflow/Prefect operator, or the Airbyte dbt integration). Airbyte's normalization feature runs a built-in dbt project on raw data to create typed tables automatically — useful for getting started, but most teams replace this with a custom dbt project for full control." },
+];
+---
+
+<BaseLayout
+  title="Airbyte: Open-Source Data Integration Platform Guide"
+  description="Complete Airbyte guide: open-source ELT, self-hosted vs Airbyte Cloud, setting up connections, 350+ connectors, incremental sync, custom CDK connectors, and Airbyte vs Fivetran vs Stitch comparison."
+  tool="Airbyte, open-source ETL, data integration, connectors, ELT, data pipeline, CDK"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Airbyte: Open-Source Data Integration Platform Guide",
+    "url": "https://devplaybook.cc/tools/airbyte",
+    "description": "Complete Airbyte guide covering open-source ELT, self-hosted setup, connector catalog, incremental sync, CDK custom connectors, and comparison with Fivetran and Stitch.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Airbyte: Open-Source Data Integration Platform Guide</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Airbyte</strong> is the leading open-source ELT platform with 350+ connectors that you can self-host for free. Move data from any source to any destination — databases, SaaS tools, APIs, and files — with full control over your infrastructure and connector code.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Open-source (free self-hosted)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 350+ connectors</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CDC via Debezium</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Python CDK for custom connectors</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Airbyte?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Airbyte is an open-source ELT (Extract, Load, Transform) data integration platform founded in 2020. It provides a catalog of 350+ pre-built connectors — covering databases (Postgres, MySQL, MongoDB, SQL Server), SaaS applications (Salesforce, HubSpot, Stripe, Google Ads, Zendesk), cloud storage (S3, GCS), and data warehouses. The open-source version is free to self-host on Docker Compose or Kubernetes, making it an attractive alternative to Fivetran and Stitch for cost-conscious teams.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Airbyte's architecture separates the platform (UI, scheduler, metadata DB) from the connector runtime (Docker containers for each connector). Each sync runs a source connector and a destination connector in Docker, extracting and loading data in Airbyte's internal JSON format. The platform handles scheduling, state management (incremental cursors), and error retry. Airbyte Cloud is the managed offering; for most teams scaling beyond a single developer, Kubernetes deployment with the Helm chart is the recommended production path.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Self-Hosted Deployment</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={selfHostedExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Managing Connections via Airbyte API v2</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={apiExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Building a Custom Connector with CDK</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={cdkExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Airbyte vs Fivetran vs Stitch</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Airbyte</th>
+          <th class="border border-border px-3 py-2 text-left">Fivetran</th>
+          <th class="border border-border px-3 py-2 text-left">Stitch</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">License</td>
+          <td class="border border-border px-3 py-2">Open-source (MIT/EL)</td>
+          <td class="border border-border px-3 py-2">Proprietary</td>
+          <td class="border border-border px-3 py-2">Proprietary (Singer open)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Self-hosted cost</td>
+          <td class="border border-border px-3 py-2">Free (infra costs only)</td>
+          <td class="border border-border px-3 py-2">Not available</td>
+          <td class="border border-border px-3 py-2">Not available</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Connectors</td>
+          <td class="border border-border px-3 py-2">350+ (community)</td>
+          <td class="border border-border px-3 py-2">500+ (enterprise-grade)</td>
+          <td class="border border-border px-3 py-2">~130</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Custom connectors</td>
+          <td class="border border-border px-3 py-2">Python CDK (excellent)</td>
+          <td class="border border-border px-3 py-2">Connector SDK</td>
+          <td class="border border-border px-3 py-2">Singer taps (open)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">CDC support</td>
+          <td class="border border-border px-3 py-2">Yes (Debezium)</td>
+          <td class="border border-border px-3 py-2">Yes (all plans)</td>
+          <td class="border border-border px-3 py-2">Yes (Advanced plan)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">dbt integration</td>
+          <td class="border border-border px-3 py-2">Built-in normalization</td>
+          <td class="border border-border px-3 py-2">Native dbt Core</td>
+          <td class="border border-border px-3 py-2">Webhook + dbt Cloud</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Cost-sensitive, flexibility</td>
+          <td class="border border-border px-3 py-2">Enterprise reliability</td>
+          <td class="border border-border px-3 py-2">Simple, affordable SaaS</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Production Best Practices</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Use <strong>Incremental Deduped</strong> sync mode for tables with primary keys to avoid data duplication</li>
+    <li>Configure CDC (Debezium) for high-volume database sources — far lower source load than key-based polling</li>
+    <li>Deploy on Kubernetes with dedicated worker nodes to isolate connector memory from platform services</li>
+    <li>Store secrets in AWS Secrets Manager or Google Secret Manager instead of the Airbyte DB for production security</li>
+    <li>Use the Airbyte Terraform provider to manage connections as code — version control your data pipeline configuration</li>
+    <li>Monitor sync lag and failure rates in the Airbyte UI or export metrics to Datadog/Prometheus via the Airbyte metrics endpoint</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Airbyte Guide" relatedTags={['airbyte', 'elt', 'open-source', 'data-integration', 'data-engineering']} />
+</BaseLayout>

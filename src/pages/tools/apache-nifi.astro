@@ -1,0 +1,212 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const dockerExample = `# docker-compose.yml — Apache NiFi single-node
+version: '3.8'
+services:
+  nifi:
+    image: apache/nifi:1.27.0
+    ports:
+      - "8443:8443"    # HTTPS UI (NiFi 1.14+ enforces TLS)
+    environment:
+      NIFI_WEB_HTTPS_PORT: '8443'
+      SINGLE_USER_CREDENTIALS_USERNAME: admin
+      SINGLE_USER_CREDENTIALS_PASSWORD: adminpassword123
+    volumes:
+      - nifi_conf:/opt/nifi/nifi-current/conf
+      - nifi_data:/opt/nifi/nifi-current/data
+      - nifi_logs:/opt/nifi/nifi-current/logs
+      - ./flow_templates:/opt/nifi/nifi-current/flow_templates
+
+volumes:
+  nifi_conf:
+  nifi_data:
+  nifi_logs:
+
+# Access UI at: https://localhost:8443/nifi
+# Default credentials set via SINGLE_USER_CREDENTIALS_* env vars`;
+
+const processorExample = `# NiFi REST API — create a processor via API (Python)
+import requests
+import json
+
+BASE = "https://localhost:8443/nifi-api"
+HEADERS = &#123;"Content-Type": "application/json"&#125;
+SESSION = requests.Session()
+SESSION.verify = False  # disable for self-signed cert in dev
+
+# 1. Get root process group ID
+root = SESSION.get(f"&#123;BASE&#125;/process-groups/root").json()
+pg_id = root["id"]
+
+# 2. Create a GetFile processor
+processor_config = &#123;
+    "revision": &#123;"version": 0&#125;,
+    "component": &#123;
+        "type": "org.apache.nifi.processors.standard.GetFile",
+        "name": "Get Orders CSV",
+        "position": &#123;"x": 400, "y": 200&#125;,
+        "config": &#123;
+            "properties": &#123;
+                "Input Directory": "/data/input",
+                "File Filter": "orders_.*\\.csv",
+                "Keep Source File": "false",
+            &#125;,
+            "schedulingPeriod": "10 sec",
+            "schedulingStrategy": "TIMER_DRIVEN",
+        &#125;,
+    &#125;,
+&#125;
+resp = SESSION.post(
+    f"&#123;BASE&#125;/process-groups/&#123;pg_id&#125;/processors",
+    json=processor_config
+)
+print("Created processor:", resp.json()["component"]["name"])`;
+
+const expressionExample = `# NiFi Expression Language — FlowFile attribute manipulation
+# Used in Processor properties to dynamically route and transform
+
+# Access FlowFile attributes
+$&#123;filename&#125;                          # original filename
+$&#123;uuid&#125;                             # FlowFile UUID
+$&#123;fileSize&#125;                         # size in bytes
+$&#123;entryDate&#125;                        # ingestion timestamp
+
+# String operations
+$&#123;filename:toLower()&#125;               # orders_2024.CSV -> orders_2024.csv
+$&#123;filename:replace('.csv', '.parquet')&#125;
+$&#123;filename:substring(0, 8)&#125;          # first 8 chars
+
+# Conditionals — used in RouteOnAttribute processor
+$&#123;amount:gt(1000)&#125;                  # route high-value orders
+$&#123;status:equals('error')&#125;           # route error records
+$&#123;region:in('us', 'eu', 'ap')&#125;      # allow-list routing
+
+# Date formatting for S3/HDFS partition paths
+$&#123;now():format('yyyy/MM/dd')&#125;        # 2024/01/15
+$&#123;entryDate:toNumber():format('yyyy-MM-dd', 'UTC')&#125;
+
+# Combining attributes in PutS3Object Key property:
+# output/$&#123;now():format('yyyy/MM/dd')&#125;/$&#123;uuid&#125;.json`;
+
+const faq = [
+  { question: "What is a FlowFile in Apache NiFi?", answer: "A FlowFile is the fundamental data unit in NiFi — it represents a single piece of data moving through the pipeline. Every FlowFile has two parts: content (the actual payload, stored in the content repository) and attributes (key-value metadata like filename, fileSize, uuid, MIME type, and any custom attributes you add). Processors read, modify, route, and write FlowFiles. Attributes are lightweight and kept in memory; content is stored on disk. FlowFile attributes power NiFi's routing logic via the Expression Language and RouteOnAttribute processor." },
+  { question: "What is the difference between a Processor, a Connection, and a Controller Service in NiFi?", answer: "A Processor is a configurable component that performs an action on FlowFiles — GetFile reads files, PutS3Object writes to S3, ExecuteSQL queries a database, SplitJSON splits a JSON array. A Connection is a queue between two processors that buffers FlowFiles — each connection has back-pressure thresholds and can prioritize FlowFiles. A Controller Service is a shared configuration component referenced by multiple processors — a DBCPConnectionPool manages a database connection pool that all SQL processors in the flow can share, avoiding redundant connections." },
+  { question: "How does NiFi handle back-pressure and flow control?", answer: "Every Connection in NiFi has configurable back-pressure thresholds: maximum queue count (default 10,000 FlowFiles) and maximum data size (default 1 GB). When a connection reaches its threshold, the upstream processor is paused — it stops pulling new data until the downstream processor drains the queue. This prevents memory overflow and natural throttling when a slow downstream sink cannot keep up with a fast source. Monitor queue depths in the NiFi UI to identify bottlenecks. Adjust thresholds based on FlowFile size and acceptable latency." },
+  { question: "What is NiFi's Site-to-Site protocol?", answer: "Site-to-Site (S2S) is NiFi's protocol for transferring data between two NiFi instances — or between NiFi and an application that implements the S2S client library. Unlike pushing raw data over HTTP, S2S transfers FlowFiles with their full attributes, supports compression, and handles back-pressure natively. Use S2S to federate data from remote/edge NiFi nodes (e.g., at a factory or remote office) to a central NiFi cluster. The RemoteProcessGroup processor establishes a S2S connection by pointing to the remote NiFi's URL." },
+  { question: "When should I choose NiFi over Kafka Connect or Airflow?", answer: "Choose NiFi when you need a visual, no-code (or low-code) dataflow tool with drag-and-drop pipeline building, real-time routing based on content and attributes, and complex transformation logic without writing code (ExecuteScript if needed). NiFi excels for data ingestion from heterogeneous sources (FTP, SFTP, HTTP, JMS, databases, IoT devices) with routing, transformation, and delivery in one tool. Choose Kafka Connect when you are in a Kafka-centric architecture and need high-throughput, scalable connectors. Choose Airflow when orchestrating batch ETL jobs written in Python with complex dependency graphs." },
+  { question: "What is NiFi Registry and when do I need it?", answer: "NiFi Registry is a complementary service that provides version control for NiFi flows (process group definitions). Without Registry, flow changes in the NiFi UI are not versioned — you cannot roll back to a previous version or promote a flow from development to production reliably. With Registry, you commit flow versions to a bucket, promote specific versions to production, and see the full change history. NiFi Registry is essential for production deployments where flow promotion, rollback, and audit trails are required. Connect NiFi to Registry via Settings > Registry Clients in the NiFi UI." },
+];
+---
+
+<BaseLayout
+  title="Apache NiFi: Data Flow Automation & Pipeline Design Guide"
+  description="Complete Apache NiFi guide: visual dataflow, FlowFiles, processors (GetFile, PutS3, ExecuteSQL), Controller Services, Expression Language, Site-to-Site, Docker quickstart, and NiFi vs Kafka Connect vs Airflow comparison."
+  tool="Apache NiFi, dataflow, ETL, pipeline automation, processors, flowfile, data integration"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Apache NiFi: Data Flow Automation & Pipeline Design Guide",
+    "url": "https://devplaybook.cc/tools/apache-nifi",
+    "description": "Complete Apache NiFi guide covering FlowFiles, processors, Controller Services, Expression Language, Site-to-Site, and comparison with Kafka Connect and Airflow.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Apache NiFi: Data Flow Automation & Pipeline Design Guide</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Apache NiFi</strong> is a visual, real-time dataflow platform that makes it easy to automate data movement between systems without writing code. Drag, drop, and connect processors in a browser-based UI to build powerful, fault-tolerant data pipelines.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual drag-and-drop UI</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 300+ built-in processors</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real-time data provenance</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Built-in back-pressure</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Apache NiFi?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Apache NiFi is an open-source data integration platform originally developed by the NSA and donated to the Apache Software Foundation in 2014. It is designed for automated, reliable data flow between heterogeneous systems: files, databases, REST APIs, message queues, cloud storage, IoT devices, and more. The browser-based UI lets users build and modify pipelines visually without touching code — making it accessible to both engineers and operations teams.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Every piece of data in NiFi is represented as a FlowFile — a content payload plus metadata attributes. Processors read, transform, route, and write FlowFiles. Data provenance is tracked for every FlowFile through every processor, providing a complete audit trail of where data came from and every transformation it underwent. NiFi includes built-in security (TLS, multi-tenant authorization), clustering for scalability, and Site-to-Site for data transfer between NiFi instances.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Docker Compose Quickstart</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Creating Processors via REST API</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={processorExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">NiFi Expression Language</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={expressionExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">NiFi vs Kafka Connect vs Apache Airflow</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Apache NiFi</th>
+          <th class="border border-border px-3 py-2 text-left">Kafka Connect</th>
+          <th class="border border-border px-3 py-2 text-left">Apache Airflow</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Interface</td>
+          <td class="border border-border px-3 py-2">Visual UI (drag & drop)</td>
+          <td class="border border-border px-3 py-2">REST API / JSON config</td>
+          <td class="border border-border px-3 py-2">Python code (DAGs)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Real-time streaming</td>
+          <td class="border border-border px-3 py-2">Yes (continuous flow)</td>
+          <td class="border border-border px-3 py-2">Yes (Kafka-centric)</td>
+          <td class="border border-border px-3 py-2">Batch / scheduled</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Transformation</td>
+          <td class="border border-border px-3 py-2">Rich (150+ transform processors)</td>
+          <td class="border border-border px-3 py-2">Limited (SMTs only)</td>
+          <td class="border border-border px-3 py-2">Full Python code</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Data provenance</td>
+          <td class="border border-border px-3 py-2">Built-in (full lineage)</td>
+          <td class="border border-border px-3 py-2">None</td>
+          <td class="border border-border px-3 py-2">Task logs only</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Kafka integration</td>
+          <td class="border border-border px-3 py-2">ConsumeKafka / PublishKafka</td>
+          <td class="border border-border px-3 py-2">Native (core purpose)</td>
+          <td class="border border-border px-3 py-2">Kafka operators</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Multi-source ingestion, IoT, routing</td>
+          <td class="border border-border px-3 py-2">Kafka source/sink connectors</td>
+          <td class="border border-border px-3 py-2">Batch ETL orchestration</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Common Processor Patterns</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>GetFile → SplitText → PublishKafka</strong> — read CSV line-by-line and publish each row to Kafka</li>
+    <li><strong>ConsumeKafka → EvaluateJsonPath → RouteOnAttribute → PutDatabaseRecord</strong> — consume, extract fields, route by value, and write to database</li>
+    <li><strong>ListS3 → FetchS3Object → ConvertAvroToJSON → PutElasticsearchRecord</strong> — S3 to Elasticsearch with format conversion</li>
+    <li><strong>QueryDatabaseTable → ConvertRecord → PutParquet</strong> — CDC (change data capture) from DB to Parquet files</li>
+    <li>Use <strong>HandleHttpRequest / HandleHttpResponse</strong> to expose NiFi as an HTTP endpoint for receiving data from external systems</li>
+    <li>Use <strong>ExecuteScript</strong> (Python/Groovy) only when built-in processors cannot handle the logic — maintain testability</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Apache NiFi Guide" relatedTags={['nifi', 'dataflow', 'etl', 'data-pipeline', 'data-integration']} />
+</BaseLayout>

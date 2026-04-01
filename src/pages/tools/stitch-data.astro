@@ -1,0 +1,227 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const apiExample = `# Stitch Connect API — manage sources and destinations
+# pip install requests
+
+import requests
+
+STITCH_TOKEN = "your_stitch_api_token"
+BASE_URL = "https://api.stitchdata.com/v4"
+HEADERS = &#123;
+    "Authorization": f"Bearer &#123;STITCH_TOKEN&#125;",
+    "Content-Type": "application/json",
+&#125;
+
+# 1. List all sources (integrations)
+sources = requests.get(f"&#123;BASE_URL&#125;/sources", headers=HEADERS).json()
+for s in sources:
+    print(f"Source: &#123;s['display_name']&#125; | Status: &#123;s['current_step_type']&#125;")
+
+# 2. Create a new MySQL source
+new_source = requests.post(
+    f"&#123;BASE_URL&#125;/sources",
+    headers=HEADERS,
+    json=&#123;
+        "type": "platform.mysql",
+        "display_name": "Production MySQL",
+        "properties": &#123;
+            "host": "db.example.com",
+            "port": "3306",
+            "database": "production",
+            "username": "stitch_reader",
+            "password": "secure_password",
+            "ssl": "true",
+        &#125;,
+    &#125;,
+).json()
+source_id = new_source["id"]
+print(f"Created source ID: &#123;source_id&#125;")
+
+# 3. Trigger a manual extraction run
+requests.post(
+    f"&#123;BASE_URL&#125;/sources/&#123;source_id&#125;/sync",
+    headers=HEADERS,
+)
+print("Manual sync triggered")`;
+
+const singerExample = `# Singer Protocol — tap (source) + target (destination)
+# pip install singer-tools tap-mysql target-snowflake
+
+# 1. Configure the tap (source)
+# tap_config.json
+&#123;
+  "host": "db.example.com",
+  "port": 3306,
+  "user": "stitch",
+  "password": "secret",
+  "database": "production"
+&#125;
+
+# 2. Discover schema (generates catalog.json)
+# tap-mysql --config tap_config.json --discover > catalog.json
+
+# 3. Select streams to sync in catalog.json:
+# Set "selected": true on each stream you want
+
+# 4. Run the tap and pipe to the target
+# tap-mysql --config tap_config.json --catalog catalog.json \\
+#   | target-snowflake --config target_config.json
+
+# target_config.json
+&#123;
+  "account": "myaccount.us-east-1",
+  "username": "stitch_loader",
+  "password": "secret",
+  "database": "ANALYTICS",
+  "warehouse": "LOADING_WH",
+  "schema": "stitch_mysql"
+&#125;
+
+# Singer message format (NDJSON):
+# &#123;"type": "SCHEMA", "stream": "orders", "schema": &#123;...&#125;, "key_properties": ["id"]&#125;
+# &#123;"type": "RECORD", "stream": "orders", "record": &#123;"id": 1, "amount": 99.99&#125;&#125;
+# &#123;"type": "STATE",  "value": &#123;"bookmarks": &#123;"orders": &#123;"id": 1000&#125;&#125;&#125;&#125;`;
+
+const replicationExample = `# Replication methods — how Stitch detects changed rows
+
+# 1. FULL TABLE — re-sync entire table every run
+# Use when: small tables, no updated_at column, source doesn't support CDC
+# Pros: simple, always accurate
+# Cons: expensive for large tables, slow
+
+# 2. KEY-BASED INCREMENTAL — query rows WHERE updated_at > last_bookmark
+# Use when: table has a reliable updated_at or auto-increment id column
+# Pros: efficient, low source load
+# Cons: misses hard deletes; requires monotonically updating replication key
+
+# Configure in Stitch UI per-table:
+# Table Settings > Replication Method > Key-based Incremental
+# Replication Key: updated_at
+
+# 3. LOG-BASED (CDC) — read database transaction log
+# Supported sources: MySQL (binlog), Postgres (WAL), MongoDB (oplog), SQL Server
+# Use when: you need near-real-time sync and want to capture DELETEs
+# Setup for Postgres:
+# wal_level = logical
+# max_replication_slots = 5
+# max_wal_senders = 5
+# CREATE PUBLICATION stitch_pub FOR ALL TABLES;
+
+# Comparison summary:
+# Method          | Captures deletes | Source load | Complexity
+# Full Table      | Yes (via full re-sync) | High | Low
+# Key-based       | No               | Low         | Low
+# Log-based (CDC) | Yes              | Very Low    | Medium`;
+
+const faq = [
+  { question: "What is Stitch Data and what does it do?", answer: "Stitch Data (now part of Talend) is a fully managed cloud ETL/ELT service that extracts data from sources like databases, SaaS APIs, and files, and loads it into data warehouse destinations like Snowflake, BigQuery, Redshift, and Azure Synapse. You configure integrations in minutes through the Stitch UI — no code required for supported sources. Stitch handles scheduling, incremental sync, schema management, and error retry automatically. It is built on the open Singer specification, so you can also run taps and targets locally or extend them with custom Singer taps." },
+  { question: "What is the Singer protocol that Stitch is built on?", answer: "Singer is an open-source specification for writing data extraction scripts (taps) and loading scripts (targets) that communicate via JSON messages over stdout/stdin. A tap connects to a source, discovers its schema, and emits SCHEMA, RECORD, and STATE messages as newline-delimited JSON. A target receives these messages and loads them into a destination. Because Singer is a standard protocol, any tap can be piped into any target. Stitch is a managed hosted service that runs Singer taps and targets on your behalf — but you can run any Singer tap locally without Stitch." },
+  { question: "What are the three replication methods in Stitch?", answer: "Full Table replication re-syncs the entire table every run — simple and accurate, but expensive for large tables. Key-based Incremental replication queries rows where an updated_at or id column is greater than the last synced value — efficient and low-load, but misses hard DELETEs and requires a reliable replication key. Log-based Incremental (CDC) reads the database transaction log (MySQL binlog, Postgres WAL, MongoDB oplog) — captures INSERTs, UPDATEs, and DELETEs with minimal source load, but requires database configuration changes and is not available for all sources. Choose log-based CDC whenever the source supports it." },
+  { question: "Which destinations does Stitch support?", answer: "Stitch supports all major cloud data warehouses: Snowflake, Google BigQuery, Amazon Redshift, Amazon S3 (data lake), Microsoft Azure Synapse Analytics, PostgreSQL, and Databricks Delta Lake. The choice of destination affects features: Snowflake and BigQuery support the widest set of data types and have the best column-level update granularity. S3 is useful for raw data lake storage at very low cost. When choosing a destination, consider query performance, cost per TB, and whether your BI tool or transformation layer (dbt) supports it natively." },
+  { question: "How does Stitch handle schema changes?", answer: "When Stitch detects a new column in the source, it adds that column to the destination table on the next sync. If a column's data type changes, Stitch creates a new column with a suffix (_sdc_typed or similar) to avoid data corruption in the existing column. Dropped source columns are not removed from the destination — they remain with NULL going forward. Stitch logs all schema changes in metadata tables. You can configure notifications for schema changes in the Stitch UI. Unlike Fivetran's fully automatic schema management, Stitch may require occasional manual cleanup after significant schema changes." },
+  { question: "What are Stitch's pricing tiers and how does billing work?", answer: "Stitch pricing is row-based — you pay per million rows replicated per month, with different tiers by row volume and features. The Standard plan covers most use cases with a moderate number of sources. The Advanced and Premium tiers unlock log-based replication (CDC), advanced scheduling, priority support, and a higher source limit. Row counting can be surprising with full table replication of large tables — a 10M-row table re-synced daily generates 300M rows per month. Budget carefully and prefer incremental replication to control costs. Stitch offers a 14-day free trial without a credit card." },
+];
+---
+
+<BaseLayout
+  title="Stitch Data: Cloud ETL Service Setup & Integration Guide"
+  description="Complete Stitch Data guide: Singer protocol, adding integrations, Full Table vs Key-based vs Log-based CDC replication, Snowflake/BigQuery destinations, and Stitch vs Fivetran vs Airbyte comparison."
+  tool="Stitch Data, ETL, Singer, data integration, replication, cloud ETL, data warehouse"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Stitch Data: Cloud ETL Service Setup & Integration Guide",
+    "url": "https://devplaybook.cc/tools/stitch-data",
+    "description": "Complete Stitch Data guide covering the Singer protocol, replication methods, destinations, pricing, and comparison with Fivetran and Airbyte.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Stitch Data: Cloud ETL Service Setup & Integration Guide</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Stitch Data</strong> is a simple, affordable managed cloud ELT service built on the open Singer protocol. Connect 130+ sources to your data warehouse in minutes — no code required — with flexible replication methods including log-based CDC.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Singer open standard</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Log-based CDC (binlog/WAL)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Snowflake, BigQuery, Redshift</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Row-based pricing</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Stitch Data?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Stitch Data (acquired by Talend in 2018, now part of the Qlik portfolio) is a cloud-hosted ELT service that extracts data from databases and SaaS applications and loads it into your data warehouse. It is designed for simplicity — a data analyst without engineering experience can configure a new integration in under ten minutes. Stitch supports 130+ sources including MySQL, Postgres, MongoDB, Salesforce, HubSpot, Stripe, Zendesk, Facebook Ads, and Google Analytics.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Stitch is built on the open Singer protocol — an open-source standard for data extraction scripts (taps) and loading scripts (targets). This means you can run any community Singer tap locally, inspect exactly what data is being extracted, and contribute new taps to the ecosystem. Stitch adds a managed layer on top: hosting, scheduling, monitoring, and a UI. Pricing is row-based, making it more affordable than Fivetran for moderate data volumes.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Managing Sources via Stitch Connect API</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={apiExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Singer Protocol — Taps & Targets</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={singerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Replication Methods Explained</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={replicationExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Stitch vs Fivetran vs Airbyte</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Stitch Data</th>
+          <th class="border border-border px-3 py-2 text-left">Fivetran</th>
+          <th class="border border-border px-3 py-2 text-left">Airbyte</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Hosting</td>
+          <td class="border border-border px-3 py-2">Fully managed SaaS</td>
+          <td class="border border-border px-3 py-2">Fully managed SaaS</td>
+          <td class="border border-border px-3 py-2">Open-source / Cloud</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Connectors</td>
+          <td class="border border-border px-3 py-2">~130</td>
+          <td class="border border-border px-3 py-2">500+</td>
+          <td class="border border-border px-3 py-2">350+ (community)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Pricing</td>
+          <td class="border border-border px-3 py-2">Row-based (affordable)</td>
+          <td class="border border-border px-3 py-2">MAR-based (premium)</td>
+          <td class="border border-border px-3 py-2">Free (self-hosted)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Open standard</td>
+          <td class="border border-border px-3 py-2">Singer (open)</td>
+          <td class="border border-border px-3 py-2">Proprietary</td>
+          <td class="border border-border px-3 py-2">Airbyte CDK (open)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">CDC support</td>
+          <td class="border border-border px-3 py-2">Yes (Advanced plan)</td>
+          <td class="border border-border px-3 py-2">Yes (all plans)</td>
+          <td class="border border-border px-3 py-2">Yes (Debezium)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Budget-conscious teams</td>
+          <td class="border border-border px-3 py-2">Enterprise / reliability</td>
+          <td class="border border-border px-3 py-2">Cost-sensitive / flexibility</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Stitch Data Guide" relatedTags={['stitch', 'etl', 'singer', 'data-integration', 'data-warehouse']} />
+</BaseLayout>
