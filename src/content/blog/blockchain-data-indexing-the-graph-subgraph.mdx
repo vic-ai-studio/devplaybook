@@ -1,0 +1,433 @@
+---
+title: "Blockchain Data Indexing: Building Subgraphs with The Graph Protocol"
+description: "Learn to build and deploy subgraphs with The Graph. Index smart contract events, write GraphQL schemas, handle entity relationships, and query on-chain data for your dApp frontend."
+date: "2026-04-02"
+tags: [blockchain, web3, ethereum, graphql, defi]
+readingTime: "9 min read"
+---
+
+# Blockchain Data Indexing: Building Subgraphs with The Graph Protocol
+
+Smart contracts store minimal data by design — gas costs make it expensive to store historical state on-chain. The Graph solves this by indexing contract events into a queryable GraphQL API. If you've ever wondered "how does Uniswap show historical price data?" — it's a subgraph.
+
+---
+
+## Why You Need an Indexer
+
+Direct RPC calls have fundamental limitations:
+
+```typescript
+// What you CAN'T efficiently do with RPC
+// ❌ "Get all transfers for this address in the last 30 days"
+// ❌ "What is the total volume of this DEX over all time?"
+// ❌ "Show me all liquidity positions for this user across pools"
+// ❌ "What NFTs does this address own, with their metadata?"
+
+// What you CAN do with RPC (but is slow/expensive)
+const transfers = await publicClient.getLogs({
+  address: TOKEN_ADDRESS,
+  event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)'),
+  fromBlock: 18000000n,
+  toBlock: 'latest',  // Can scan millions of blocks — slow, rate-limited
+});
+```
+
+The Graph indexes events as they happen and stores them in a PostgreSQL-backed store, making the queries above instant.
+
+---
+
+## Subgraph Architecture
+
+A subgraph has three components:
+
+1. **schema.graphql** — entities (like database tables)
+2. **subgraph.yaml** — which contracts to index, which events to handle
+3. **mappings.ts** — AssemblyScript handlers that transform events into entities
+
+```
+Smart Contract Event
+        │
+        ▼
+  subgraph.yaml
+  (event routing)
+        │
+        ▼
+  mappings.ts
+  (AssemblyScript)
+        │
+        ▼
+  Graph Node
+  (stores entities)
+        │
+        ▼
+  GraphQL API
+  (query from frontend)
+```
+
+---
+
+## Building a DEX Subgraph
+
+Let's index a simple AMM (Uniswap-style):
+
+### Step 1: Install Graph CLI
+
+```bash
+npm install -g @graphprotocol/graph-cli
+graph init --product hosted-service myorg/my-dex-subgraph
+```
+
+### Step 2: Define the Schema
+
+```graphql
+# schema.graphql
+type Token @entity {
+  id: ID!           # token address
+  symbol: String!
+  name: String!
+  decimals: Int!
+  totalSupply: BigInt!
+  volume: BigDecimal!
+  volumeUSD: BigDecimal!
+  txCount: BigInt!
+  pools: [Pool!]! @derivedFrom(field: "token0")  # reverse lookup
+}
+
+type Pool @entity {
+  id: ID!           # pool address
+  token0: Token!
+  token1: Token!
+  fee: Int!
+  sqrtPrice: BigInt!
+  liquidity: BigInt!
+  tick: Int
+  volumeToken0: BigDecimal!
+  volumeToken1: BigDecimal!
+  volumeUSD: BigDecimal!
+  txCount: BigInt!
+  createdAtTimestamp: BigInt!
+  createdAtBlockNumber: BigInt!
+  swaps: [Swap!]! @derivedFrom(field: "pool")
+}
+
+type Swap @entity {
+  id: ID!           # tx hash + log index
+  pool: Pool!
+  sender: Bytes!
+  recipient: Bytes!
+  amount0: BigDecimal!
+  amount1: BigDecimal!
+  amountUSD: BigDecimal!
+  sqrtPriceX96: BigInt!
+  tick: Int!
+  timestamp: BigInt!
+  transaction: Transaction!
+}
+
+type Transaction @entity {
+  id: ID!           # tx hash
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  gasUsed: BigInt!
+  gasPrice: BigInt!
+  swaps: [Swap!]! @derivedFrom(field: "transaction")
+}
+
+# Daily aggregate for charts
+type PoolDayData @entity {
+  id: ID!           # pool address + day timestamp
+  pool: Pool!
+  date: Int!
+  volumeToken0: BigDecimal!
+  volumeToken1: BigDecimal!
+  volumeUSD: BigDecimal!
+  feesUSD: BigDecimal!
+  open: BigDecimal!
+  high: BigDecimal!
+  low: BigDecimal!
+  close: BigDecimal!
+  txCount: BigInt!
+}
+```
+
+### Step 3: Configure subgraph.yaml
+
+```yaml
+specVersion: 1.0.0
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: Factory
+    network: mainnet
+    source:
+      address: "0x1F98431c8aD98523631AE4a59f267346ea31F984"  # Uniswap V3 Factory
+      abi: UniswapV3Factory
+      startBlock: 12369621
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Pool
+        - Token
+      abis:
+        - name: UniswapV3Factory
+          file: ./abis/UniswapV3Factory.json
+        - name: ERC20
+          file: ./abis/ERC20.json
+      eventHandlers:
+        - event: PoolCreated(indexed address,indexed address,indexed uint24,int24,address)
+          handler: handlePoolCreated
+      file: ./src/mappings/factory.ts
+
+templates:  # Dynamically index newly created pools
+  - kind: ethereum
+    name: Pool
+    network: mainnet
+    source:
+      abi: UniswapV3Pool
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Pool
+        - Swap
+        - Transaction
+      abis:
+        - name: UniswapV3Pool
+          file: ./abis/UniswapV3Pool.json
+      eventHandlers:
+        - event: Swap(indexed address,indexed address,int256,int256,uint160,uint128,int24)
+          handler: handleSwap
+        - event: Mint(address,indexed address,indexed int24,indexed int24,uint128,uint256,uint256)
+          handler: handleMint
+        - event: Burn(indexed address,indexed int24,indexed int24,uint128,uint256,uint256)
+          handler: handleBurn
+      file: ./src/mappings/pool.ts
+```
+
+### Step 4: Write Mappings
+
+```typescript
+// src/mappings/factory.ts
+import { PoolCreated } from '../types/Factory/UniswapV3Factory';
+import { Pool, Token } from '../types/schema';
+import { Pool as PoolTemplate } from '../types/templates';
+import { ERC20 } from '../types/Factory/ERC20';
+import { BigInt, BigDecimal, Address } from '@graphprotocol/graph-ts';
+
+export function handlePoolCreated(event: PoolCreated): void {
+  // Load or create Token entities
+  let token0 = Token.load(event.params.token0.toHexString());
+  if (!token0) {
+    token0 = new Token(event.params.token0.toHexString());
+    let erc20 = ERC20.bind(event.params.token0);
+
+    // Try-catch via tryCall for contracts that may not implement optional fields
+    let symbolResult = erc20.try_symbol();
+    token0.symbol = symbolResult.reverted ? 'UNKNOWN' : symbolResult.value;
+
+    let nameResult = erc20.try_name();
+    token0.name = nameResult.reverted ? 'Unknown Token' : nameResult.value;
+
+    let decimalsResult = erc20.try_decimals();
+    token0.decimals = decimalsResult.reverted ? 18 : decimalsResult.value;
+
+    token0.volume = BigDecimal.zero();
+    token0.volumeUSD = BigDecimal.zero();
+    token0.txCount = BigInt.zero();
+    token0.totalSupply = BigInt.zero();
+    token0.save();
+  }
+
+  // Create Pool entity
+  let pool = new Pool(event.params.pool.toHexString());
+  pool.token0 = token0.id;
+  pool.token1 = event.params.token1.toHexString();
+  pool.fee = event.params.fee;
+  pool.sqrtPrice = BigInt.zero();
+  pool.liquidity = BigInt.zero();
+  pool.volumeToken0 = BigDecimal.zero();
+  pool.volumeToken1 = BigDecimal.zero();
+  pool.volumeUSD = BigDecimal.zero();
+  pool.txCount = BigInt.zero();
+  pool.createdAtTimestamp = event.block.timestamp;
+  pool.createdAtBlockNumber = event.block.number;
+  pool.save();
+
+  // Dynamically start indexing the new pool contract
+  PoolTemplate.create(event.params.pool);
+}
+```
+
+```typescript
+// src/mappings/pool.ts
+import { Swap as SwapEvent } from '../types/templates/Pool/UniswapV3Pool';
+import { Pool, Swap, Transaction, PoolDayData } from '../types/schema';
+import { BigDecimal, BigInt } from '@graphprotocol/graph-ts';
+
+export function handleSwap(event: SwapEvent): void {
+  let pool = Pool.load(event.address.toHexString())!;
+
+  // Load or create transaction
+  let transaction = Transaction.load(event.transaction.hash.toHexString());
+  if (!transaction) {
+    transaction = new Transaction(event.transaction.hash.toHexString());
+    transaction.blockNumber = event.block.number;
+    transaction.timestamp = event.block.timestamp;
+    transaction.gasUsed = event.transaction.gasUsed;
+    transaction.gasPrice = event.transaction.gasPrice;
+    transaction.save();
+  }
+
+  // Create swap entity
+  let swap = new Swap(
+    event.transaction.hash.toHexString() + '#' + event.logIndex.toString()
+  );
+  swap.pool = pool.id;
+  swap.sender = event.params.sender;
+  swap.recipient = event.params.recipient;
+  swap.amount0 = event.params.amount0.toBigDecimal();
+  swap.amount1 = event.params.amount1.toBigDecimal();
+  swap.amountUSD = BigDecimal.zero(); // Calculate with price oracle
+  swap.sqrtPriceX96 = event.params.sqrtPriceX96;
+  swap.tick = event.params.tick;
+  swap.timestamp = event.block.timestamp;
+  swap.transaction = transaction.id;
+  swap.save();
+
+  // Update pool stats
+  pool.sqrtPrice = event.params.sqrtPriceX96;
+  pool.tick = event.params.tick;
+  pool.txCount = pool.txCount.plus(BigInt.fromI32(1));
+  pool.volumeToken0 = pool.volumeToken0.plus(swap.amount0.abs());
+  pool.volumeToken1 = pool.volumeToken1.plus(swap.amount1.abs());
+  pool.save();
+
+  // Update daily data
+  updatePoolDayData(pool, event);
+}
+
+function updatePoolDayData(pool: Pool, event: SwapEvent): void {
+  let timestamp = event.block.timestamp.toI32();
+  let dayId = timestamp / 86400; // integer day number
+  let dayStartTimestamp = dayId * 86400;
+  let dayPoolId = pool.id + '-' + dayId.toString();
+
+  let poolDayData = PoolDayData.load(dayPoolId);
+  if (!poolDayData) {
+    poolDayData = new PoolDayData(dayPoolId);
+    poolDayData.pool = pool.id;
+    poolDayData.date = dayStartTimestamp;
+    poolDayData.volumeToken0 = BigDecimal.zero();
+    poolDayData.volumeToken1 = BigDecimal.zero();
+    poolDayData.volumeUSD = BigDecimal.zero();
+    poolDayData.feesUSD = BigDecimal.zero();
+    poolDayData.txCount = BigInt.zero();
+  }
+
+  poolDayData.txCount = poolDayData.txCount.plus(BigInt.fromI32(1));
+  poolDayData.save();
+}
+```
+
+---
+
+## Querying the Subgraph
+
+```typescript
+// Frontend: query top pools by volume
+const TOP_POOLS_QUERY = `
+  query TopPools($first: Int!, $skip: Int!) {
+    pools(
+      first: $first
+      skip: $skip
+      orderBy: volumeUSD
+      orderDirection: desc
+      where: { volumeUSD_gt: "10000" }
+    ) {
+      id
+      token0 { symbol }
+      token1 { symbol }
+      fee
+      volumeUSD
+      txCount
+    }
+  }
+`;
+
+// Recent swaps for a specific pool with pagination
+const POOL_SWAPS_QUERY = `
+  query PoolSwaps($pool: String!, $first: Int!, $lastId: ID!) {
+    swaps(
+      first: $first
+      where: { pool: $pool, id_gt: $lastId }
+      orderBy: timestamp
+      orderDirection: desc
+    ) {
+      id
+      amount0
+      amount1
+      amountUSD
+      timestamp
+      sender
+      recipient
+    }
+  }
+`;
+
+// Subscriptions for real-time updates (not all hosted services support this)
+const SWAP_SUBSCRIPTION = `
+  subscription OnSwap($pool: String!) {
+    swaps(where: { pool: $pool }, orderBy: timestamp, orderDirection: desc, first: 1) {
+      id
+      amountUSD
+      timestamp
+    }
+  }
+`;
+```
+
+---
+
+## Deployment
+
+```bash
+# Build and deploy to The Graph's hosted service (free, centralized)
+graph codegen && graph build
+graph auth --product hosted-service YOUR_ACCESS_TOKEN
+graph deploy --product hosted-service myorg/my-dex-subgraph
+
+# Or deploy to Subgraph Studio (decentralized, requires GRT)
+graph deploy --studio my-dex-subgraph
+```
+
+---
+
+## Performance Tips
+
+1. **Use `@derivedFrom` instead of arrays** — don't store `[Swap!]!` directly, let it be computed
+2. **Aggregate data** — store `PoolDayData` instead of querying all swaps and summing
+3. **Batch entity saves** — call `save()` after all mutations, not in a loop
+4. **Avoid `load()` in loops** — cache loaded entities in a local variable
+5. **Use `Bytes` for addresses** — cheaper than `String`
+
+```typescript
+// ❌ Slow — loads entity in every loop iteration
+for (let i = 0; i < transfers.length; i++) {
+  let token = Token.load(transfers[i].token)!;
+  token.txCount = token.txCount.plus(ONE_BI);
+  token.save();
+}
+
+// ✅ Fast — load once, modify, save once
+let token = Token.load(tokenId)!;
+token.txCount = token.txCount.plus(BigInt.fromI32(transfers.length));
+token.save();
+```
+
+Use the [Merkle Tree Generator](/tools/merkle-tree-generator) for NFT allowlists and the [ETH Unit Converter](/tools/eth-unit-converter) alongside your subgraph data for unit conversions.

@@ -1,0 +1,382 @@
+---
+title: "Smart Contract Security: Audit Checklist and Common Vulnerabilities"
+description: "Comprehensive smart contract security guide: reentrancy, flash loans, oracle manipulation, access control flaws. Includes Slither setup, Foundry fuzz testing, and pre-audit checklist."
+date: "2026-04-02"
+tags: [solidity, blockchain, security, ethereum, web3]
+readingTime: "10 min read"
+---
+
+# Smart Contract Security: Audit Checklist and Common Vulnerabilities
+
+Smart contract bugs are permanent and often immediately profitable for attackers. The $3.8 billion lost to hacks in 2022 largely came from a handful of well-known vulnerability patterns. This guide covers the critical ones, detection tools, and the pre-audit checklist every team should run before deployment.
+
+---
+
+## The Most Exploited Vulnerabilities
+
+### 1. Reentrancy
+
+The oldest and still most devastating attack. The DAO hack (2016, $60M), Cream Finance (2021, $130M), and many others.
+
+```solidity
+// VULNERABLE — check-effects-interactions violated
+contract VulnerableBank {
+    mapping(address => uint256) public balances;
+
+    function withdraw() external {
+        uint256 amount = balances[msg.sender];
+        require(amount > 0, "No balance");
+
+        // WRONG: external call before state update
+        (bool success,) = msg.sender.call{value: amount}("");
+        require(success);
+
+        balances[msg.sender] = 0; // Too late — attacker re-entered above
+    }
+}
+
+// ATTACK CONTRACT
+contract Attacker {
+    VulnerableBank target;
+
+    receive() external payable {
+        if (address(target).balance >= 1 ether) {
+            target.withdraw(); // Re-enter before balance zeroed
+        }
+    }
+
+    function attack() external payable {
+        target.deposit{value: 1 ether}();
+        target.withdraw();
+    }
+}
+```
+
+```solidity
+// SAFE — three patterns to prevent reentrancy
+
+// Option 1: Checks-Effects-Interactions (CEI)
+function withdraw() external {
+    uint256 amount = balances[msg.sender];
+    require(amount > 0, "No balance");
+    balances[msg.sender] = 0;  // Effect BEFORE interaction
+    (bool success,) = msg.sender.call{value: amount}("");
+    require(success);
+}
+
+// Option 2: ReentrancyGuard (OpenZeppelin)
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract SafeBank is ReentrancyGuard {
+    function withdraw() external nonReentrant {
+        uint256 amount = balances[msg.sender];
+        require(amount > 0);
+        balances[msg.sender] = 0;
+        (bool success,) = msg.sender.call{value: amount}("");
+        require(success);
+    }
+}
+
+// Option 3: Pull payment pattern
+mapping(address => uint256) private _payments;
+
+function deposit() external payable {
+    _payments[msg.sender] += msg.value;
+}
+
+function withdrawPayment() external {
+    uint256 payment = _payments[msg.sender];
+    _payments[msg.sender] = 0;
+    Address.sendValue(payable(msg.sender), payment);
+}
+```
+
+---
+
+### 2. Oracle Manipulation
+
+DeFi protocols that use spot prices from AMMs can be manipulated with flash loans:
+
+```solidity
+// VULNERABLE — uses spot price from Uniswap pool
+function borrow(address token, uint256 amount) external {
+    // Get "current" price — can be flash-loan manipulated
+    uint256 price = getUniswapSpotPrice(token);
+    uint256 collateralRequired = amount * price / 1e18;
+
+    require(collateral[msg.sender] >= collateralRequired);
+    IERC20(token).transfer(msg.sender, amount);
+}
+
+// ATTACK:
+// 1. Flash loan $50M USDC
+// 2. Dump into Uniswap pool — price crashes temporarily
+// 3. Borrow $10M of tokens for $100 of "collateral"
+// 4. Repay flash loan
+// 5. Profit $10M - fees
+```
+
+```solidity
+// SAFE — use TWAP (Time-Weighted Average Price)
+import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
+
+function getTWAP(address pool, uint32 twapInterval) public view returns (uint256) {
+    uint32[] memory secondsAgos = new uint32[](2);
+    secondsAgos[0] = twapInterval; // e.g., 1800 (30 minutes)
+    secondsAgos[1] = 0;
+
+    (int56[] memory tickCumulatives,) = IUniswapV3Pool(pool).observe(secondsAgos);
+    int56 tickDelta = tickCumulatives[1] - tickCumulatives[0];
+    int24 avgTick = int24(tickDelta / int56(uint56(twapInterval)));
+
+    // Convert tick to price
+    return TickMath.getSqrtRatioAtTick(avgTick);
+}
+```
+
+---
+
+### 3. Access Control Flaws
+
+Missing or incorrect `onlyOwner`/`onlyRole` guards:
+
+```solidity
+// VULNERABLE — no access control on critical function
+contract VulnerableToken {
+    mapping(address => uint256) public balances;
+
+    function mint(address to, uint256 amount) external {
+        // No guard — ANYONE can call this
+        balances[to] += amount;
+    }
+}
+```
+
+```solidity
+// SAFE — OpenZeppelin AccessControl
+import "@openzeppelin/contracts/access/AccessControl.sol";
+
+contract SafeToken is AccessControl {
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+
+    constructor() {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(MINTER_ROLE, msg.sender);
+    }
+
+    function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
+        _mint(to, amount);
+    }
+
+    // Tip: use a timelock for admin role transfers in production
+}
+```
+
+**Common access control mistakes:**
+- `tx.origin` instead of `msg.sender` (can be phished)
+- Missing access control on initializer functions
+- Incorrect role hierarchy (DEFAULT_ADMIN can grant any role)
+- No timelocks on critical parameter changes
+
+---
+
+### 4. Integer Overflow/Underflow
+
+Pre-0.8 Solidity had no built-in overflow protection. Even in 0.8+, `unchecked` blocks are common for gas optimization:
+
+```solidity
+// Solidity < 0.8 — always use SafeMath
+// In 0.8+, overflow reverts by default
+
+// DANGEROUS in unchecked block
+function badSubtract(uint256 a, uint256 b) external pure returns (uint256) {
+    unchecked {
+        return a - b; // If b > a, wraps to enormous number!
+    }
+}
+
+// If using unchecked for gas, add manual bounds check
+function safeUncheckedSubtract(uint256 a, uint256 b) external pure returns (uint256) {
+    require(a >= b, "Underflow");
+    unchecked { return a - b; }
+}
+```
+
+---
+
+### 5. Front-Running and MEV
+
+Transactions are visible in the mempool before inclusion:
+
+```solidity
+// VULNERABLE — commit-reveal for randomness (basic, can be front-run)
+// Use Chainlink VRF instead
+
+// For DEX order protection: use private mempool (Flashbots Protect)
+// or slippage tolerance
+
+// VULNERABLE — predictable randomness
+function badRandom() internal view returns (uint256) {
+    return uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao)));
+    // Validators can manipulate prevrandao on PoS
+}
+
+// SAFE — Chainlink VRF
+import "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2Plus.sol";
+
+contract SafeLottery is VRFConsumerBaseV2Plus {
+    uint256 public randomResult;
+
+    function requestRandomness() external returns (uint256 requestId) {
+        return s_vrfCoordinator.requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: KEY_HASH,
+                subId: SUBSCRIPTION_ID,
+                requestConfirmations: 3,
+                callbackGasLimit: 100000,
+                numWords: 1,
+                extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: false}))
+            })
+        );
+    }
+
+    function fulfillRandomWords(uint256 /*requestId*/, uint256[] calldata randomWords) internal override {
+        randomResult = randomWords[0];
+    }
+}
+```
+
+---
+
+### 6. Signature Replay Attacks
+
+Signed messages can be replayed on other contracts or chains:
+
+```solidity
+// VULNERABLE — no replay protection
+function withdraw(uint256 amount, bytes calldata signature) external {
+    bytes32 hash = keccak256(abi.encodePacked(msg.sender, amount));
+    address signer = hash.recover(signature);
+    require(signer == owner);
+    payable(msg.sender).transfer(amount);
+    // Attacker saves the signature and calls again!
+}
+
+// SAFE — include nonce, contract address, and chain ID
+function withdraw(uint256 amount, uint256 nonce, bytes calldata signature) external {
+    require(!usedNonces[nonce], "Nonce used");
+
+    bytes32 hash = keccak256(abi.encodePacked(
+        address(this),  // Prevents cross-contract replay
+        block.chainid,  // Prevents cross-chain replay
+        msg.sender,
+        amount,
+        nonce
+    ));
+
+    // EIP-712 structured data hashing recommended for production
+    address signer = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(hash), signature);
+    require(signer == owner);
+
+    usedNonces[nonce] = true;
+    payable(msg.sender).transfer(amount);
+}
+```
+
+---
+
+## Static Analysis with Slither
+
+Slither catches many vulnerabilities automatically:
+
+```bash
+pip install slither-analyzer
+slither . --config-file slither.config.json
+```
+
+```json
+// slither.config.json
+{
+  "detectors_to_exclude": "naming-convention,solc-version",
+  "exclude_informational": false,
+  "exclude_optimization": false,
+  "filter_paths": "node_modules,test",
+  "compile_force_framework": "hardhat"
+}
+```
+
+Key Slither detectors:
+- `reentrancy-eth` / `reentrancy-no-eth` — reentrancy risks
+- `unprotected-upgrade` — upgradeable contracts without access control
+- `arbitrary-send-eth` — eth sends to caller-controlled addresses
+- `controlled-delegatecall` — delegatecall to attacker-controlled address
+- `price-manipulation` — potentially manipulable AMM price reads
+- `weak-prng` — weak randomness sources
+
+---
+
+## Foundry Fuzz Testing
+
+```solidity
+// Invariant testing — properties that must ALWAYS hold
+contract InvariantTest is Test {
+    Bank bank;
+
+    function setUp() public {
+        bank = new Bank();
+        targetContract(address(bank));
+    }
+
+    // Invariant: total balance = sum of all user balances
+    function invariant_balanceSolvency() public {
+        assertEq(address(bank).balance, bank.totalDeposits());
+    }
+
+    // Invariant: no user can have negative balance
+    function invariant_noNegativeBalance() public {
+        address[] memory users = bank.getUsers();
+        for (uint i = 0; i < users.length; i++) {
+            assertGe(bank.balanceOf(users[i]), 0);
+        }
+    }
+}
+```
+
+```bash
+# Run with 10,000 runs per function
+forge test --match-contract InvariantTest -vv --fuzz-runs 10000
+```
+
+---
+
+## Pre-Audit Checklist
+
+**Code quality:**
+- [ ] 100% branch coverage (not just line coverage)
+- [ ] All external calls handled (check return values)
+- [ ] No floating pragma (pin exact compiler version)
+- [ ] No `selfdestruct` without strong access control
+- [ ] Events emitted for all state changes
+
+**Security:**
+- [ ] Reentrancy guards on all external call functions
+- [ ] CEI pattern followed throughout
+- [ ] No `tx.origin` used for authentication
+- [ ] Oracle: TWAP not spot price
+- [ ] Signature replay protection (nonce + chainId + address)
+- [ ] All admin functions behind timelocks
+- [ ] Integer math verified, `unchecked` blocks justified
+
+**Tooling:**
+- [ ] Slither: 0 high-severity findings
+- [ ] Foundry fuzz: 50,000+ runs, no failures
+- [ ] Hardhat coverage: >95% branch coverage
+- [ ] `forge snapshot` gas baseline saved
+
+**Deployment:**
+- [ ] Contracts verified on Etherscan
+- [ ] Deployment script tested on forked mainnet
+- [ ] Multisig owner (not EOA) for production
+- [ ] Emergency pause function exists and tested
+
+Use the [Solidity Error Decoder](/tools/solidity-error-decoder) to decode revert data during audits and the [ERC-20 Token Creator](/tools/erc20-token-creator) to generate battle-tested OpenZeppelin-based contracts.
