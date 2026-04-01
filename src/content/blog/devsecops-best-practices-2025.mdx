@@ -1,0 +1,273 @@
+---
+title: "DevSecOps Best Practices 2026: Security Shift-Left Guide"
+description: "Practical DevSecOps guide: integrate security into CI/CD with SAST, DAST, dependency scanning, container security, and secrets management. Actionable checklist included."
+date: "2026-04-02"
+tags: [security, devsecops, cicd, devops]
+readingTime: "9 min read"
+---
+
+# DevSecOps Best Practices 2026: Security Shift-Left Guide
+
+"Shift left" means moving security earlier in the development lifecycle — from a gate at the end of the pipeline to a continuous check throughout development. DevSecOps integrates security tooling into every stage: local development, pull requests, CI/CD, and production monitoring.
+
+---
+
+## What "Shift Left" Actually Means
+
+Traditional security model:
+```
+Dev → Build → Test → Stage → Security Audit → Deploy
+                                    ↑
+                              [found vulnerabilities]
+                              [expensive to fix here]
+```
+
+DevSecOps model:
+```
+[Security tools in IDE] → [Pre-commit hooks] → [CI security gates] → [Deploy]
+         ↑ Catch here (cheap)                    ↑ Catch here (acceptable)
+```
+
+Fixing a bug in development costs $1. The same bug in production costs $100+. Security works the same way.
+
+---
+
+## Layer 1: Developer Workstation
+
+### Pre-commit hooks
+
+Run lightweight security checks before every commit with [pre-commit](https://pre-commit.com/):
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+
+  - repo: https://github.com/zricethezav/gitleaks
+    rev: v8.18.0
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pycqa/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        args: ["-ll"]  # Only medium+ severity
+```
+
+```bash
+pip install pre-commit
+pre-commit install  # installs hooks into .git/hooks/pre-commit
+```
+
+### IDE Security Plugins
+
+- **Snyk for VS Code** — flags vulnerable dependencies and insecure code patterns inline
+- **SonarLint** — SAST feedback as you type, works with SonarQube/SonarCloud
+- **Semgrep** — custom rule-based static analysis
+
+---
+
+## Layer 2: Pull Request Security Gates
+
+### Dependency Vulnerability Scanning
+
+```yaml
+# .github/workflows/security.yml
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: npm audit
+        run: npm audit --audit-level=high  # fail on high+ severity
+
+      - name: Snyk vulnerability scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+```
+
+### SAST (Static Application Security Testing)
+
+```yaml
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Semgrep SAST
+      - uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/owasp-top-ten
+            p/javascript
+
+      # CodeQL (GitHub's SAST)
+      - uses: github/codeql-action/analyze@v3
+        with:
+          languages: javascript, python
+```
+
+### Secret Detection
+
+```yaml
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for gitleaks
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+---
+
+## Layer 3: Container Security
+
+### Dockerfile best practices
+
+```dockerfile
+# BAD: Running as root
+FROM node:20
+WORKDIR /app
+COPY . .
+RUN npm install
+CMD ["node", "server.js"]
+
+# GOOD: Non-root user, minimal base
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production  # production deps only
+
+FROM node:20-alpine
+RUN addgroup -g 1001 -S appgroup && adduser -S -u 1001 -G appgroup appuser
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --chown=appuser:appgroup . .
+USER appuser  # Non-root
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+### Container vulnerability scanning
+
+```yaml
+  container-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t my-app:${{ github.sha }} .
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'my-app:${{ github.sha }}'
+          format: 'sarif'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+```
+
+---
+
+## Layer 4: Infrastructure as Code Security
+
+### Scan Terraform and Kubernetes manifests
+
+```yaml
+  iac-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Checkov: IaC security scanner
+      - name: Checkov Terraform scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+
+      # Trivy: K8s manifest scanning
+      - name: Trivy K8s scan
+        run: |
+          trivy config --exit-code 1 --severity HIGH,CRITICAL k8s/
+```
+
+Common IaC security issues Checkov catches:
+- S3 buckets with public access
+- Security groups with 0.0.0.0/0 ingress on port 22
+- Missing encryption at rest/in transit
+- IAM policies with `*` actions
+
+---
+
+## Layer 5: Runtime Security
+
+### Kubernetes Pod Security
+
+```yaml
+# Pod Security Admission (Kubernetes 1.25+)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    pod-security.kubernetes.io/enforce: restricted  # Blocks privileged pods
+    pod-security.kubernetes.io/warn: restricted
+```
+
+```yaml
+# Security context for your pods
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: app
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+```
+
+---
+
+## DevSecOps Maturity Checklist
+
+**Level 1 — Foundation:**
+- [ ] Pre-commit hooks for secret detection
+- [ ] Dependency vulnerability scanning in CI
+- [ ] Non-root container execution
+
+**Level 2 — Intermediate:**
+- [ ] SAST in every PR pipeline
+- [ ] Container image scanning before push
+- [ ] IaC security scanning (Terraform/K8s)
+
+**Level 3 — Advanced:**
+- [ ] DAST against staging environment
+- [ ] Runtime security monitoring (Falco)
+- [ ] SBOM generation for all container images
+- [ ] Policy-as-code with OPA/Kyverno
+
+---
+
+Use the [CSP Policy Builder](/tools/csp-policy-builder) and [Secret Entropy Checker](/tools/secret-entropy-checker) for browser-based security tooling while implementing these practices.
+
+DevSecOps is a culture shift as much as a tooling change. Start with the cheapest, highest-signal checks (secret detection, dependency scanning) and add layers over time. Perfect security coverage isn't the goal — fast feedback on real risks is.

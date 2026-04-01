@@ -1,0 +1,220 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "How does GitHub Actions billing work?", answer: "GitHub Actions charges per minute for jobs running on GitHub-hosted runners. Public repos are free. Private repos: Linux runners cost $0.008/min, Windows $0.016/min, macOS $0.08/min. Free tier included with each plan: Free (2000 min/mo), Pro (3000 min/mo), Team (3000 min/mo), Enterprise (50000 min/mo). Unused minutes don't roll over." },
+  { question: "What is GitLab CI compute cost?", answer: "GitLab CI uses 'compute minutes' (formerly CI/CD minutes). SaaS plans include a monthly allotment. Shared Linux runners cost 1 minute per pipeline minute. macOS runners cost 2 minutes per CI minute. Paid additional compute is $10 per 1000 minutes. Self-hosted runners don't consume compute minutes." },
+  { question: "How can I reduce CI/CD costs?", answer: "Key strategies: (1) Cache dependencies aggressively — cache node_modules, pip, maven between runs. (2) Run only affected tests — monorepo tooling like Nx or Turborepo skips unaffected projects. (3) Use self-hosted runners for heavy workloads. (4) Optimize job parallelism — avoid unnecessary matrix builds. (5) Move slow tests to nightly scheduled runs." },
+  { question: "Should I use self-hosted runners?", answer: "Self-hosted runners make sense when: you run 10,000+ minutes/month (break-even vs. GitHub Actions costs), you need specific hardware (GPU, high memory), or you have security requirements that prohibit cloud runners. Drawback: you own infrastructure maintenance, security patching, and scaling." },
+];
+---
+
+<BaseLayout
+  title="CI/CD Pipeline Cost Estimator — GitHub Actions & GitLab CI Minutes Calculator"
+  description="Estimate CI/CD costs for GitHub Actions and GitLab CI. Calculate monthly minutes, workflow costs by runner type, and compare self-hosted vs managed runner economics."
+  tool="CI/CD Cost Estimator, GitHub Actions Cost Calculator, GitLab CI Minutes Calculator, Pipeline Cost Calculator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">CI/CD Pipeline Cost Estimator</h1>
+  <p class="text-text-muted mb-4">Estimate GitHub Actions or GitLab CI costs based on your pipeline configuration, runner types, and expected run frequency.</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- Config -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Platform</h2>
+        <div class="flex gap-3">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="radio" name="platform" value="github" checked id="plat-github" /> GitHub Actions
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="radio" name="platform" value="gitlab" id="plat-gitlab" /> GitLab CI
+          </label>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5 space-y-4">
+        <h2 class="text-base font-semibold">Pipeline Jobs</h2>
+        <div id="jobs-list" class="space-y-3"></div>
+        <button id="add-job" class="text-xs bg-primary/10 text-primary border border-primary/30 rounded-lg px-3 py-1.5 hover:bg-primary/20 transition-colors">+ Add Job</button>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5 space-y-3">
+        <h2 class="text-base font-semibold">Frequency</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-medium mb-1">Runs per day</label>
+            <input id="runs-per-day" type="number" value="20" min="0" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" /></div>
+          <div><label class="block text-xs font-medium mb-1">Working days/month</label>
+            <input id="working-days" type="number" value="22" min="1" max="31" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" /></div>
+        </div>
+        <div><label class="block text-xs font-medium mb-1">Free minutes included</label>
+          <input id="free-minutes" type="number" value="3000" min="0" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" /></div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+          <div id="min-per-run" class="text-2xl font-bold text-primary">—</div>
+          <div class="text-xs text-text-muted mt-1">Minutes per Run</div>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+          <div id="total-min" class="text-2xl font-bold">—</div>
+          <div class="text-xs text-text-muted mt-1">Monthly Minutes</div>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+          <div id="billable-min" class="text-2xl font-bold text-amber-400">—</div>
+          <div class="text-xs text-text-muted mt-1">Billable Minutes</div>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+          <div id="est-cost" class="text-2xl font-bold text-green-400">—</div>
+          <div class="text-xs text-text-muted mt-1">Est. Monthly Cost</div>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Cost Breakdown by Job</h2>
+        <div id="cost-breakdown" class="space-y-2 text-sm"></div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Optimization Tips</h2>
+        <div id="opt-tips" class="space-y-1 text-xs text-text-muted"></div>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="in-content" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="CI/CD Pipeline Cost Estimator" relatedTags={['devops', 'cicd', 'github', 'gitlab', 'infrastructure']} />
+</BaseLayout>
+
+<script>
+// Pricing per minute (GitHub Actions billable multiplier)
+const PRICING = {
+  github: {
+    linux: 0.008,
+    windows: 0.016,
+    macos: 0.08,
+  },
+  gitlab: {
+    linux: 0.0067,   // ~$10/1000 min
+    windows: 0.0134,
+    macos: 0.0134,
+  },
+};
+
+let jobCount = 0;
+let platform = 'github';
+
+function getPlatform(): 'github' | 'gitlab' {
+  return (document.querySelector('input[name="platform"]:checked') as HTMLInputElement)?.value as 'github' | 'gitlab' || 'github';
+}
+
+function addJob(defaults?: { name?: string; runner?: string; duration?: number }) {
+  jobCount++;
+  const id = jobCount;
+  const container = document.getElementById('jobs-list')!;
+
+  const row = document.createElement('div');
+  row.id = `job-${id}`;
+  row.className = 'flex gap-2 items-end';
+  row.innerHTML = `
+    <div class="flex-1">
+      <label class="block text-xs text-text-muted mb-1">Job name</label>
+      <input type="text" value="${defaults?.name || `job-${id}`}" class="job-name w-full bg-bg border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-primary" data-id="${id}" />
+    </div>
+    <div>
+      <label class="block text-xs text-text-muted mb-1">Runner</label>
+      <select class="job-runner bg-bg border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-primary" data-id="${id}">
+        <option value="linux" ${defaults?.runner === 'linux' ? 'selected' : ''}>Linux</option>
+        <option value="windows" ${defaults?.runner === 'windows' ? 'selected' : ''}>Windows</option>
+        <option value="macos" ${defaults?.runner === 'macos' ? 'selected' : ''}>macOS</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs text-text-muted mb-1">Duration (min)</label>
+      <input type="number" value="${defaults?.duration || 5}" min="1" class="job-duration w-20 bg-bg border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-primary" data-id="${id}" />
+    </div>
+    <button class="remove-job text-xs text-red-400 border border-red-400/30 rounded-lg px-2 py-1.5 hover:bg-red-500/10" data-id="${id}">✕</button>
+  `;
+
+  container.appendChild(row);
+
+  row.querySelector('.remove-job')!.addEventListener('click', () => {
+    row.remove();
+    update();
+  });
+  row.querySelectorAll('input, select').forEach(el => el.addEventListener('input', update));
+  update();
+}
+
+function getJobs() {
+  return Array.from(document.querySelectorAll<HTMLDivElement>('[id^="job-"]')).map(row => {
+    return {
+      name: (row.querySelector<HTMLInputElement>('.job-name')?.value || 'job'),
+      runner: (row.querySelector<HTMLSelectElement>('.job-runner')?.value || 'linux') as 'linux' | 'windows' | 'macos',
+      duration: Number(row.querySelector<HTMLInputElement>('.job-duration')?.value) || 1,
+    };
+  });
+}
+
+function update() {
+  const platform = getPlatform();
+  const jobs = getJobs();
+  const runsPerDay = Number((document.getElementById('runs-per-day') as HTMLInputElement).value) || 0;
+  const workingDays = Number((document.getElementById('working-days') as HTMLInputElement).value) || 22;
+  const freeMin = Number((document.getElementById('free-minutes') as HTMLInputElement).value) || 0;
+
+  const minPerRun = jobs.reduce((s, j) => s + j.duration, 0);
+  const totalMin = minPerRun * runsPerDay * workingDays;
+  const billableMin = Math.max(0, totalMin - freeMin);
+
+  const pricing = PRICING[platform];
+  const costPerRun = jobs.reduce((s, j) => s + j.duration * pricing[j.runner], 0);
+  const totalCost = billableMin > 0 ? jobs.reduce((s, j) => {
+    const jobTotal = j.duration * runsPerDay * workingDays;
+    return s + Math.max(0, jobTotal - (freeMin * j.duration / Math.max(minPerRun, 1))) * pricing[j.runner];
+  }, 0) : 0;
+
+  document.getElementById('min-per-run')!.textContent = String(minPerRun);
+  document.getElementById('total-min')!.textContent = totalMin.toLocaleString();
+  document.getElementById('billable-min')!.textContent = billableMin.toLocaleString();
+  document.getElementById('est-cost')!.textContent = `$${(billableMin * pricing.linux).toFixed(2)}`;
+
+  // Breakdown
+  const breakdown = document.getElementById('cost-breakdown')!;
+  breakdown.innerHTML = jobs.map(j => {
+    const jobMonthlyMin = j.duration * runsPerDay * workingDays;
+    const rate = pricing[j.runner];
+    return `<div class="flex justify-between items-center">
+      <span class="font-mono text-xs">${j.name} (${j.runner})</span>
+      <span class="text-text-muted">${jobMonthlyMin.toLocaleString()} min · $${(jobMonthlyMin * rate).toFixed(2)}/mo</span>
+    </div>`;
+  }).join('') || '<div class="text-text-muted text-xs">No jobs added yet.</div>';
+
+  // Tips
+  const tips: string[] = [];
+  const macosJobs = jobs.filter(j => j.runner === 'macos');
+  if (macosJobs.length > 0) tips.push(`⚠ macOS runners cost 10x Linux. Consider moving test steps to Linux: ${macosJobs.map(j => j.name).join(', ')}`);
+  if (totalMin > 50000) tips.push('💡 Self-hosted runners could save ~80% at this scale (>50K min/mo).');
+  if (jobs.some(j => j.duration > 15)) tips.push('💡 Jobs over 15 min: consider splitting into parallel jobs to reduce wall time.');
+  if (freeMin === 0) tips.push('ℹ Ensure your plan includes free minutes (GitHub Team: 3000 min/mo).');
+  document.getElementById('opt-tips')!.innerHTML = tips.map(t => `<div>${t}</div>`).join('') || '<div class="text-green-500">✓ No major concerns detected.</div>';
+}
+
+document.querySelectorAll('input[name="platform"]').forEach(r => r.addEventListener('change', update));
+document.getElementById('add-job')!.addEventListener('click', () => addJob());
+document.getElementById('runs-per-day')!.addEventListener('input', update);
+document.getElementById('working-days')!.addEventListener('input', update);
+document.getElementById('free-minutes')!.addEventListener('input', update);
+
+// Init with sample jobs
+addJob({ name: 'test', runner: 'linux', duration: 8 });
+addJob({ name: 'build', runner: 'linux', duration: 5 });
+addJob({ name: 'deploy', runner: 'linux', duration: 3 });
+</script>
