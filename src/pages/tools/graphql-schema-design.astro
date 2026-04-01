@@ -70,8 +70,8 @@ type Post &#123;
   title:     String!
   slug:      String!
   body:      String!
-  author:    User!       # ← This is where N+1 happens
-  tags:      [Tag!]!     # ← And here for tag lists
+  author:    User!       # &lt;-- This is where N+1 happens
+  tags:      [Tag!]!     # &lt;-- And here for tag lists
   status:    PostStatus!
   publishedAt: DateTime
   createdAt:   DateTime!
@@ -192,21 +192,36 @@ type UserError &#123;
   field:   String       # null if not field-specific
   message: String!
   code:    String!
-&#125;
+&#125;</pre>
 
-# Client query — handles both success and validation errors
-# mutation &#123;
-#   createPost(input: &#123; title: "Hello", body: "World" &#125;) &#123;
-#     post &#123; id slug &#125;
-#     errors &#123; field message code &#125;
-#   &#125;
-# &#125;</pre>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Resolver — return errors as data, never throw for expected failures
+const resolvers = &#123;
+  Mutation: &#123;
+    createPost: async (_, &#123; input &#125;, &#123; db, user &#125;) => &#123;
+      // Validation
+      const errors: UserError[] = [];
+      if (!input.title.trim()) &#123;
+        errors.push(&#123; field: 'title', message: 'Title is required', code: 'REQUIRED' &#125;);
+      &#125;
+      if (input.title.length > 200) &#123;
+        errors.push(&#123; field: 'title', message: 'Title too long (max 200)', code: 'TOO_LONG' &#125;);
+      &#125;
+      if (errors.length > 0) return &#123; post: null, errors &#125;;
+
+      // Create
+      const post = await db.post.create(&#123;
+        data: &#123; ...input, authorId: user.id &#125;,
+      &#125;);
+      return &#123; post, errors: [] &#125;;
+    &#125;,
+  &#125;,
+&#125;;</pre>
 
   <h2 class="text-xl font-semibold mt-8 mb-3">Relay Cursor Pagination</h2>
   <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Connection types (Relay spec)
 type PostConnection &#123;
-  edges:    [PostEdge!]!
-  pageInfo: PageInfo!
+  edges:      [PostEdge!]!
+  pageInfo:   PageInfo!
   totalCount: Int!
 &#125;
 
@@ -225,21 +240,18 @@ type PageInfo &#123;
   <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Resolver — cursor pagination with Prisma
 async function postsConnection(
   _: unknown,
-  args: &#123; first?: number; after?: string; last?: number; before?: string &#125;,
+  args: &#123; first?: number; after?: string &#125;,
   &#123; db &#125;: Context
 ) &#123;
-  const limit  = args.first ?? args.last ?? 20;
-  const cursor = args.after ?? args.before;
-
-  // Decode opaque cursor (base64 of post ID)
-  const afterId = cursor
-    ? Buffer.from(cursor, 'base64').toString('utf8')
+  const limit   = args.first ?? 20;
+  const afterId = args.after
+    ? Buffer.from(args.after, 'base64').toString('utf8')
     : undefined;
 
   const posts = await db.post.findMany(&#123;
-    take:   limit + 1,  // fetch one extra to detect hasNextPage
-    cursor: afterId ? &#123; id: afterId &#125; : undefined,
-    skip:   afterId ? 1 : 0,
+    take:    limit + 1,  // fetch one extra to detect hasNextPage
+    cursor:  afterId ? &#123; id: afterId &#125; : undefined,
+    skip:    afterId ? 1 : 0,
     orderBy: &#123; createdAt: 'desc' &#125;,
   &#125;);
 
@@ -256,12 +268,35 @@ async function postsConnection(
     totalCount: await db.post.count(),
     pageInfo: &#123;
       hasNextPage:     hasMore,
-      hasPreviousPage: !!cursor,
+      hasPreviousPage: !!args.after,
       startCursor:     edges[0]?.cursor ?? null,
       endCursor:       edges[edges.length - 1]?.cursor ?? null,
     &#125;,
   &#125;;
 &#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Query Protection: Depth &amp; Complexity</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Protect against malicious deeply-nested queries
+import depthLimit from 'graphql-depth-limit';
+import &#123; createComplexityLimitRule &#125; from 'graphql-validation-complexity';
+
+const server = new ApolloServer(&#123;
+  typeDefs,
+  resolvers,
+  validationRules: [
+    depthLimit(6),                        // max 6 levels deep
+    createComplexityLimitRule(1000, &#123;     // max complexity score 1000
+      scalarCost: 1,
+      objectCost: 2,
+      listFactor: 10,                     // lists cost 10x more
+    &#125;),
+  ],
+&#125;);
+
+// Persisted queries (production hardening)
+// Client sends: &#123; "extensions": &#123; "persistedQuery": &#123; "sha256Hash": "abc123..." &#125; &#125; &#125;
+// Server looks up hash in approved query registry
+import &#123; createPersistedQueryLink &#125; from '@apollo/client/link/persisted-queries';</pre>
 
   <h2 class="text-xl font-semibold mt-8 mb-3">Schema-First vs Code-First Comparison</h2>
   <div class="overflow-x-auto mb-6">
