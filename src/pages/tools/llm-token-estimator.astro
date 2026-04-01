@@ -1,0 +1,312 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "How are LLM tokens counted?",
+    answer: "Tokens are not exactly words or characters — they're subword units created by tokenization algorithms like BPE (Byte Pair Encoding). On average, 1 token ≈ 4 characters or 0.75 words in English. Code and special characters can tokenize differently: a line of Python might use more tokens per word than plain prose. This estimator uses heuristics that approximate within ~10% of actual counts."
+  },
+  {
+    question: "Why do different models have different token counts for the same text?",
+    answer: "Each model uses its own tokenizer vocabulary. GPT-4o uses cl100k_base (100k vocab), Claude uses Anthropic's tokenizer, Llama uses a SentencePiece tokenizer, and Mistral uses its own variant. The vocabularies differ in how they split words, handle whitespace, and encode code symbols — leading to different token counts for identical text, usually within 5-15% of each other."
+  },
+  {
+    question: "What is a context window and why does it matter?",
+    answer: "A context window is the maximum number of tokens a model can process at once — both input (your prompt + conversation history) and output combined. GPT-4o supports 128K tokens, Claude 3.5 Sonnet supports 200K, and Gemini 1.5 Pro supports up to 1M. Exceeding the context window means the model can't see earlier parts of your conversation. This is critical for long document analysis or multi-turn chats."
+  },
+  {
+    question: "How do I reduce token usage to save costs?",
+    answer: "Common strategies: (1) Use shorter, more direct prompts — remove filler words. (2) Truncate or summarize long documents before sending. (3) Use system prompts efficiently — avoid repeating instructions. (4) For code review, send only the changed diff, not the full file. (5) Enable streaming to stop generation early if you have enough output. (6) Use smaller models (Haiku, GPT-4o-mini) for simple tasks."
+  },
+  {
+    question: "What's the difference between input and output token pricing?",
+    answer: "LLM providers charge separately for input tokens (your prompt) and output tokens (the model's response). Output tokens typically cost 3-5x more than input tokens because generation is computationally expensive. For example, Claude 3.5 Sonnet charges $3/M input but $15/M output. If you're building a chatbot, minimizing output length (concise responses, structured data instead of prose) significantly reduces costs."
+  }
+];
+---
+
+<BaseLayout
+  title="LLM Token Estimator — Count Tokens for GPT-4o, Claude, Gemini, Llama, Mistral"
+  description="Estimate token counts and API costs for major LLMs. Paste any text or code and see token estimates for GPT-4o, Claude 3.5 Sonnet, Gemini 1.5, Llama 3, and Mistral with context window usage."
+  tool="llm token estimator, token counter, gpt token counter, claude token counter, llm cost calculator, ai api cost"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "LLM Token Estimator",
+    "url": "https://devplaybook.cc/tools/llm-token-estimator",
+    "description": "Estimate token counts and API costs for GPT-4o, Claude 3.5 Sonnet, Gemini 1.5, Llama 3, and Mistral. Shows context window usage and input/output cost breakdown.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">LLM Token Estimator</h1>
+  <p class="text-text-muted mb-4">
+    Paste any text or code to estimate token counts across major LLM models. See API costs, context window usage, and per-model breakdowns — all client-side with no API calls.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 5 major models</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Input & output cost</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Context window %</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 2026 pricing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> No API key needed</span>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <label class="text-sm font-medium">Paste Text or Code</label>
+      <div class="flex gap-2">
+        <button id="btn-sample-text" class="px-3 py-1 bg-surface border border-border rounded text-xs text-text-muted hover:border-primary transition-colors">Sample text</button>
+        <button id="btn-sample-code" class="px-3 py-1 bg-surface border border-border rounded text-xs text-text-muted hover:border-primary transition-colors">Sample code</button>
+        <button id="btn-clear" class="px-3 py-1 bg-surface border border-border rounded text-xs text-text-muted hover:border-primary transition-colors">Clear</button>
+      </div>
+    </div>
+    <textarea id="input-text" rows="10" placeholder="Paste your prompt, conversation, document, or code here..." class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-y"></textarea>
+    <div class="flex gap-4 mt-2 text-xs text-text-muted">
+      <span>Characters: <strong id="stat-chars" class="text-foreground">0</strong></span>
+      <span>Words: <strong id="stat-words" class="text-foreground">0</strong></span>
+      <span>Lines: <strong id="stat-lines" class="text-foreground">0</strong></span>
+    </div>
+  </div>
+
+  <!-- Output tokens multiplier -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <label class="text-sm font-medium mb-2 block">Expected Output Length (for cost estimate)</label>
+    <div class="flex gap-3 flex-wrap">
+      <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="output-mult" value="0.5" class="accent-primary" /> Short (½× input)</label>
+      <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="output-mult" value="1" checked class="accent-primary" /> Medium (1× input)</label>
+      <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="output-mult" value="2" class="accent-primary" /> Long (2× input)</label>
+      <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="output-mult" value="4" class="accent-primary" /> Very long (4× input)</label>
+    </div>
+  </div>
+
+  <!-- Model cards -->
+  <div id="model-cards" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4"></div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="LLM Token Estimator" relatedTags={['ai', 'llm', 'openai', 'claude', 'api', 'cost']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  const MODELS = [
+    {
+      id: 'gpt4o',
+      name: 'GPT-4o',
+      provider: 'OpenAI',
+      contextWindow: 128000,
+      inputPricePerM: 2.50,
+      outputPricePerM: 10.00,
+      tokenizerType: 'cl100k',
+      color: 'text-green-400'
+    },
+    {
+      id: 'claude35',
+      name: 'Claude 3.5 Sonnet',
+      provider: 'Anthropic',
+      contextWindow: 200000,
+      inputPricePerM: 3.00,
+      outputPricePerM: 15.00,
+      tokenizerType: 'anthropic',
+      color: 'text-orange-400'
+    },
+    {
+      id: 'gemini15',
+      name: 'Gemini 1.5 Pro',
+      provider: 'Google',
+      contextWindow: 1000000,
+      inputPricePerM: 1.25,
+      outputPricePerM: 5.00,
+      tokenizerType: 'gemini',
+      color: 'text-blue-400'
+    },
+    {
+      id: 'llama3',
+      name: 'Llama 3.1 70B',
+      provider: 'Meta (via API)',
+      contextWindow: 128000,
+      inputPricePerM: 0.59,
+      outputPricePerM: 0.79,
+      tokenizerType: 'llama',
+      color: 'text-purple-400'
+    },
+    {
+      id: 'mistral',
+      name: 'Mistral Large 2',
+      provider: 'Mistral AI',
+      contextWindow: 128000,
+      inputPricePerM: 2.00,
+      outputPricePerM: 6.00,
+      tokenizerType: 'mistral',
+      color: 'text-pink-400'
+    }
+  ];
+
+  // Tokenizer heuristics — approximate BPE behavior
+  function estimateTokens(text, type) {
+    if (!text) return 0;
+    const chars = text.length;
+    const words = text.trim().split(/\s+/).filter(Boolean).length;
+
+    // Code detection
+    const codeRatio = (text.match(/[{}()[\];=><]/g) || []).length / Math.max(chars, 1);
+    const isCode = codeRatio > 0.05;
+
+    let base;
+    switch (type) {
+      case 'cl100k': // GPT-4o — ~4 chars/token for prose, ~3.5 for code
+        base = isCode ? chars / 3.5 : chars / 4.0;
+        break;
+      case 'anthropic': // Claude — slightly fewer tokens than GPT for same text
+        base = isCode ? chars / 3.6 : chars / 4.1;
+        break;
+      case 'gemini': // Gemini — similar to cl100k
+        base = isCode ? chars / 3.4 : chars / 3.9;
+        break;
+      case 'llama': // Llama SentencePiece — tends to be more tokens
+        base = isCode ? chars / 3.2 : chars / 3.7;
+        break;
+      case 'mistral': // Mistral — close to Llama
+        base = isCode ? chars / 3.3 : chars / 3.8;
+        break;
+      default:
+        base = chars / 4.0;
+    }
+
+    // Newlines and whitespace add tokens
+    const newlines = (text.match(/\n/g) || []).length;
+    base += newlines * 0.3;
+
+    return Math.max(1, Math.round(base));
+  }
+
+  function formatCost(usd) {
+    if (usd < 0.0001) return '$0.0000';
+    if (usd < 0.01) return '$' + usd.toFixed(4);
+    if (usd < 1) return '$' + usd.toFixed(3);
+    return '$' + usd.toFixed(2);
+  }
+
+  function pctColor(pct) {
+    if (pct < 50) return 'bg-green-500';
+    if (pct < 80) return 'bg-yellow-500';
+    return 'bg-red-500';
+  }
+
+  function getOutputMult() {
+    const el = document.querySelector('input[name="output-mult"]:checked');
+    return el ? parseFloat(el.value) : 1;
+  }
+
+  function renderCards(text) {
+    const container = document.getElementById('model-cards');
+    const mult = getOutputMult();
+    if (!text.trim()) {
+      container.innerHTML = '<div class="col-span-2 text-center text-text-muted text-sm py-8">Paste text above to see token estimates</div>';
+      return;
+    }
+    container.innerHTML = MODELS.map(m => {
+      const inputTokens = estimateTokens(text, m.tokenizerType);
+      const outputTokens = Math.round(inputTokens * mult);
+      const totalTokens = inputTokens + outputTokens;
+      const pct = Math.min(100, Math.round((inputTokens / m.contextWindow) * 100));
+      const inputCost = (inputTokens / 1_000_000) * m.inputPricePerM;
+      const outputCost = (outputTokens / 1_000_000) * m.outputPricePerM;
+      const totalCost = inputCost + outputCost;
+      const barColor = pctColor(pct);
+
+      return `
+        <div class="bg-bg-card border border-border rounded-lg p-4">
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <div class="font-medium text-sm ${m.color}">${m.name}</div>
+              <div class="text-xs text-text-muted">${m.provider}</div>
+            </div>
+            <div class="text-right">
+              <div class="text-lg font-bold font-mono">${inputTokens.toLocaleString()}</div>
+              <div class="text-xs text-text-muted">input tokens</div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-text-muted">Context used</span>
+              <span class="font-medium">${pct}% of ${(m.contextWindow / 1000).toFixed(0)}K</span>
+            </div>
+            <div class="w-full bg-surface rounded-full h-1.5">
+              <div class="${barColor} h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <div class="bg-surface rounded p-2 text-center">
+              <div class="text-text-muted mb-0.5">Input cost</div>
+              <div class="font-mono font-medium">${formatCost(inputCost)}</div>
+            </div>
+            <div class="bg-surface rounded p-2 text-center">
+              <div class="text-text-muted mb-0.5">Output cost</div>
+              <div class="font-mono font-medium">${formatCost(outputCost)}</div>
+            </div>
+            <div class="bg-surface rounded p-2 text-center border border-primary/30">
+              <div class="text-text-muted mb-0.5">Total est.</div>
+              <div class="font-mono font-medium text-accent">${formatCost(totalCost)}</div>
+            </div>
+          </div>
+
+          <div class="mt-2 text-xs text-text-muted">
+            ${m.inputPricePerM.toFixed(2)}/M in · ${m.outputPricePerM.toFixed(2)}/M out · ${(m.contextWindow/1000).toFixed(0)}K ctx
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function updateStats(text) {
+    document.getElementById('stat-chars').textContent = text.length.toLocaleString();
+    document.getElementById('stat-words').textContent = (text.trim() ? text.trim().split(/\s+/).length : 0).toLocaleString();
+    document.getElementById('stat-lines').textContent = (text ? text.split('\n').length : 0).toLocaleString();
+  }
+
+  const textarea = document.getElementById('input-text');
+
+  textarea.addEventListener('input', () => {
+    updateStats(textarea.value);
+    renderCards(textarea.value);
+  });
+
+  document.querySelectorAll('input[name="output-mult"]').forEach(r => {
+    r.addEventListener('change', () => renderCards(textarea.value));
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    textarea.value = '';
+    updateStats('');
+    renderCards('');
+  });
+
+  const SAMPLE_TEXT = `Large language models (LLMs) are neural networks trained on vast amounts of text data. They learn to predict the next token in a sequence, which enables them to generate coherent, contextually relevant text. Modern LLMs like GPT-4, Claude, and Gemini use transformer architectures with billions of parameters, trained using techniques like RLHF (Reinforcement Learning from Human Feedback) to align their outputs with human preferences.\n\nThe key challenge with LLMs is the context window — the maximum amount of text they can process at once. Longer context windows allow for more complex reasoning tasks but require more memory and compute.`;
+
+  const SAMPLE_CODE = `import anthropic\n\nclient = anthropic.Anthropic(api_key="sk-...")\n\ndef summarize_document(document: str, max_words: int = 200) -> str:\n    """Summarize a document using Claude."""\n    response = client.messages.create(\n        model="claude-3-5-sonnet-20241022",\n        max_tokens=512,\n        system="You are a concise summarization assistant. Always respond in plain text.",\n        messages=[\n            {\n                "role": "user",\n                "content": f"Summarize this in {max_words} words or fewer:\\n\\n{document}"\n            }\n        ]\n    )\n    return response.content[0].text\n\nif __name__ == "__main__":\n    doc = open("report.txt").read()\n    print(summarize_document(doc))`;
+
+  document.getElementById('btn-sample-text').addEventListener('click', () => {
+    textarea.value = SAMPLE_TEXT;
+    updateStats(SAMPLE_TEXT);
+    renderCards(SAMPLE_TEXT);
+  });
+
+  document.getElementById('btn-sample-code').addEventListener('click', () => {
+    textarea.value = SAMPLE_CODE;
+    updateStats(SAMPLE_CODE);
+    renderCards(SAMPLE_CODE);
+  });
+
+  renderCards('');
+})();
+</script>

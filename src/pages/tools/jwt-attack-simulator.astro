@@ -1,0 +1,356 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is a JWT and how does it work?",
+    answer: "A JSON Web Token (JWT) consists of three base64url-encoded parts separated by dots: Header.Payload.Signature. The header specifies the signing algorithm, the payload contains claims (user data, permissions, expiry), and the signature verifies the token wasn't tampered with. The server signs the header+payload with a secret key; clients send the JWT in requests, and the server verifies the signature to trust the claims."
+  },
+  {
+    question: "What is the 'alg:none' attack?",
+    answer: "The 'alg:none' attack exploits JWT libraries that accept unsigned tokens. An attacker modifies the header to set alg to 'none', then strips the signature. If the library accepts this, the attacker can forge any payload (e.g., change user ID to an admin ID) without knowing the secret key. Fix: explicitly allowlist accepted algorithms and never accept 'none'."
+  },
+  {
+    question: "Why is HS256 with weak secrets dangerous?",
+    answer: "HS256 uses a shared symmetric key for both signing and verification. If the key is weak (short, predictable, or a common word), attackers can brute-force it offline using tools like hashcat. Once the secret is known, they can forge any JWT. Fix: use RS256 (asymmetric) for distributed systems, or use cryptographically random secrets of at least 256 bits for HS256."
+  },
+  {
+    question: "What are the most important JWT claims to validate?",
+    answer: "Critical claims to validate: (1) exp — token expiry, prevents old tokens from working indefinitely. (2) iss — issuer, ensures the token came from your auth server. (3) aud — audience, ensures the token was meant for your service. (4) iat — issued at, helps detect time-based attacks. (5) sub — subject, identifies the user. Always validate all claims server-side, never trust client-side validation alone."
+  },
+  {
+    question: "Should I store JWTs in localStorage or cookies?",
+    answer: "Cookies (httpOnly + secure + sameSite=strict) are generally safer because JavaScript can't read httpOnly cookies, preventing XSS-based token theft. localStorage is vulnerable to any XSS attack on your site. The trade-off: cookies require CSRF protection (sameSite=strict or CSRF tokens), while localStorage is simpler for SPAs. For high-security applications, use httpOnly cookies with short expiry and refresh token rotation."
+  }
+];
+---
+
+<BaseLayout
+  title="JWT Attack Simulator — Decode & Analyze JWT Security Vulnerabilities"
+  description="Decode JWT tokens and check for security vulnerabilities including alg:none attacks, weak secrets, expired tokens, and missing claims. Educational JWT security analysis tool."
+  tool="jwt decoder, jwt security checker, jwt attack simulator, jwt vulnerability scanner, json web token analyzer"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "JWT Attack Simulator",
+    "url": "https://devplaybook.cc/tools/jwt-attack-simulator",
+    "description": "Decode JWT tokens and analyze them for security vulnerabilities: alg:none attacks, weak algorithms, expired tokens, and missing claims. Educational tool for developers.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">JWT Attack Simulator</h1>
+  <p class="text-text-muted mb-4">
+    Decode JWT tokens and analyze them for known security vulnerabilities. Understand alg:none attacks, weak algorithms, expired tokens, and missing claims — with mitigation code for each issue.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Decode header & payload</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Vulnerability checks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Mitigation snippets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Educational only</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> No data sent anywhere</span>
+  </div>
+
+  <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-4 text-sm text-yellow-300">
+    <strong>Educational tool:</strong> For learning and testing only. Use with tokens you own or have permission to analyze. Never paste production user tokens.
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <label class="text-sm font-medium">JWT Token</label>
+      <div class="flex gap-2">
+        <button id="btn-sample" class="px-3 py-1 bg-surface border border-border rounded text-xs text-text-muted hover:border-primary transition-colors">Sample JWT</button>
+        <button id="btn-sample-bad" class="px-3 py-1 bg-surface border border-border rounded text-xs text-text-muted hover:border-primary transition-colors">Vulnerable JWT</button>
+        <button id="btn-clear" class="px-3 py-1 bg-surface border border-border rounded text-xs text-text-muted hover:border-primary transition-colors">Clear</button>
+      </div>
+    </div>
+    <textarea id="jwt-input" rows="4" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-y"></textarea>
+    <button id="btn-decode" class="mt-3 w-full px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">Decode & Analyze</button>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="hidden space-y-4">
+    <!-- Header + Payload side by side -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <h2 class="text-sm font-medium mb-2">Header</h2>
+        <pre id="header-json" class="bg-surface rounded-lg p-3 text-xs font-mono text-accent overflow-x-auto whitespace-pre"></pre>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <h2 class="text-sm font-medium mb-2">Payload</h2>
+        <pre id="payload-json" class="bg-surface rounded-lg p-3 text-xs font-mono text-accent overflow-x-auto whitespace-pre"></pre>
+      </div>
+    </div>
+
+    <!-- Signature status -->
+    <div id="sig-block" class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-medium mb-2">Signature</h2>
+      <div id="sig-status" class="text-sm"></div>
+    </div>
+
+    <!-- Vulnerability report -->
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-medium mb-3">Vulnerability Analysis</h2>
+      <div id="vuln-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Claims analysis -->
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-medium mb-3">Claims Analysis</h2>
+      <div id="claims-list" class="space-y-1.5"></div>
+    </div>
+  </div>
+
+  <div id="error-msg" class="hidden bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400 mb-4"></div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="JWT Attack Simulator" relatedTags={['security', 'jwt', 'authentication', 'api', 'cybersecurity']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  function b64urlDecode(str) {
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    try {
+      return atob(str);
+    } catch(e) {
+      return null;
+    }
+  }
+
+  function parseJWT(token) {
+    const parts = token.trim().split('.');
+    if (parts.length < 2 || parts.length > 3) return null;
+    const headerRaw = b64urlDecode(parts[0]);
+    const payloadRaw = b64urlDecode(parts[1]);
+    if (!headerRaw || !payloadRaw) return null;
+    try {
+      return {
+        header: JSON.parse(headerRaw),
+        payload: JSON.parse(payloadRaw),
+        signature: parts[2] || '',
+        parts
+      };
+    } catch(e) {
+      return null;
+    }
+  }
+
+  function checkVulnerabilities(jwt) {
+    const vulns = [];
+    const { header, payload, signature } = jwt;
+
+    // alg:none
+    if (header.alg && (header.alg.toLowerCase() === 'none' || header.alg.toLowerCase() === 'null')) {
+      vulns.push({
+        severity: 'critical',
+        name: 'Algorithm: None Attack',
+        description: 'The token uses alg="none", meaning it has no signature. Any library that accepts this will trust forged tokens.',
+        mitigation: `// Node.js / jsonwebtoken — always specify allowed algorithms:\nconst decoded = jwt.verify(token, secret, {\n  algorithms: ['HS256'] // Never include 'none'\n});\n\n// Or throw explicitly:\nif (decoded.header.alg === 'none') throw new Error('alg:none rejected');`
+      });
+    }
+
+    // No signature
+    if (!signature || signature.length < 10) {
+      vulns.push({
+        severity: 'critical',
+        name: 'Missing or Empty Signature',
+        description: 'The token has no signature component. Without a valid signature, the payload claims are unverified and can be forged.',
+        mitigation: `// Always verify signature:\nconst decoded = jwt.verify(token, process.env.JWT_SECRET);\n// Never use jwt.decode() alone for authorization — it skips verification.`
+      });
+    }
+
+    // Weak algorithm
+    const alg = (header.alg || '').toUpperCase();
+    if (alg === 'HS256' || alg === 'HS384') {
+      vulns.push({
+        severity: 'medium',
+        name: 'Symmetric Algorithm (HS256/HS384)',
+        description: 'Symmetric algorithms require sharing the same secret for signing and verification. If the secret is weak or leaked, tokens can be forged. Use RS256 for distributed systems.',
+        mitigation: `// Generate a strong secret (Node.js):\nrequire('crypto').randomBytes(64).toString('hex');\n\n// Or switch to RS256:\nconst { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });\nconst token = jwt.sign(payload, privateKey, { algorithm: 'RS256' });\nconst decoded = jwt.verify(token, publicKey, { algorithms: ['RS256'] });`
+      });
+    }
+
+    // Expired
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) {
+      const expiredAgo = Math.round((now - payload.exp) / 60);
+      vulns.push({
+        severity: 'high',
+        name: 'Token Expired',
+        description: `Token expired ${expiredAgo} minute${expiredAgo !== 1 ? 's' : ''} ago. Expired tokens should always be rejected.`,
+        mitigation: `// jsonwebtoken verifies exp automatically:\ntry {\n  const decoded = jwt.verify(token, secret); // throws if expired\n} catch (err) {\n  if (err.name === 'TokenExpiredError') {\n    return res.status(401).json({ error: 'Token expired' });\n  }\n}`
+      });
+    }
+
+    // Missing claims
+    const missingClaims = [];
+    if (!payload.exp) missingClaims.push('exp (expiry)');
+    if (!payload.iss) missingClaims.push('iss (issuer)');
+    if (!payload.aud) missingClaims.push('aud (audience)');
+    if (!payload.iat) missingClaims.push('iat (issued at)');
+    if (missingClaims.length > 0) {
+      vulns.push({
+        severity: missingClaims.includes('exp (expiry)') ? 'high' : 'medium',
+        name: 'Missing Standard Claims',
+        description: `Missing: ${missingClaims.join(', ')}. These claims are critical for token validation.`,
+        mitigation: `// Include all standard claims when signing:\nconst token = jwt.sign(\n  {\n    sub: userId,\n    iss: 'https://auth.yourdomain.com',\n    aud: 'https://api.yourdomain.com',\n    iat: Math.floor(Date.now() / 1000),\n    exp: Math.floor(Date.now() / 1000) + (60 * 60) // 1 hour\n  },\n  secret,\n  { algorithm: 'RS256' }\n);`
+      });
+    }
+
+    // Sensitive data in payload
+    const sensitiveKeys = ['password', 'secret', 'key', 'token', 'credit_card', 'ssn', 'cvv'];
+    const foundSensitive = Object.keys(payload).filter(k => sensitiveKeys.some(s => k.toLowerCase().includes(s)));
+    if (foundSensitive.length > 0) {
+      vulns.push({
+        severity: 'high',
+        name: 'Potentially Sensitive Data in Payload',
+        description: `Found potentially sensitive keys: ${foundSensitive.join(', ')}. JWT payloads are base64-encoded, NOT encrypted — anyone can decode them.`,
+        mitigation: `// JWT payloads are visible to anyone.\n// Never include secrets, passwords, or PII in JWT payload.\n// If you must transmit sensitive data, use JWE (JSON Web Encryption)\n// or store a reference ID and look up the data server-side.`
+      });
+    }
+
+    // No role/permissions check warning
+    if (payload.role || payload.permissions || payload.scope || payload.admin) {
+      vulns.push({
+        severity: 'low',
+        name: 'Authorization Claims Present',
+        description: 'Token contains role/permission claims. Ensure these are validated server-side against your authorization database, not trusted solely from the JWT.',
+        mitigation: `// Always verify permissions server-side:\nconst user = await db.users.findById(decoded.sub);\nif (user.role !== decoded.role) {\n  // JWT role was tampered — reject\n  return res.status(403).json({ error: 'Forbidden' });\n}`
+      });
+    }
+
+    return vulns;
+  }
+
+  function analyzeClaims(payload) {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = [];
+
+    const add = (key, value, status, note) => claims.push({ key, value, status, note });
+
+    if (payload.sub) add('sub', String(payload.sub), 'ok', 'Subject (user identifier)');
+    if (payload.iss) add('iss', String(payload.iss), 'ok', 'Issuer');
+    else add('iss', 'missing', 'warn', 'Issuer not set — cannot verify token source');
+    if (payload.aud) add('aud', String(payload.aud), 'ok', 'Audience');
+    else add('aud', 'missing', 'warn', 'Audience not set — token accepted by any service');
+    if (payload.iat) add('iat', new Date(payload.iat * 1000).toISOString(), 'ok', 'Issued at');
+    if (payload.exp) {
+      const expired = payload.exp < now;
+      add('exp', new Date(payload.exp * 1000).toISOString(), expired ? 'error' : 'ok', expired ? 'EXPIRED' : `Expires in ${Math.round((payload.exp - now)/60)} min`);
+    } else {
+      add('exp', 'missing', 'error', 'No expiry — token never expires (major security risk)');
+    }
+    if (payload.nbf) {
+      const valid = payload.nbf <= now;
+      add('nbf', new Date(payload.nbf * 1000).toISOString(), valid ? 'ok' : 'warn', valid ? 'Not-before valid' : 'Token not yet valid');
+    }
+
+    // Custom claims
+    const standardKeys = ['sub', 'iss', 'aud', 'iat', 'exp', 'nbf', 'jti'];
+    Object.entries(payload).filter(([k]) => !standardKeys.includes(k)).forEach(([k, v]) => {
+      add(k, String(v).substring(0, 80), 'info', 'Custom claim');
+    });
+
+    return claims;
+  }
+
+  function render(token) {
+    const errEl = document.getElementById('error-msg');
+    const resultsEl = document.getElementById('results');
+    errEl.classList.add('hidden');
+    resultsEl.classList.add('hidden');
+
+    const jwt = parseJWT(token);
+    if (!jwt) {
+      errEl.textContent = 'Invalid JWT format. Expected: header.payload.signature (base64url-encoded JSON)';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    document.getElementById('header-json').textContent = JSON.stringify(jwt.header, null, 2);
+    document.getElementById('payload-json').textContent = JSON.stringify(jwt.payload, null, 2);
+
+    const sigEl = document.getElementById('sig-status');
+    if (jwt.signature && jwt.signature.length > 10) {
+      sigEl.innerHTML = `<span class="text-yellow-400">⚠ Signature present but not verified</span> <span class="text-text-muted text-xs">(client-side verification requires the secret key)</span><br><code class="text-xs font-mono text-text-muted break-all">${jwt.signature}</code>`;
+    } else {
+      sigEl.innerHTML = '<span class="text-red-400">✗ No signature — token is unsigned</span>';
+    }
+
+    const vulns = checkVulnerabilities(jwt);
+    const vulnList = document.getElementById('vuln-list');
+    const SEVERITY_STYLE = {
+      critical: 'bg-red-500 text-white',
+      high:     'bg-orange-500 text-white',
+      medium:   'bg-yellow-500 text-black',
+      low:      'bg-blue-500 text-white'
+    };
+    if (vulns.length === 0) {
+      vulnList.innerHTML = '<div class="flex items-center gap-2 text-green-400"><span>✓</span><span class="text-sm">No common vulnerabilities detected</span></div>';
+    } else {
+      vulnList.innerHTML = vulns.map(v => `
+        <div class="border border-border rounded-lg p-3">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs px-2 py-0.5 rounded font-medium ${SEVERITY_STYLE[v.severity]}">${v.severity.toUpperCase()}</span>
+            <span class="text-sm font-medium">${v.name}</span>
+          </div>
+          <p class="text-xs text-text-muted mb-2">${v.description}</p>
+          <pre class="bg-surface rounded p-2 text-xs font-mono text-accent overflow-x-auto whitespace-pre">${v.mitigation}</pre>
+        </div>
+      `).join('');
+    }
+
+    const claims = analyzeClaims(jwt.payload);
+    const STATUS_STYLE = { ok: 'text-green-400', warn: 'text-yellow-400', error: 'text-red-400', info: 'text-text-muted' };
+    const STATUS_ICON  = { ok: '✓', warn: '⚠', error: '✗', info: '·' };
+    document.getElementById('claims-list').innerHTML = claims.map(c => `
+      <div class="flex items-start gap-3 py-1 border-b border-border/40 last:border-0">
+        <span class="${STATUS_STYLE[c.status]} w-4 shrink-0 text-sm">${STATUS_ICON[c.status]}</span>
+        <span class="font-mono text-xs text-accent w-20 shrink-0">${c.key}</span>
+        <span class="text-xs font-mono text-foreground flex-1 break-all">${c.value}</span>
+        <span class="text-xs text-text-muted shrink-0">${c.note}</span>
+      </div>
+    `).join('');
+
+    resultsEl.classList.remove('hidden');
+  }
+
+  document.getElementById('btn-decode').addEventListener('click', () => {
+    render(document.getElementById('jwt-input').value.trim());
+  });
+
+  document.getElementById('jwt-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) render(e.target.value.trim());
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    document.getElementById('jwt-input').value = '';
+    document.getElementById('results').classList.add('hidden');
+    document.getElementById('error-msg').classList.add('hidden');
+  });
+
+  // Good token — signed, valid
+  const SAMPLE = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyIsIm5hbWUiOiJBbGljZSBTbWl0aCIsImVtYWlsIjoiYWxpY2VAZXhhbXBsZS5jb20iLCJyb2xlIjoidXNlciIsImlzcyI6Imh0dHBzOi8vYXV0aC5leGFtcGxlLmNvbSIsImF1ZCI6Imh0dHBzOi8vYXBpLmV4YW1wbGUuY29tIiwiaWF0IjoxNzQzNTAwMDAwLCJleHAiOjk5OTk5OTk5OTl9.signature_placeholder';
+  // Bad token — alg:none, expired, missing claims
+  const SAMPLE_BAD = 'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbl8xIiwicm9sZSI6ImFkbWluIiwicGFzc3dvcmQiOiJ0ZW1wMTIzIiwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE1MTYyMzkwMjJ9.';
+
+  document.getElementById('btn-sample').addEventListener('click', () => {
+    document.getElementById('jwt-input').value = SAMPLE;
+    render(SAMPLE);
+  });
+  document.getElementById('btn-sample-bad').addEventListener('click', () => {
+    document.getElementById('jwt-input').value = SAMPLE_BAD;
+    render(SAMPLE_BAD);
+  });
+})();
+</script>

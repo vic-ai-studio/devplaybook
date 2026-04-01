@@ -1,0 +1,303 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is a Lighthouse performance budget and why set one?",
+    answer: "A performance budget is a set of limits for metrics that affect page load time and user experience. It acts as a guardrail: when a build exceeds the budget, CI fails and you must optimize before shipping. Budgets prevent 'performance creep' where small additions gradually degrade performance. You can set budgets for JavaScript size, CSS size, image size, total page weight, and timing metrics like FCP and LCP. Lighthouse CLI and webpack-budget-plugin can enforce these automatically."
+  },
+  {
+    question: "What Lighthouse score should I target?",
+    answer: "Green (90-100): Excellent performance. Achievable for most sites with good practices. Aim for 90+ on Performance and SEO. Yellow (50-89): Needs improvement. Users on slow devices or connections will notice. Red (0-49): Poor. Significant impact on conversion and user retention. Google uses page experience signals (which include Core Web Vitals) as ranking factors. A score of 90+ Performance typically means passing all Core Web Vitals (LCP < 2.5s, FID < 100ms, CLS < 0.1)."
+  },
+  {
+    question: "What are the Core Web Vitals and their thresholds?",
+    answer: "LCP (Largest Contentful Paint): Measures loading performance. Good: < 2.5s, Needs improvement: 2.5-4s, Poor: > 4s. FID (First Input Delay, being replaced by INP): Measures interactivity. Good: < 100ms, Poor: > 300ms. INP (Interaction to Next Paint): New standard. Good: < 200ms. CLS (Cumulative Layout Shift): Measures visual stability. Good: < 0.1, Poor: > 0.25. FCP (First Contentful Paint): Good: < 1.8s. TTI (Time to Interactive): Good: < 3.8s."
+  },
+  {
+    question: "How do I enforce performance budgets in my build pipeline?",
+    answer: "Several approaches: 1) Lighthouse CI — run lighthouse in CI and fail on budget violations. Install: npm i -g @lhci/cli. Configure: lighthouserc.json with budgets array. 2) webpack performance hints — set performance.maxAssetSize in webpack config. 3) bundlesize npm package — define size limits in package.json. 4) Vite rollup options — set chunkSizeWarningLimit. 5) Next.js built-in — Next reports bundle size changes in the build output. The most comprehensive approach is Lighthouse CI running against a staging deployment."
+  },
+  {
+    question: "Why is JavaScript the most impactful resource to optimize?",
+    answer: "JavaScript is the most expensive resource per byte: it must be downloaded, parsed, compiled, and executed — each step blocks the main thread. A 100KB gzip JS file might take 1-2 seconds to process on a mid-range mobile device. Images and CSS are faster to process. Key JS optimizations: code splitting (load only what's needed), tree-shaking (remove dead code), defer non-critical scripts, use web workers for heavy computation, and replace large libraries with smaller alternatives."
+  }
+];
+---
+
+<BaseLayout
+  title="Lighthouse Performance Budget Calculator — Core Web Vitals Budget Tool"
+  description="Calculate Lighthouse performance budgets for JavaScript, CSS, images, and timing metrics. Set target scores per category and get color-coded resource size and timing budgets. Free browser tool."
+  tool="lighthouse budget calculator, performance budget tool, core web vitals budget, lighthouse score calculator, web performance budget"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Lighthouse Performance Budget Calculator",
+    "url": "https://devplaybook.cc/tools/lighthouse-budget-calculator",
+    "description": "Calculate Lighthouse performance budgets with resource size limits and timing budgets based on target Lighthouse scores.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Lighthouse Performance Budget Calculator</h1>
+  <p class="text-text-muted mb-4">
+    Set target Lighthouse scores and get estimated resource size budgets, timing thresholds,
+    and actionable recommendations — color-coded by severity.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 4 Lighthouse categories</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Resource size budgets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Core Web Vitals targets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> lighthouserc.json export</span>
+  </div>
+
+  <!-- Sliders -->
+  <div class="bg-bg-card border border-border rounded-lg p-5 mb-5">
+    <h2 class="text-sm font-medium mb-4">Target Lighthouse Scores</h2>
+    <div class="space-y-5" id="sliders-container">
+      <!-- Built by JS -->
+    </div>
+  </div>
+
+  <!-- Results grid -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+    <!-- Resource Budgets -->
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-medium mb-3">Resource Size Budgets</h2>
+      <div id="resource-budgets" class="space-y-3"></div>
+    </div>
+    <!-- Timing Budgets -->
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-medium mb-3">Timing Budgets</h2>
+      <div id="timing-budgets" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- Recommendations -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <h2 class="text-sm font-medium mb-3">Recommendations</h2>
+    <div id="recommendations" class="space-y-2 text-sm"></div>
+  </div>
+
+  <!-- Export config -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-medium">lighthouserc.json (for Lighthouse CI)</h2>
+      <button id="copy-config" class="px-3 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary/90 transition-colors">Copy</button>
+    </div>
+    <pre id="lhci-config" class="bg-surface rounded p-3 text-xs font-mono text-foreground/90 overflow-x-auto whitespace-pre"></pre>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Lighthouse Budget Calculator" relatedTags={['lighthouse', 'performance', 'core-web-vitals', 'seo', 'pwa', 'optimization']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  var scores = { performance: 90, accessibility: 90, bestPractices: 90, seo: 90 };
+
+  var CATEGORIES = [
+    { key: 'performance', label: 'Performance', color: 'blue' },
+    { key: 'accessibility', label: 'Accessibility', color: 'purple' },
+    { key: 'bestPractices', label: 'Best Practices', color: 'orange' },
+    { key: 'seo', label: 'SEO', color: 'green' },
+  ];
+
+  function scoreColor(s) {
+    if (s >= 90) return { bg: 'bg-green-500', text: 'text-green-400', label: 'Good' };
+    if (s >= 50) return { bg: 'bg-yellow-500', text: 'text-yellow-400', label: 'Needs Work' };
+    return { bg: 'bg-red-500', text: 'text-red-400', label: 'Poor' };
+  }
+
+  function buildSliders() {
+    var container = document.getElementById('sliders-container');
+    container.innerHTML = CATEGORIES.map(function(cat) {
+      var s = scores[cat.key];
+      var c = scoreColor(s);
+      return '<div class="category-slider" data-key="' + cat.key + '">' +
+        '<div class="flex items-center justify-between mb-1.5">' +
+          '<label class="text-sm font-medium">' + cat.label + '</label>' +
+          '<div class="flex items-center gap-2">' +
+            '<span class="score-label text-sm font-bold ' + c.text + '">' + s + '</span>' +
+            '<span class="score-badge text-xs px-2 py-0.5 rounded-full ' + c.bg + '/20 ' + c.text + '">' + c.label + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<input type="range" min="0" max="100" value="' + s + '" class="w-full h-2 rounded-lg appearance-none cursor-pointer accent-primary" data-key="' + cat.key + '" />' +
+        '<div class="flex justify-between text-xs text-text-muted mt-1"><span>0</span><span>50</span><span>100</span></div>' +
+      '</div>';
+    }).join('');
+
+    container.querySelectorAll('input[type=range]').forEach(function(input) {
+      input.addEventListener('input', function() {
+        scores[input.dataset.key] = parseInt(input.value);
+        updateSliderLabels(input);
+        recalculate();
+      });
+    });
+  }
+
+  function updateSliderLabels(input) {
+    var parent = input.closest('.category-slider');
+    var s = parseInt(input.value);
+    var c = scoreColor(s);
+    parent.querySelector('.score-label').textContent = s;
+    parent.querySelector('.score-label').className = 'score-label text-sm font-bold ' + c.text;
+    parent.querySelector('.score-badge').textContent = c.label;
+    parent.querySelector('.score-badge').className = 'score-badge text-xs px-2 py-0.5 rounded-full ' + c.bg + '/20 ' + c.text;
+  }
+
+  // Budget formulas derived from performance score
+  function calcBudgets(perf) {
+    // Empirical approximations based on Lighthouse scoring
+    var jsKB = perf >= 90 ? 200 : perf >= 70 ? 400 : perf >= 50 ? 700 : 1200;
+    var cssKB = perf >= 90 ? 50 : perf >= 70 ? 100 : perf >= 50 ? 180 : 300;
+    var imgKB = perf >= 90 ? 500 : perf >= 70 ? 1000 : perf >= 50 ? 2000 : 4000;
+    var totalKB = perf >= 90 ? 1000 : perf >= 70 ? 2000 : perf >= 50 ? 3500 : 6000;
+    var fontKB = perf >= 90 ? 80 : perf >= 70 ? 150 : 300;
+    return { jsKB: jsKB, cssKB: cssKB, imgKB: imgKB, totalKB: totalKB, fontKB: fontKB };
+  }
+
+  function calcTimings(perf) {
+    var fcp = perf >= 90 ? 1.8 : perf >= 70 ? 2.5 : perf >= 50 ? 3.5 : 5;
+    var lcp = perf >= 90 ? 2.5 : perf >= 70 ? 3.5 : perf >= 50 ? 5 : 8;
+    var tti = perf >= 90 ? 3.8 : perf >= 70 ? 5.5 : perf >= 50 ? 8 : 12;
+    var tbt = perf >= 90 ? 200 : perf >= 70 ? 400 : perf >= 50 ? 700 : 1500;
+    var cls = perf >= 90 ? 0.1 : perf >= 70 ? 0.15 : perf >= 50 ? 0.25 : 0.5;
+    var inp = perf >= 90 ? 200 : perf >= 70 ? 300 : perf >= 50 ? 500 : 1000;
+    return { fcp: fcp, lcp: lcp, tti: tti, tbt: tbt, cls: cls, inp: inp };
+  }
+
+  function metricColor(val, good, poor) {
+    if (val <= good) return 'text-green-400';
+    if (val <= poor) return 'text-yellow-400';
+    return 'text-red-400';
+  }
+
+  function formatBytes(kb) {
+    return kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
+  }
+
+  function resourceBar(label, val, max, unit) {
+    var pct = Math.min(100, Math.round(val / max * 100));
+    var color = pct <= 50 ? 'bg-green-500' : pct <= 80 ? 'bg-yellow-500' : 'bg-red-500';
+    var textColor = pct <= 50 ? 'text-green-400' : pct <= 80 ? 'text-yellow-400' : 'text-red-400';
+    return '<div>' +
+      '<div class="flex items-center justify-between mb-1 text-xs">' +
+        '<span class="text-text-muted">' + label + '</span>' +
+        '<span class="font-mono font-bold ' + textColor + '">' + val + unit + '</span>' +
+      '</div>' +
+      '<div class="h-2 bg-surface rounded-full overflow-hidden">' +
+        '<div class="h-2 rounded-full ' + color + '" style="width:' + pct + '%"></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function timingRow(label, val, unit, goodThresh, poorThresh) {
+    var c = metricColor(val, goodThresh, poorThresh);
+    var statusLabel = val <= goodThresh ? 'Good' : val <= poorThresh ? 'Needs Work' : 'Poor';
+    var dot = val <= goodThresh ? 'bg-green-500' : val <= poorThresh ? 'bg-yellow-500' : 'bg-red-500';
+    return '<div class="flex items-center justify-between py-1.5 border-b border-border/50">' +
+      '<div class="flex items-center gap-2">' +
+        '<div class="w-2 h-2 rounded-full ' + dot + ' shrink-0"></div>' +
+        '<span class="text-sm">' + label + '</span>' +
+      '</div>' +
+      '<div class="text-right">' +
+        '<span class="font-mono font-bold ' + c + '">' + val + unit + '</span>' +
+        '<span class="text-xs text-text-muted ml-2">' + statusLabel + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function recalculate() {
+    var perf = scores.performance;
+    var b = calcBudgets(perf);
+    var t = calcTimings(perf);
+
+    // Resource budgets
+    document.getElementById('resource-budgets').innerHTML =
+      resourceBar('Total JavaScript (gzip)', b.jsKB, 2000, ' KB') +
+      resourceBar('Total CSS', b.cssKB, 500, ' KB') +
+      resourceBar('Images', b.imgKB, 5000, ' KB') +
+      resourceBar('Web Fonts', b.fontKB, 500, ' KB') +
+      resourceBar('Total Page Weight', b.totalKB, 8000, ' KB');
+
+    // Timing budgets
+    document.getElementById('timing-budgets').innerHTML =
+      timingRow('FCP (First Contentful Paint)', t.fcp, 's', 1.8, 3.0) +
+      timingRow('LCP (Largest Contentful Paint)', t.lcp, 's', 2.5, 4.0) +
+      timingRow('TTI (Time to Interactive)', t.tti, 's', 3.8, 7.3) +
+      timingRow('TBT (Total Blocking Time)', t.tbt, 'ms', 200, 600) +
+      timingRow('INP (Interaction to Next Paint)', t.inp, 'ms', 200, 500) +
+      timingRow('CLS (Cumulative Layout Shift)', t.cls, '', 0.1, 0.25);
+
+    // Recommendations
+    var recs = [];
+    var acc = scores.accessibility, bp = scores.bestPractices, seo = scores.seo;
+
+    if (perf < 90) recs.push({ color: 'text-blue-400', text: 'Performance: Keep JavaScript bundle under ' + b.jsKB + ' KB gzip. Use code splitting and dynamic import().' });
+    if (perf < 70) recs.push({ color: 'text-red-400', text: 'Performance: Enable text compression (gzip/Brotli) on server. Use next-gen image formats (WebP/AVIF).' });
+    if (t.lcp > 2.5) recs.push({ color: 'text-yellow-400', text: 'LCP: Preload your largest image/font. Use <link rel="preload"> for critical resources.' });
+    if (t.tbt > 200) recs.push({ color: 'text-yellow-400', text: 'TBT: Long tasks blocking main thread. Move heavy computation to Web Workers.' });
+    if (acc < 90) recs.push({ color: 'text-purple-400', text: 'Accessibility: Add alt text to images, ensure color contrast ratio >= 4.5:1, use semantic HTML.' });
+    if (bp < 90) recs.push({ color: 'text-orange-400', text: 'Best Practices: Use HTTPS, avoid deprecated APIs, enable security headers (CSP, HSTS).' });
+    if (seo < 90) recs.push({ color: 'text-green-400', text: 'SEO: Add meta description, ensure tap targets are 48x48px minimum, verify structured data.' });
+    if (perf >= 90 && acc >= 90 && bp >= 90 && seo >= 90) recs.push({ color: 'text-green-400', text: 'All targets set to 90+. Excellent! Maintain these budgets in CI with Lighthouse CI.' });
+
+    document.getElementById('recommendations').innerHTML = recs.map(function(r) {
+      return '<div class="flex gap-2"><span class="' + r.color + ' shrink-0">→</span><span class="text-text-muted">' + r.text + '</span></div>';
+    }).join('');
+
+    // LHCI config
+    var lhci = {
+      ci: {
+        collect: { numberOfRuns: 3, startServerCommand: 'npm start', url: ['http://localhost:3000'] },
+        assert: {
+          assertions: {
+            'categories:performance': ['error', { minScore: perf / 100 }],
+            'categories:accessibility': ['error', { minScore: acc / 100 }],
+            'categories:best-practices': ['error', { minScore: bp / 100 }],
+            'categories:seo': ['error', { minScore: seo / 100 }],
+          },
+          budgets: [{
+            path: '/*',
+            resourceSizes: [
+              { resourceType: 'script', budget: b.jsKB },
+              { resourceType: 'stylesheet', budget: b.cssKB },
+              { resourceType: 'image', budget: b.imgKB },
+              { resourceType: 'font', budget: b.fontKB },
+              { resourceType: 'total', budget: b.totalKB },
+            ],
+            timings: [
+              { metric: 'first-contentful-paint', budget: Math.round(t.fcp * 1000) },
+              { metric: 'largest-contentful-paint', budget: Math.round(t.lcp * 1000) },
+              { metric: 'interactive', budget: Math.round(t.tti * 1000) },
+              { metric: 'total-blocking-time', budget: t.tbt },
+            ],
+          }],
+        },
+        upload: { target: 'temporary-public-storage' },
+      }
+    };
+    document.getElementById('lhci-config').textContent = JSON.stringify(lhci, null, 2);
+  }
+
+  document.getElementById('copy-config').addEventListener('click', function() {
+    navigator.clipboard.writeText(document.getElementById('lhci-config').textContent).then(function() {
+      var btn = document.getElementById('copy-config');
+      var orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = orig; }, 1500);
+    });
+  });
+
+  buildSliders();
+  recalculate();
+})();
+</script>
