@@ -1,0 +1,193 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is OpenTelemetry (OTEL)?", answer: "OpenTelemetry is a vendor-neutral observability framework providing APIs, SDKs, and tools to instrument and export traces, metrics, and logs. It is a CNCF project and the de-facto standard for distributed tracing across microservices." },
+  { question: "What is a trace and a span?", answer: "A trace represents the end-to-end journey of a single request through your distributed system. It is composed of spans — each span is a unit of work (HTTP call, DB query, function). Spans have a name, start time, duration, status, and optionally a parent span ID forming a tree." },
+  { question: "What is the critical path?", answer: "The critical path is the longest sequential chain of spans that determines the minimum possible trace duration. Optimizing critical-path spans directly reduces overall latency." },
+  { question: "What does the waterfall chart show?", answer: "The waterfall chart shows each span as a horizontal bar at its start-time offset and sized by duration. It makes it easy to spot parallel vs sequential spans and which spans dominate total latency." },
+  { question: "How do I interpret span status codes?", answer: "OTEL defines: UNSET (default), OK (explicit success), and ERROR (error occurred). For HTTP spans: 2xx maps to OK, 5xx maps to ERROR. An ERROR status should include a description attribute." },
+];
+---
+
+<BaseLayout
+  title="OpenTelemetry Trace Analyzer — Visualize OTEL Spans & Critical Path"
+  description="Paste OTEL JSON trace data to visualize a waterfall timeline, find the critical path, identify slow spans, and see a per-service breakdown. Free, runs in your browser."
+  tool="OpenTelemetry Trace Analyzer, OTEL Trace Viewer, Distributed Trace Analyzer, Span Waterfall"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">OpenTelemetry Trace Analyzer</h1>
+  <p class="text-text-muted mb-4">Paste OTEL JSON trace data to visualize a waterfall timeline, find the critical path, identify slow spans, and get a per-service breakdown. A sample trace is pre-loaded.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Waterfall timeline (CSS bars)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Critical path detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Slowest spans table</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Per-service breakdown</span>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">Trace Input</h2>
+      <div class="flex gap-2">
+        <button id="btn-load-sample" class="text-xs bg-black/20 border border-border px-3 py-1.5 rounded-lg hover:border-primary transition-colors">Load Sample</button>
+        <button id="btn-analyze" class="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90">Analyze Trace</button>
+      </div>
+    </div>
+    <label class="block text-sm font-medium mb-1.5">OTEL Trace JSON</label>
+    <textarea id="trace-input" rows="12" placeholder="Paste OTEL trace JSON here..."
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-y"></textarea>
+    <p class="text-xs text-text-muted mt-1">Expected: <code class="bg-black/20 px-1 rounded">{ "traceId": "...", "spans": [{ "spanId", "parentSpanId", "name", "service", "startMs", "durationMs", "status" }] }</code></p>
+  </div>
+
+  <div id="trace-error" class="hidden bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-5 text-sm text-red-400"></div>
+
+  <div id="summary-section" class="hidden">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="stat-total-duration" class="text-2xl font-bold text-primary mb-1">—</div>
+        <div class="text-xs text-text-muted">Total Duration</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="stat-span-count" class="text-2xl font-bold text-primary mb-1">—</div>
+        <div class="text-xs text-text-muted">Span Count</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="stat-service-count" class="text-2xl font-bold text-primary mb-1">—</div>
+        <div class="text-xs text-text-muted">Services</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="stat-critical-path" class="text-2xl font-bold text-yellow-400 mb-1">—</div>
+        <div class="text-xs text-text-muted">Root Span</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="waterfall-section" class="hidden bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Waterfall Timeline</h2>
+    <div id="waterfall-chart" class="overflow-x-auto"></div>
+  </div>
+
+  <div id="tables-section" class="hidden">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Slowest Spans</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-text-muted text-xs uppercase border-b border-border">
+                <th class="text-left pb-2 pr-3">Name</th>
+                <th class="text-left pb-2 pr-3">Service</th>
+                <th class="text-right pb-2">Duration</th>
+              </tr>
+            </thead>
+            <tbody id="slowest-spans-table" class="divide-y divide-border"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Service Breakdown</h2>
+        <div id="service-breakdown"></div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="OpenTelemetry Trace Analyzer" relatedTags={['observability', 'otel', 'tracing', 'devops', 'monitoring', 'microservices']} />
+</BaseLayout>
+
+<script is:inline>
+  var SAMPLE = {"traceId":"abc123def456","spans":[{"spanId":"s1","parentSpanId":null,"name":"HTTP GET /api/orders","service":"api-gateway","startMs":0,"durationMs":245,"status":"OK"},{"spanId":"s2","parentSpanId":"s1","name":"auth.validateToken","service":"auth-service","startMs":5,"durationMs":18,"status":"OK"},{"spanId":"s3","parentSpanId":"s1","name":"orders.getByUser","service":"order-service","startMs":25,"durationMs":195,"status":"OK"},{"spanId":"s4","parentSpanId":"s3","name":"db.query.SELECT orders","service":"order-service","startMs":30,"durationMs":140,"status":"OK"},{"spanId":"s5","parentSpanId":"s3","name":"cache.get user_prefs","service":"cache-layer","startMs":175,"durationMs":35,"status":"OK"}]};
+  var SVC_COLORS = ["#6366f1","#10b981","#f59e0b","#3b82f6","#ec4899","#8b5cf6","#14b8a6","#f97316"];
+
+  function showEl(id) { document.getElementById(id).classList.remove("hidden"); }
+
+  function getDepth(spanId, spans) {
+    var depth = 0, cur = null;
+    for (var i = 0; i < spans.length; i++) { if (spans[i].spanId === spanId) { cur = spans[i]; break; } }
+    while (cur && cur.parentSpanId) {
+      var found = null;
+      for (var j = 0; j < spans.length; j++) { if (spans[j].spanId === cur.parentSpanId) { found = spans[j]; break; } }
+      if (!found) break; depth++; cur = found;
+    }
+    return depth;
+  }
+
+  function analyzeTrace(data) {
+    var spans = data.spans || [];
+    if (!spans.length) throw new Error("No spans found.");
+    var totalDuration = 0;
+    for (var i = 0; i < spans.length; i++) { var end = (spans[i].startMs||0)+(spans[i].durationMs||0); if (end > totalDuration) totalDuration = end; }
+    var services = [], svcColor = {};
+    for (var i = 0; i < spans.length; i++) { if (services.indexOf(spans[i].service) === -1) services.push(spans[i].service); }
+    for (var i = 0; i < services.length; i++) svcColor[services[i]] = SVC_COLORS[i % SVC_COLORS.length];
+    var root = null; for (var i = 0; i < spans.length; i++) { if (!spans[i].parentSpanId) { root = spans[i]; break; } }
+
+    document.getElementById("stat-total-duration").textContent = totalDuration + "ms";
+    document.getElementById("stat-span-count").textContent = spans.length;
+    document.getElementById("stat-service-count").textContent = services.length;
+    document.getElementById("stat-critical-path").textContent = (root ? root.durationMs : totalDuration) + "ms";
+    showEl("summary-section");
+
+    var sorted = spans.slice().sort(function(a,b){return (a.startMs||0)-(b.startMs||0);});
+    var wf = "<div style=\"min-width:500px\">";
+    wf += "<div class=\"flex justify-between text-xs text-text-muted mb-2 pl-44\"><span>0ms</span><span>" + totalDuration + "ms</span></div>";
+    for (var i = 0; i < sorted.length; i++) {
+      var sp = sorted[i];
+      var left = totalDuration > 0 ? ((sp.startMs||0)/totalDuration*100) : 0;
+      var width = totalDuration > 0 ? Math.max(0.5,(sp.durationMs||0)/totalDuration*100) : 0.5;
+      var depth = getDepth(sp.spanId, spans);
+      var color = svcColor[sp.service] || "#6366f1";
+      var isErr = sp.status === "ERROR";
+      wf += "<div class=\"flex items-center mb-1.5\" style=\"height:26px\">";
+      wf += "<div class=\"text-xs text-text-muted truncate pr-2 flex-shrink-0\" style=\"width:176px;padding-left:" + (4+depth*10) + "px\">";
+      wf += "<span style=\"color:" + (isErr?"#f87171":"#34d399") + "\" class=\"mr-0.5\">" + (isErr?"x":"v") + "</span>" + sp.name + "</div>";
+      wf += "<div class=\"relative flex-1\" style=\"height:18px;background:rgba(0,0,0,0.12);border-radius:3px\">";
+      wf += "<div title=\"" + sp.name + ": " + sp.durationMs + "ms\" style=\"position:absolute;left:" + left + "%;width:" + width + "%;height:100%;background:" + color + ";border-radius:3px;opacity:0.85;min-width:3px\"></div></div>";
+      wf += "<div class=\"text-xs font-mono text-text-muted ml-2 flex-shrink-0 text-right\" style=\"width:52px\">" + (sp.durationMs||0) + "ms</div></div>";
+    }
+    wf += "<div class=\"flex flex-wrap gap-3 mt-3 pt-3 border-t border-border\">";
+    for (var i = 0; i < services.length; i++) {
+      wf += "<span class=\"flex items-center gap-1.5 text-xs text-text-muted\"><span style=\"width:10px;height:10px;border-radius:2px;background:" + svcColor[services[i]] + ";display:inline-block\"></span>" + services[i] + "</span>";
+    }
+    wf += "</div></div>";
+    document.getElementById("waterfall-chart").innerHTML = wf;
+    showEl("waterfall-section");
+
+    var byDur = spans.slice().sort(function(a,b){return b.durationMs-a.durationMs;}).slice(0,5);
+    var slowHTML = "";
+    for (var i = 0; i < byDur.length; i++) {
+      var s = byDur[i], pct = totalDuration > 0 ? ((s.durationMs/totalDuration)*100).toFixed(1) : "0";
+      slowHTML += "<tr><td class=\"py-2 pr-3 text-sm\">" + s.name + "</td><td class=\"py-2 pr-3 text-xs text-text-muted\">" + s.service + "</td><td class=\"py-2 text-right font-mono text-xs\">" + s.durationMs + "ms <span class=\"text-text-muted\">(" + pct + "%)</span></td></tr>";
+    }
+    document.getElementById("slowest-spans-table").innerHTML = slowHTML;
+
+    var svcTotals = {}, keys = [];
+    for (var i = 0; i < spans.length; i++) { var sv = spans[i].service; if (!svcTotals[sv]) { svcTotals[sv]={ms:0,n:0}; keys.push(sv); } svcTotals[sv].ms += spans[i].durationMs||0; svcTotals[sv].n++; }
+    var maxMs = 0; for (var i = 0; i < keys.length; i++) { if (svcTotals[keys[i]].ms > maxMs) maxMs = svcTotals[keys[i]].ms; }
+    keys.sort(function(a,b){return svcTotals[b].ms-svcTotals[a].ms;});
+    var svHTML = "";
+    for (var i = 0; i < keys.length; i++) {
+      var sv = keys[i], d = svcTotals[sv], bw = maxMs > 0 ? (d.ms/maxMs*100) : 0;
+      svHTML += "<div class=\"mb-3\"><div class=\"flex justify-between text-xs mb-1\"><span class=\"font-medium\">" + sv + "</span><span class=\"text-text-muted\">" + d.ms + "ms / " + d.n + " span" + (d.n>1?"s":"") + "</span></div><div style=\"background:rgba(0,0,0,0.15);border-radius:4px;height:8px\"><div style=\"width:" + bw + "%;height:8px;background:" + (svcColor[sv]||"#6366f1") + ";border-radius:4px\"></div></div></div>";
+    }
+    document.getElementById("service-breakdown").innerHTML = svHTML;
+    showEl("tables-section");
+  }
+
+  document.getElementById("btn-load-sample").addEventListener("click", function(){
+    document.getElementById("trace-input").value = JSON.stringify(SAMPLE, null, 2);
+    document.getElementById("trace-error").classList.add("hidden");
+  });
+  document.getElementById("btn-analyze").addEventListener("click", function(){
+    var raw = document.getElementById("trace-input").value.trim();
+    var errEl = document.getElementById("trace-error");
+    errEl.classList.add("hidden");
+    if (!raw) { errEl.textContent = "Paste trace JSON or click Load Sample first."; errEl.classList.remove("hidden"); return; }
+    try { analyzeTrace(JSON.parse(raw)); }
+    catch(e) { errEl.textContent = "Error: " + e.message; errEl.classList.remove("hidden"); }
+  });
+  document.getElementById("trace-input").value = JSON.stringify(SAMPLE, null, 2);
+</script>
