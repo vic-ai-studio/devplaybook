@@ -1,0 +1,527 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the OpenTelemetry Collector and why use it?", answer: "The OpenTelemetry Collector is a vendor-agnostic proxy that receives, processes, and exports telemetry data (traces, metrics, logs). Instead of each application sending directly to your backend (Jaeger, Prometheus, Datadog, etc.), you point them all to the Collector. This decouples your instrumentation from your backend — you can change backends without touching application code, and the Collector handles batching, retry, and enrichment centrally." },
+  { question: "What is the difference between a receiver, processor, and exporter?", answer: "Receivers ingest telemetry data into the Collector (OTLP over gRPC/HTTP, Jaeger, Prometheus scrape, Zipkin, etc.). Processors transform or filter data in-flight — the batch processor groups spans before export, memory_limiter prevents OOM, and filter/transform processors can drop or enrich data. Exporters send processed data to your backend. You wire these together in pipelines: receivers → processors → exporters. A single Collector can run multiple independent pipelines." },
+  { question: "What is the batch processor and why is it important?", answer: "The batch processor accumulates spans/metrics/logs and sends them in groups rather than individually. This dramatically reduces the number of export requests, lowering network overhead and backend load. Key settings: send_batch_size (max items per batch, default 8192), timeout (max wait before flushing, default 200ms), send_batch_max_size (hard cap on batch size). For production, always include the batch processor as the last processor before exporters." },
+  { question: "How does the memory_limiter processor prevent OOM crashes?", answer: "The memory_limiter periodically checks the Collector's heap size. When usage exceeds limit_mib, it starts refusing new data and forces a GC cycle. When it exceeds spike_limit_mib above the soft limit, it drops data. This prevents the Collector from crashing and taking down your entire telemetry pipeline. Always place memory_limiter as the FIRST processor in your chain so it checks memory before any expensive transformations." },
+  { question: "What is the OTLP exporter and which endpoint should I use?", answer: "OTLP (OpenTelemetry Protocol) is the native wire format. The OTLP exporter sends to any OTLP-compatible backend: Jaeger (4317 gRPC), Tempo, Collector-to-Collector, Honeycomb, Datadog Agent, etc. For gRPC use endpoint: host:4317 (no scheme prefix). For HTTP use endpoint: http://host:4318. If your backend requires TLS, configure tls: insecure: false and provide cert_file/key_file. Most modern backends prefer OTLP over their native protocols." },
+];
+---
+
+<BaseLayout
+  title="OpenTelemetry Collector Config Generator — YAML Builder for OTel Collector"
+  description="Visually build OpenTelemetry Collector YAML configuration. Select receivers (OTLP, Jaeger, Prometheus), processors (batch, memory_limiter, filter), and exporters (OTLP, Prometheus, logging) and generate a complete collector config with pipelines."
+  tool="OpenTelemetry Collector config generator, OTel collector YAML, otelcol config builder, OTLP receiver exporter, OpenTelemetry pipeline config"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "OpenTelemetry Collector Config Generator",
+    "url": "https://devplaybook.cc/tools/otel-collector-config-generator",
+    "description": "Build OpenTelemetry Collector YAML configuration visually. Select receivers, processors, and exporters and get a production-ready config.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">OpenTelemetry Collector Config Generator</h1>
+  <p class="text-text-muted mb-4">
+    Build a complete <strong>OpenTelemetry Collector</strong> <code class="font-mono bg-black/20 px-1 rounded text-sm">config.yaml</code> by selecting your receivers, processors, and exporters.
+    Generates a valid pipeline configuration ready for <code class="font-mono bg-black/20 px-1 rounded text-sm">otelcol --config config.yaml</code>.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OTLP, Jaeger, Prometheus receivers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Batch, memory_limiter, filter processors</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-exporter pipelines</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Traces, metrics & logs pipelines</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Left column: config inputs -->
+    <div class="space-y-4">
+
+      <!-- Receivers -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Receivers</h2>
+        <div class="space-y-3">
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="recv-otlp-grpc" checked class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">OTLP gRPC</span>
+              <p class="text-xs text-text-muted">Port <input id="otlp-grpc-port" type="number" value="4317" class="w-16 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="recv-otlp-http" checked class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">OTLP HTTP</span>
+              <p class="text-xs text-text-muted">Port <input id="otlp-http-port" type="number" value="4318" class="w-16 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="recv-jaeger" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">Jaeger</span>
+              <p class="text-xs text-text-muted">gRPC 14250 + Thrift HTTP 14268</p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="recv-prometheus" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">Prometheus Scrape</span>
+              <p class="text-xs text-text-muted">Scrape target: <input id="prom-scrape-target" type="text" value="localhost:8080" class="w-32 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="recv-zipkin" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">Zipkin</span>
+              <p class="text-xs text-text-muted">HTTP port 9411</p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="recv-hostmetrics" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">Host Metrics</span>
+              <p class="text-xs text-text-muted">CPU, memory, disk, network (interval: 60s)</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Processors -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Processors</h2>
+        <div class="space-y-3">
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="proc-memory-limiter" checked class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">memory_limiter</span>
+              <div class="flex gap-2 mt-1 flex-wrap">
+                <span class="text-xs text-text-muted">Limit MiB: <input id="mem-limit" type="number" value="512" class="w-16 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></span>
+                <span class="text-xs text-text-muted">Spike MiB: <input id="mem-spike" type="number" value="128" class="w-16 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></span>
+              </div>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="proc-batch" checked class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">batch</span>
+              <div class="flex gap-2 mt-1 flex-wrap">
+                <span class="text-xs text-text-muted">Timeout: <input id="batch-timeout" type="text" value="200ms" class="w-16 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></span>
+                <span class="text-xs text-text-muted">Batch size: <input id="batch-size" type="number" value="1024" class="w-16 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></span>
+              </div>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="proc-resourcedetection" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">resourcedetection</span>
+              <p class="text-xs text-text-muted">Auto-detect cloud provider, hostname, OS</p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="proc-filter" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">filter (drop health checks)</span>
+              <p class="text-xs text-text-muted">Drop spans with http.route = /health or /ping</p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="proc-attributes" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">attributes</span>
+              <p class="text-xs text-text-muted">Insert environment attribute: <input id="attr-env" type="text" value="production" class="w-24 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Exporters -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Exporters</h2>
+        <div class="space-y-3">
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="exp-otlp" checked class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">OTLP gRPC</span>
+              <p class="text-xs text-text-muted">Endpoint: <input id="otlp-exp-endpoint" type="text" value="jaeger:4317" class="w-36 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="exp-otlphttp" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">OTLP HTTP</span>
+              <p class="text-xs text-text-muted">Endpoint: <input id="otlphttp-exp-endpoint" type="text" value="http://tempo:4318" class="w-40 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="exp-jaeger" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">Jaeger</span>
+              <p class="text-xs text-text-muted">Endpoint: <input id="jaeger-exp-endpoint" type="text" value="jaeger:14250" class="w-36 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="exp-prometheus" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">Prometheus (expose)</span>
+              <p class="text-xs text-text-muted">Scrape endpoint port: <input id="prom-exp-port" type="number" value="8889" class="w-16 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="exp-logging" checked class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">logging (debug)</span>
+              <p class="text-xs text-text-muted">Verbosity:
+                <select id="logging-verbosity" class="bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block">
+                  <option value="basic" selected>basic</option>
+                  <option value="normal">normal</option>
+                  <option value="detailed">detailed</option>
+                </select>
+              </p>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="exp-loki" class="mt-0.5 accent-primary" />
+            <div>
+              <span class="text-sm font-medium">loki</span>
+              <p class="text-xs text-text-muted">Endpoint: <input id="loki-endpoint" type="text" value="http://loki:3100/loki/api/v1/push" class="w-52 bg-black/20 border border-border rounded px-1 py-0.5 text-xs font-mono focus:outline-none focus:border-primary inline-block" /></p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Pipeline signals -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Pipelines</h2>
+        <div class="space-y-2">
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" id="pipeline-traces" checked class="accent-primary" />
+            <span class="text-sm font-medium">traces pipeline</span>
+          </label>
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" id="pipeline-metrics" checked class="accent-primary" />
+            <span class="text-sm font-medium">metrics pipeline</span>
+          </label>
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" id="pipeline-logs" class="accent-primary" />
+            <span class="text-sm font-medium">logs pipeline</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column: YAML output -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Generated config.yaml</h2>
+          <button id="copy-btn" class="bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-sm font-medium transition-opacity">Copy YAML</button>
+        </div>
+        <pre id="yaml-output" class="bg-black/20 rounded-lg p-4 text-xs font-mono text-green-400 overflow-auto max-h-[600px] leading-relaxed whitespace-pre"></pre>
+      </div>
+
+      <div id="validation-panel" class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Validation</h2>
+        <div id="validation-messages" class="space-y-2 text-sm"></div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="OpenTelemetry Collector Config Generator" relatedTags={['observability', 'opentelemetry', 'devops', 'tracing', 'metrics', 'infrastructure']} />
+</BaseLayout>
+
+<script>
+  function el(id: string): HTMLElement | null { return document.getElementById(id); }
+  function checked(id: string): boolean { return (el(id) as HTMLInputElement)?.checked ?? false; }
+  function val(id: string): string { return (el(id) as HTMLInputElement)?.value ?? ''; }
+
+  function buildYaml(): string {
+    const lines: string[] = [];
+
+    // --- receivers ---
+    lines.push('receivers:');
+
+    const hasOtlpGrpc = checked('recv-otlp-grpc');
+    const hasOtlpHttp = checked('recv-otlp-http');
+    if (hasOtlpGrpc || hasOtlpHttp) {
+      lines.push('  otlp:');
+      lines.push('    protocols:');
+      if (hasOtlpGrpc) {
+        lines.push('      grpc:');
+        lines.push(`        endpoint: 0.0.0.0:${val('otlp-grpc-port')}`);
+      }
+      if (hasOtlpHttp) {
+        lines.push('      http:');
+        lines.push(`        endpoint: 0.0.0.0:${val('otlp-http-port')}`);
+      }
+    }
+    if (checked('recv-jaeger')) {
+      lines.push('  jaeger:');
+      lines.push('    protocols:');
+      lines.push('      grpc:');
+      lines.push('        endpoint: 0.0.0.0:14250');
+      lines.push('      thrift_http:');
+      lines.push('        endpoint: 0.0.0.0:14268');
+    }
+    if (checked('recv-prometheus')) {
+      lines.push('  prometheus:');
+      lines.push('    config:');
+      lines.push('      scrape_configs:');
+      lines.push('        - job_name: otel-collector');
+      lines.push('          scrape_interval: 10s');
+      lines.push('          static_configs:');
+      lines.push(`            - targets: ['${val('prom-scrape-target')}']`);
+    }
+    if (checked('recv-zipkin')) {
+      lines.push('  zipkin:');
+      lines.push('    endpoint: 0.0.0.0:9411');
+    }
+    if (checked('recv-hostmetrics')) {
+      lines.push('  hostmetrics:');
+      lines.push('    collection_interval: 60s');
+      lines.push('    scrapers:');
+      lines.push('      cpu: {}');
+      lines.push('      memory: {}');
+      lines.push('      disk: {}');
+      lines.push('      network: {}');
+      lines.push('      load: {}');
+    }
+    lines.push('');
+
+    // --- processors ---
+    lines.push('processors:');
+    if (checked('proc-memory-limiter')) {
+      lines.push('  memory_limiter:');
+      lines.push('    check_interval: 1s');
+      lines.push(`    limit_mib: ${val('mem-limit')}`);
+      lines.push(`    spike_limit_mib: ${val('mem-spike')}`);
+    }
+    if (checked('proc-batch')) {
+      lines.push('  batch:');
+      lines.push(`    timeout: ${val('batch-timeout')}`);
+      lines.push(`    send_batch_size: ${val('batch-size')}`);
+      lines.push(`    send_batch_max_size: ${Math.max(parseInt(val('batch-size')) * 2, 2048)}`);
+    }
+    if (checked('proc-resourcedetection')) {
+      lines.push('  resourcedetection:');
+      lines.push('    detectors: [env, system, docker, gcp, aws, azure]');
+      lines.push('    timeout: 2s');
+      lines.push('    override: false');
+    }
+    if (checked('proc-filter')) {
+      lines.push('  filter/drop_health:');
+      lines.push('    error_mode: ignore');
+      lines.push('    traces:');
+      lines.push('      span:');
+      lines.push("        - 'attributes[\"http.route\"] == \"/health\"'");
+      lines.push("        - 'attributes[\"http.route\"] == \"/ping\"'");
+      lines.push("        - 'attributes[\"http.route\"] == \"/ready\"'");
+    }
+    if (checked('proc-attributes')) {
+      lines.push('  attributes/insert_env:');
+      lines.push('    actions:');
+      lines.push('      - key: deployment.environment');
+      lines.push('        action: insert');
+      lines.push(`        value: ${val('attr-env')}`);
+    }
+    lines.push('');
+
+    // --- exporters ---
+    lines.push('exporters:');
+    if (checked('exp-otlp')) {
+      lines.push('  otlp:');
+      lines.push('    endpoint: ' + val('otlp-exp-endpoint'));
+      lines.push('    tls:');
+      lines.push('      insecure: true');
+      lines.push('    retry_on_failure:');
+      lines.push('      enabled: true');
+      lines.push('      initial_interval: 5s');
+      lines.push('      max_interval: 30s');
+      lines.push('      max_elapsed_time: 300s');
+    }
+    if (checked('exp-otlphttp')) {
+      lines.push('  otlphttp:');
+      lines.push('    endpoint: ' + val('otlphttp-exp-endpoint'));
+      lines.push('    tls:');
+      lines.push('      insecure: true');
+    }
+    if (checked('exp-jaeger')) {
+      lines.push('  jaeger:');
+      lines.push('    endpoint: ' + val('jaeger-exp-endpoint'));
+      lines.push('    tls:');
+      lines.push('      insecure: true');
+    }
+    if (checked('exp-prometheus')) {
+      lines.push('  prometheus:');
+      lines.push(`    endpoint: 0.0.0.0:${val('prom-exp-port')}`);
+      lines.push('    namespace: otelcol');
+      lines.push('    enable_open_metrics: true');
+    }
+    if (checked('exp-logging')) {
+      lines.push('  logging:');
+      lines.push(`    verbosity: ${val('logging-verbosity')}`);
+      lines.push('    sampling_initial: 5');
+      lines.push('    sampling_thereafter: 200');
+    }
+    if (checked('exp-loki')) {
+      lines.push('  loki:');
+      lines.push('    endpoint: ' + val('loki-endpoint'));
+      lines.push('    tls:');
+      lines.push('      insecure: true');
+    }
+    lines.push('');
+
+    // --- extensions ---
+    lines.push('extensions:');
+    lines.push('  health_check:');
+    lines.push('    endpoint: 0.0.0.0:13133');
+    lines.push('  pprof:');
+    lines.push('    endpoint: 0.0.0.0:1777');
+    lines.push('  zpages:');
+    lines.push('    endpoint: 0.0.0.0:55679');
+    lines.push('');
+
+    // --- service ---
+    lines.push('service:');
+    lines.push('  extensions: [health_check, pprof, zpages]');
+    lines.push('  pipelines:');
+
+    // build processor list
+    const procList: string[] = [];
+    if (checked('proc-memory-limiter')) procList.push('memory_limiter');
+    if (checked('proc-resourcedetection')) procList.push('resourcedetection');
+    if (checked('proc-filter')) procList.push('filter/drop_health');
+    if (checked('proc-attributes')) procList.push('attributes/insert_env');
+    if (checked('proc-batch')) procList.push('batch');
+    const procStr = procList.length > 0 ? `[${procList.join(', ')}]` : '[]';
+
+    // receiver list
+    const recvList: string[] = [];
+    if (checked('recv-otlp-grpc') || checked('recv-otlp-http')) recvList.push('otlp');
+    if (checked('recv-jaeger')) recvList.push('jaeger');
+    if (checked('recv-zipkin')) recvList.push('zipkin');
+
+    // metric receivers
+    const metricRecvList: string[] = [];
+    if (checked('recv-otlp-grpc') || checked('recv-otlp-http')) metricRecvList.push('otlp');
+    if (checked('recv-prometheus')) metricRecvList.push('prometheus');
+    if (checked('recv-hostmetrics')) metricRecvList.push('hostmetrics');
+
+    // log receivers
+    const logRecvList: string[] = [];
+    if (checked('recv-otlp-grpc') || checked('recv-otlp-http')) logRecvList.push('otlp');
+
+    // exporter list for traces
+    const traceExpList: string[] = [];
+    if (checked('exp-otlp')) traceExpList.push('otlp');
+    if (checked('exp-otlphttp')) traceExpList.push('otlphttp');
+    if (checked('exp-jaeger')) traceExpList.push('jaeger');
+    if (checked('exp-logging')) traceExpList.push('logging');
+
+    // exporter list for metrics
+    const metricExpList: string[] = [];
+    if (checked('exp-prometheus')) metricExpList.push('prometheus');
+    if (checked('exp-otlp')) metricExpList.push('otlp');
+    if (checked('exp-otlphttp')) metricExpList.push('otlphttp');
+    if (checked('exp-logging')) metricExpList.push('logging');
+
+    // log exporters
+    const logExpList: string[] = [];
+    if (checked('exp-loki')) logExpList.push('loki');
+    if (checked('exp-logging')) logExpList.push('logging');
+    if (checked('exp-otlphttp')) logExpList.push('otlphttp');
+
+    if (checked('pipeline-traces') && recvList.length > 0 && traceExpList.length > 0) {
+      lines.push('    traces:');
+      lines.push(`      receivers: [${recvList.join(', ')}]`);
+      lines.push(`      processors: ${procStr}`);
+      lines.push(`      exporters: [${traceExpList.join(', ')}]`);
+    }
+    if (checked('pipeline-metrics') && metricRecvList.length > 0 && metricExpList.length > 0) {
+      const metricProcList = procList.filter(p => p !== 'filter/drop_health');
+      lines.push('    metrics:');
+      lines.push(`      receivers: [${metricRecvList.join(', ')}]`);
+      lines.push(`      processors: [${metricProcList.join(', ')}]`);
+      lines.push(`      exporters: [${metricExpList.join(', ')}]`);
+    }
+    if (checked('pipeline-logs') && logRecvList.length > 0 && logExpList.length > 0) {
+      const logProcList = procList.filter(p => p !== 'filter/drop_health');
+      lines.push('    logs:');
+      lines.push(`      receivers: [${logRecvList.join(', ')}]`);
+      lines.push(`      processors: [${logProcList.join(', ')}]`);
+      lines.push(`      exporters: [${logExpList.join(', ')}]`);
+    }
+
+    lines.push('');
+    lines.push('  telemetry:');
+    lines.push('    logs:');
+    lines.push('      level: info');
+    lines.push('    metrics:');
+    lines.push('      level: basic');
+    lines.push('      address: 0.0.0.0:8888');
+
+    return lines.join('\n');
+  }
+
+  function buildValidation(): { type: 'ok' | 'warn' | 'error'; msg: string }[] {
+    const msgs: { type: 'ok' | 'warn' | 'error'; msg: string }[] = [];
+    const hasAnyReceiver = checked('recv-otlp-grpc') || checked('recv-otlp-http') || checked('recv-jaeger') || checked('recv-prometheus') || checked('recv-zipkin') || checked('recv-hostmetrics');
+    const hasAnyExporter = checked('exp-otlp') || checked('exp-otlphttp') || checked('exp-jaeger') || checked('exp-prometheus') || checked('exp-logging') || checked('exp-loki');
+    if (!hasAnyReceiver) msgs.push({ type: 'error', msg: 'No receivers selected — Collector will not accept any data.' });
+    else msgs.push({ type: 'ok', msg: 'At least one receiver is configured.' });
+    if (!hasAnyExporter) msgs.push({ type: 'error', msg: 'No exporters selected — data will be dropped.' });
+    else msgs.push({ type: 'ok', msg: 'At least one exporter is configured.' });
+    if (!checked('proc-memory-limiter')) msgs.push({ type: 'warn', msg: 'memory_limiter not enabled — Collector may OOM under load.' });
+    else msgs.push({ type: 'ok', msg: 'memory_limiter is enabled (recommended).' });
+    if (!checked('proc-batch')) msgs.push({ type: 'warn', msg: 'batch processor not enabled — export performance may be suboptimal.' });
+    else msgs.push({ type: 'ok', msg: 'batch processor is enabled (recommended).' });
+    if (checked('exp-logging') && val('logging-verbosity') === 'detailed') msgs.push({ type: 'warn', msg: 'Logging verbosity is "detailed" — high volume in production. Use "basic" for prod.' });
+    if (checked('pipeline-traces') && (!checked('recv-otlp-grpc') && !checked('recv-otlp-http') && !checked('recv-jaeger') && !checked('recv-zipkin'))) msgs.push({ type: 'warn', msg: 'Traces pipeline enabled but no trace receivers selected.' });
+    if (checked('pipeline-metrics') && (!checked('recv-otlp-grpc') && !checked('recv-otlp-http') && !checked('recv-prometheus') && !checked('recv-hostmetrics'))) msgs.push({ type: 'warn', msg: 'Metrics pipeline enabled but no metric receivers selected.' });
+    return msgs;
+  }
+
+  function render() {
+    const yaml = buildYaml();
+    const out = el('yaml-output');
+    if (out) out.textContent = yaml;
+
+    const msgs = buildValidation();
+    const panel = el('validation-messages');
+    if (panel) {
+      panel.innerHTML = msgs.map(m => {
+        const icon = m.type === 'ok' ? '<span class="text-green-500">✓</span>' : m.type === 'warn' ? '<span class="text-yellow-400">⚠</span>' : '<span class="text-red-500">✗</span>';
+        const color = m.type === 'ok' ? 'text-green-400' : m.type === 'warn' ? 'text-yellow-400' : 'text-red-400';
+        return `<div class="flex items-start gap-2 ${color}">${icon}<span>${m.msg}</span></div>`;
+      }).join('');
+    }
+  }
+
+  // attach listeners to all inputs/checkboxes
+  document.querySelectorAll('input, select').forEach(input => {
+    input.addEventListener('change', render);
+    input.addEventListener('input', render);
+  });
+
+  // copy button
+  el('copy-btn')?.addEventListener('click', () => {
+    const yaml = el('yaml-output')?.textContent ?? '';
+    navigator.clipboard.writeText(yaml).then(() => {
+      const btn = el('copy-btn') as HTMLButtonElement;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy YAML'; }, 2000);
+    });
+  });
+
+  // initial render
+  render();
+</script>

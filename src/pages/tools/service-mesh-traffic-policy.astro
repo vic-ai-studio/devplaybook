@@ -1,0 +1,524 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a service mesh and when do I need one?", answer: "A service mesh is an infrastructure layer that manages service-to-service communication. It handles retries, timeouts, circuit breaking, mutual TLS, and observability transparently — without changing application code. You typically need one when you have 10+ microservices, need fine-grained traffic control (canary deployments, A/B testing), require mTLS between services, or want distributed tracing without SDK changes. Istio and Linkerd are the two dominant open-source options." },
+  { question: "What is the difference between Istio and Linkerd?", answer: "Istio uses Envoy as its sidecar proxy, offering rich traffic management (VirtualService, DestinationRule, Gateway CRDs), fine-grained authorization policies, and extensive Envoy filter support. It's more powerful but more complex to operate. Linkerd uses a lightweight Rust-based proxy (linkerd2-proxy), is simpler to install and operate, has lower resource overhead, and focuses on reliability. Linkerd uses ServiceProfile CRDs for per-route policy. Choose Istio for advanced traffic management; Linkerd for simplicity and performance." },
+  { question: "What is a circuit breaker and how does it protect my services?", answer: "A circuit breaker monitors calls to a downstream service. When the error rate or consecutive failures exceed a threshold, it 'opens' — subsequent calls fail fast without hitting the overloaded service, giving it time to recover. After a timeout, it enters 'half-open' state and allows a test request. If successful, it closes. In Istio this is implemented via DestinationRule outlierDetection: consecutive5xxErrors triggers ejection of unhealthy endpoints from the load balancer pool." },
+  { question: "What is connection pool tuning and why does it matter?", answer: "Connection pool settings limit how many concurrent connections and requests your service proxy will allow to a backend. http1MaxPendingRequests limits queued requests waiting for a connection slot. maxRequestsPerConnection controls keep-alive multiplexing — setting it to 1 forces a new connection per request (useful for load balancing with older protocols). tcp.maxConnections limits total TCP connections. Proper tuning prevents a slow downstream service from consuming all available connections and starving other services." },
+  { question: "What is outlier detection and how does it differ from a circuit breaker?", answer: "In Istio, outlier detection IS the circuit breaker implementation, but at the endpoint level. Rather than a per-service switch, it ejects individual pod IPs (endpoints) that show errors. consecutiveGatewayErrors counts 5xx responses. interval is how often to check. baseEjectionTime is the minimum ejection duration (doubles on repeated ejections). maxEjectionPercent prevents all endpoints from being ejected simultaneously. This is more granular than a traditional circuit breaker because a single bad pod gets ejected while healthy pods continue serving traffic." },
+];
+---
+
+<BaseLayout
+  title="Service Mesh Traffic Policy Builder — Istio & Linkerd YAML Generator"
+  description="Build Istio VirtualService and DestinationRule YAML, or Linkerd ServiceProfile, with retry policies, circuit breakers, connection pool settings, and outlier detection. Generate production-ready service mesh configuration."
+  tool="Service mesh traffic policy builder, Istio VirtualService generator, Istio DestinationRule YAML, Linkerd ServiceProfile, circuit breaker config, retry policy Istio"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Service Mesh Traffic Policy Builder",
+    "url": "https://devplaybook.cc/tools/service-mesh-traffic-policy",
+    "description": "Generate Istio VirtualService + DestinationRule or Linkerd ServiceProfile YAML with retries, circuit breakers, and connection pool settings.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Service Mesh Traffic Policy Builder</h1>
+  <p class="text-text-muted mb-4">
+    Configure retries, circuit breakers, connection pools, and outlier detection for your service mesh.
+    Generate production-ready <strong>Istio</strong> VirtualService + DestinationRule YAML or <strong>Linkerd</strong> ServiceProfile.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Istio VirtualService + DestinationRule</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Linkerd ServiceProfile</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Circuit breaker & outlier detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Connection pool tuning</span>
+  </div>
+
+  <!-- Format tabs -->
+  <div class="flex gap-2 mb-6">
+    <button id="tab-istio" class="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white transition-all">Istio</button>
+    <button id="tab-linkerd" class="px-4 py-2 rounded-lg text-sm font-medium bg-bg-card border border-border text-text-muted hover:border-primary transition-all">Linkerd</button>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Left: Inputs -->
+    <div class="space-y-4">
+
+      <!-- Basic service config -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Service Configuration</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Service Name</label>
+            <input id="svc-name" type="text" value="checkout-service"
+              class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Namespace</label>
+            <input id="svc-namespace" type="text" value="production"
+              class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Port</label>
+              <input id="svc-port" type="number" value="8080"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Protocol</label>
+              <select id="svc-protocol" class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+                <option value="http">HTTP</option>
+                <option value="http2" selected>HTTP/2</option>
+                <option value="grpc">gRPC</option>
+                <option value="tcp">TCP</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Retry policy -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold">Retry Policy</h2>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="enable-retry" checked class="accent-primary" />
+            <span class="text-sm">Enable</span>
+          </label>
+        </div>
+        <div id="retry-fields" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Attempts</label>
+              <input id="retry-attempts" type="number" value="3" min="1" max="10"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Per-try Timeout</label>
+              <input id="retry-timeout" type="text" value="10s"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Retry On (Istio)</label>
+            <div class="flex flex-wrap gap-2">
+              <label class="flex items-center gap-1.5 text-sm cursor-pointer"><input type="checkbox" id="retry-5xx" checked class="accent-primary" /> 5xx</label>
+              <label class="flex items-center gap-1.5 text-sm cursor-pointer"><input type="checkbox" id="retry-gateway-error" checked class="accent-primary" /> gateway-error</label>
+              <label class="flex items-center gap-1.5 text-sm cursor-pointer"><input type="checkbox" id="retry-reset" class="accent-primary" /> reset</label>
+              <label class="flex items-center gap-1.5 text-sm cursor-pointer"><input type="checkbox" id="retry-retriable-4xx" class="accent-primary" /> retriable-4xx</label>
+              <label class="flex items-center gap-1.5 text-sm cursor-pointer"><input type="checkbox" id="retry-connect-failure" checked class="accent-primary" /> connect-failure</label>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Request Timeout</label>
+            <input id="req-timeout" type="text" value="30s"
+              class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Connection pool -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold">Connection Pool</h2>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="enable-connpool" checked class="accent-primary" />
+            <span class="text-sm">Enable</span>
+          </label>
+        </div>
+        <div id="connpool-fields" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Max TCP Connections</label>
+              <input id="tcp-max-conn" type="number" value="100"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Connect Timeout</label>
+              <input id="tcp-connect-timeout" type="text" value="30ms"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Max Pending Requests</label>
+              <input id="http-max-pending" type="number" value="1024"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Max Req/Connection</label>
+              <input id="http-max-req-per-conn" type="number" value="0" min="0"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Max Retries</label>
+            <input id="http-max-retries" type="number" value="3"
+              class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Outlier detection / circuit breaker -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold">Outlier Detection (Circuit Breaker)</h2>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="enable-outlier" checked class="accent-primary" />
+            <span class="text-sm">Enable</span>
+          </label>
+        </div>
+        <div id="outlier-fields" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Consecutive Errors</label>
+              <input id="outlier-consec-errors" type="number" value="5" min="1"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Analysis Interval</label>
+              <input id="outlier-interval" type="text" value="30s"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Base Ejection Time</label>
+              <input id="outlier-ejection-time" type="text" value="30s"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Max Ejection %</label>
+              <input id="outlier-max-ejection" type="number" value="50" min="0" max="100"
+                class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Consecutive Gateway Errors</label>
+            <input id="outlier-consec-gw" type="number" value="5" min="1"
+              class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Output -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 id="output-title" class="text-base font-semibold">Istio VirtualService</h2>
+          <button id="copy-vs-btn" class="bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-sm font-medium transition-opacity">Copy</button>
+        </div>
+        <pre id="vs-output" class="bg-black/20 rounded-lg p-4 text-xs font-mono text-green-400 overflow-auto max-h-72 leading-relaxed whitespace-pre"></pre>
+      </div>
+
+      <div id="dr-panel" class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 id="dr-title" class="text-base font-semibold">Istio DestinationRule</h2>
+          <button id="copy-dr-btn" class="bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-sm font-medium transition-opacity">Copy</button>
+        </div>
+        <pre id="dr-output" class="bg-black/20 rounded-lg p-4 text-xs font-mono text-blue-400 overflow-auto max-h-72 leading-relaxed whitespace-pre"></pre>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Apply Commands</h2>
+        <pre id="apply-output" class="bg-black/20 rounded-lg p-4 text-xs font-mono text-yellow-400 overflow-auto leading-relaxed whitespace-pre"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Service Mesh Traffic Policy Builder" relatedTags={['kubernetes', 'istio', 'service-mesh', 'devops', 'microservices', 'linkerd']} />
+</BaseLayout>
+
+<script>
+  type Mode = 'istio' | 'linkerd';
+  let mode: Mode = 'istio';
+
+  function el(id: string): HTMLElement | null { return document.getElementById(id); }
+  function val(id: string): string { return (el(id) as HTMLInputElement)?.value ?? ''; }
+  function checked(id: string): boolean { return (el(id) as HTMLInputElement)?.checked ?? false; }
+
+  function buildRetryOn(): string {
+    const parts: string[] = [];
+    if (checked('retry-5xx')) parts.push('5xx');
+    if (checked('retry-gateway-error')) parts.push('gateway-error');
+    if (checked('retry-reset')) parts.push('reset');
+    if (checked('retry-retriable-4xx')) parts.push('retriable-4xx');
+    if (checked('retry-connect-failure')) parts.push('connect-failure');
+    return parts.join(',');
+  }
+
+  function buildIstioVS(): string {
+    const name = val('svc-name');
+    const ns = val('svc-namespace');
+    const proto = val('svc-protocol');
+    const lines: string[] = [
+      `apiVersion: networking.istio.io/v1beta1`,
+      `kind: VirtualService`,
+      `metadata:`,
+      `  name: ${name}`,
+      `  namespace: ${ns}`,
+      `spec:`,
+      `  hosts:`,
+      `    - ${name}`,
+      `  http:`,
+      `    - name: default`,
+    ];
+
+    if (checked('enable-retry')) {
+      lines.push(`      timeout: ${val('req-timeout')}`);
+      lines.push(`      retries:`);
+      lines.push(`        attempts: ${val('retry-attempts')}`);
+      lines.push(`        perTryTimeout: ${val('retry-timeout')}`);
+      const retryOn = buildRetryOn();
+      if (retryOn) lines.push(`        retryOn: "${retryOn}"`);
+    }
+
+    lines.push(`      route:`);
+    lines.push(`        - destination:`);
+    lines.push(`            host: ${name}`);
+    lines.push(`            port:`);
+    lines.push(`              number: ${val('svc-port')}`);
+    lines.push(`          weight: 100`);
+
+    return lines.join('\n');
+  }
+
+  function buildIstioDR(): string {
+    const name = val('svc-name');
+    const ns = val('svc-namespace');
+    const proto = val('svc-protocol');
+    const lines: string[] = [
+      `apiVersion: networking.istio.io/v1beta1`,
+      `kind: DestinationRule`,
+      `metadata:`,
+      `  name: ${name}`,
+      `  namespace: ${ns}`,
+      `spec:`,
+      `  host: ${name}`,
+      `  trafficPolicy:`,
+    ];
+
+    if (checked('enable-connpool')) {
+      lines.push(`    connectionPool:`);
+      lines.push(`      tcp:`);
+      lines.push(`        maxConnections: ${val('tcp-max-conn')}`);
+      lines.push(`        connectTimeout: ${val('tcp-connect-timeout')}`);
+      const reqPerConn = parseInt(val('http-max-req-per-conn'));
+      lines.push(`      http:`);
+      lines.push(`        http1MaxPendingRequests: ${val('http-max-pending')}`);
+      lines.push(`        http2MaxRequests: 1000`);
+      if (reqPerConn > 0) lines.push(`        maxRequestsPerConnection: ${reqPerConn}`);
+      lines.push(`        maxRetries: ${val('http-max-retries')}`);
+    }
+
+    if (checked('enable-outlier')) {
+      lines.push(`    outlierDetection:`);
+      lines.push(`      consecutive5xxErrors: ${val('outlier-consec-errors')}`);
+      lines.push(`      consecutiveGatewayErrors: ${val('outlier-consec-gw')}`);
+      lines.push(`      interval: ${val('outlier-interval')}`);
+      lines.push(`      baseEjectionTime: ${val('outlier-ejection-time')}`);
+      lines.push(`      maxEjectionPercent: ${val('outlier-max-ejection')}`);
+      lines.push(`      minHealthPercent: ${100 - parseInt(val('outlier-max-ejection'))}`);
+    }
+
+    lines.push(`    loadBalancer:`);
+    lines.push(`      simple: LEAST_CONN`);
+
+    return lines.join('\n');
+  }
+
+  function buildLinkerdSP(): string {
+    const name = val('svc-name');
+    const ns = val('svc-namespace');
+    const lines: string[] = [
+      `apiVersion: linkerd.io/v1alpha2`,
+      `kind: ServiceProfile`,
+      `metadata:`,
+      `  name: ${name}.${ns}.svc.cluster.local`,
+      `  namespace: ${ns}`,
+      `spec:`,
+      `  routes:`,
+      `    - name: GET /`,
+      `      condition:`,
+      `        method: GET`,
+      `        pathRegex: /.*`,
+    ];
+
+    if (checked('enable-retry')) {
+      lines.push(`      isRetryable: true`);
+      lines.push(`      timeout: ${val('req-timeout')}`);
+    }
+
+    lines.push(`  retryBudget:`);
+    lines.push(`    retryRatio: 0.2`);
+    lines.push(`    minRetriesPerSecond: 10`);
+    lines.push(`    ttl: 10s`);
+
+    return lines.join('\n');
+  }
+
+  function buildLinkerdPolicy(): string {
+    const name = val('svc-name');
+    const ns = val('svc-namespace');
+    const port = val('svc-port');
+    const lines: string[] = [
+      `apiVersion: policy.linkerd.io/v1beta3`,
+      `kind: Server`,
+      `metadata:`,
+      `  name: ${name}-server`,
+      `  namespace: ${ns}`,
+      `spec:`,
+      `  podSelector:`,
+      `    matchLabels:`,
+      `      app: ${name}`,
+      `  port: ${port}`,
+      `  proxyProtocol: HTTP/2`,
+      `---`,
+      `apiVersion: policy.linkerd.io/v1beta3`,
+      `kind: HTTPRoute`,
+      `metadata:`,
+      `  name: ${name}-route`,
+      `  namespace: ${ns}`,
+      `spec:`,
+      `  parentRefs:`,
+      `    - name: ${name}-server`,
+      `      kind: Server`,
+      `      group: policy.linkerd.io`,
+      `  rules:`,
+      `    - matches:`,
+      `        - path:`,
+      `            type: PathPrefix`,
+      `            value: /`,
+    ];
+    return lines.join('\n');
+  }
+
+  function render() {
+    const name = val('svc-name');
+    const ns = val('svc-namespace');
+
+    if (mode === 'istio') {
+      const vsEl = el('vs-output');
+      const drEl = el('dr-output');
+      const applyEl = el('apply-output');
+      const titleEl = el('output-title');
+      const drTitleEl = el('dr-title');
+      const drPanel = el('dr-panel');
+
+      if (titleEl) titleEl.textContent = 'Istio VirtualService';
+      if (drTitleEl) drTitleEl.textContent = 'Istio DestinationRule';
+      if (drPanel) drPanel.style.display = 'block';
+      if (vsEl) vsEl.textContent = buildIstioVS();
+      if (drEl) drEl.textContent = buildIstioDR();
+      if (applyEl) applyEl.textContent = [
+        `# Apply VirtualService`,
+        `kubectl apply -f virtualservice.yaml`,
+        ``,
+        `# Apply DestinationRule`,
+        `kubectl apply -f destinationrule.yaml`,
+        ``,
+        `# Verify`,
+        `kubectl get virtualservice ${name} -n ${ns}`,
+        `kubectl get destinationrule ${name} -n ${ns}`,
+        ``,
+        `# Check Istio proxy config`,
+        `istioctl proxy-config cluster deploy/${name} -n ${ns}`,
+      ].join('\n');
+    } else {
+      const vsEl = el('vs-output');
+      const drEl = el('dr-output');
+      const applyEl = el('apply-output');
+      const titleEl = el('output-title');
+      const drTitleEl = el('dr-title');
+      const drPanel = el('dr-panel');
+
+      if (titleEl) titleEl.textContent = 'Linkerd ServiceProfile';
+      if (drTitleEl) drTitleEl.textContent = 'Linkerd HTTPRoute + Server Policy';
+      if (drPanel) drPanel.style.display = 'block';
+      if (vsEl) vsEl.textContent = buildLinkerdSP();
+      if (drEl) drEl.textContent = buildLinkerdPolicy();
+      if (applyEl) applyEl.textContent = [
+        `# Apply ServiceProfile`,
+        `kubectl apply -f serviceprofile.yaml`,
+        ``,
+        `# Apply Server + HTTPRoute`,
+        `kubectl apply -f linkerd-policy.yaml`,
+        ``,
+        `# Inject Linkerd into namespace`,
+        `kubectl annotate namespace ${ns} linkerd.io/inject=enabled`,
+        ``,
+        `# Verify proxy injection`,
+        `kubectl get pods -n ${ns} -o jsonpath='{.items[*].metadata.annotations}'`,
+        ``,
+        `# Check route metrics`,
+        `linkerd viz routes deploy/${name} -n ${ns}`,
+      ].join('\n');
+    }
+  }
+
+  // Tab switching
+  el('tab-istio')?.addEventListener('click', () => {
+    mode = 'istio';
+    (el('tab-istio') as HTMLButtonElement).className = 'px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white transition-all';
+    (el('tab-linkerd') as HTMLButtonElement).className = 'px-4 py-2 rounded-lg text-sm font-medium bg-bg-card border border-border text-text-muted hover:border-primary transition-all';
+    render();
+  });
+
+  el('tab-linkerd')?.addEventListener('click', () => {
+    mode = 'linkerd';
+    (el('tab-linkerd') as HTMLButtonElement).className = 'px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white transition-all';
+    (el('tab-istio') as HTMLButtonElement).className = 'px-4 py-2 rounded-lg text-sm font-medium bg-bg-card border border-border text-text-muted hover:border-primary transition-all';
+    render();
+  });
+
+  // Copy buttons
+  el('copy-vs-btn')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(el('vs-output')?.textContent ?? '').then(() => {
+      const btn = el('copy-vs-btn') as HTMLButtonElement;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  el('copy-dr-btn')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(el('dr-output')?.textContent ?? '').then(() => {
+      const btn = el('copy-dr-btn') as HTMLButtonElement;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  // Toggle fields visibility
+  el('enable-retry')?.addEventListener('change', () => {
+    const fields = el('retry-fields');
+    if (fields) fields.style.opacity = checked('enable-retry') ? '1' : '0.4';
+    render();
+  });
+  el('enable-connpool')?.addEventListener('change', () => {
+    const fields = el('connpool-fields');
+    if (fields) fields.style.opacity = checked('enable-connpool') ? '1' : '0.4';
+    render();
+  });
+  el('enable-outlier')?.addEventListener('change', () => {
+    const fields = el('outlier-fields');
+    if (fields) fields.style.opacity = checked('enable-outlier') ? '1' : '0.4';
+    render();
+  });
+
+  document.querySelectorAll('input, select').forEach(input => {
+    input.addEventListener('change', render);
+    input.addEventListener('input', render);
+  });
+
+  render();
+</script>
