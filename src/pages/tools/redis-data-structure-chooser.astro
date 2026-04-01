@@ -1,0 +1,162 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "When should I use a Redis String vs Hash for storing user sessions?", answer: "Use String for simple key-value storage where the entire value is fetched/written atomically — like a serialized session JSON. Use Hash when you need to read or update individual fields without fetching the entire object: HGET session:123 userId is more efficient than GET+deserialize+re-serialize when you only need one field. For sessions with 3-5 fields, Hash is typically more memory-efficient and enables partial updates. For complex nested structures, JSON with RedisJSON module or a serialized String is simpler." },
+  { question: "What is a Redis Sorted Set (ZSet) and what are its typical use cases?", answer: "A Sorted Set stores unique members, each with an associated floating-point score, and maintains members sorted by score at all times. Operations are O(log N). Common use cases: leaderboards (score = points, rank by ZREVRANK), rate limiting (score = timestamp, ZRANGEBYSCORE to count events in a time window), job priority queues (score = priority), activity feeds (score = Unix timestamp for chronological ordering), and autocomplete (store prefix strings with a score and ZRANGEBYLEX for prefix queries)." },
+  { question: "How do I implement a Redis-based rate limiter?", answer: "Use a Sorted Set per user. Key = rate_limit:user:{id}. On each request: ZADD key currentTimestamp uniqueRequestId (NX), ZREMRANGEBYSCORE key 0 (currentTime - windowMs) to evict old entries, ZCARD key to count requests in the window, expire the key with EXPIRE. If count > limit, reject the request. This sliding window approach is more accurate than a fixed window counter. For very high throughput, the fixed window approach (INCR + EXPIRE) is simpler and faster at the cost of accuracy at window boundaries." },
+  { question: "When should I use Redis Pub/Sub vs Streams?", answer: "Pub/Sub is for fire-and-forget messaging where offline subscribers miss messages — use for live chat, real-time notifications, or broadcasting to connected clients. Redis Streams (XADD/XREAD) are like a persistent log with consumer groups — subscribers that disconnect can resume from where they left off using the last message ID. Use Streams for event sourcing, reliable task queues, audit logs, or any case where you cannot afford to miss messages. Streams support multiple consumer groups and acknowledgment (XACK), making them suitable for producer-consumer patterns." },
+  { question: "What is the difference between EXPIRE and EXPIREAT in Redis?", answer: "EXPIRE sets a timeout in seconds from the current time: EXPIRE key 3600 expires in 1 hour. EXPIREAT sets an absolute Unix timestamp for expiration: EXPIREAT key 1735689600. PEXPIRE and PEXPIREAT work the same way but in milliseconds. Use EXPIREAT when you need to expire a key at a specific wall-clock time (e.g., end of business day). Use EXPIRE for relative TTLs. PERSIST removes an existing TTL. TTL key returns remaining seconds (-1 = no TTL, -2 = key doesn't exist)." },
+  { question: "How do I handle Redis key naming conventions for large applications?", answer: "Use colon-separated namespaces: type:entity:id:field — for example session:user:12345, cache:product:slug:iphone-15, rate_limit:api:user:99. Always document your key schema. Avoid key patterns that make KEYS * dangerous (it blocks Redis) — use SCAN with cursor instead for key enumeration. Set appropriate TTLs on all keys to prevent unbounded memory growth. Group related keys with consistent prefixes to enable targeted flushing with SCAN + DEL patterns. Use short but descriptive names — Redis key size affects memory; avoid excessively long keys." },
+];
+---
+
+<BaseLayout
+  title="Redis Data Structure Chooser — String, Hash, List, Set, ZSet, Stream Guide"
+  description="Choose the right Redis data type for every use case: Strings, Hashes, Lists, Sets, Sorted Sets, Streams. Includes rate limiting, leaderboards, session storage, and pub/sub patterns."
+  tool="Redis data structures, Redis Hash, Redis Sorted Set, Redis Streams, Redis rate limiter, Redis use cases"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Redis Data Structure Chooser",
+    "url": "https://devplaybook.cc/tools/redis-data-structure-chooser",
+    "description": "Choose the right Redis data type: Strings, Hashes, Lists, Sets, Sorted Sets, and Streams with real-world use cases.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Redis Data Structure Chooser</h1>
+  <p class="text-text-muted mb-6">
+    Pick the right Redis data type for every use case. Covers <strong>Strings, Hashes, Lists, Sets, Sorted Sets, and Streams</strong> with command examples and real-world patterns.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> All 6 data types</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Decision guide</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Rate limiter pattern</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Leaderboard pattern</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Decision Guide</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Use Case</th>
+          <th class="border border-border px-3 py-2 text-left">Data Type</th>
+          <th class="border border-border px-3 py-2 text-left">Key Command</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Cached value / counter</td><td class="border border-border px-3 py-2 font-medium">String</td><td class="border border-border px-3 py-2 font-mono text-xs">SET, GET, INCR, INCRBY</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Object with partial updates</td><td class="border border-border px-3 py-2 font-medium">Hash</td><td class="border border-border px-3 py-2 font-mono text-xs">HSET, HGET, HMGET, HDEL</td></tr>
+        <tr><td class="border border-border px-3 py-2">Queue / stack / timeline</td><td class="border border-border px-3 py-2 font-medium">List</td><td class="border border-border px-3 py-2 font-mono text-xs">LPUSH, RPOP, LRANGE</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Unique tags / permissions</td><td class="border border-border px-3 py-2 font-medium">Set</td><td class="border border-border px-3 py-2 font-mono text-xs">SADD, SMEMBERS, SISMEMBER</td></tr>
+        <tr><td class="border border-border px-3 py-2">Leaderboard / rate limit</td><td class="border border-border px-3 py-2 font-medium">Sorted Set</td><td class="border border-border px-3 py-2 font-mono text-xs">ZADD, ZREVRANK, ZRANGEBYSCORE</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Event log / task queue</td><td class="border border-border px-3 py-2 font-medium">Stream</td><td class="border border-border px-3 py-2 font-mono text-xs">XADD, XREAD, XGROUP, XACK</td></tr>
+        <tr><td class="border border-border px-3 py-2">Broadcast to live subscribers</td><td class="border border-border px-3 py-2 font-medium">Pub/Sub</td><td class="border border-border px-3 py-2 font-mono text-xs">PUBLISH, SUBSCRIBE</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">String — Caching, Counters, Sessions</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Cache with TTL (TypeScript with ioredis)
+await redis.set('cache:product:123', JSON.stringify(product), 'EX', 3600);
+const cached = await redis.get('cache:product:123');
+
+// Atomic counter
+await redis.incr('counter:page_views');
+await redis.incrby('counter:score:user:5', 10);
+
+// SET NX (set only if not exists) — distributed lock
+const acquired = await redis.set('lock:resource', '1', 'EX', 30, 'NX');
+if (!acquired) throw new Error('Lock not acquired');</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Hash — Object Storage with Field Access</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Store user profile — update individual fields without full rewrite
+await redis.hset('user:123', &#123;
+  name: 'Alice',
+  email: 'alice@example.com',
+  plan: 'pro',
+  last_login: Date.now(),
+&#125;);
+
+// Read specific fields only
+const [name, plan] = await redis.hmget('user:123', 'name', 'plan');
+
+// Increment a numeric hash field
+await redis.hincrby('user:123', 'login_count', 1);
+
+// Get all fields
+const user = await redis.hgetall('user:123');</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Sorted Set — Leaderboard</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Add/update score
+await redis.zadd('leaderboard:game1', score, userId);
+
+// Top 10 players (highest score first)
+const top10 = await redis.zrevrange('leaderboard:game1', 0, 9, 'WITHSCORES');
+
+// Player's rank (0-indexed, add 1 for display)
+const rank = await redis.zrevrank('leaderboard:game1', userId);
+
+// Player's score
+const score = await redis.zscore('leaderboard:game1', userId);</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Sorted Set — Sliding Window Rate Limiter</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">async function isRateLimited(userId: string, limitPerMinute: number): Promise&lt;boolean&gt; &#123;
+  const key = `rate_limit:$&#123;userId&#125;`;
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+
+  const pipeline = redis.pipeline();
+  // Remove entries older than 1 minute
+  pipeline.zremrangebyscore(key, 0, now - windowMs);
+  // Add current request with timestamp as score
+  pipeline.zadd(key, now, `$&#123;now&#125;-$&#123;Math.random()&#125;`);
+  // Count requests in the window
+  pipeline.zcard(key);
+  // Expire key after window (cleanup)
+  pipeline.expire(key, 70);
+
+  const results = await pipeline.exec();
+  const count = results![2][1] as number;
+  return count &gt; limitPerMinute;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Streams — Reliable Event Queue</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Producer: add events to stream
+await redis.xadd('events:orders', '*', &#123;
+  orderId: '12345',
+  userId: '99',
+  amount: '49.99',
+  event: 'created',
+&#125;);
+
+// Consumer group setup (once)
+await redis.xgroup('CREATE', 'events:orders', 'processors', '$', 'MKSTREAM');
+
+// Consumer: read unprocessed messages
+const messages = await redis.xreadgroup(
+  'GROUP', 'processors', 'worker-1',
+  'COUNT', 10, 'BLOCK', 2000,
+  'STREAMS', 'events:orders', '&gt;'
+);
+
+// Acknowledge after processing
+if (messages) &#123;
+  for (const [stream, entries] of messages) &#123;
+    for (const [id, fields] of entries) &#123;
+      await processOrder(fields);
+      await redis.xack('events:orders', 'processors', id);
+    &#125;
+  &#125;
+&#125;</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Redis Data Structure Chooser" relatedTags={['redis', 'database', 'backend', 'caching', 'performance']} />
+</BaseLayout>

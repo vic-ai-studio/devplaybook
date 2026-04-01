@@ -1,0 +1,187 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "How do I read a PostgreSQL EXPLAIN ANALYZE output?", answer: "EXPLAIN ANALYZE runs the query and shows the actual execution plan. Key metrics to read: 'Seq Scan' means full table scan — usually needs an index. 'rows' shows estimated vs actual rows (large discrepancy means stale statistics — run ANALYZE). 'cost' shows estimated I/O units (not milliseconds). 'actual time' shows real execution time in milliseconds. 'Buffers: hit' shows pages read from cache vs 'read' from disk. 'Nested Loop' with large row counts often indicates a missing index on the join condition." },
+  { question: "When should I use a composite (multi-column) index?", answer: "Use a composite index when your WHERE clause frequently filters on multiple columns together. The column order matters: put the most selective column (highest cardinality) first, or put the equality columns before range columns. A composite index on (user_id, created_at) serves queries like WHERE user_id = 5 AND created_at > '2025-01-01' efficiently. It also serves queries that filter only on user_id (leftmost prefix). It does NOT efficiently serve queries on only created_at — a separate index is needed for that." },
+  { question: "What is the difference between a B-tree, Hash, GIN, and GiST index?", answer: "B-tree (default) handles equality, range comparisons (<, >, BETWEEN), and ORDER BY — use for most cases. Hash indexes handle only equality comparisons and are faster for exact matches on high-cardinality columns. GIN (Generalized Inverted Index) is optimal for multi-value types: JSONB, arrays, and full-text search tsvector — use for @>, ?, and @@ operators. GiST (Generalized Search Tree) handles geometric types, range types, and full-text — more flexible than GIN but slower for pure text search. BRIN is for very large tables with naturally ordered data (timestamps on append-only tables)." },
+  { question: "Why is my query slow even though it has an index?", answer: "Common reasons an index is not used: (1) Function wrapping the indexed column — WHERE LOWER(email) = ... prevents index use; create a functional index instead. (2) LIKE with leading wildcard — WHERE name LIKE '%john%' can't use a B-tree index; use GIN with pg_trgm for substring search. (3) Implicit type cast — comparing an integer column to a string literal causes a cast that bypasses the index. (4) Low selectivity — if the index would return more than 5-15% of rows, the planner may prefer a seq scan. (5) Stale statistics — run ANALYZE to update planner statistics." },
+  { question: "What is pg_stat_statements and how do I use it to find slow queries?", answer: "pg_stat_statements is a PostgreSQL extension that tracks execution statistics for every distinct query. Enable it by adding shared_preload_libraries = 'pg_stat_statements' to postgresql.conf and running CREATE EXTENSION pg_stat_statements. Query it with SELECT query, calls, mean_exec_time, total_exec_time FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 20 to find the slowest queries by average execution time. Reset statistics with SELECT pg_stat_statements_reset() before a performance test." },
+  { question: "How do I avoid N+1 query problems in PostgreSQL?", answer: "N+1 occurs when code executes one query to fetch N records, then N additional queries to fetch related data. Fix with JOINs or subqueries that fetch everything in one round trip. For ORM-based apps: use eager loading (Prisma: include, Sequelize: include, ActiveRecord: includes). For complex cases, use lateral joins or JSON aggregation: SELECT u.*, json_agg(o.*) AS orders FROM users u LEFT JOIN orders o ON o.user_id = u.id GROUP BY u.id returns each user with their orders array in a single query." },
+];
+---
+
+<BaseLayout
+  title="PostgreSQL Query Optimizer — EXPLAIN ANALYZE Guide & Index Strategies"
+  description="Complete PostgreSQL optimization guide: reading EXPLAIN ANALYZE, index types (B-tree, GIN, GiST), composite indexes, pg_stat_statements, slow query diagnosis, and N+1 fixes."
+  tool="PostgreSQL optimization, EXPLAIN ANALYZE, PostgreSQL indexes, pg_stat_statements, slow query, composite index"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "PostgreSQL Query Optimizer Guide",
+    "url": "https://devplaybook.cc/tools/postgresql-query-optimizer",
+    "description": "Complete guide to PostgreSQL query optimization: EXPLAIN ANALYZE, indexes, and pg_stat_statements.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">PostgreSQL Query Optimizer</h1>
+  <p class="text-text-muted mb-6">
+    Master <strong>EXPLAIN ANALYZE</strong>, choose the right index type, find slow queries with pg_stat_statements, and systematically eliminate bottlenecks in PostgreSQL.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> EXPLAIN ANALYZE reading</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Index type selection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> pg_stat_statements</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> N+1 query fixes</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">EXPLAIN ANALYZE — Reading the Output</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">-- Always use EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) for full detail
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT u.name, COUNT(o.id) AS order_count
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+WHERE u.created_at &gt; NOW() - INTERVAL '30 days'
+GROUP BY u.id
+ORDER BY order_count DESC
+LIMIT 20;
+
+-- Reading the output:
+-- "Seq Scan on users" → full table scan → may need index on created_at
+-- "cost=0.00..150.25" → estimated cost units (not ms)
+-- "actual time=0.042..12.340" → real ms for first row..all rows
+-- "rows=1234 width=64" → estimated rows
+-- "actual rows=1289 loops=1" → real rows (compare to estimate)
+-- "Buffers: shared hit=45 read=12" → 45 from cache, 12 from disk
+-- "Planning Time: 0.5ms" → query planning overhead
+-- "Execution Time: 12.8ms" → total execution time</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Index Type Selection Guide</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Index Type</th>
+          <th class="border border-border px-3 py-2 text-left">Best For</th>
+          <th class="border border-border px-3 py-2 text-left">Operators</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2 font-medium">B-tree (default)</td><td class="border border-border px-3 py-2">Most column types, range queries</td><td class="border border-border px-3 py-2 font-mono text-xs">=, &lt;, &gt;, BETWEEN, LIKE 'abc%'</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 font-medium">Hash</td><td class="border border-border px-3 py-2">High-cardinality equality only</td><td class="border border-border px-3 py-2 font-mono text-xs">=</td></tr>
+        <tr><td class="border border-border px-3 py-2 font-medium">GIN</td><td class="border border-border px-3 py-2">JSONB, arrays, full-text search</td><td class="border border-border px-3 py-2 font-mono text-xs">@&gt;, ?, @@, ANY</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 font-medium">GiST</td><td class="border border-border px-3 py-2">Geometry, ranges, full-text</td><td class="border border-border px-3 py-2 font-mono text-xs">&amp;&amp;, @&gt;, &lt;&lt;|</td></tr>
+        <tr><td class="border border-border px-3 py-2 font-medium">BRIN</td><td class="border border-border px-3 py-2">Large tables with natural order</td><td class="border border-border px-3 py-2 font-mono text-xs">=, &lt;, &gt; on ordered data</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Common Index Patterns</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">-- Partial index (smaller, faster for frequent filter patterns)
+CREATE INDEX idx_orders_pending
+  ON orders (created_at)
+  WHERE status = 'pending';   -- only indexes pending rows
+
+-- Functional / expression index
+-- BAD: WHERE LOWER(email) = $1 won't use regular index on email
+CREATE UNIQUE INDEX idx_users_email_lower
+  ON users (LOWER(email));    -- now LOWER(email) queries use this index
+
+-- Composite index — column order matters
+-- Serves: WHERE user_id = ? AND created_at &gt; ?
+-- Serves: WHERE user_id = ? (leftmost prefix)
+-- Does NOT serve: WHERE created_at &gt; ? (skips leftmost column)
+CREATE INDEX idx_orders_user_date
+  ON orders (user_id, created_at DESC);
+
+-- Covering index (includes extra columns to avoid table lookup)
+CREATE INDEX idx_users_email_covering
+  ON users (email) INCLUDE (id, name);
+
+-- GIN for JSONB queries
+CREATE INDEX idx_products_metadata
+  ON products USING GIN (metadata);
+-- Enables: WHERE metadata @&gt; '&#123;"category": "electronics"&#125;'
+
+-- Full-text search with pg_trgm (substring/fuzzy search)
+CREATE EXTENSION pg_trgm;
+CREATE INDEX idx_users_name_trgm
+  ON users USING GIN (name gin_trgm_ops);
+-- Enables: WHERE name LIKE '%john%'  or ILIKE</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Finding Slow Queries with pg_stat_statements</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">-- Enable (add to postgresql.conf then restart):
+-- shared_preload_libraries = 'pg_stat_statements'
+-- pg_stat_statements.track = all
+
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+-- Top 10 slowest queries by average execution time
+SELECT
+  left(query, 100) AS query_snippet,
+  calls,
+  round(mean_exec_time::numeric, 2) AS avg_ms,
+  round(total_exec_time::numeric, 2) AS total_ms,
+  rows
+FROM pg_stat_statements
+ORDER BY mean_exec_time DESC
+LIMIT 10;
+
+-- Top 10 by total time (most impactful to optimize)
+SELECT
+  left(query, 100) AS query_snippet,
+  calls,
+  round(mean_exec_time::numeric, 2) AS avg_ms,
+  round(total_exec_time::numeric / 1000, 2) AS total_sec
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC
+LIMIT 10;
+
+-- Reset stats before a new performance test
+SELECT pg_stat_statements_reset();</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">N+1 Query Fix with JSON Aggregation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">-- BAD (N+1 pattern): 1 query for users + N queries for orders
+-- SELECT * FROM users WHERE active = true;
+-- For each user: SELECT * FROM orders WHERE user_id = $1;
+
+-- GOOD: single query with JSON aggregation
+SELECT
+  u.id,
+  u.name,
+  u.email,
+  COALESCE(json_agg(
+    json_build_object(
+      'id', o.id,
+      'amount', o.total_amount,
+      'created_at', o.created_at
+    ) ORDER BY o.created_at DESC
+  ) FILTER (WHERE o.id IS NOT NULL), '[]') AS orders
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+WHERE u.active = true
+GROUP BY u.id, u.name, u.email;
+
+-- Result: each user row includes a JSON array of their orders
+-- One round-trip instead of N+1</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Optimization Checklist</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Run ANALYZE</strong> after large data changes to update planner statistics</li>
+    <li><strong>Check for Seq Scan</strong> on large tables — add index on WHERE and JOIN columns</li>
+    <li><strong>Check estimated vs actual rows</strong> — large discrepancy means stale statistics</li>
+    <li><strong>Avoid functions on indexed columns</strong> — use functional indexes or rewrite predicates</li>
+    <li><strong>Use LIMIT for pagination</strong> — avoid OFFSET on large tables; use keyset pagination instead</li>
+    <li><strong>Index foreign keys</strong> — PostgreSQL does not auto-index FK columns; always add them manually</li>
+    <li><strong>Use connection pooling</strong> — PgBouncer or RDS Proxy prevents connection overhead from being the bottleneck</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="PostgreSQL Query Optimizer" relatedTags={['postgresql', 'database', 'sql', 'performance', 'backend']} />
+</BaseLayout>

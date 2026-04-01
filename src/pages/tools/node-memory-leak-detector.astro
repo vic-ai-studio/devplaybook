@@ -1,0 +1,195 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "How do I know if my Node.js app has a memory leak?", answer: "Signs of a memory leak: heap memory usage grows continuously under steady traffic and never decreases, the process eventually crashes with JavaScript heap out of memory, or response times degrade over time as GC pressure increases. Monitor with process.memoryUsage().heapUsed over time. If it grows by 10MB+ per hour under constant load and doesn't plateau, you have a leak. Tools: Node.js --inspect flag + Chrome DevTools heap snapshots, clinic.js, or process.memoryUsage() logging in production." },
+  { question: "What are the most common causes of Node.js memory leaks?", answer: "The most common causes: (1) Event listeners added but never removed — every addListener without a corresponding removeListener leaks. (2) Unbounded caches — Maps or arrays that grow without eviction (use LRU cache). (3) Closures capturing large objects — inner functions referencing outer scope objects prevent GC. (4) Global variables accumulating data — never append to global arrays/objects in request handlers. (5) setInterval/setTimeout callbacks that reference growing data. (6) Circular references in custom objects (rarely an issue in modern V8, but still possible)." },
+  { question: "How do I take a heap snapshot in Node.js?", answer: "Start your app with node --inspect server.js. In Chrome, open chrome://inspect and click your target. Open Memory tab → take a heap snapshot. To find leaks: take snapshot 1, perform the leaking action N times, take snapshot 2. Switch the comparison mode to 'Comparison' and sort by Delta count or retained size. Objects that keep growing indicate the leak source. The Retained Size column shows how much memory would be freed if the object were GC'd." },
+  { question: "What is clinic.js and how does it help with Node.js performance?", answer: "Clinic.js is a suite of diagnostic tools for Node.js: Clinic Doctor detects performance issues (event loop delays, memory leaks, CPU profiling) automatically. Clinic Flame generates an interactive flame graph for CPU profiling. Clinic Bubbleprof visualizes async operations and identifies bottlenecks. Run npx clinic doctor -- node server.js, generate load with a tool like autocannon, then stop and clinic generates an HTML report. It's the fastest way to get a high-level diagnosis without deep manual instrumentation." },
+  { question: "How do I detect memory leaks in production Node.js?", answer: "For production, use process.memoryUsage() to log heap metrics to your monitoring system (Datadog, Prometheus, CloudWatch) every 30-60 seconds. Alert when heapUsed exceeds a threshold or grows by more than X MB/hour. Use --max-old-space-size to set a memory ceiling and expose OOM crashes in metrics. For heap snapshots in production, use the node:v8 module: const v8 = require('v8'); v8.writeHeapSnapshot() creates a snapshot file you can download and analyze offline. Some APM tools (Elastic APM, New Relic) can capture heap snapshots remotely." },
+  { question: "What is an event listener leak and how do I prevent it?", answer: "An event listener leak occurs when addListener is called repeatedly without the corresponding removeListener, causing the callback (and any closure variables it captures) to accumulate in memory. Common patterns: adding event listeners inside request handlers (runs on every request), adding listeners inside component-like functions that get recreated. Fix: use emitter.once() for one-time listeners, always pair addListener with removeListener in cleanup code, use AbortController to remove multiple listeners at once, and monitor with emitter.listenerCount() or set a lower maxListeners limit to trigger warnings early." },
+];
+---
+
+<BaseLayout
+  title="Node.js Memory Leak Detector — Heap Snapshots, Diagnosis & Common Fixes"
+  description="Complete guide to detecting and fixing Node.js memory leaks: heap snapshots with Chrome DevTools, clinic.js, event listener leaks, unbounded caches, and production monitoring."
+  tool="Node.js memory leak, heap snapshot, Node.js performance, clinic.js, process.memoryUsage, memory profiling"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Node.js Memory Leak Detector Guide",
+    "url": "https://devplaybook.cc/tools/node-memory-leak-detector",
+    "description": "Complete guide to detecting and fixing Node.js memory leaks with heap snapshots and clinic.js.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Node.js Memory Leak Detector</h1>
+  <p class="text-text-muted mb-6">
+    Diagnose and fix <strong>Node.js memory leaks</strong> using heap snapshots, clinic.js, and process.memoryUsage(). Covers the most common leak patterns and production monitoring strategies.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Heap snapshot analysis</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> clinic.js diagnosis</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Common leak patterns</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Production monitoring</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Quick Memory Health Check</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// memory-monitor.ts — add to any Node.js app
+function logMemory(label = '') &#123;
+  const m = process.memoryUsage();
+  console.log(`[Memory$&#123;label ? ' ' + label : ''&#125;]`, &#123;
+    heapUsed:  `$&#123;(m.heapUsed  / 1024 / 1024).toFixed(1)&#125; MB`,
+    heapTotal: `$&#123;(m.heapTotal / 1024 / 1024).toFixed(1)&#125; MB`,
+    rss:       `$&#123;(m.rss       / 1024 / 1024).toFixed(1)&#125; MB`,
+    external:  `$&#123;(m.external  / 1024 / 1024).toFixed(1)&#125; MB`,
+  &#125;);
+&#125;
+
+// Log every 60 seconds — if heapUsed grows continuously: leak suspected
+setInterval(() =&gt; logMemory('60s'), 60_000).unref();
+
+// Or use with load test:
+logMemory('before');
+await runLoadTest();
+global.gc?.();  // force GC (start with --expose-gc flag)
+logMemory('after');</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Heap Snapshot with Chrome DevTools</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># 1. Start app with inspector
+node --inspect server.js
+# or attach inspector to running process:
+node --inspect=0.0.0.0:9229 server.js
+
+# 2. Open Chrome → chrome://inspect → click your target
+# 3. Memory tab → Heap snapshot → Take snapshot (before)
+# 4. Perform the leaking action 10-20 times
+# 5. Take snapshot (after)
+# 6. Switch dropdown to "Comparison" mode
+# 7. Sort by "# Delta" — growing object counts indicate the leak</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Programmatic heap snapshot (useful in staging)
+const v8 = require('v8');
+const path = require('path');
+
+function takeHeapSnapshot() &#123;
+  const filename = `heap-$&#123;Date.now()&#125;.heapsnapshot`;
+  const fullPath = v8.writeHeapSnapshot(path.join('/tmp', filename));
+  console.log(`Heap snapshot written to: $&#123;fullPath&#125;`);
+  return fullPath;
+&#125;
+
+// Trigger on SIGUSR2 (kill -USR2 &lt;pid&gt;)
+process.on('SIGUSR2', () =&gt; takeHeapSnapshot());</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">clinic.js — Automated Diagnosis</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install clinic.js
+npm install -g clinic autocannon
+
+# 1. Run Doctor (auto-diagnoses memory, CPU, event loop)
+clinic doctor -- node server.js
+# In a second terminal, generate load:
+autocannon http://localhost:3000 -d 30
+
+# 2. Stop the server (Ctrl+C) — clinic generates HTML report automatically
+
+# 3. Flame graph for CPU hotspots
+clinic flame -- node server.js
+autocannon http://localhost:3000 -d 30
+
+# 4. Bubbleprof for async bottlenecks
+clinic bubbleprof -- node server.js
+autocannon http://localhost:3000 -d 30</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Common Leak Patterns &amp; Fixes</h2>
+
+  <h3 class="text-lg font-medium mt-6 mb-2">1. Event Listener Leaks</h3>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// BAD: adds listener on every request — never removed
+app.get('/stream', (req, res) =&gt; &#123;
+  emitter.on('data', (chunk) =&gt; res.write(chunk));  // LEAK
+&#125;);
+
+// GOOD: remove listener on request close
+app.get('/stream', (req, res) =&gt; &#123;
+  const handler = (chunk) =&gt; res.write(chunk);
+  emitter.on('data', handler);
+  req.on('close', () =&gt; emitter.off('data', handler));  // cleanup
+&#125;);
+
+// GOOD: use once() for one-time events
+emitter.once('connected', () =&gt; init());
+
+// Monitor listener counts
+emitter.setMaxListeners(20);  // warns when exceeded (default: 10)
+console.log(emitter.listenerCount('data'));</pre>
+
+  <h3 class="text-lg font-medium mt-6 mb-2">2. Unbounded Caches</h3>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// BAD: Map grows indefinitely
+const cache = new Map();
+app.get('/data/:id', (req, res) =&gt; &#123;
+  const result = expensiveCompute(req.params.id);
+  cache.set(req.params.id, result);  // LEAK: never evicted
+  res.json(result);
+&#125;);
+
+// GOOD: LRU cache with max size
+import LRU from 'lru-cache';
+const cache = new LRU(&#123; max: 1000, ttl: 1000 * 60 * 5 &#125;); // 1000 entries, 5min TTL
+app.get('/data/:id', (req, res) =&gt; &#123;
+  if (cache.has(req.params.id)) return res.json(cache.get(req.params.id));
+  const result = expensiveCompute(req.params.id);
+  cache.set(req.params.id, result);
+  res.json(result);
+&#125;);</pre>
+
+  <h3 class="text-lg font-medium mt-6 mb-2">3. Closure Capturing Large Data</h3>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// BAD: callback captures entire largeData in closure
+async function processReport(id: string) &#123;
+  const largeData = await fetchLargeDataset(id);  // 50MB object
+  const summary = largeData.items.length;
+
+  // This setTimeout keeps largeData alive for 5 minutes!
+  setTimeout(() =&gt; &#123;
+    console.log(`Report $&#123;id&#125; processed: $&#123;summary&#125; items`);
+    // largeData is captured in closure even though unused
+  &#125;, 300_000);
+&#125;
+
+// GOOD: capture only what you need
+async function processReport(id: string) &#123;
+  const largeData = await fetchLargeDataset(id);
+  const summary = largeData.items.length;
+  // largeData is no longer referenced after this line — GC can collect it
+  setTimeout(() =&gt; console.log(`Report $&#123;id&#125;: $&#123;summary&#125; items`), 300_000);
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Production Memory Monitoring</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Prometheus metrics for memory (with prom-client)
+import client from 'prom-client';
+
+const heapGauge = new client.Gauge(&#123;
+  name: 'nodejs_heap_used_bytes',
+  help: 'Node.js heap used in bytes',
+&#125;);
+
+setInterval(() =&gt; &#123;
+  heapGauge.set(process.memoryUsage().heapUsed);
+&#125;, 15_000).unref();
+
+// Alert in Grafana when:
+// - heapUsed grows &gt; 10MB/hour for 3 hours straight
+// - heapUsed &gt; 80% of --max-old-space-size limit
+
+# Start with memory ceiling (crash fast rather than degrade)
+node --max-old-space-size=512 server.js  # 512MB limit</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Node.js Memory Leak Detector" relatedTags={['node', 'performance', 'debugging', 'memory', 'javascript']} />
+</BaseLayout>

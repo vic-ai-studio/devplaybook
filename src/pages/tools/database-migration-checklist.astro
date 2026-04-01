@@ -1,0 +1,166 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "How do I add a column to a large PostgreSQL table without downtime?", answer: "Adding a column with a default value in PostgreSQL 11+ is instant — Postgres stores the default in the catalog without rewriting the table. For older versions, add the column as nullable first (instant), backfill in batches, then add the NOT NULL constraint. Never run ALTER TABLE ADD COLUMN NOT NULL DEFAULT on a large table in older Postgres under production load — it takes an exclusive lock and rewrites the table. Adding a nullable column with no default is always instant in all Postgres versions." },
+  { question: "What is the expand-contract pattern for zero-downtime migrations?", answer: "The expand-contract (or parallel change) pattern has three phases. Expand: add new columns/tables while keeping old ones — both old and new code paths work. Migrate: backfill data from old columns to new columns in background batches. Contract: once all code is deployed to use new schema and all data is migrated, drop the old columns. This pattern requires deploying app code changes before and after schema changes. Never rename columns or tables directly — add the new name, migrate, then drop the old." },
+  { question: "How do I safely add a NOT NULL constraint to an existing column?", answer: "Adding NOT NULL directly locks the entire table while it scans every row. Safe approach for large tables: (1) Add a CHECK constraint as NOT VALID first — this validates future writes without scanning existing rows: ALTER TABLE users ADD CONSTRAINT users_email_not_null CHECK (email IS NOT NULL) NOT VALID; (2) Backfill any nulls to valid values. (3) Run VALIDATE CONSTRAINT during a low-traffic window — this scans the table but uses a ShareUpdateExclusiveLock (much lighter than exclusive). (4) Finally, ALTER COLUMN SET NOT NULL which recognizes the valid constraint and skips the scan." },
+  { question: "What should be in a database migration rollback plan?", answer: "Every migration needs a down migration. For column additions: drop the column. For column removals (use expand-contract, never delete in-place): re-add the column and restore from backup. For index additions: drop the index. For data transformations: keep the old column until the migration is verified in production. Test rollback in staging before deploying to production. Document the rollback command and estimated duration. For irreversible migrations (data deletes), take a snapshot immediately before deploying." },
+  { question: "How do I run database migrations in CI/CD without locking production?", answer: "Run migrations before deploying new app code (deploy migration, then app). Use migration tools that support --dry-run to preview changes. For PostgreSQL: use CREATE INDEX CONCURRENTLY (no lock) instead of CREATE INDEX. Use ADD COLUMN as nullable first. Wrap migrations in transactions where possible so failures auto-rollback. Test migrations against a production-size data snapshot in staging, not just the small test database — many migrations are fast on 1000 rows but take 10 minutes on 100 million rows." },
+  { question: "What is CREATE INDEX CONCURRENTLY and when should I use it?", answer: "CREATE INDEX CONCURRENTLY builds the index without taking an exclusive lock on the table, allowing reads and writes to continue during index creation. The tradeoff: it takes 2-3x longer than regular CREATE INDEX and cannot run inside a transaction. Use it for all indexes on large production tables. If CONCURRENTLY fails midway, it leaves an INVALID index that you must DROP before retrying. Regular CREATE INDEX is fine for new tables (no existing data to lock) or in maintenance windows. In Prisma/Drizzle migrations, mark indexes as concurrent explicitly." },
+];
+---
+
+<BaseLayout
+  title="Database Migration Checklist — Zero-Downtime PostgreSQL Migration Runbook"
+  description="Complete database migration checklist: zero-downtime techniques, expand-contract pattern, adding NOT NULL columns safely, CREATE INDEX CONCURRENTLY, rollback plans, and CI/CD migration workflows."
+  tool="database migration, zero-downtime migration, PostgreSQL migration, expand-contract, CREATE INDEX CONCURRENTLY, migration checklist"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Database Migration Checklist",
+    "url": "https://devplaybook.cc/tools/database-migration-checklist",
+    "description": "Complete runbook for safe, zero-downtime database migrations in production.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Database Migration Checklist</h1>
+  <p class="text-text-muted mb-6">
+    A complete runbook for <strong>safe, zero-downtime database migrations</strong>. Covers the expand-contract pattern, dangerous operations to avoid, and a step-by-step deployment checklist.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Zero-downtime techniques</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Expand-contract pattern</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Rollback plans</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CI/CD deployment order</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Operations by Risk Level</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Operation</th>
+          <th class="border border-border px-3 py-2 text-left">Risk</th>
+          <th class="border border-border px-3 py-2 text-left">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">ADD COLUMN nullable (no default)</td><td class="border border-border px-3 py-2 text-green-400">Safe</td><td class="border border-border px-3 py-2">Instant in all PG versions</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">ADD COLUMN with default (PG 11+)</td><td class="border border-border px-3 py-2 text-green-400">Safe</td><td class="border border-border px-3 py-2">Instant, stored in catalog</td></tr>
+        <tr><td class="border border-border px-3 py-2">CREATE INDEX CONCURRENTLY</td><td class="border border-border px-3 py-2 text-green-400">Safe</td><td class="border border-border px-3 py-2">No lock, 2-3x slower</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">CREATE TABLE</td><td class="border border-border px-3 py-2 text-green-400">Safe</td><td class="border border-border px-3 py-2">No existing data affected</td></tr>
+        <tr><td class="border border-border px-3 py-2">ADD COLUMN with default (PG &lt;11)</td><td class="border border-border px-3 py-2 text-yellow-400">Caution</td><td class="border border-border px-3 py-2">Full table rewrite</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">ADD CHECK CONSTRAINT NOT VALID</td><td class="border border-border px-3 py-2 text-yellow-400">Caution</td><td class="border border-border px-3 py-2">Instant, validate separately</td></tr>
+        <tr><td class="border border-border px-3 py-2">DROP COLUMN</td><td class="border border-border px-3 py-2 text-yellow-400">Caution</td><td class="border border-border px-3 py-2">Irreversible, use expand-contract</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">CREATE INDEX (regular)</td><td class="border border-border px-3 py-2 text-red-400">Dangerous</td><td class="border border-border px-3 py-2">Exclusive lock on large tables</td></tr>
+        <tr><td class="border border-border px-3 py-2">ALTER COLUMN SET NOT NULL</td><td class="border border-border px-3 py-2 text-red-400">Dangerous</td><td class="border border-border px-3 py-2">Full scan, use CHECK NOT VALID</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">RENAME COLUMN / TABLE</td><td class="border border-border px-3 py-2 text-red-400">Dangerous</td><td class="border border-border px-3 py-2">Breaks running app code</td></tr>
+        <tr><td class="border border-border px-3 py-2">TRUNCATE / DROP TABLE</td><td class="border border-border px-3 py-2 text-red-400">Critical</td><td class="border border-border px-3 py-2">Irreversible data loss</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">The Expand-Contract Pattern</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">-- GOAL: Rename column "full_name" → "display_name" without downtime
+
+-- PHASE 1: EXPAND (deploy migration first, old app still works)
+ALTER TABLE users ADD COLUMN display_name TEXT;
+
+-- PHASE 2: BACKFILL (background job, batch processing)
+UPDATE users SET display_name = full_name WHERE display_name IS NULL LIMIT 10000;
+-- Repeat in batches until complete
+
+-- PHASE 3: SYNC (keep both in sync during transition via trigger or app code)
+-- Trigger approach:
+CREATE OR REPLACE FUNCTION sync_display_name()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.display_name := COALESCE(NEW.display_name, NEW.full_name);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_sync_display_name
+BEFORE INSERT OR UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION sync_display_name();
+
+-- PHASE 4: DEPLOY new app code that reads display_name
+
+-- PHASE 5: CONTRACT (after all app instances use display_name)
+DROP TRIGGER trg_sync_display_name ON users;
+ALTER TABLE users DROP COLUMN full_name;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Safe NOT NULL Migration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">-- Step 1: Add column as nullable (instant)
+ALTER TABLE orders ADD COLUMN status TEXT;
+
+-- Step 2: Backfill existing rows in batches (no lock)
+UPDATE orders SET status = 'pending'
+WHERE id IN (SELECT id FROM orders WHERE status IS NULL LIMIT 5000);
+-- Repeat until no nulls remain
+
+-- Step 3: Add CHECK NOT VALID (instant — only validates future writes)
+ALTER TABLE orders
+  ADD CONSTRAINT orders_status_not_null
+  CHECK (status IS NOT NULL) NOT VALID;
+
+-- Step 4: VALIDATE CONSTRAINT during low-traffic window
+-- Uses ShareUpdateExclusiveLock (allows reads, blocks DDL only)
+ALTER TABLE orders VALIDATE CONSTRAINT orders_status_not_null;
+
+-- Step 5: PostgreSQL 12+ — SET NOT NULL now skips the table scan
+-- because it finds the validated check constraint as proof
+ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
+
+-- Step 6: Drop the check constraint (redundant now)
+ALTER TABLE orders DROP CONSTRAINT orders_status_not_null;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pre-Migration Deployment Checklist</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-6 ml-2">
+    <li>&#9744; Test migration against a production-size database snapshot (not just dev data)</li>
+    <li>&#9744; Time the migration on staging — estimate production duration</li>
+    <li>&#9744; Write and test the rollback script</li>
+    <li>&#9744; Take a database snapshot immediately before deploying</li>
+    <li>&#9744; Ensure new app code is backward-compatible with both old and new schema</li>
+    <li>&#9744; Confirm migration runs in a transaction (for rollback on failure)</li>
+    <li>&#9744; Check for long-running queries that would block DDL operations</li>
+    <li>&#9744; Set lock_timeout and statement_timeout to fail fast instead of queue building</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Migration Deployment Order (CI/CD)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Correct order for zero-downtime deployment:
+# 1. Deploy migration (expand phase — add new columns/tables)
+# 2. Deploy new app code (reads both old and new schema)
+# 3. Run backfill jobs (fill new columns)
+# 4. Validate migration
+# 5. Deploy cleanup (contract phase — drop old columns)
+
+# Flyway / Liquibase:
+# - V1__add_display_name.sql  (expand)
+# - V2__backfill_display_name.sql
+# - V3__drop_full_name.sql    (contract — separate deployment)
+
+# Set timeouts to avoid lock queues
+SET lock_timeout = '5s';    -- fail if lock not acquired in 5s
+SET statement_timeout = '30s';  -- fail long-running migrations early</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Common Migration Mistakes</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Renaming columns directly</strong> — Breaks all running app code; use expand-contract instead</li>
+    <li><strong>Dropping columns in the same deploy as removing app code</strong> — Race condition; always contract after all app instances are updated</li>
+    <li><strong>Regular CREATE INDEX on large tables</strong> — Takes exclusive lock; always use CONCURRENTLY in production</li>
+    <li><strong>Running migrations in the same transaction as app startup</strong> — Long migrations block app startup and cause health check failures</li>
+    <li><strong>Testing only on small datasets</strong> — Index creation and full-table scans are 100x slower on production data</li>
+    <li><strong>No rollback plan</strong> — Always write and test the down migration before deploying</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Database Migration Checklist" relatedTags={['database', 'postgresql', 'migrations', 'devops', 'backend']} />
+</BaseLayout>

@@ -1,0 +1,189 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is k6 and how is it different from JMeter or Locust?", answer: "k6 is a modern, developer-focused load testing tool written in Go that runs JavaScript test scripts. Unlike JMeter (Java, XML configuration, GUI-heavy), k6 scripts are plain JavaScript files that version-control cleanly and integrate naturally into CI/CD pipelines. Unlike Locust (Python, concurrent greenlets), k6 uses Go goroutines under the hood, giving it dramatically lower resource consumption per virtual user — you can run thousands of VUs on a laptop that would struggle with Locust. k6 also has built-in thresholds that fail the test if SLA metrics are breached." },
+  { question: "What is the difference between VUs and RPS in k6?", answer: "VUs (Virtual Users) represent concurrent simulated users — each VU runs through your scenario sequentially. RPS (Requests Per Second) is a throughput metric derived from VU count and request duration. With 100 VUs each sending one request per second, you get approximately 100 RPS. With 100 VUs sending requests with 200ms response times, you get roughly 500 RPS. k6 lets you control either directly: use constant-vus executor to fix VU count, or use constant-arrival-rate executor to fix RPS regardless of response time." },
+  { question: "How do I set performance thresholds in k6?", answer: "Define thresholds in your script's options object as conditions on metric names. Common thresholds: http_req_duration for latency (e.g., p95 < 500 for p95 under 500ms), http_req_failed for error rate (e.g., rate < 0.01 for under 1% errors). If any threshold is breached, k6 exits with a non-zero code, failing your CI pipeline. You can also set thresholds per URL group using tagged metrics." },
+  { question: "Can k6 test WebSocket or gRPC APIs?", answer: "Yes. k6 has native WebSocket support via the k6/ws module — use ws.connect() to open a connection and send/receive messages in a callback. For gRPC, import k6/net/grpc, load your proto definitions with client.load(), and call methods with client.invoke(). HTTP/2 is supported automatically when the server supports it. k6 also has modules for Redis, Kafka, and SQL in the k6 extension ecosystem (xk6)." },
+  { question: "How do I integrate k6 with CI/CD and alert on regressions?", answer: "Add k6 to CI by installing k6 (apt/brew/docker) and running k6 run --out json=results.json script.js. The exit code is non-zero if any threshold fails, so CI naturally fails on SLA breaches. For trend tracking, output results to Prometheus (k6 --out experimental-prometheus-rw), Grafana Cloud (k6 --out cloud), InfluxDB + Grafana, or Datadog (k6 --out datadog). Store baseline metrics and alert when p95 or error rate regresses beyond a tolerance." },
+  { question: "What is the k6 stages array and how do I model realistic traffic?", answer: "The stages array in options lets you define a ramp-up shape for VU count over time. Each stage specifies a duration and target VU count. A typical load test ramps up gradually (0→50 VUs over 2 minutes), holds steady load (50 VUs for 5 minutes), then ramps down. For realistic traffic patterns, use the ramping-arrival-rate executor to model request-per-second curves. Spike tests go from 0 to max VUs in seconds. Soak tests hold moderate load for hours to expose memory leaks." },
+];
+---
+
+<BaseLayout
+  title="k6 Load Testing Guide — API Performance Testing, Thresholds & CI/CD Integration"
+  description="Complete k6 load testing guide: installation, scripts, VU vs RPS, thresholds, stages/ramp-up, HTTP/WebSocket/gRPC, and CI/CD integration with Grafana and InfluxDB."
+  tool="k6 load testing, API performance testing, k6 tutorial, k6 thresholds, k6 CI/CD, load testing guide"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "k6 Load Testing Guide",
+    "url": "https://devplaybook.cc/tools/api-load-testing-k6-guide",
+    "description": "Complete k6 load testing guide: scripts, thresholds, stages, and CI/CD integration.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">API Load Testing with k6</h1>
+  <p class="text-text-muted mb-6">
+    k6 is the developer-first load testing tool that runs <strong>JavaScript scripts</strong>, scales to millions of requests, and integrates cleanly into CI/CD. This guide covers everything from first run to production SLA enforcement.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HTTP / WebSocket / gRPC</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Thresholds &amp; SLA enforcement</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Ramp-up stages</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CI/CD integration</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># macOS
+brew install k6
+
+# Ubuntu/Debian
+sudo apt-get install k6
+
+# Windows (via Chocolatey)
+choco install k6
+
+# Docker (no install needed)
+docker run --rm -i grafana/k6 run - < script.js</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Basic Load Test Script</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// load-test.js
+import http from 'k6/http';
+import &#123; check, sleep &#125; from 'k6';
+
+export const options = &#123;
+  // Ramp up: 0 → 50 VUs in 1m, hold 5m, ramp down 1m
+  stages: [
+    &#123; duration: '1m', target: 50 &#125;,
+    &#123; duration: '5m', target: 50 &#125;,
+    &#123; duration: '1m', target: 0  &#125;,
+  ],
+  // SLA thresholds — test fails if any is breached
+  thresholds: &#123;
+    'http_req_duration': ['p(95) < 500', 'p(99) < 1000'],  // ms
+    'http_req_failed':   ['rate < 0.01'],                   // < 1% errors
+  &#125;,
+&#125;;
+
+export default function () &#123;
+  const BASE_URL = 'https://api.example.com';
+
+  // GET request
+  const res = http.get(`$&#123;BASE_URL&#125;/users`, &#123;
+    headers: &#123; Authorization: 'Bearer test-token' &#125;,
+  &#125;);
+
+  check(res, &#123;
+    'status is 200':         (r) => r.status === 200,
+    'response time OK':      (r) => r.timings.duration < 500,
+    'has users array':       (r) => JSON.parse(r.body).users !== undefined,
+  &#125;);
+
+  sleep(1); // think time between iterations
+&#125;</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Run the test
+k6 run load-test.js
+
+# Quick smoke test (1 VU, 10 iterations)
+k6 run --vus 1 --iterations 10 load-test.js
+
+# Output results as JSON
+k6 run --out json=results.json load-test.js</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">POST with Authentication Flow</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// auth-flow.js
+import http from 'k6/http';
+import &#123; check, sleep &#125; from 'k6';
+
+export const options = &#123;
+  vus: 100,
+  duration: '5m',
+  thresholds: &#123;
+    'http_req_duration&#123;name:login&#125;':     ['p(95) < 300'],
+    'http_req_duration&#123;name:dashboard&#125;': ['p(95) < 200'],
+  &#125;,
+&#125;;
+
+export default function () &#123;
+  // Step 1: Login
+  const loginRes = http.post(
+    'https://api.example.com/auth/login',
+    JSON.stringify(&#123; email: 'user@test.com', password: 'pass123' &#125;),
+    &#123;
+      headers: &#123; 'Content-Type': 'application/json' &#125;,
+      tags: &#123; name: 'login' &#125;,   // tag for per-endpoint thresholds
+    &#125;
+  );
+  check(loginRes, &#123; 'login 200': (r) => r.status === 200 &#125;);
+
+  const token = loginRes.json('token');
+
+  // Step 2: Authenticated request
+  const dashRes = http.get(
+    'https://api.example.com/dashboard',
+    &#123;
+      headers: &#123; Authorization: `Bearer $&#123;token&#125;` &#125;,
+      tags: &#123; name: 'dashboard' &#125;,
+    &#125;
+  );
+  check(dashRes, &#123; 'dashboard 200': (r) => r.status === 200 &#125;);
+
+  sleep(2);
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Load Test Types and When to Use Each</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Test Type</th>
+          <th class="border border-border px-3 py-2 text-left">VU Pattern</th>
+          <th class="border border-border px-3 py-2 text-left">Duration</th>
+          <th class="border border-border px-3 py-2 text-left">Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Smoke test</td><td class="border border-border px-3 py-2">1-5 VUs</td><td class="border border-border px-3 py-2">1-2 min</td><td class="border border-border px-3 py-2">Verify script works, no errors</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Load test</td><td class="border border-border px-3 py-2">Ramp to expected VUs</td><td class="border border-border px-3 py-2">5-30 min</td><td class="border border-border px-3 py-2">Validate performance under normal load</td></tr>
+        <tr><td class="border border-border px-3 py-2">Stress test</td><td class="border border-border px-3 py-2">Ramp beyond capacity</td><td class="border border-border px-3 py-2">15-60 min</td><td class="border border-border px-3 py-2">Find breaking point, error behavior</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Spike test</td><td class="border border-border px-3 py-2">0 → max instantly</td><td class="border border-border px-3 py-2">5-15 min</td><td class="border border-border px-3 py-2">Sudden traffic surge (flash sale, viral)</td></tr>
+        <tr><td class="border border-border px-3 py-2">Soak test</td><td class="border border-border px-3 py-2">Moderate VUs steady</td><td class="border border-border px-3 py-2">2-24 hours</td><td class="border border-border px-3 py-2">Memory leaks, connection pool exhaustion</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">CI/CD Integration (GitHub Actions)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># .github/workflows/load-test.yml
+name: API Load Test
+on:
+  workflow_dispatch:  # manual trigger
+  schedule:
+    - cron: '0 2 * * 1'  # every Monday at 2am
+jobs:
+  k6-load-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: grafana/setup-k6-action@v1  # official k6 action
+      - name: Run load test
+        run: k6 run --out json=results.json load-test.js
+        env:
+          API_BASE_URL: $&#123;&#123; vars.STAGING_API_URL &#125;&#125;
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-results
+          path: results.json</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="k6 API Load Testing Guide" relatedTags={['testing', 'performance', 'k6', 'load-testing', 'api']} />
+</BaseLayout>

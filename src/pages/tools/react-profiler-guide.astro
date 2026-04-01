@@ -1,0 +1,170 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "How do I open the React DevTools Profiler?", answer: "Install the React DevTools browser extension (Chrome or Firefox). Open DevTools (F12 or Cmd+Opt+I) and look for the React tab, which has two sub-tabs: Components (inspect the component tree) and Profiler (record and analyze renders). The Profiler tab shows a Record button — click it, perform the interaction you want to profile, then stop recording. React DevTools only works in development mode (process.env.NODE_ENV === 'development')." },
+  { question: "What does a Profiler flame graph show?", answer: "The flame graph shows the component render tree for a single commit (React re-render cycle). Each bar represents a component — width indicates render duration, color indicates time relative to other renders (yellow = slow, green = fast, grey = did not render). Click any bar to see why that component rendered: it shows which props or state changed. Bars that are grey (did not render) mean React skipped them — this is the desired outcome after memoization." },
+  { question: "When should I use React.memo, useMemo, and useCallback?", answer: "React.memo wraps a component to prevent re-render when parent re-renders and props are unchanged — use it for expensive components that receive stable props. useCallback memoizes a function reference — use it when passing callbacks to React.memo'd child components to prevent prop equality failures. useMemo memoizes a computed value — use it for expensive calculations that depend on specific inputs. Do NOT apply these reflexively; measure with the Profiler first, then add memoization only where renders are measurably slow." },
+  { question: "Why does React re-render a memoized component even though I added React.memo?", answer: "React.memo does a shallow comparison of props. Re-renders still happen if: (1) a prop is an object or array literal created inline — a new reference is created on every parent render; (2) a callback prop is an arrow function without useCallback — same issue; (3) a context value changes and the component is a consumer; (4) the component calls useState or useReducer and the local state changes. The fix is to ensure all object and function props are stable references via useMemo/useCallback, or refactor to avoid passing unstable props." },
+  { question: "What is the useProfiler hook and when should I use it?", answer: "React's Profiler component (not the DevTools) is a built-in React component that lets you measure render performance programmatically. Wrap any subtree with <Profiler id='name' onRender={callback}> and the onRender callback is called with render duration, phase (mount vs update), and component path. Use it to collect performance data in staging builds that you send to monitoring services. Unlike DevTools, it works in production builds but should be conditional to avoid overhead in hot paths." },
+  { question: "What are React's most common performance anti-patterns?", answer: "The most impactful anti-patterns: (1) Placing expensive components inside render functions of frequently-updating parents — extract them or lift state down; (2) Putting large state objects in context — context re-renders all consumers on any change; (3) Using array index as key in lists with dynamic order — keys should be stable IDs; (4) Not virtualizing long lists — use react-window or react-virtual for lists over 100 items; (5) Missing dependency arrays in useEffect/useMemo/useCallback — causes re-runs on every render." },
+];
+---
+
+<BaseLayout
+  title="React DevTools Profiler Guide — Flame Graphs, Memoization & Performance Patterns"
+  description="Master the React DevTools Profiler: reading flame graphs, diagnosing unnecessary re-renders, applying React.memo/useMemo/useCallback correctly, and fixing common performance anti-patterns."
+  tool="React Profiler, React DevTools, React performance, React.memo, useMemo, useCallback, React re-renders"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "React DevTools Profiler Guide",
+    "url": "https://devplaybook.cc/tools/react-profiler-guide",
+    "description": "Master the React Profiler: flame graphs, unnecessary re-renders, and memoization patterns.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">React DevTools Profiler Guide</h1>
+  <p class="text-text-muted mb-6">
+    Use the React DevTools Profiler to find and fix <strong>unnecessary re-renders</strong>, understand flame graphs, and apply React.memo / useMemo / useCallback where they actually matter.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Flame graph reading</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Re-render diagnosis</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Memoization guide</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Anti-pattern fixes</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Profiler Workflow</h2>
+  <ol class="list-decimal list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Install <strong>React DevTools</strong> extension (Chrome Web Store or Firefox Add-ons)</li>
+    <li>Open DevTools → React tab → <strong>Profiler</strong> sub-tab</li>
+    <li>Enable "Record why each component rendered" in Profiler settings (gear icon)</li>
+    <li>Click <strong>Record</strong>, perform the slow interaction, click <strong>Stop</strong></li>
+    <li>Examine the flame graph — look for wide yellow bars (slow components)</li>
+    <li>Click a bar to see <strong>why it rendered</strong> (prop/state change details)</li>
+  </ol>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Reading the Flame Graph</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Bar Color</th>
+          <th class="border border-border px-3 py-2 text-left">Meaning</th>
+          <th class="border border-border px-3 py-2 text-left">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2 text-yellow-400">Yellow</td><td class="border border-border px-3 py-2">Slowest relative to other renders</td><td class="border border-border px-3 py-2">Investigate — memoize or optimize</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 text-green-400">Green</td><td class="border border-border px-3 py-2">Fast render</td><td class="border border-border px-3 py-2">No action needed</td></tr>
+        <tr><td class="border border-border px-3 py-2 text-text-muted">Grey</td><td class="border border-border px-3 py-2">Did not render (skipped)</td><td class="border border-border px-3 py-2">Desired — memoization worked</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 text-blue-400">Blue</td><td class="border border-border px-3 py-2">Mounted for first time</td><td class="border border-border px-3 py-2">Expected on initial render</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">React.memo — Prevent Parent-Triggered Re-renders</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// WITHOUT memo: re-renders every time Parent re-renders
+function ExpensiveChart(&#123; data, title &#125;: Props) &#123;
+  return &lt;svg&gt;&#123;/* complex chart rendering */&#125;&lt;/svg&gt;;
+&#125;
+
+// WITH memo: only re-renders when data or title change (shallow compare)
+const ExpensiveChart = React.memo(function ExpensiveChart(&#123; data, title &#125;: Props) &#123;
+  return &lt;svg&gt;&#123;/* complex chart rendering */&#125;&lt;/svg&gt;;
+&#125;);
+
+// Custom comparator for deep comparison or selective prop ignoring
+const ExpensiveChart = React.memo(
+  function ExpensiveChart(&#123; data, title, onHover &#125;: Props) &#123;
+    return &lt;svg&gt;&#123;/* ... */&#125;&lt;/svg&gt;;
+  &#125;,
+  (prev, next) =&gt; prev.data === next.data &amp;&amp; prev.title === next.title
+  // ↑ ignores onHover changes — only re-render when data or title changes
+);</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">useCallback — Stable Function References</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// PROBLEM: new arrow function on every render breaks React.memo
+function Parent() &#123;
+  const [count, setCount] = useState(0);
+
+  // BAD: new reference every render → MemoizedChild always re-renders
+  return &lt;MemoizedChild onClick=&#123;() =&gt; setCount(c =&gt; c + 1)&#125; /&gt;;
+&#125;
+
+// SOLUTION: stable reference with useCallback
+function Parent() &#123;
+  const [count, setCount] = useState(0);
+
+  // GOOD: same function reference unless deps change
+  const handleClick = useCallback(() =&gt; &#123;
+    setCount(c =&gt; c + 1);
+  &#125;, []); // empty deps = never recreated
+
+  return &lt;MemoizedChild onClick=&#123;handleClick&#125; /&gt;;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">useMemo — Expensive Calculations</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// BAD: recalculates on every render
+function UserList(&#123; users, filter &#125;: Props) &#123;
+  // This runs even when unrelated state changes
+  const filtered = users.filter(u =&gt; u.role === filter);
+  return filtered.map(u =&gt; &lt;UserRow key=&#123;u.id&#125; user=&#123;u&#125; /&gt;);
+&#125;
+
+// GOOD: only recalculates when users or filter changes
+function UserList(&#123; users, filter &#125;: Props) &#123;
+  const filtered = useMemo(
+    () =&gt; users.filter(u =&gt; u.role === filter),
+    [users, filter]   // recalculate only when these change
+  );
+  return filtered.map(u =&gt; &lt;UserRow key=&#123;u.id&#125; user=&#123;u&#125; /&gt;);
+&#125;
+
+// Rule of thumb: use useMemo only when:
+// 1. The calculation takes > 1ms (profile first!)
+// 2. The result is passed to a React.memo component as a prop
+// 3. The result is used as a dependency of useEffect/useCallback</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Programmatic Profiling with the Profiler Component</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">import &#123; Profiler, ProfilerOnRenderCallback &#125; from 'react';
+
+const onRender: ProfilerOnRenderCallback = (
+  id,           // component name
+  phase,        // 'mount' or 'update'
+  actualDuration, // time for this render
+  baseDuration,   // estimated time without memoization
+  startTime,
+  commitTime
+) =&gt; &#123;
+  if (actualDuration &gt; 16) &#123;  // flag renders that miss 60fps
+    console.warn(`Slow render in $&#123;id&#125;: $&#123;actualDuration.toFixed(2)&#125;ms`);
+    // Send to monitoring: analytics.track('slow_render', &#123; id, actualDuration &#125;);
+  &#125;
+&#125;;
+
+// Wrap your slow subtree
+&lt;Profiler id="DashboardChart" onRender=&#123;onRender&#125;&gt;
+  &lt;DashboardChart data=&#123;chartData&#125; /&gt;
+&lt;/Profiler&gt;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Common Anti-Patterns and Fixes</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Object literals as props</strong> — <code class="bg-bg-card px-1 rounded font-mono text-xs">style=&#123;&#123; color: 'red' &#125;&#125;</code> creates new object each render; extract to constant or useMemo</li>
+    <li><strong>Context re-rendering all consumers</strong> — Split large contexts; use separate providers for state that changes at different rates</li>
+    <li><strong>Array index as key</strong> — Use stable IDs; index keys break reconciliation when list order changes</li>
+    <li><strong>Not virtualizing long lists</strong> — Use react-window or @tanstack/react-virtual for lists over 50-100 items</li>
+    <li><strong>useState in hot paths</strong> — Each setState causes a re-render; batch updates with useReducer or flushSync</li>
+    <li><strong>Premature memoization</strong> — Memoization adds overhead; only apply where Profiler shows actual slowness</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="React DevTools Profiler Guide" relatedTags={['react', 'performance', 'profiler', 'optimization', 'javascript']} />
+</BaseLayout>

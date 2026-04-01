@@ -1,0 +1,187 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Lighthouse CI and how is it different from running Lighthouse manually?", answer: "Lighthouse CI (LHCI) is a command-line tool and server that automates Lighthouse audits in CI/CD pipelines, stores historical results, and compares scores between runs. Running Lighthouse manually in Chrome DevTools gives you a one-time snapshot. LHCI tracks every commit, shows score trends over time, fails the build when scores drop below your thresholds, and can post a summary comment on pull requests. It turns Lighthouse from a debugging tool into a continuous quality gate." },
+  { question: "What should my Lighthouse score thresholds be?", answer: "Recommended minimums for production: Performance ≥ 90, Accessibility ≥ 90, Best Practices ≥ 90, SEO ≥ 90. For high-traffic e-commerce or SaaS, target ≥ 95 for Performance. Do not block CI on a score of 100 — scores fluctuate by 2-5 points due to timing variance. Use the assertions mode to set specific metric thresholds instead: first-contentful-paint, largest-contentful-paint, total-blocking-time, and cumulative-layout-shift are the most impactful Web Vitals." },
+  { question: "How do I handle authentication in Lighthouse CI?", answer: "Use the puppeteerScript option in lighthouserc.js to run a Puppeteer script before Lighthouse audits. The script logs in, and Lighthouse inherits the authenticated browser context. Alternatively, use basicAuth credentials in the collect config for HTTP Basic Auth, or set authFlow using collectUrl with a login sequence. For apps behind feature flags, use extraHeaders to pass authentication tokens as HTTP headers." },
+  { question: "Why does my Lighthouse Performance score vary between runs?", answer: "Lighthouse Performance scores vary because they measure real CPU and network timing, which is affected by CI machine load, throttling simulation, and JavaScript execution time. To reduce variance: run Lighthouse 3-5 times per audit (numberOfRuns: 3 in config) and use the median. Disable CPU throttling if your CI machines are consistent (--throttlingMethod=provided). Use a dedicated CI machine with consistent specs rather than shared runners. Scores will still vary by 2-5 points — set thresholds with a buffer." },
+  { question: "How do I upload Lighthouse CI results to a dashboard?", answer: "LHCI has three storage backends. The LHCI Server (self-hosted Node.js app) stores results in SQLite/PostgreSQL and provides a web dashboard at port 9001. Temporary public storage (lhci.appspot.com) stores results for 30 days — free but public. Lighthouse CI also supports uploading to Google Cloud Storage or any S3-compatible bucket. For teams without a self-hosted server, the temporary storage with a --upload.githubToken to post PR comments is the quickest setup." },
+  { question: "How do I prevent Lighthouse CI from failing on score fluctuation?", answer: "Use the assertions mode instead of numeric score thresholds. Assert on stable metrics like total-blocking-time (tbt) and cumulative-layout-shift (cls) rather than the aggregate performance score. Set median-run assertion to compare the median of multiple runs. Use warnOnly: true for metrics you want to monitor but not fail on. Set a permissive score threshold (e.g., minScore: 0.85) with --budgets-file for specific resource budgets like max JavaScript bundle size." },
+];
+---
+
+<BaseLayout
+  title="Lighthouse CI Setup Guide — GitHub Actions Integration & Performance Budgets"
+  description="Complete Lighthouse CI setup guide: GitHub Actions workflow, score thresholds, assertions mode, authenticated pages, LHCI server, and preventing score fluctuation in CI."
+  tool="Lighthouse CI, LHCI, Lighthouse GitHub Actions, web performance CI, performance budget, Core Web Vitals CI"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Lighthouse CI Setup Guide",
+    "url": "https://devplaybook.cc/tools/lighthouse-ci-setup-guide",
+    "description": "Complete Lighthouse CI setup guide for GitHub Actions with score thresholds and performance budgets.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Lighthouse CI Setup Guide</h1>
+  <p class="text-text-muted mb-6">
+    Automate <strong>Lighthouse performance audits</strong> on every pull request using GitHub Actions. Enforce performance budgets, track score trends, and block deploys when scores regress.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GitHub Actions workflow</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Score thresholds</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multiple URL auditing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PR comment integration</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install globally (local use)
+npm install -g @lhci/cli
+
+# Or add to your project
+npm install --save-dev @lhci/cli</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">lighthouserc.js Configuration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// lighthouserc.js
+module.exports = &#123;
+  ci: &#123;
+    collect: &#123;
+      // Build and serve your app, then audit these URLs
+      startServerCommand: 'npm run start',
+      startServerReadyPattern: 'ready on',
+      url: [
+        'http://localhost:3000/',
+        'http://localhost:3000/pricing',
+        'http://localhost:3000/dashboard',
+      ],
+      numberOfRuns: 3,   // median of 3 runs reduces score variance
+      settings: &#123;
+        // Simulated throttling (default) — consistent across machines
+        throttlingMethod: 'simulate',
+        // Remove these for mobile simulation:
+        // formFactor: 'mobile', screenEmulation: &#123; mobile: true &#125;
+      &#125;,
+    &#125;,
+    assert: &#123;
+      preset: 'lighthouse:recommended',
+      assertions: &#123;
+        // Fail CI if scores fall below these minimums
+        'categories:performance':    ['error', &#123; minScore: 0.9 &#125;],
+        'categories:accessibility':  ['error', &#123; minScore: 0.9 &#125;],
+        'categories:best-practices': ['error', &#123; minScore: 0.9 &#125;],
+        'categories:seo':            ['error', &#123; minScore: 0.9 &#125;],
+
+        // Specific Web Vitals thresholds (more stable than aggregate score)
+        'largest-contentful-paint':  ['error', &#123; maxNumericValue: 2500 &#125;],
+        'total-blocking-time':       ['error', &#123; maxNumericValue: 200 &#125;],
+        'cumulative-layout-shift':   ['error', &#123; maxNumericValue: 0.1 &#125;],
+        'first-contentful-paint':    ['warn',  &#123; maxNumericValue: 1800 &#125;],
+
+        // Resource budgets
+        'uses-optimized-images':     'warn',
+        'unused-javascript':         'warn',
+        'render-blocking-resources': 'warn',
+      &#125;,
+    &#125;,
+    upload: &#123;
+      target: 'temporary-public-storage',  // free 30-day storage
+      // For GitHub PR comments, add LHCI_GITHUB_APP_TOKEN secret
+      githubToken: process.env.LHCI_GITHUB_APP_TOKEN,
+    &#125;,
+  &#125;,
+&#125;;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">GitHub Actions Workflow</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># .github/workflows/lighthouse-ci.yml
+name: Lighthouse CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: &#123; node-version: 20 &#125;
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Run Lighthouse CI
+        run: npx lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: $&#123;&#123; secrets.LHCI_GITHUB_APP_TOKEN &#125;&#125;
+
+      - name: Upload Lighthouse results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-results
+          path: .lighthouseci/
+          retention-days: 30</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Lighthouse Score Targets</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Category</th>
+          <th class="border border-border px-3 py-2 text-left">Minimum (CI Gate)</th>
+          <th class="border border-border px-3 py-2 text-left">Target</th>
+          <th class="border border-border px-3 py-2 text-left">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Performance</td><td class="border border-border px-3 py-2 text-yellow-400">0.85</td><td class="border border-border px-3 py-2 text-green-400">0.90+</td><td class="border border-border px-3 py-2">Varies ±5 points — use metric assertions</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Accessibility</td><td class="border border-border px-3 py-2 text-yellow-400">0.90</td><td class="border border-border px-3 py-2 text-green-400">1.00</td><td class="border border-border px-3 py-2">Stable score, target 100</td></tr>
+        <tr><td class="border border-border px-3 py-2">Best Practices</td><td class="border border-border px-3 py-2 text-yellow-400">0.90</td><td class="border border-border px-3 py-2 text-green-400">1.00</td><td class="border border-border px-3 py-2">HTTPS, console errors, deprecated APIs</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">SEO</td><td class="border border-border px-3 py-2 text-yellow-400">0.90</td><td class="border border-border px-3 py-2 text-green-400">1.00</td><td class="border border-border px-3 py-2">Meta tags, canonical, robots.txt</td></tr>
+        <tr><td class="border border-border px-3 py-2">LCP</td><td class="border border-border px-3 py-2 text-yellow-400">&lt; 2500ms</td><td class="border border-border px-3 py-2 text-green-400">&lt; 1800ms</td><td class="border border-border px-3 py-2">Largest Contentful Paint</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">TBT</td><td class="border border-border px-3 py-2 text-yellow-400">&lt; 200ms</td><td class="border border-border px-3 py-2 text-green-400">&lt; 100ms</td><td class="border border-border px-3 py-2">Total Blocking Time (INP proxy)</td></tr>
+        <tr><td class="border border-border px-3 py-2">CLS</td><td class="border border-border px-3 py-2 text-yellow-400">&lt; 0.1</td><td class="border border-border px-3 py-2 text-green-400">&lt; 0.05</td><td class="border border-border px-3 py-2">Cumulative Layout Shift</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Self-Hosted LHCI Server</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Run LHCI server locally (stores results in SQLite)
+npx @lhci/cli server --storage.storageMethod=sql \
+  --storage.sqlDialect=sqlite \
+  --storage.sqlDatabasePath=./lhci.db
+
+# Or with Docker
+docker run --rm -p 9001:9001 patrickhulce/lhci-server
+
+# Update lighthouserc.js upload section to point to your server:
+upload: &#123;
+  target: 'lhci',
+  serverBaseUrl: 'http://lhci.internal:9001',
+  token: process.env.LHCI_BUILD_TOKEN,
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Common Issues &amp; Fixes</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Score varies run-to-run</strong> — Use numberOfRuns: 3, assert on specific metrics not aggregate score</li>
+    <li><strong>Server not ready before collect</strong> — Tune startServerReadyPattern to match your server's ready log message</li>
+    <li><strong>Chrome not found in CI</strong> — Add <code class="bg-bg-card px-1 rounded font-mono text-xs">apt-get install -y google-chrome-stable</code> or use <code class="bg-bg-card px-1 rounded font-mono text-xs">--chrome-flags="--no-sandbox"</code></li>
+    <li><strong>Auth-protected pages show 0 scores</strong> — Add puppeteerScript to lighthouserc.js to log in before auditing</li>
+    <li><strong>Performance budget too strict</strong> — Use warn instead of error for non-critical assertions during initial setup</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Lighthouse CI Setup Guide" relatedTags={['performance', 'lighthouse', 'ci-cd', 'core-web-vitals', 'seo']} />
+</BaseLayout>
