@@ -1,0 +1,1113 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What vector dimensions should I use for OpenAI embeddings?",
+    answer: "text-embedding-3-small and text-embedding-3-large support configurable dimensions via Matryoshka Representation Learning (MRL). For most RAG applications, text-embedding-3-small at 1536 dims is the default and offers the best cost/performance balance. You can reduce to 512 dims for ~2.5× storage savings with minor quality loss. text-embedding-ada-002 is fixed at 1536 dims. For production with millions of documents, consider int8 quantization to cut storage costs by 75%."
+  },
+  {
+    question: "When should I use cosine similarity vs dot product vs euclidean?",
+    answer: "Cosine similarity measures the angle between vectors (scale-invariant) — best for semantic search where you care about meaning, not vector magnitude. Use cosine for text embeddings from any provider. Dot product is equivalent to cosine when vectors are normalized (unit length), and is faster to compute — Pinecone normalizes by default. Euclidean distance measures straight-line distance in vector space — useful for image embeddings or cases where magnitude encodes information. For text search, always start with cosine."
+  },
+  {
+    question: "What is the difference between Pinecone, Weaviate, Qdrant, and ChromaDB?",
+    answer: "Pinecone is a fully managed cloud vector database — zero infrastructure, generous free tier (1 index, 100K vectors), ideal for prototypes and production. Weaviate is open-source (self-host) or managed cloud, with built-in ML inference and GraphQL API — best for hybrid search (vector + BM25). Qdrant is a high-performance open-source vector DB with advanced filtering, payload indexing, and quantization — great for on-premises or Docker deployments. ChromaDB is an embedded Python library (no server needed) — best for local development, notebooks, and small-scale apps."
+  },
+  {
+    question: "How do I calculate storage requirements for vector indexes?",
+    answer: "Storage per vector = dimensions × bytes_per_float. float32 = 4 bytes/dim, float16 = 2 bytes/dim, int8 = 1 byte/dim. For 1M vectors at 1536 dims float32: 1,000,000 × 1536 × 4 = ~5.86 GB raw. Add metadata/payload overhead (typically 20-30%). Plus the HNSW graph structure adds ~60 bytes per vector. Real-world 1M vector index at 1536 dims ≈ 8-12 GB total. Managed services charge based on pod type — a Pinecone p1.x1 pod holds ~1M 1536-dim vectors at ~$70/month."
+  },
+  {
+    question: "What is pgvector and when should I use it instead of a dedicated vector database?",
+    answer: "pgvector is a PostgreSQL extension that adds vector storage and similarity search directly to your existing Postgres database. Use pgvector when: you're already running PostgreSQL and want to avoid adding another service, your vector count is under 1-2M (beyond that, dedicated vector DBs outperform), or you need ACID transactions combining vector and relational data. Limitations: slower than dedicated vector DBs at scale, no built-in quantization, limited indexing options (HNSW and IVFFlat). For new projects without an existing Postgres stack, Qdrant or Pinecone are generally better choices."
+  }
+];
+
+const modelDimensions = [
+  { model: "text-embedding-3-small", provider: "OpenAI", dims: 1536, costPer1M: 0.02, notes: "Best price/perf, MRL configurable (512/1024/1536)", configurable: true },
+  { model: "text-embedding-3-large", provider: "OpenAI", dims: 3072, costPer1M: 0.13, notes: "Highest quality, MRL configurable (256/1024/3072)", configurable: true },
+  { model: "text-embedding-ada-002", provider: "OpenAI", dims: 1536, costPer1M: 0.10, notes: "Legacy, fixed dimensions, widely supported", configurable: false },
+  { model: "all-MiniLM-L6-v2", provider: "HuggingFace (local)", dims: 384, costPer1M: 0, notes: "Fast, small, great for local/offline use", configurable: false },
+  { model: "all-mpnet-base-v2", provider: "HuggingFace (local)", dims: 768, costPer1M: 0, notes: "Higher quality than MiniLM, still fast", configurable: false },
+  { model: "nomic-embed-text", provider: "Nomic / local", dims: 768, costPer1M: 0, notes: "Strong open-source, Ollama compatible", configurable: false },
+  { model: "voyage-3", provider: "Voyage AI", dims: 1024, costPer1M: 0.06, notes: "Competitive MTEB, good for RAG retrieval", configurable: false },
+  { model: "voyage-3-lite", provider: "Voyage AI", dims: 512, costPer1M: 0.02, notes: "Budget option, smaller vectors", configurable: false },
+  { model: "embed-english-v3.0", provider: "Cohere", dims: 1024, costPer1M: 0.10, notes: "Multilingual available (embed-multilingual-v3)", configurable: false },
+  { model: "BGE-large-en-v1.5", provider: "BAAI (local)", dims: 1024, costPer1M: 0, notes: "Top open-source MTEB, CPU-friendly", configurable: false },
+  { model: "jina-embeddings-v2-base", provider: "Jina AI", dims: 768, costPer1M: 0.02, notes: "8192 token input context, long documents", configurable: false },
+];
+---
+
+<BaseLayout
+  title="Vector Search Config Builder — Pinecone, Weaviate, Qdrant, pgvector"
+  description="Generate complete vector database configuration code for Pinecone, Weaviate, Qdrant, ChromaDB, and pgvector. Includes Python SDK setup, .env config, index creation, upsert, and query examples. Includes embedding model dimension reference and storage calculator."
+  tool="Vector Search Config Builder, Pinecone Config Generator, Weaviate Setup, Qdrant Config, ChromaDB Setup, pgvector Config, Vector Database Builder"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Vector Search Config Builder</h1>
+  <p class="text-text-muted mb-4">Generate complete setup code for any vector database provider. Configure dimensions, metrics, and index settings — get Python SDK code, .env config, and storage estimates instantly.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 5 vector DB providers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Python SDK code</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> .env configuration</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Storage estimator</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Model dimension table</span>
+  </div>
+
+  <!-- Provider Selection -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Select Provider</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      <button class="provider-btn active-provider border border-primary bg-primary/10 text-primary rounded-lg px-3 py-3 hover:bg-primary/20 transition-colors text-center" data-provider="pinecone">
+        <div class="text-sm font-semibold">Pinecone</div>
+        <div class="text-xs opacity-75 mt-0.5">Managed cloud</div>
+      </button>
+      <button class="provider-btn border border-border bg-black/20 rounded-lg px-3 py-3 hover:border-primary hover:text-primary transition-colors text-center" data-provider="weaviate">
+        <div class="text-sm font-semibold">Weaviate</div>
+        <div class="text-xs opacity-75 mt-0.5">Open-source / cloud</div>
+      </button>
+      <button class="provider-btn border border-border bg-black/20 rounded-lg px-3 py-3 hover:border-primary hover:text-primary transition-colors text-center" data-provider="qdrant">
+        <div class="text-sm font-semibold">Qdrant</div>
+        <div class="text-xs opacity-75 mt-0.5">High performance</div>
+      </button>
+      <button class="provider-btn border border-border bg-black/20 rounded-lg px-3 py-3 hover:border-primary hover:text-primary transition-colors text-center" data-provider="chroma">
+        <div class="text-sm font-semibold">ChromaDB</div>
+        <div class="text-xs opacity-75 mt-0.5">Embedded Python</div>
+      </button>
+      <button class="provider-btn border border-border bg-black/20 rounded-lg px-3 py-3 hover:border-primary hover:text-primary transition-colors text-center" data-provider="pgvector">
+        <div class="text-sm font-semibold">pgvector</div>
+        <div class="text-xs opacity-75 mt-0.5">PostgreSQL extension</div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Index Configuration -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Index Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Index / Collection Name</label>
+        <input id="index-name" type="text" value="my-embeddings"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Embedding Dimensions</label>
+        <select id="dimensions" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="128">128 (lightweight / custom)</option>
+          <option value="384">384 (all-MiniLM-L6-v2)</option>
+          <option value="512">512 (voyage-3-lite)</option>
+          <option value="768">768 (all-mpnet, nomic, BGE-base)</option>
+          <option value="1024">1024 (voyage-3, Cohere, BGE-large)</option>
+          <option value="1536" selected>1536 (OpenAI ada-002 / te3-small)</option>
+          <option value="3072">3072 (OpenAI te3-large)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Similarity Metric</label>
+        <select id="metric" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="cosine" selected>cosine (recommended for text)</option>
+          <option value="euclidean">euclidean (L2 distance)</option>
+          <option value="dotproduct">dotproduct (fastest, needs normalized vectors)</option>
+        </select>
+      </div>
+      <div id="index-type-group">
+        <label class="block text-sm font-medium mb-1.5">Index Type</label>
+        <select id="index-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="hnsw" selected>HNSW (best recall, high memory)</option>
+          <option value="ivf_flat">IVF Flat (good balance)</option>
+          <option value="flat">Flat (exact search, small datasets)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Cloud / Host</label>
+        <select id="cloud-provider" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="aws-us-east-1">AWS us-east-1</option>
+          <option value="aws-us-west-2">AWS us-west-2</option>
+          <option value="gcp-us-central1">GCP us-central1</option>
+          <option value="azure-eastus">Azure eastus</option>
+          <option value="localhost">localhost (self-hosted)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Namespace / Tenant</label>
+        <input id="namespace" type="text" value="default"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Storage Estimator -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Storage Estimator</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Vectors</label>
+        <input id="vector-count" type="number" value="100000" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Float Precision</label>
+        <select id="precision" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="4" selected>float32 (4 bytes/dim)</option>
+          <option value="2">float16 (2 bytes/dim)</option>
+          <option value="1">int8 quantized (1 byte/dim)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Avg Metadata Size (bytes)</label>
+        <input id="metadata-size" type="number" value="256" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+    <div id="storage-result" class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm"></div>
+  </div>
+
+  <!-- Code Output Tabs -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div class="flex gap-2 flex-wrap">
+        <button id="tab-setup" class="code-tab bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-medium">Setup + Index</button>
+        <button id="tab-upsert" class="code-tab bg-black/20 border border-border px-3 py-1.5 rounded-lg text-xs font-medium hover:border-primary transition-colors">Upsert</button>
+        <button id="tab-query" class="code-tab bg-black/20 border border-border px-3 py-1.5 rounded-lg text-xs font-medium hover:border-primary transition-colors">Query</button>
+        <button id="tab-env" class="code-tab bg-black/20 border border-border px-3 py-1.5 rounded-lg text-xs font-medium hover:border-primary transition-colors">.env</button>
+      </div>
+      <button id="copy-code" class="bg-primary text-white px-3 py-1.5 rounded-lg text-xs hover:opacity-90 font-medium">Copy Code</button>
+    </div>
+    <div class="flex items-center justify-between mb-2">
+      <span id="code-lang-badge" class="text-xs text-text-muted font-mono">python</span>
+    </div>
+    <pre id="code-output" class="bg-black/30 rounded-lg p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap text-green-300 min-h-56"></pre>
+    <button id="generate-btn" class="mt-4 bg-primary text-white px-5 py-2 rounded-lg hover:opacity-90 font-medium text-sm">Generate Code</button>
+  </div>
+
+  <!-- Embedding Model Reference Table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Embedding Model Dimension Reference</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border text-text-muted text-xs">
+            <th class="text-left py-2 pr-4">Model</th>
+            <th class="text-left py-2 pr-4">Provider</th>
+            <th class="text-right py-2 pr-4">Dims</th>
+            <th class="text-right py-2 pr-4">Cost/1M tokens</th>
+            <th class="text-left py-2">Notes</th>
+          </tr>
+        </thead>
+        <tbody id="model-table-body">
+          {modelDimensions.map(m => (
+            <tr class="border-b border-border/40 hover:bg-black/10 cursor-pointer model-row" data-dims={m.dims.toString()}>
+              <td class="py-2 pr-4 font-mono text-xs text-primary">{m.model}</td>
+              <td class="py-2 pr-4 text-text-muted text-xs">{m.provider}</td>
+              <td class="py-2 pr-4 text-right font-mono">{m.dims.toLocaleString()}</td>
+              <td class="py-2 pr-4 text-right text-text-muted">{m.costPer1M === 0 ? 'Free' : `$${m.costPer1M.toFixed(2)}`}</td>
+              <td class="py-2 text-text-muted text-xs">{m.notes}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-xs text-text-muted mt-2">Click a row to use that model's dimensions in the config above.</p>
+  </div>
+
+  <ToolPageCta />
+</BaseLayout>
+
+<script>
+  type Provider = 'pinecone' | 'weaviate' | 'qdrant' | 'chroma' | 'pgvector';
+  type CodeTab = 'setup' | 'upsert' | 'query' | 'env';
+
+  let currentProvider: Provider = 'pinecone';
+  let currentTab: CodeTab = 'setup';
+
+  function getVal(id: string): string {
+    return (document.getElementById(id) as HTMLInputElement | HTMLSelectElement)?.value || '';
+  }
+
+  // Code generators per provider
+  const generators: Record<Provider, Record<CodeTab, () => string>> = {
+    pinecone: {
+      setup: () => {
+        const name = getVal('index-name');
+        const dims = getVal('dimensions');
+        const metric = getVal('metric') === 'euclidean' ? 'euclidean' : getVal('metric') === 'dotproduct' ? 'dotproduct' : 'cosine';
+        const cloud = getVal('cloud-provider').startsWith('aws') ? 'aws' : getVal('cloud-provider').startsWith('gcp') ? 'gcp' : 'azure';
+        const region = getVal('cloud-provider').split('-').slice(1).join('-') || 'us-east-1';
+        return `# Install: pip install pinecone-client
+import os
+from pinecone import Pinecone, ServerlessSpec
+
+# Initialize Pinecone client
+pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+
+# Create serverless index
+INDEX_NAME = "${name}"
+DIMENSIONS = ${dims}
+METRIC = "${metric}"
+
+if INDEX_NAME not in pc.list_indexes().names():
+    pc.create_index(
+        name=INDEX_NAME,
+        dimension=DIMENSIONS,
+        metric=METRIC,
+        spec=ServerlessSpec(
+            cloud="${cloud}",
+            region="${region}"
+        )
+    )
+    print(f"Index '{INDEX_NAME}' created successfully")
+else:
+    print(f"Index '{INDEX_NAME}' already exists")
+
+# Connect to the index
+index = pc.Index(INDEX_NAME)
+
+# Describe index stats
+stats = index.describe_index_stats()
+print(f"Total vectors: {stats.total_vector_count}")
+print(f"Dimensions: {stats.dimension}")`;
+      },
+      upsert: () => {
+        const name = getVal('index-name');
+        const ns = getVal('namespace');
+        return `import os
+from pinecone import Pinecone
+import openai
+
+pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+index = pc.Index("${name}")
+oai = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+def embed(texts: list[str]) -> list[list[float]]:
+    """Generate embeddings using OpenAI."""
+    response = oai.embeddings.create(
+        model="text-embedding-3-small",
+        input=texts
+    )
+    return [item.embedding for item in response.data]
+
+# Batch upsert example
+documents = [
+    {"id": "doc-1", "text": "Machine learning is a subset of AI", "source": "wiki"},
+    {"id": "doc-2", "text": "Neural networks are inspired by the brain", "source": "wiki"},
+    {"id": "doc-3", "text": "Transformers use attention mechanisms", "source": "paper"},
+]
+
+BATCH_SIZE = 100
+NAMESPACE = "${ns}"
+
+for i in range(0, len(documents), BATCH_SIZE):
+    batch = documents[i:i + BATCH_SIZE]
+    texts = [doc["text"] for doc in batch]
+    embeddings = embed(texts)
+
+    vectors = [
+        {
+            "id": doc["id"],
+            "values": embedding,
+            "metadata": {"text": doc["text"], "source": doc["source"]}
+        }
+        for doc, embedding in zip(batch, embeddings)
+    ]
+
+    index.upsert(vectors=vectors, namespace=NAMESPACE)
+    print(f"Upserted {len(vectors)} vectors (batch {i // BATCH_SIZE + 1})")
+
+print("Upsert complete")`;
+      },
+      query: () => {
+        const name = getVal('index-name');
+        const ns = getVal('namespace');
+        return `import os
+from pinecone import Pinecone
+import openai
+
+pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+index = pc.Index("${name}")
+oai = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+def query_similar(query: str, top_k: int = 5, filter: dict = None):
+    """Query the vector index for semantically similar documents."""
+    # Generate query embedding
+    response = oai.embeddings.create(
+        model="text-embedding-3-small",
+        input=[query]
+    )
+    query_vector = response.data[0].embedding
+
+    # Query the index
+    results = index.query(
+        vector=query_vector,
+        top_k=top_k,
+        namespace="${ns}",
+        include_metadata=True,
+        filter=filter  # Optional metadata filter, e.g. {"source": {"$eq": "wiki"}}
+    )
+
+    # Parse results
+    matches = []
+    for match in results.matches:
+        matches.append({
+            "id": match.id,
+            "score": match.score,
+            "text": match.metadata.get("text", ""),
+            "metadata": match.metadata
+        })
+
+    return matches
+
+# Example query
+results = query_similar(
+    query="How do neural networks learn?",
+    top_k=3,
+    filter={"source": {"\\$eq": "wiki"}}  # Optional filter
+)
+
+for r in results:
+    print(f"Score: {r['score']:.4f} | ID: {r['id']}")
+    print(f"Text: {r['text'][:100]}...")
+    print()`;
+      },
+      env: () => {
+        const name = getVal('index-name');
+        return `# .env — Pinecone Configuration
+# Copy this to your project root and fill in your API keys
+
+# Pinecone
+PINECONE_API_KEY=your_pinecone_api_key_here
+PINECONE_INDEX_NAME=${name}
+PINECONE_NAMESPACE=${getVal('namespace')}
+
+# Embedding model (OpenAI)
+OPENAI_API_KEY=your_openai_api_key_here
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=${getVal('dimensions')}
+
+# Application
+VECTOR_METRIC=${getVal('metric')}
+QUERY_TOP_K=5
+
+# Load with python-dotenv:
+# pip install python-dotenv
+# from dotenv import load_dotenv; load_dotenv()`;
+      }
+    },
+
+    weaviate: {
+      setup: () => {
+        const name = getVal('index-name').replace(/-/g, '_').replace(/^(.)/, c => c.toUpperCase());
+        const dims = getVal('dimensions');
+        const metric = getVal('metric') === 'euclidean' ? 'l2-squared' : 'cosine';
+        const cloud = getVal('cloud-provider');
+        const isLocal = cloud === 'localhost';
+        return `# Install: pip install weaviate-client
+import os
+import weaviate
+import weaviate.classes as wvc
+from weaviate.classes.config import Property, DataType, Configure, VectorDistances
+
+# Initialize client${isLocal ? `
+client = weaviate.connect_to_local(
+    host="localhost",
+    port=8080,
+    grpc_port=50051
+)` : `
+client = weaviate.connect_to_weaviate_cloud(
+    cluster_url=os.environ["WEAVIATE_URL"],
+    auth_credentials=wvc.init.Auth.api_key(os.environ["WEAVIATE_API_KEY"])
+)`}
+
+COLLECTION_NAME = "${name}"
+DIMENSIONS = ${dims}
+
+# Create collection
+if not client.collections.exists(COLLECTION_NAME):
+    client.collections.create(
+        name=COLLECTION_NAME,
+        vectorizer_config=Configure.Vectorizer.none(),  # BYO embeddings
+        vector_index_config=Configure.VectorIndex.hnsw(
+            distance_metric=VectorDistances.${metric.toUpperCase().replace('-', '_')},
+            ef_construction=128,
+            max_connections=64
+        ),
+        properties=[
+            Property(name="text", data_type=DataType.TEXT),
+            Property(name="source", data_type=DataType.TEXT),
+            Property(name="created_at", data_type=DataType.DATE),
+        ]
+    )
+    print(f"Collection '{COLLECTION_NAME}' created")
+
+collection = client.collections.get(COLLECTION_NAME)
+print(f"Collection ready: {collection.name}")
+client.close()`;
+      },
+      upsert: () => {
+        const name = getVal('index-name').replace(/-/g, '_').replace(/^(.)/, c => c.toUpperCase());
+        return `import os
+import weaviate
+import weaviate.classes as wvc
+from weaviate.classes.data import DataObject
+import openai
+
+client = weaviate.connect_to_weaviate_cloud(
+    cluster_url=os.environ["WEAVIATE_URL"],
+    auth_credentials=wvc.init.Auth.api_key(os.environ["WEAVIATE_API_KEY"])
+)
+oai = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+collection = client.collections.get("${name}")
+
+documents = [
+    {"text": "Machine learning is a subset of AI", "source": "wiki"},
+    {"text": "Neural networks are inspired by the brain", "source": "wiki"},
+]
+
+# Batch insert with explicit vectors
+with collection.batch.dynamic() as batch:
+    for i, doc in enumerate(documents):
+        # Generate embedding
+        emb_response = oai.embeddings.create(
+            model="text-embedding-3-small",
+            input=[doc["text"]]
+        )
+        vector = emb_response.data[0].embedding
+
+        batch.add_object(
+            properties={"text": doc["text"], "source": doc["source"]},
+            vector=vector,
+            uuid=weaviate.util.generate_uuid5(doc["text"])
+        )
+        print(f"Added object {i + 1}/{len(documents)}")
+
+print(f"Batch complete. Failed: {len(collection.batch.failed_objects)}")
+client.close()`;
+      },
+      query: () => {
+        const name = getVal('index-name').replace(/-/g, '_').replace(/^(.)/, c => c.toUpperCase());
+        return `import os
+import weaviate
+import weaviate.classes as wvc
+from weaviate.classes.query import MetadataQuery
+import openai
+
+client = weaviate.connect_to_weaviate_cloud(
+    cluster_url=os.environ["WEAVIATE_URL"],
+    auth_credentials=wvc.init.Auth.api_key(os.environ["WEAVIATE_API_KEY"])
+)
+oai = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+collection = client.collections.get("${name}")
+
+def query_similar(query_text: str, top_k: int = 5):
+    # Generate query embedding
+    response = oai.embeddings.create(
+        model="text-embedding-3-small",
+        input=[query_text]
+    )
+    query_vector = response.data[0].embedding
+
+    # Near vector search
+    results = collection.query.near_vector(
+        near_vector=query_vector,
+        limit=top_k,
+        return_metadata=MetadataQuery(distance=True, score=True),
+        return_properties=["text", "source"]
+    )
+
+    for obj in results.objects:
+        print(f"Distance: {obj.metadata.distance:.4f}")
+        print(f"Text: {obj.properties['text'][:100]}")
+        print()
+    return results
+
+# Hybrid search (vector + BM25)
+hybrid_results = collection.query.hybrid(
+    query="neural network attention",
+    alpha=0.5,  # 0 = pure BM25, 1 = pure vector
+    limit=5,
+    return_properties=["text", "source"]
+)
+
+client.close()`;
+      },
+      env: () => `# .env — Weaviate Configuration
+
+# Weaviate Cloud (WCD)
+WEAVIATE_URL=https://your-cluster.weaviate.network
+WEAVIATE_API_KEY=your_weaviate_api_key
+
+# Embedding model
+OPENAI_API_KEY=your_openai_api_key_here
+EMBEDDING_MODEL=text-embedding-3-small
+
+# Collection settings
+WEAVIATE_COLLECTION=${getVal('index-name').replace(/-/g, '_').replace(/^(.)/, (c: string) => c.toUpperCase())}
+WEAVIATE_DIMENSIONS=${getVal('dimensions')}
+
+# For local Docker:
+# docker run -d -p 8080:8080 -p 50051:50051 semitechnologies/weaviate:latest`
+    },
+
+    qdrant: {
+      setup: () => {
+        const name = getVal('index-name');
+        const dims = getVal('dimensions');
+        const metric = getVal('metric') === 'euclidean' ? 'Euclid' : getVal('metric') === 'dotproduct' ? 'Dot' : 'Cosine';
+        const cloud = getVal('cloud-provider');
+        const isLocal = cloud === 'localhost';
+        return `# Install: pip install qdrant-client
+import os
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    Distance, VectorParams, HnswConfigDiff, OptimizersConfigDiff
+)
+
+# Initialize client
+${isLocal ? `client = QdrantClient(url="http://localhost:6333")` : `client = QdrantClient(
+    url=os.environ["QDRANT_URL"],
+    api_key=os.environ["QDRANT_API_KEY"]
+)`}
+
+COLLECTION_NAME = "${name}"
+DIMENSIONS = ${dims}
+DISTANCE = Distance.${metric.toUpperCase()}
+
+# Create collection with HNSW index
+if not client.collection_exists(COLLECTION_NAME):
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(
+            size=DIMENSIONS,
+            distance=DISTANCE,
+            on_disk=False  # Set True for large collections
+        ),
+        hnsw_config=HnswConfigDiff(
+            m=16,               # Connections per element (16-64)
+            ef_construct=100,   # Construction recall quality
+            full_scan_threshold=10000  # Switch to HNSW above this count
+        ),
+        optimizers_config=OptimizersConfigDiff(
+            indexing_threshold=20000  # Start indexing after N vectors
+        )
+    )
+    print(f"Collection '{COLLECTION_NAME}' created")
+
+info = client.get_collection(COLLECTION_NAME)
+print(f"Status: {info.status}, Vectors: {info.vectors_count}")`;
+      },
+      upsert: () => {
+        const name = getVal('index-name');
+        return `import os
+import uuid
+from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct
+import openai
+
+client = QdrantClient(url=os.environ["QDRANT_URL"], api_key=os.environ["QDRANT_API_KEY"])
+oai = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+documents = [
+    {"text": "Machine learning is a subset of AI", "source": "wiki", "category": "ml"},
+    {"text": "Neural networks are inspired by the brain", "source": "wiki", "category": "dl"},
+    {"text": "Transformers use self-attention for NLP", "source": "paper", "category": "nlp"},
+]
+
+BATCH_SIZE = 100
+
+def embed_batch(texts: list[str]) -> list[list[float]]:
+    resp = oai.embeddings.create(model="text-embedding-3-small", input=texts)
+    return [item.embedding for item in resp.data]
+
+for i in range(0, len(documents), BATCH_SIZE):
+    batch = documents[i:i + BATCH_SIZE]
+    texts = [d["text"] for d in batch]
+    embeddings = embed_batch(texts)
+
+    points = [
+        PointStruct(
+            id=str(uuid.uuid4()),
+            vector=embedding,
+            payload={
+                "text": doc["text"],
+                "source": doc["source"],
+                "category": doc["category"]
+            }
+        )
+        for doc, embedding in zip(batch, embeddings)
+    ]
+
+    client.upsert(collection_name="${name}", points=points)
+    print(f"Upserted batch {i // BATCH_SIZE + 1} ({len(points)} points)")`;
+      },
+      query: () => {
+        const name = getVal('index-name');
+        return `import os
+from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue
+import openai
+
+client = QdrantClient(url=os.environ["QDRANT_URL"], api_key=os.environ["QDRANT_API_KEY"])
+oai = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+def query_similar(query: str, top_k: int = 5, category: str = None):
+    # Generate embedding
+    resp = oai.embeddings.create(model="text-embedding-3-small", input=[query])
+    query_vector = resp.data[0].embedding
+
+    # Optional payload filter
+    query_filter = None
+    if category:
+        query_filter = Filter(
+            must=[FieldCondition(key="category", match=MatchValue(value=category))]
+        )
+
+    results = client.search(
+        collection_name="${name}",
+        query_vector=query_vector,
+        limit=top_k,
+        query_filter=query_filter,
+        with_payload=True,
+        score_threshold=0.7  # Minimum similarity score
+    )
+
+    for result in results:
+        print(f"Score: {result.score:.4f} | ID: {result.id}")
+        print(f"Text: {result.payload.get('text', '')[:100]}")
+        print(f"Category: {result.payload.get('category')}")
+        print()
+    return results
+
+results = query_similar("deep learning architectures", top_k=3, category="dl")`;
+      },
+      env: () => `# .env — Qdrant Configuration
+
+# Qdrant Cloud
+QDRANT_URL=https://your-cluster.qdrant.io
+QDRANT_API_KEY=your_qdrant_api_key
+
+# Embedding model
+OPENAI_API_KEY=your_openai_api_key_here
+EMBEDDING_MODEL=text-embedding-3-small
+
+# Collection settings
+QDRANT_COLLECTION=${getVal('index-name')}
+EMBEDDING_DIMENSIONS=${getVal('dimensions')}
+
+# Docker (local):
+# docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant`
+    },
+
+    chroma: {
+      setup: () => {
+        const name = getVal('index-name');
+        const dims = getVal('dimensions');
+        const metric = getVal('metric') === 'euclidean' ? 'l2' : getVal('metric') === 'dotproduct' ? 'ip' : 'cosine';
+        return `# Install: pip install chromadb openai
+import chromadb
+from chromadb.config import Settings
+from chromadb.utils import embedding_functions
+
+# Local persistent client (recommended for dev)
+client = chromadb.PersistentClient(
+    path="./chroma_db",
+    settings=Settings(anonymized_telemetry=False)
+)
+
+# Or in-memory (for testing):
+# client = chromadb.Client()
+
+# Or HTTP client (self-hosted server):
+# client = chromadb.HttpClient(host="localhost", port=8000)
+
+COLLECTION_NAME = "${name}"
+DIMENSIONS = ${dims}  # Note: ChromaDB auto-detects from first insert
+
+# Use built-in OpenAI embedding function
+openai_ef = embedding_functions.OpenAIEmbeddingFunction(
+    api_key="your-openai-api-key",
+    model_name="text-embedding-3-small"
+)
+
+# Create or get collection
+collection = client.get_or_create_collection(
+    name=COLLECTION_NAME,
+    embedding_function=openai_ef,
+    metadata={"hnsw:space": "${metric}"}  # cosine | l2 | ip
+)
+
+print(f"Collection '{COLLECTION_NAME}': {collection.count()} documents")`;
+      },
+      upsert: () => {
+        const name = getVal('index-name');
+        return `import chromadb
+from chromadb.utils import embedding_functions
+
+client = chromadb.PersistentClient(path="./chroma_db")
+openai_ef = embedding_functions.OpenAIEmbeddingFunction(
+    api_key="your-openai-api-key",
+    model_name="text-embedding-3-small"
+)
+
+collection = client.get_or_create_collection(
+    name="${name}",
+    embedding_function=openai_ef
+)
+
+# ChromaDB auto-generates embeddings via the embedding_function
+# Pass documents directly — no manual embedding needed
+documents = [
+    "Machine learning is a subset of AI.",
+    "Neural networks are inspired by the brain.",
+    "Transformers use self-attention mechanisms."
+]
+
+collection.upsert(
+    ids=["doc-0", "doc-1", "doc-2"],
+    documents=documents,
+    metadatas=[
+        {"source": "wiki", "category": "ml"},
+        {"source": "wiki", "category": "dl"},
+        {"source": "paper", "category": "nlp"}
+    ]
+)
+
+print(f"Collection now has {collection.count()} documents")
+
+# Or add pre-computed embeddings:
+# collection.upsert(
+#     ids=["doc-0"],
+#     embeddings=[[0.1, 0.2, ...]],  # your vectors
+#     documents=["text"],
+#     metadatas=[{"source": "custom"}]
+# )`;
+      },
+      query: () => {
+        const name = getVal('index-name');
+        return `import chromadb
+from chromadb.utils import embedding_functions
+
+client = chromadb.PersistentClient(path="./chroma_db")
+openai_ef = embedding_functions.OpenAIEmbeddingFunction(
+    api_key="your-openai-api-key",
+    model_name="text-embedding-3-small"
+)
+
+collection = client.get_collection(
+    name="${name}",
+    embedding_function=openai_ef
+)
+
+# Query by text (embedding auto-generated)
+results = collection.query(
+    query_texts=["how do neural networks learn?"],
+    n_results=3,
+    where={"category": "dl"},  # Optional metadata filter
+    include=["documents", "metadatas", "distances"]
+)
+
+for i, (doc, meta, dist) in enumerate(zip(
+    results["documents"][0],
+    results["metadatas"][0],
+    results["distances"][0]
+)):
+    print(f"Rank {i+1} | Distance: {dist:.4f}")
+    print(f"Text: {doc[:100]}")
+    print(f"Meta: {meta}")
+    print()
+
+# Multi-query (batch)
+multi_results = collection.query(
+    query_texts=["machine learning", "deep learning"],
+    n_results=2
+)`;
+      },
+      env: () => `# .env — ChromaDB Configuration
+# ChromaDB can run embedded (no server) — just set the path
+
+CHROMA_PERSIST_PATH=./chroma_db
+CHROMA_COLLECTION=${getVal('index-name')}
+
+# Embedding model
+OPENAI_API_KEY=your_openai_api_key_here
+EMBEDDING_MODEL=text-embedding-3-small
+
+# For HTTP server mode:
+# CHROMA_HOST=localhost
+# CHROMA_PORT=8000
+
+# Start ChromaDB server:
+# pip install chromadb
+# chroma run --path ./chroma_db --port 8000`
+    },
+
+    pgvector: {
+      setup: () => {
+        const name = getVal('index-name').replace(/-/g, '_');
+        const dims = getVal('dimensions');
+        const metric = getVal('metric');
+        const opClass = metric === 'cosine' ? 'vector_cosine_ops' : metric === 'dotproduct' ? 'vector_ip_ops' : 'vector_l2_ops';
+        return `# Install: pip install psycopg2-binary pgvector
+import os
+import psycopg2
+from pgvector.psycopg2 import register_vector
+
+# Connect to PostgreSQL
+conn = psycopg2.connect(os.environ["DATABASE_URL"])
+conn.autocommit = True
+register_vector(conn)
+cur = conn.cursor()
+
+TABLE_NAME = "${name}"
+DIMENSIONS = ${dims}
+
+# Enable pgvector extension
+cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+# Create table with vector column
+cur.execute(f"""
+    CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+        id          SERIAL PRIMARY KEY,
+        doc_id      TEXT UNIQUE NOT NULL,
+        content     TEXT NOT NULL,
+        source      TEXT,
+        category    TEXT,
+        embedding   vector({DIMENSIONS}),
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+""")
+
+# Create HNSW index for fast approximate nearest neighbor search
+cur.execute(f"""
+    CREATE INDEX IF NOT EXISTS idx_{TABLE_NAME}_embedding
+    ON {TABLE_NAME}
+    USING hnsw (embedding ${opClass})
+    WITH (m = 16, ef_construction = 64)
+""")
+
+print(f"Table '{TABLE_NAME}' and HNSW index created successfully")
+cur.close()
+conn.close()`;
+      },
+      upsert: () => {
+        const name = getVal('index-name').replace(/-/g, '_');
+        return `import os
+import psycopg2
+from pgvector.psycopg2 import register_vector
+import openai
+import numpy as np
+
+conn = psycopg2.connect(os.environ["DATABASE_URL"])
+register_vector(conn)
+oai = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+documents = [
+    {"id": "doc-1", "text": "Machine learning is a subset of AI", "source": "wiki", "category": "ml"},
+    {"id": "doc-2", "text": "Neural networks are inspired by the brain", "source": "wiki", "category": "dl"},
+    {"id": "doc-3", "text": "Transformers use self-attention for NLP", "source": "paper", "category": "nlp"},
+]
+
+def embed(texts: list[str]) -> list[list[float]]:
+    response = oai.embeddings.create(model="text-embedding-3-small", input=texts)
+    return [item.embedding for item in response.data]
+
+BATCH_SIZE = 100
+cur = conn.cursor()
+
+for i in range(0, len(documents), BATCH_SIZE):
+    batch = documents[i:i + BATCH_SIZE]
+    texts = [d["text"] for d in batch]
+    embeddings = embed(texts)
+
+    for doc, embedding in zip(batch, embeddings):
+        cur.execute(
+            f"""INSERT INTO ${name} (doc_id, content, source, category, embedding)
+               VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT (doc_id) DO UPDATE SET
+                 content = EXCLUDED.content,
+                 embedding = EXCLUDED.embedding,
+                 created_at = NOW()""",
+            (doc["id"], doc["text"], doc["source"], doc["category"],
+             np.array(embedding))
+        )
+
+conn.commit()
+print(f"Upserted {len(documents)} documents")
+cur.close()
+conn.close()`;
+      },
+      query: () => {
+        const name = getVal('index-name').replace(/-/g, '_');
+        const op = getVal('metric') === 'euclidean' ? '<->' : getVal('metric') === 'dotproduct' ? '<#>' : '<=>';
+        return `import os
+import psycopg2
+from pgvector.psycopg2 import register_vector
+import openai
+import numpy as np
+
+conn = psycopg2.connect(os.environ["DATABASE_URL"])
+register_vector(conn)
+oai = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+def query_similar(query: str, top_k: int = 5, category: str = None):
+    # Generate query embedding
+    response = oai.embeddings.create(model="text-embedding-3-small", input=[query])
+    query_vector = np.array(response.data[0].embedding)
+
+    cur = conn.cursor()
+
+    if category:
+        cur.execute(
+            f"""SELECT doc_id, content, source, category,
+                    1 - (embedding ${op} %s) AS similarity
+               FROM ${name}
+               WHERE category = %s
+               ORDER BY embedding ${op} %s
+               LIMIT %s""",
+            (query_vector, category, query_vector, top_k)
+        )
+    else:
+        cur.execute(
+            f"""SELECT doc_id, content, source, category,
+                    1 - (embedding ${op} %s) AS similarity
+               FROM ${name}
+               ORDER BY embedding ${op} %s
+               LIMIT %s""",
+            (query_vector, query_vector, top_k)
+        )
+
+    results = cur.fetchall()
+    cur.close()
+
+    for row in results:
+        doc_id, content, source, category, similarity = row
+        print(f"Similarity: {similarity:.4f} | ID: {doc_id}")
+        print(f"Text: {content[:100]}")
+        print()
+
+    return results
+
+results = query_similar("deep learning", top_k=3, category="dl")`;
+      },
+      env: () => `# .env — pgvector Configuration
+
+# PostgreSQL connection
+DATABASE_URL=postgresql://user:password@localhost:5432/mydb
+# Or individual components:
+# PGHOST=localhost
+# PGPORT=5432
+# PGDATABASE=mydb
+# PGUSER=myuser
+# PGPASSWORD=mypassword
+
+# Embedding model
+OPENAI_API_KEY=your_openai_api_key_here
+EMBEDDING_MODEL=text-embedding-3-small
+
+# Table settings
+PGVECTOR_TABLE=${getVal('index-name').replace(/-/g, '_')}
+EMBEDDING_DIMENSIONS=${getVal('dimensions')}
+
+# Docker (local):
+# docker run -e POSTGRES_PASSWORD=pass -p 5432:5432 pgvector/pgvector:pg16`
+    }
+  };
+
+  function generateCode() {
+    const gen = generators[currentProvider]?.[currentTab];
+    if (!gen) return;
+    const code = gen();
+    (document.getElementById('code-output') as HTMLElement).textContent = code;
+    const langMap: Record<CodeTab, string> = { setup: 'python', upsert: 'python', query: 'python', env: 'shell (.env)' };
+    (document.getElementById('code-lang-badge') as HTMLElement).textContent = langMap[currentTab];
+    updateStorage();
+  }
+
+  function updateStorage() {
+    const count = parseInt(getVal('vector-count')) || 0;
+    const dims = parseInt(getVal('dimensions')) || 1536;
+    const bytesPerDim = parseInt(getVal('precision')) || 4;
+    const metaBytes = parseInt(getVal('metadata-size')) || 256;
+    const hnswOverhead = 64;
+
+    const rawBytes = count * dims * bytesPerDim;
+    const metaTotal = count * metaBytes;
+    const hnswBytes = count * hnswOverhead;
+    const totalBytes = rawBytes + metaTotal + hnswBytes;
+
+    const fmt = (bytes: number): string => {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+      return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+    };
+
+    const el = document.getElementById('storage-result')!;
+    el.innerHTML = `
+      <div class="bg-black/20 rounded-lg p-3"><div class="text-text-muted text-xs mb-1">Vector data</div><div class="font-mono">${fmt(rawBytes)}</div></div>
+      <div class="bg-black/20 rounded-lg p-3"><div class="text-text-muted text-xs mb-1">Metadata</div><div class="font-mono">${fmt(metaTotal)}</div></div>
+      <div class="bg-black/20 rounded-lg p-3"><div class="text-text-muted text-xs mb-1">HNSW index</div><div class="font-mono">${fmt(hnswBytes)}</div></div>
+      <div class="bg-black/20 rounded-lg p-3 border border-primary/30"><div class="text-text-muted text-xs mb-1">Total estimate</div><div class="font-mono text-primary font-bold">${fmt(totalBytes)}</div></div>
+    `;
+  }
+
+  // Provider buttons
+  document.querySelectorAll('.provider-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.provider-btn').forEach(b => {
+        b.className = 'provider-btn border border-border bg-black/20 rounded-lg px-3 py-3 hover:border-primary hover:text-primary transition-colors text-center';
+      });
+      btn.className = 'provider-btn active-provider border border-primary bg-primary/10 text-primary rounded-lg px-3 py-3 hover:bg-primary/20 transition-colors text-center';
+      currentProvider = (btn as HTMLElement).dataset.provider as Provider;
+      generateCode();
+    });
+  });
+
+  // Code tabs
+  ['setup', 'upsert', 'query', 'env'].forEach(tab => {
+    document.getElementById(`tab-${tab}`)!.addEventListener('click', () => {
+      currentTab = tab as CodeTab;
+      ['setup', 'upsert', 'query', 'env'].forEach(t => {
+        const el = document.getElementById(`tab-${t}`)!;
+        el.className = t === tab
+          ? 'code-tab bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-medium'
+          : 'code-tab bg-black/20 border border-border px-3 py-1.5 rounded-lg text-xs font-medium hover:border-primary transition-colors';
+      });
+      generateCode();
+    });
+  });
+
+  document.getElementById('generate-btn')!.addEventListener('click', generateCode);
+
+  document.getElementById('copy-code')!.addEventListener('click', () => {
+    const text = (document.getElementById('code-output') as HTMLElement).textContent || '';
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('copy-code')!;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy Code'; }, 2000);
+    });
+  });
+
+  // Model table click — set dimensions
+  document.querySelectorAll('.model-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const dims = (row as HTMLElement).dataset.dims;
+      if (dims) {
+        const sel = document.getElementById('dimensions') as HTMLSelectElement;
+        const opt = Array.from(sel.options).find(o => o.value === dims);
+        if (opt) sel.value = dims;
+        generateCode();
+      }
+    });
+  });
+
+  // Storage inputs
+  ['vector-count', 'dimensions', 'precision', 'metadata-size'].forEach(id => {
+    document.getElementById(id)!.addEventListener('input', updateStorage);
+  });
+
+  // Initial render
+  generateCode();
+</script>
