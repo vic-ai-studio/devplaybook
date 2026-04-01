@@ -1,0 +1,218 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "When should I use GraphQL subscriptions vs polling?", answer: "Use subscriptions when you need real-time push updates — chat messages, live notifications, collaborative editing cursors, or order status changes. Use polling when the update frequency is low (every 30+ seconds), when real-time is not critical, or when infrastructure complexity is a concern. Polling is stateless and simpler to scale; subscriptions require persistent connections and stateful infrastructure (load balancers with sticky sessions or a pub/sub broker like Redis)." },
+  { question: "What is the graphql-ws protocol?", answer: "graphql-ws is the modern WebSocket subprotocol for GraphQL subscriptions (protocol identifier: graphql-transport-ws). It replaced the older subscriptions-transport-ws package which is no longer maintained. It handles connection initialization, ping/pong keepalives, subscription multiplexing over a single WebSocket, and graceful error handling. Apollo Server 4+ uses graphql-ws by default." },
+  { question: "What are Server-Sent Events (SSE) and when should I use them over WebSockets?", answer: "Server-Sent Events (SSE) is an HTTP-based protocol for one-way server-to-client streaming. Unlike WebSockets (full-duplex), SSE is unidirectional — only the server sends events. SSE works over standard HTTP/1.1 and HTTP/2, passes through proxies and firewalls more easily, and auto-reconnects natively in browsers. Use SSE for GraphQL subscriptions when you only need server-push (no client-initiated messages) and want simpler infrastructure. The graphql-sse package implements this." },
+  { question: "How do I scale GraphQL subscriptions across multiple server instances?", answer: "Each server instance maintains its own set of WebSocket connections. When an event is published, you need all instances to be notified so they can push to their connected clients. This requires a pub/sub broker. The most common approach is Redis pub/sub: the publishing instance publishes to a Redis channel, all server instances subscribe to that channel and forward messages to their connected clients. graphql-redis-subscriptions implements this pattern with Apollo Server's PubSub interface." },
+  { question: "Can I use subscriptions with Apollo Client?", answer: "Yes. Apollo Client has built-in subscription support via the useSubscription hook and subscribeToMore function on queries. You configure it with a WebSocketLink (using graphql-ws) in addition to your HttpLink for queries and mutations. A common pattern is to split the link: send subscription operations to WebSocketLink and everything else to HttpLink using Apollo's split() utility." },
+  { question: "What are the security considerations for subscriptions?", answer: "Authenticate WebSocket connections during the connection_init message (the initial handshake), not at the HTTP upgrade step. Send the auth token in the connectionParams field and validate it in your onConnect server handler. Also implement authorization per-subscription in the resolver to ensure users only receive events for resources they have access to. Rate-limit the number of active subscriptions per user to prevent resource exhaustion." },
+];
+---
+<BaseLayout
+  title="GraphQL Subscriptions: WebSocket & Server-Sent Events Guide"
+  description="Complete GraphQL subscriptions guide: polling vs subscriptions, graphql-ws WebSocket transport, SSE with graphql-sse, Apollo Server setup, subscription resolvers, and Redis pub/sub scaling."
+  tool="GraphQL subscriptions, WebSocket GraphQL, Server-Sent Events GraphQL, Apollo Server subscriptions, graphql-ws, Redis pub/sub"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "GraphQL Subscriptions: WebSocket & Server-Sent Events Guide",
+    "url": "https://devplaybook.cc/tools/graphql-subscription-guide",
+    "description": "Complete guide to GraphQL subscriptions covering WebSocket transport, SSE, Apollo Server setup, and Redis pub/sub scaling.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">GraphQL Subscriptions: WebSocket & Server-Sent Events Guide</h1>
+  <p class="text-text-muted mb-6">GraphQL subscriptions enable real-time data push from server to client. This guide covers when to use subscriptions, how to implement WebSocket and SSE transports, and how to scale across multiple server instances using Redis pub/sub.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> graphql-ws WebSocket protocol</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SSE with graphql-sse</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Apollo Server setup</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Redis pub/sub at scale</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Subscription Schema & Resolver</h2>
+  <p class="text-text-muted mb-4">Define subscriptions in the SDL and implement resolvers using AsyncIterator. The PubSub instance manages publish/subscribe internally:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>import &#123; PubSub &#125; from 'graphql-subscriptions';
+import &#123; gql &#125; from 'graphql-tag';
+
+const pubsub = new PubSub();
+const MESSAGE_ADDED = 'MESSAGE_ADDED';
+
+const typeDefs = gql`
+  type Message &#123;
+    id: ID!
+    content: String!
+    author: String!
+    createdAt: String!
+  &#125;
+
+  type Query &#123; messages(channelId: ID!): [Message!]! &#125;
+
+  type Mutation &#123;
+    sendMessage(channelId: ID!, content: String!, author: String!): Message!
+  &#125;
+
+  type Subscription &#123;
+    messageAdded(channelId: ID!): Message!
+  &#125;
+`;
+
+const resolvers = &#123;
+  Mutation: &#123;
+    sendMessage: async (_: unknown, args: any) => &#123;
+      const message = await db.messages.create(args);
+      // Publish to all subscribers of this channel
+      await pubsub.publish(`$&#123;MESSAGE_ADDED&#125;.$&#123;args.channelId&#125;`, &#123;
+        messageAdded: message,
+      &#125;);
+      return message;
+    &#125;,
+  &#125;,
+  Subscription: &#123;
+    messageAdded: &#123;
+      // AsyncIterator yields events when published
+      subscribe: (_: unknown, &#123; channelId &#125;: &#123; channelId: string &#125;) =>
+        pubsub.asyncIterator(`$&#123;MESSAGE_ADDED&#125;.$&#123;channelId&#125;`),
+    &#125;,
+  &#125;,
+&#125;;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Apollo Server with graphql-ws (WebSocket)</h2>
+  <p class="text-text-muted mb-4">Apollo Server 4 requires a separate WebSocket server for subscriptions. Use <code class="bg-bg-surface px-1 rounded">graphql-ws</code> to handle the WebSocket handshake alongside your HTTP server:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>import &#123; ApolloServer &#125; from '@apollo/server';
+import &#123; expressMiddleware &#125; from '@apollo/server/express4';
+import &#123; makeExecutableSchema &#125; from '@graphql-tools/schema';
+import &#123; useServer &#125; from 'graphql-ws/lib/use/ws';
+import &#123; WebSocketServer &#125; from 'ws';
+import express from 'express';
+import http from 'http';
+
+const schema = makeExecutableSchema(&#123; typeDefs, resolvers &#125;);
+const app = express();
+const httpServer = http.createServer(app);
+
+// WebSocket server — handles subscriptions
+const wsServer = new WebSocketServer(&#123;
+  server: httpServer,
+  path: '/graphql',
+&#125;);
+
+const serverCleanup = useServer(&#123;
+  schema,
+  onConnect: async (ctx) => &#123;
+    // Authenticate during WS handshake
+    const token = ctx.connectionParams?.authToken as string;
+    if (!token) throw new Error('Missing auth token');
+    return &#123; user: await validateToken(token) &#125;;
+  &#125;,
+&#125;, wsServer);
+
+// HTTP server — handles queries & mutations
+const apolloServer = new ApolloServer(&#123;
+  schema,
+  plugins: [
+    &#123; async serverWillStart() &#123;
+      return &#123; async drainServer() &#123; await serverCleanup.dispose(); &#125; &#125;;
+    &#125;&#125;,
+  ],
+&#125;);
+
+await apolloServer.start();
+app.use('/graphql', expressMiddleware(apolloServer));
+httpServer.listen(4000);</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Scaling with Redis Pub/Sub</h2>
+  <p class="text-text-muted mb-4">Replace the in-memory PubSub with <code class="bg-bg-surface px-1 rounded">graphql-redis-subscriptions</code> to broadcast events across all server instances:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>import &#123; RedisPubSub &#125; from 'graphql-redis-subscriptions';
+import Redis from 'ioredis';
+
+// Two Redis clients: one for publish, one for subscribe
+const pubsub = new RedisPubSub(&#123;
+  publisher: new Redis(&#123; host: 'redis', port: 6379 &#125;),
+  subscriber: new Redis(&#123; host: 'redis', port: 6379 &#125;),
+&#125;);
+
+// Drop-in replacement for the in-memory PubSub
+// All server instances share the same Redis channel
+// Instance A publishes → Redis broadcasts → Instance B/C push to their WS clients
+
+// Use pattern subscriptions for dynamic channels
+const asyncIterator = pubsub.asyncIterator(
+  `MESSAGE_ADDED.$&#123;channelId&#125;`  // per-channel topic
+);
+
+// With graphql-subscriptions-filter for server-side filtering:
+import &#123; withFilter &#125; from 'graphql-subscriptions';
+
+const resolvers = &#123;
+  Subscription: &#123;
+    messageAdded: &#123;
+      subscribe: withFilter(
+        (_: any, &#123; channelId &#125;: any) => pubsub.asyncIterator('MESSAGE_ADDED'),
+        (payload: any, variables: any) => payload.messageAdded.channelId === variables.channelId,
+      ),
+    &#125;,
+  &#125;,
+&#125;;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">WebSocket vs SSE vs Polling for Subscriptions</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Feature</th>
+          <th class="text-left px-4 py-3 font-semibold">WebSocket</th>
+          <th class="text-left px-4 py-3 font-semibold">Server-Sent Events</th>
+          <th class="text-left px-4 py-3 font-semibold">Polling</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Direction</td>
+          <td class="px-4 py-3">Full-duplex</td>
+          <td class="px-4 py-3">Server → Client only</td>
+          <td class="px-4 py-3">Client-initiated</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Protocol</td>
+          <td class="px-4 py-3">ws:// / wss://</td>
+          <td class="px-4 py-3">HTTP (text/event-stream)</td>
+          <td class="px-4 py-3">HTTP GET/POST</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Proxy friendly</td>
+          <td class="px-4 py-3">Sometimes tricky</td>
+          <td class="px-4 py-3 text-green-500">Works everywhere</td>
+          <td class="px-4 py-3 text-green-500">Works everywhere</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Auto-reconnect</td>
+          <td class="px-4 py-3">Manual</td>
+          <td class="px-4 py-3 text-green-500">Built-in browser</td>
+          <td class="px-4 py-3">N/A</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Latency</td>
+          <td class="px-4 py-3 text-green-500">Real-time</td>
+          <td class="px-4 py-3 text-green-500">Real-time</td>
+          <td class="px-4 py-3">Interval-based</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Best for</td>
+          <td class="px-4 py-3">Chat, collaborative</td>
+          <td class="px-4 py-3">Notifications, feeds</td>
+          <td class="px-4 py-3">Low-frequency updates</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="graphql-subscription-guide" relatedTags={['graphql', 'websocket', 'realtime', 'apollo', 'backend']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

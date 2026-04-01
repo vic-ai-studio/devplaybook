@@ -1,0 +1,195 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the simplest pagination strategy to implement?", answer: "Offset pagination (page and limit query parameters) is the simplest to implement and understand. You pass page=2&limit=20 and the server skips (page-1)*limit records. It works well with SQL LIMIT and OFFSET, is easy to build UI for (page numbers, jump to page), and is familiar to most developers. The main drawbacks are performance on large datasets and the possibility of duplicate or missed items when records are inserted or deleted during pagination." },
+  { question: "When should I use cursor-based pagination?", answer: "Use cursor-based pagination when your dataset is large (millions of rows), when items are frequently inserted or deleted, or when you need real-time feeds (like social media timelines). A cursor encodes the position of the last fetched item as an opaque string (usually base64-encoded id or timestamp). The server uses it to fetch the next page efficiently without counting skipped rows, making it O(1) regardless of page depth." },
+  { question: "What is keyset pagination?", answer: "Keyset pagination is a database-efficient variant of cursor pagination where the cursor is a set of column values that uniquely identifies a position. Instead of OFFSET, the query uses WHERE (created_at, id) < (cursor_time, cursor_id) ORDER BY created_at DESC, id DESC. This uses the database index efficiently and performs consistently even on page 10,000. It is sometimes called seek-method pagination." },
+  { question: "What are Link headers in REST pagination?", answer: "RFC 5988 defines Link headers as a standard way to communicate pagination links in HTTP responses without embedding them in the response body. GitHub's API popularized this pattern: Link: <https://api.example.com/items?page=3>; rel='next', <https://api.example.com/items?page=1>; rel='first'. This keeps the response body clean (just the data array) and allows clients to follow links generically." },
+  { question: "What is the Relay connection spec?", answer: "The Relay connection specification is a GraphQL pagination convention popularized by Facebook's Relay client. It defines a standardized shape: edges array (each with a node and cursor), pageInfo object (hasNextPage, hasPreviousPage, startCursor, endCursor), and the use of first/after and last/before arguments. Many GraphQL APIs adopt this spec even without using Relay to give clients predictable cursor pagination." },
+  { question: "What is the maximum page size I should allow?", answer: "A common best practice is to cap page size at 100-200 items and default to 20-50. Allowing unlimited page sizes exposes your API to denial-of-service via requests that force the database to scan millions of rows or serialize enormous JSON responses. Always validate and enforce a maximum limit server-side, even if the client passes a higher value." },
+];
+---
+<BaseLayout
+  title="API Pagination Patterns: Cursor vs Offset vs Keyset Guide"
+  description="Complete API pagination guide: offset pagination pros/cons, cursor-based pagination with opaque cursors, keyset (seek method) pagination, Link headers, and Relay connection spec."
+  tool="API pagination patterns, cursor pagination, offset pagination, keyset pagination, REST API pagination, Relay connection spec"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "API Pagination Patterns: Cursor vs Offset vs Keyset Guide",
+    "url": "https://devplaybook.cc/tools/api-pagination-patterns",
+    "description": "Complete guide to API pagination: offset, cursor-based, and keyset patterns with code examples and comparison table.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">API Pagination Patterns: Cursor vs Offset vs Keyset Guide</h1>
+  <p class="text-text-muted mb-6">Pagination is fundamental to every API that returns lists. Choosing the wrong strategy causes performance cliffs, duplicate results, and poor developer experience. This guide covers the three main patterns with real code and trade-off analysis.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Offset, cursor & keyset compared</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Link header RFC 5988 standard</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Relay connection spec</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SQL query examples</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Offset Pagination</h2>
+  <p class="text-text-muted mb-4">The classic approach — simple to build and understand but degrades on large datasets because the database must scan all skipped rows:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// GET /posts?page=3&limit=20
+// Response includes metadata for UI controls
+
+app.get('/posts', async (req, res) => &#123;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, parseInt(req.query.limit) || 20);
+  const offset = (page - 1) * limit;
+
+  const [items, total] = await Promise.all([
+    db.query('SELECT * FROM posts ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]),
+    db.query('SELECT COUNT(*) FROM posts'),
+  ]);
+
+  const totalPages = Math.ceil(total.rows[0].count / limit);
+
+  res.json(&#123;
+    data: items.rows,
+    meta: &#123;
+      page,
+      limit,
+      total: parseInt(total.rows[0].count),
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    &#125;,
+    links: &#123;
+      first: `/posts?page=1&limit=$&#123;limit&#125;`,
+      prev: page > 1 ? `/posts?page=$&#123;page - 1&#125;&limit=$&#123;limit&#125;` : null,
+      next: page < totalPages ? `/posts?page=$&#123;page + 1&#125;&limit=$&#123;limit&#125;` : null,
+      last: `/posts?page=$&#123;totalPages&#125;&limit=$&#123;limit&#125;`,
+    &#125;,
+  &#125;);
+&#125;);</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cursor-Based Pagination (Opaque Cursor)</h2>
+  <p class="text-text-muted mb-4">Cursor pagination encodes position as an opaque string. The server decodes it; clients treat it as a black box. No missing or duplicate items when data changes between pages:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// GET /posts?after=eyJpZCI6NDJ9&limit=20
+// Cursor = base64(JSON.stringify(&#123; id: 42 &#125;))
+
+function encodeCursor(id: number): string &#123;
+  return Buffer.from(JSON.stringify(&#123; id &#125;)).toString('base64url');
+&#125;
+
+function decodeCursor(cursor: string): &#123; id: number &#125; &#123;
+  return JSON.parse(Buffer.from(cursor, 'base64url').toString());
+&#125;
+
+app.get('/posts', async (req, res) => &#123;
+  const limit = Math.min(100, parseInt(req.query.limit) || 20);
+  const after = req.query.after as string | undefined;
+
+  let query: string;
+  let params: any[];
+
+  if (after) &#123;
+    const &#123; id &#125; = decodeCursor(after);
+    query = 'SELECT * FROM posts WHERE id < $1 ORDER BY id DESC LIMIT $2';
+    params = [id, limit + 1];  // fetch one extra to determine hasNextPage
+  &#125; else &#123;
+    query = 'SELECT * FROM posts ORDER BY id DESC LIMIT $1';
+    params = [limit + 1];
+  &#125;
+
+  const rows = await db.query(query, params);
+  const hasNextPage = rows.length > limit;
+  const items = hasNextPage ? rows.slice(0, limit) : rows;
+
+  res.json(&#123;
+    data: items,
+    pageInfo: &#123;
+      hasNextPage,
+      endCursor: items.length ? encodeCursor(items[items.length - 1].id) : null,
+    &#125;,
+  &#125;);
+&#125;);</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Keyset Pagination (Seek Method)</h2>
+  <p class="text-text-muted mb-4">Keyset pagination uses compound WHERE clauses matching the ORDER BY columns. It hits the index directly — O(1) for any page depth:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>-- Keyset query — no OFFSET, uses index on (created_at, id)
+-- First page
+SELECT * FROM posts
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+
+-- Next page — cursor encodes (created_at, id) of last item
+SELECT * FROM posts
+WHERE (created_at, id) < ('2026-01-10T12:00:00Z', 99)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+
+-- Ensure the index exists for O(log n) performance
+CREATE INDEX idx_posts_keyset ON posts (created_at DESC, id DESC);
+
+-- Node.js implementation
+const cursor = &#123; createdAt: lastItem.created_at, id: lastItem.id &#125;;
+const encoded = Buffer.from(JSON.stringify(cursor)).toString('base64url');
+
+// Next request: GET /posts?cursor=eyJjcmVhdGVkQXQ...
+// Server decodes and builds the WHERE clause above</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Offset vs Cursor vs Keyset Comparison</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Criteria</th>
+          <th class="text-left px-4 py-3 font-semibold">Offset</th>
+          <th class="text-left px-4 py-3 font-semibold">Cursor (opaque)</th>
+          <th class="text-left px-4 py-3 font-semibold">Keyset (seek)</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Implementation</td>
+          <td class="px-4 py-3 text-green-500">Very simple</td>
+          <td class="px-4 py-3">Moderate</td>
+          <td class="px-4 py-3">Moderate</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Deep page perf</td>
+          <td class="px-4 py-3 text-red-400">O(n) — degrades</td>
+          <td class="px-4 py-3 text-green-500">O(log n)</td>
+          <td class="px-4 py-3 text-green-500">O(log n)</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Skip to page N</td>
+          <td class="px-4 py-3 text-green-500">Yes</td>
+          <td class="px-4 py-3 text-red-400">No</td>
+          <td class="px-4 py-3 text-red-400">No</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Stable on mutations</td>
+          <td class="px-4 py-3 text-red-400">Can miss/repeat items</td>
+          <td class="px-4 py-3 text-green-500">Stable</td>
+          <td class="px-4 py-3 text-green-500">Stable</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Total count</td>
+          <td class="px-4 py-3 text-green-500">Easy (COUNT query)</td>
+          <td class="px-4 py-3">Extra query needed</td>
+          <td class="px-4 py-3">Extra query needed</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Best for</td>
+          <td class="px-4 py-3">Admin UIs, small data</td>
+          <td class="px-4 py-3">Feeds, APIs</td>
+          <td class="px-4 py-3">High-scale read APIs</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="api-pagination-patterns" relatedTags={['api', 'rest', 'backend', 'database', 'performance']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

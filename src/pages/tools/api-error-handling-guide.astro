@@ -1,0 +1,140 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What HTTP status codes should my API use?", answer: "Use 200 OK for successful GET/PUT/PATCH, 201 Created for POST that creates a resource (include a Location header), 204 No Content for DELETE. For errors: 400 Bad Request for malformed input, 401 Unauthorized for missing/invalid auth, 403 Forbidden for insufficient permissions, 404 Not Found for missing resources, 409 Conflict for duplicate creates, 422 Unprocessable Entity for validation errors, 429 Too Many Requests for rate limits, 500 Internal Server Error for unexpected failures." },
+  { question: "What is RFC 7807 Problem Details?", answer: "RFC 7807 (now superseded by RFC 9457) is an IETF standard for structuring HTTP API error responses. It defines a JSON object with type (a URI identifying the error type), title (human-readable summary), status (HTTP status code), detail (specific explanation), and instance (a URI identifying this specific error occurrence). Using a standard format means clients can parse errors generically across different APIs." },
+  { question: "Should I return validation errors in a single response or one at a time?", answer: "Always return all validation errors at once. Returning one error at a time forces the user or client to fix, resubmit, and discover the next error in a frustrating loop. Collect all validation failures, return them in an errors array in a single 422 response, and make each error object identify the specific field (via a pointer or field name) and the reason it failed." },
+  { question: "Should I expose stack traces in API error responses?", answer: "Never in production. Stack traces expose your internal implementation details, file paths, library versions, and logic flow to potential attackers. Log the full stack trace server-side with a correlation ID, and return only that correlation ID in the error response so your team can look up the details. The error message returned to clients should describe what went wrong, not how your code works." },
+  { question: "What is the difference between 401 and 403?", answer: "401 Unauthorized means the request lacks valid credentials — the client is not authenticated. The client should retry with a valid token or credentials. 403 Forbidden means the client is authenticated but does not have permission to perform the action — re-authenticating will not help. A common mistake is returning 401 for permission failures, which confuses clients into attempting re-authentication unnecessarily." },
+  { question: "How should GraphQL APIs handle errors?", answer: "GraphQL uses a top-level errors array alongside the data field. A request can partially succeed — data contains the successful parts and errors lists the failures with message, locations (line/column in the query), path (which field failed), and extensions for additional metadata like error codes. For application-level errors that should be part of the type system, use union types (e.g. CreateUserResult = User | ValidationError | AuthError) so clients get typed error handling." },
+];
+---
+<BaseLayout
+  title="API Error Handling: RFC 7807 Problem Details & Best Practices"
+  description="Complete API error handling guide: HTTP status codes, RFC 7807 Problem Details format, validation error design, Express error middleware, and GraphQL error handling."
+  tool="API error handling, RFC 7807 Problem Details, HTTP status codes, validation errors, Express error middleware, REST error format"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "API Error Handling: RFC 7807 Problem Details & Best Practices",
+    "url": "https://devplaybook.cc/tools/api-error-handling-guide",
+    "description": "Complete API error handling guide covering HTTP status codes, RFC 7807 Problem Details, validation errors, and middleware patterns.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">API Error Handling: RFC 7807 Problem Details & Best Practices</h1>
+  <p class="text-text-muted mb-6">Consistent, informative error responses are a mark of a well-designed API. This guide covers the HTTP status code vocabulary, the RFC 7807 Problem Details standard, validation error patterns, and Express middleware for centralizing error handling.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HTTP status code reference</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> RFC 7807 Problem Details format</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Validation error arrays</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Express central error handler</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">HTTP Status Code Quick Reference</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Code</th>
+          <th class="text-left px-4 py-3 font-semibold">Name</th>
+          <th class="text-left px-4 py-3 font-semibold">When to Use</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50"><td class="px-4 py-3 font-mono text-green-500">200</td><td class="px-4 py-3">OK</td><td class="px-4 py-3">Successful GET, PUT, PATCH</td></tr>
+        <tr><td class="px-4 py-3 font-mono text-green-500">201</td><td class="px-4 py-3">Created</td><td class="px-4 py-3">POST created a resource (add Location header)</td></tr>
+        <tr class="bg-bg-surface/50"><td class="px-4 py-3 font-mono text-green-500">204</td><td class="px-4 py-3">No Content</td><td class="px-4 py-3">DELETE succeeded, no body returned</td></tr>
+        <tr><td class="px-4 py-3 font-mono text-yellow-500">400</td><td class="px-4 py-3">Bad Request</td><td class="px-4 py-3">Malformed JSON, missing required params</td></tr>
+        <tr class="bg-bg-surface/50"><td class="px-4 py-3 font-mono text-yellow-500">401</td><td class="px-4 py-3">Unauthorized</td><td class="px-4 py-3">Missing or invalid authentication token</td></tr>
+        <tr><td class="px-4 py-3 font-mono text-yellow-500">403</td><td class="px-4 py-3">Forbidden</td><td class="px-4 py-3">Authenticated but lacks permission</td></tr>
+        <tr class="bg-bg-surface/50"><td class="px-4 py-3 font-mono text-yellow-500">404</td><td class="px-4 py-3">Not Found</td><td class="px-4 py-3">Resource does not exist</td></tr>
+        <tr><td class="px-4 py-3 font-mono text-yellow-500">409</td><td class="px-4 py-3">Conflict</td><td class="px-4 py-3">Duplicate create, version conflict</td></tr>
+        <tr class="bg-bg-surface/50"><td class="px-4 py-3 font-mono text-yellow-500">422</td><td class="px-4 py-3">Unprocessable Entity</td><td class="px-4 py-3">Validation errors on well-formed input</td></tr>
+        <tr><td class="px-4 py-3 font-mono text-yellow-500">429</td><td class="px-4 py-3">Too Many Requests</td><td class="px-4 py-3">Rate limit exceeded (add Retry-After)</td></tr>
+        <tr class="bg-bg-surface/50"><td class="px-4 py-3 font-mono text-red-400">500</td><td class="px-4 py-3">Internal Server Error</td><td class="px-4 py-3">Unexpected server failure</td></tr>
+        <tr><td class="px-4 py-3 font-mono text-red-400">503</td><td class="px-4 py-3">Service Unavailable</td><td class="px-4 py-3">Downstream dependency is down</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">RFC 7807 Problem Details Format</h2>
+  <p class="text-text-muted mb-4">Use <code class="bg-bg-surface px-1 rounded">Content-Type: application/problem+json</code> and structure errors as standardized Problem Details objects. Extend with custom fields as needed:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// HTTP 422 Unprocessable Entity
+// Content-Type: application/problem+json
+
+&#123;
+  "type": "https://devplaybook.cc/problems/validation-error",
+  "title": "Validation Failed",
+  "status": 422,
+  "detail": "The request body contains invalid fields.",
+  "instance": "/requests/f7ab2c10-a1b2-4c3d",
+  "errors": [
+    &#123;
+      "pointer": "/data/attributes/email",
+      "detail": "Must be a valid email address",
+      "code": "invalid_email"
+    &#125;,
+    &#123;
+      "pointer": "/data/attributes/age",
+      "detail": "Must be a positive integer",
+      "code": "invalid_range"
+    &#125;
+  ]
+&#125;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Express Central Error Handler</h2>
+  <p class="text-text-muted mb-4">Centralize all error formatting in a single Express error middleware registered last. Custom error classes carry status codes and structured detail:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// errors/AppError.ts
+export class AppError extends Error &#123;
+  constructor(
+    public readonly status: number,
+    public readonly type: string,
+    message: string,
+    public readonly errors?: object[],
+  ) &#123; super(message); &#125;
+&#125;
+
+export class ValidationError extends AppError &#123;
+  constructor(errors: &#123; pointer: string; detail: string; code: string &#125;[]) &#123;
+    super(422, 'https://devplaybook.cc/problems/validation-error',
+      'Validation Failed', errors);
+  &#125;
+&#125;
+
+// middleware/errorHandler.ts
+import &#123; Request, Response, NextFunction &#125; from 'express';
+
+export function errorHandler(err: any, req: Request, res: Response, _next: NextFunction) &#123;
+  // Never expose stack traces in production
+  if (process.env.NODE_ENV !== 'production') console.error(err);
+
+  const status = err.status ?? 500;
+  const body: Record&lt;string, unknown&gt; = &#123;
+    type: err.type ?? 'https://devplaybook.cc/problems/internal-error',
+    title: err.message ?? 'An unexpected error occurred',
+    status,
+    instance: req.path,
+  &#125;;
+
+  if (err.errors) body.errors = err.errors;
+
+  // Log internal errors with correlation ID
+  if (status >= 500) &#123;
+    const correlationId = req.headers['x-correlation-id'] ?? crypto.randomUUID();
+    console.error(&#123; correlationId, error: err.message, stack: err.stack &#125;);
+    body.correlationId = correlationId;
+    body.title = 'An unexpected error occurred';  // sanitize message
+  &#125;
+
+  res.status(status).contentType('application/problem+json').json(body);
+&#125;</code></pre>
+
+  <ToolPageCta currentTool="api-error-handling-guide" relatedTags={['api', 'rest', 'backend', 'express', 'error-handling']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

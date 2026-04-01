@@ -1,0 +1,175 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the most common API versioning strategy?", answer: "URL path versioning (/v1/, /v2/) is by far the most widely used approach. It is immediately visible in browser address bars, easy to route at the load balancer or API gateway level, simple to document separately per version, and trivial for developers to understand. GitHub, Stripe, Twitter, and most major public APIs use URL versioning. The main downside is that it violates strict REST principles (the URL should identify a resource, not a contract version)." },
+  { question: "What is the difference between header versioning and content negotiation?", answer: "Header versioning uses a custom request header like API-Version: 2 to specify the desired version. Content negotiation uses the standard Accept header with a vendor MIME type: Accept: application/vnd.myapi.v2+json. Content negotiation is more RESTful because it uses standard HTTP mechanics, but it is harder to test in browsers, less visible in logs, and less intuitive for developers. Both keep URLs clean. Header versioning is a practical middle ground between URL versioning and full content negotiation." },
+  { question: "How long should I maintain an old API version?", answer: "Industry practice is 6 to 24 months of parallel support after announcing a version's deprecation. The exact period depends on your user base — public APIs with many third-party integrations need longer windows. Communicate the sunset date clearly in documentation, in the Sunset and Deprecation headers on every response from the old version, and via direct email to registered API users." },
+  { question: "What is the Sunset header?", answer: "The Sunset HTTP response header (RFC 8594) communicates the date after which a deprecated API version or endpoint will no longer be available. Example: Sunset: Sat, 01 Jan 2027 00:00:00 GMT. Combine it with a Link header pointing to migration documentation: Link: <https://devplaybook.cc/migrate>; rel='sunset'. Clients that inspect headers can automatically warn developers when they hit a sunsetted endpoint." },
+  { question: "Should I version the entire API or individual endpoints?", answer: "Versioning the entire API (all endpoints move from /v1 to /v2 together) is simpler to manage but forces consumers to upgrade everything at once. Endpoint-level versioning lets you version only the changed resources, reducing migration scope for consumers. A pragmatic approach is API-level versioning with feature flags or additive changes for minor updates — increment the major API version only for breaking changes that affect multiple endpoints." },
+  { question: "What counts as a breaking change that requires a version bump?", answer: "Breaking changes include: removing a field from a response, renaming a field, changing a field's type (e.g. string to number), changing HTTP status codes for existing operations, removing an endpoint, making an optional field required, and changing authentication mechanisms. Non-breaking (additive) changes that do not require a version bump: adding new optional fields to responses, adding new optional request parameters, adding new endpoints, and adding new enum values (with caution — strict enum parsers may break)." },
+];
+---
+<BaseLayout
+  title="REST API Versioning Strategies: URL, Header & Content Negotiation"
+  description="Complete REST API versioning guide: URL path versioning, header versioning, content negotiation with Accept headers, query parameter versioning, pros/cons table, and Sunset headers."
+  tool="API versioning, REST versioning, URL versioning, header versioning, content negotiation API, backward compatibility, Sunset header"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "REST API Versioning Strategies: URL, Header & Content Negotiation",
+    "url": "https://devplaybook.cc/tools/rest-api-versioning-guide",
+    "description": "Complete REST API versioning guide covering URL versioning, header versioning, content negotiation, and backward compatibility practices.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">REST API Versioning Strategies: URL, Header & Content Negotiation</h1>
+  <p class="text-text-muted mb-6">API versioning lets you evolve your API without breaking existing clients. Each strategy has trade-offs between visibility, REST purity, and developer experience. This guide covers all four approaches with working examples and a pros/cons comparison.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> URL, header & content negotiation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Breaking vs non-breaking changes</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Sunset & Deprecation headers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pros/cons comparison table</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">URL Path Versioning (Most Common)</h2>
+  <p class="text-text-muted mb-4">The version is embedded in the URL path. Simple to understand, route, and document. Used by Stripe, GitHub, and most major public APIs:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code># URL versioning — version in path prefix
+GET https://api.example.com/v1/users/42
+GET https://api.example.com/v2/users/42
+
+# Express router setup — mount each version separately
+import express from 'express';
+import &#123; v1Router &#125; from './routes/v1';
+import &#123; v2Router &#125; from './routes/v2';
+
+const app = express();
+
+app.use('/v1', v1Router);   // Legacy — maintained until 2027-01-01
+app.use('/v2', v2Router);   // Current stable version
+
+# Kong API Gateway routing by path prefix
+services:
+  - name: api-v1
+    url: http://api-service:8080/v1
+    routes:
+      - paths: ['/v1']
+  - name: api-v2
+    url: http://api-service:8080/v2
+    routes:
+      - paths: ['/v2']</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Header Versioning & Content Negotiation</h2>
+  <p class="text-text-muted mb-4">Keep URLs clean by encoding the version in a request header or the Accept header. Both approaches require client-side discipline but produce cleaner resource URIs:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code># Option A: Custom header versioning
+GET /users/42
+API-Version: 2
+Authorization: Bearer eyJ...
+
+# Option B: Content negotiation (most RESTful)
+GET /users/42
+Accept: application/vnd.example.v2+json
+Authorization: Bearer eyJ...
+
+# Express middleware — read version from header or Accept
+function resolveVersion(req: Request, res: Response, next: NextFunction) &#123;
+  // Try custom header first
+  let version = req.headers['api-version'] as string;
+
+  // Fall back to Accept header content negotiation
+  if (!version) &#123;
+    const accept = req.headers.accept ?? '';
+    const match = accept.match(/application\/vnd\.example\.v(\d+)\+json/);
+    version = match?.[1] ?? '1';   // default to v1
+  &#125;
+
+  req.apiVersion = parseInt(version, 10);
+  next();
+&#125;
+
+app.use(resolveVersion);
+
+app.get('/users/:id', (req: any, res) => &#123;
+  if (req.apiVersion >= 2) return userHandlerV2(req, res);
+  return userHandlerV1(req, res);
+&#125;);</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Sunset & Deprecation Headers</h2>
+  <p class="text-text-muted mb-4">Always announce deprecated versions via response headers so automated tooling and monitoring can alert developers before the cutoff date:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// Middleware: add deprecation headers to all v1 responses
+function deprecationWarning(req: Request, res: Response, next: NextFunction) &#123;
+  // RFC 8594 Sunset header — machine-readable cutoff date
+  res.set('Sunset', 'Sat, 01 Jan 2027 00:00:00 GMT');
+
+  // Deprecation header — when deprecation was announced
+  res.set('Deprecation', 'Mon, 01 Jul 2026 00:00:00 GMT');
+
+  // Link to migration guide
+  res.set('Link', [
+    '&lt;https://devplaybook.cc/api/migrate-v1-to-v2&gt;; rel="successor-version"',
+    '&lt;https://devplaybook.cc/api/sunset&gt;; rel="sunset"',
+  ].join(', '));
+
+  next();
+&#125;
+
+// Apply only to v1 routes
+app.use('/v1', deprecationWarning, v1Router);
+
+// Response headers clients will see on every v1 call:
+// Sunset: Sat, 01 Jan 2027 00:00:00 GMT
+// Deprecation: Mon, 01 Jul 2026 00:00:00 GMT
+// Link: &lt;.../migrate-v1-to-v2&gt;; rel="successor-version"</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Versioning Strategy Comparison</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Strategy</th>
+          <th class="text-left px-4 py-3 font-semibold">Visibility</th>
+          <th class="text-left px-4 py-3 font-semibold">REST Purity</th>
+          <th class="text-left px-4 py-3 font-semibold">Browser Testable</th>
+          <th class="text-left px-4 py-3 font-semibold">Routing</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">URL (/v1/)</td>
+          <td class="px-4 py-3 text-green-500">High</td>
+          <td class="px-4 py-3 text-red-400">Low (URL ≠ resource)</td>
+          <td class="px-4 py-3 text-green-500">Yes</td>
+          <td class="px-4 py-3 text-green-500">Very easy</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Header (API-Version)</td>
+          <td class="px-4 py-3">Medium</td>
+          <td class="px-4 py-3">Medium</td>
+          <td class="px-4 py-3">Harder</td>
+          <td class="px-4 py-3">Moderate</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Content Negotiation</td>
+          <td class="px-4 py-3">Low</td>
+          <td class="px-4 py-3 text-green-500">High</td>
+          <td class="px-4 py-3 text-red-400">Difficult</td>
+          <td class="px-4 py-3">Moderate</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Query Param (?v=2)</td>
+          <td class="px-4 py-3">High</td>
+          <td class="px-4 py-3 text-red-400">Low</td>
+          <td class="px-4 py-3 text-green-500">Yes</td>
+          <td class="px-4 py-3 text-green-500">Easy</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="rest-api-versioning-guide" relatedTags={['api', 'rest', 'versioning', 'backend', 'api-design']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

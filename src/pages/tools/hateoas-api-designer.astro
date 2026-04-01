@@ -1,0 +1,195 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is HATEOAS and why does it matter?", answer: "HATEOAS (Hypermedia As The Engine Of Application State) is a constraint of REST that says responses should include links to related actions the client can take next. Instead of hardcoding URLs in the client, the client discovers them from the server's responses. This decouples the client from the URL structure and lets the server evolve its API without breaking clients that follow links." },
+  { question: "What is the Richardson Maturity Model?", answer: "The Richardson Maturity Model (RMM) describes four levels of REST API maturity. Level 0: Single endpoint, RPC-style (SOAP, XML-RPC). Level 1: Multiple resources, each with their own URL. Level 2: HTTP verbs used correctly (GET for reads, POST for creates, DELETE for deletes, appropriate status codes). Level 3: Hypermedia controls — responses include links to available actions. Most APIs reach Level 2; true Level 3 HATEOAS is rare but powerful for complex workflows." },
+  { question: "What is HAL (Hypertext Application Language)?", answer: "HAL is a lightweight convention for embedding hypermedia links in JSON responses. It uses two reserved properties: _links (an object of link relations to URL objects with href) and _embedded (for sideloaded related resources). HAL is simple to implement and widely understood. It is defined in IETF draft RFC draft-kelly-json-hal and has library support in Spring, Node.js, and .NET." },
+  { question: "What link relation types should I use?", answer: "Use IANA-registered link relation types when available: self (canonical URL of this resource), next/prev (pagination), first/last (pagination bounds), related (related resource), item (item within a collection), collection (parent collection). For domain-specific relations, use a URI as the relation type (e.g. https://api.example.com/rels/cancel). Avoid inventing short non-URI relation names as they can clash." },
+  { question: "Is HATEOAS practical for modern SPAs and mobile apps?", answer: "HATEOAS has practical challenges for tightly-typed frontends. SPA and mobile clients often need to know the URL structure at build time for navigation and deep linking. Many teams implement a partial HATEOAS approach: include self links and pagination links (which clients actually use), but stop short of encoding all workflow transitions as links. The key benefit — clients following links rather than hardcoding paths — is most valuable for third-party API consumers." },
+  { question: "What is the difference between HAL and Siren?", answer: "HAL focuses on links and embedded resources — it represents state and navigation. Siren extends this with actions: structured descriptions of forms/mutations (method, fields, type) that clients can use to perform writes without knowing the URL or HTTP method upfront. Siren is more expressive but less widely adopted. HAL is the safer default for most APIs; Siren suits complex workflow-driven APIs." },
+];
+---
+<BaseLayout
+  title="HATEOAS: REST Level 3 API Design & HAL Implementation"
+  description="HATEOAS guide: Richardson Maturity Model levels 0-3, HAL hypermedia format, HAL+JSON response examples, and Node.js / Spring HATEOAS implementation patterns."
+  tool="HATEOAS REST API, HAL hypermedia, Richardson Maturity Model, REST Level 3, hypermedia API design, HAL+JSON"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "HATEOAS: REST Level 3 API Design & HAL Implementation",
+    "url": "https://devplaybook.cc/tools/hateoas-api-designer",
+    "description": "HATEOAS guide covering the Richardson Maturity Model, HAL format, and practical Node.js and Spring implementation examples.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">HATEOAS: REST Level 3 API Design & HAL Implementation</h1>
+  <p class="text-text-muted mb-6">HATEOAS is the highest level of REST maturity — your API responses include links to every action a client can take next. Clients navigate the API like a website, following hyperlinks rather than hardcoding paths. This guide covers the theory and practical HAL implementation.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Richardson Maturity Model explained</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HAL+JSON format & examples</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Node.js & Spring HATEOAS</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> IANA link relations reference</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Richardson Maturity Model — Levels 0 to 3</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Level</th>
+          <th class="text-left px-4 py-3 font-semibold">Name</th>
+          <th class="text-left px-4 py-3 font-semibold">Description</th>
+          <th class="text-left px-4 py-3 font-semibold">Example</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-mono font-bold text-red-400">0</td>
+          <td class="px-4 py-3">Swamp of POX</td>
+          <td class="px-4 py-3">Single endpoint, all operations via POST</td>
+          <td class="px-4 py-3 font-mono text-xs">POST /api &#123;action: "getUser"&#125;</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-mono font-bold text-yellow-500">1</td>
+          <td class="px-4 py-3">Resources</td>
+          <td class="px-4 py-3">Multiple resource URLs, still mostly POST</td>
+          <td class="px-4 py-3 font-mono text-xs">POST /users/42</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-mono font-bold text-blue-400">2</td>
+          <td class="px-4 py-3">HTTP Verbs</td>
+          <td class="px-4 py-3">Correct verbs + status codes per operation</td>
+          <td class="px-4 py-3 font-mono text-xs">GET /users/42 → 200</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-mono font-bold text-green-500">3</td>
+          <td class="px-4 py-3">Hypermedia</td>
+          <td class="px-4 py-3">Responses include _links to available actions</td>
+          <td class="px-4 py-3 font-mono text-xs">&#123;"_links": &#123;"self": ...&#125;&#125;</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">HAL+JSON Response Format</h2>
+  <p class="text-text-muted mb-4">HAL uses <code class="bg-bg-surface px-1 rounded">_links</code> for hypermedia controls and <code class="bg-bg-surface px-1 rounded">_embedded</code> for related resources. The <code class="bg-bg-surface px-1 rounded">Content-Type</code> is <code class="bg-bg-surface px-1 rounded">application/hal+json</code>:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// GET /orders/42
+// Content-Type: application/hal+json
+
+&#123;
+  "id": 42,
+  "total": 149.99,
+  "status": "pending",
+  "currency": "USD",
+  "_links": &#123;
+    "self": &#123; "href": "/orders/42" &#125;,
+    "cancel": &#123; "href": "/orders/42/cancel", "title": "Cancel this order" &#125;,
+    "payment": &#123; "href": "/orders/42/payment" &#125;,
+    "collection": &#123; "href": "/orders" &#125;,
+    "customer": &#123; "href": "/customers/7" &#125;
+  &#125;,
+  "_embedded": &#123;
+    "items": [
+      &#123;
+        "id": 101,
+        "name": "Developer Playbook Pro",
+        "quantity": 1,
+        "price": 149.99,
+        "_links": &#123;
+          "product": &#123; "href": "/products/101" &#125;
+        &#125;
+      &#125;
+    ]
+  &#125;
+&#125;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Node.js HAL Builder</h2>
+  <p class="text-text-muted mb-4">A minimal helper that attaches <code class="bg-bg-surface px-1 rounded">_links</code> to any response object and sets the correct Content-Type:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>// utils/hal.ts
+type Link = &#123; href: string; title?: string; templated?: boolean &#125;;
+type Links = Record&lt;string, Link | Link[]&gt;;
+
+export function hal&lt;T extends object&gt;(
+  resource: T,
+  links: Links,
+  embedded?: Record&lt;string, object | object[]&gt;,
+): T & &#123; _links: Links; _embedded?: Record&lt;string, unknown&gt; &#125; &#123;
+  return &#123;
+    ...resource,
+    _links: links,
+    ...(embedded ? &#123; _embedded: embedded &#125; : &#123;&#125;),
+  &#125;;
+&#125;
+
+// In a route handler:
+app.get('/orders/:id', async (req, res) => &#123;
+  const order = await db.orders.findById(req.params.id);
+  const canCancel = order.status === 'pending';
+
+  const links: Links = &#123;
+    self: &#123; href: `/orders/$&#123;order.id&#125;` &#125;,
+    collection: &#123; href: '/orders' &#125;,
+    customer: &#123; href: `/customers/$&#123;order.customerId&#125;` &#125;,
+  &#125;;
+
+  if (canCancel) &#123;
+    links.cancel = &#123; href: `/orders/$&#123;order.id&#125;/cancel`, title: 'Cancel order' &#125;;
+  &#125;
+
+  res.contentType('application/hal+json').json(hal(order, links));
+&#125;);</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">HAL vs Siren vs JSON:API Hypermedia</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Feature</th>
+          <th class="text-left px-4 py-3 font-semibold">HAL</th>
+          <th class="text-left px-4 py-3 font-semibold">Siren</th>
+          <th class="text-left px-4 py-3 font-semibold">JSON:API</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Links</td>
+          <td class="px-4 py-3 text-green-500">_links object</td>
+          <td class="px-4 py-3 text-green-500">links array</td>
+          <td class="px-4 py-3">links object</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Actions (forms)</td>
+          <td class="px-4 py-3 text-red-400">Not included</td>
+          <td class="px-4 py-3 text-green-500">actions array</td>
+          <td class="px-4 py-3 text-red-400">Not included</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Embedded</td>
+          <td class="px-4 py-3 text-green-500">_embedded</td>
+          <td class="px-4 py-3">entities</td>
+          <td class="px-4 py-3 text-green-500">included</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Adoption</td>
+          <td class="px-4 py-3 text-green-500">Widespread</td>
+          <td class="px-4 py-3">Niche</td>
+          <td class="px-4 py-3 text-green-500">Widespread</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Content-Type</td>
+          <td class="px-4 py-3 font-mono text-xs">application/hal+json</td>
+          <td class="px-4 py-3 font-mono text-xs">application/vnd.siren+json</td>
+          <td class="px-4 py-3 font-mono text-xs">application/vnd.api+json</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="hateoas-api-designer" relatedTags={['api', 'rest', 'hateoas', 'hal', 'backend', 'api-design']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

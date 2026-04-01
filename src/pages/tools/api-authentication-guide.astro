@@ -1,0 +1,203 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the difference between authentication and authorization?", answer: "Authentication (authn) answers 'Who are you?' — verifying the identity of the caller via credentials (password, token, certificate). Authorization (authz) answers 'What can you do?' — checking if the authenticated identity has permission to perform the requested operation. An API key authenticates a client; scope claims in a JWT authorize what that client can access. Always separate these concerns in your code." },
+  { question: "When should I use API keys vs JWT?", answer: "Use API keys for server-to-server integrations where the client is a machine, the key is stored securely, and simplicity is valued over granularity. Use JWTs for user-facing authentication where you need to embed claims (user ID, roles, expiry) in the token itself without a database lookup on every request. JWTs are stateless; API keys require a database lookup to validate unless you use a hash-based scheme." },
+  { question: "What are the OAuth 2.0 grant types and when should I use each?", answer: "Client Credentials: machine-to-machine, no user involved — use for background jobs and service accounts. Authorization Code (+ PKCE): user-facing apps — browser or mobile app redirects to identity provider, user logs in, app gets a short-lived code it exchanges for tokens. Implicit flow is deprecated. Device Code: TV or CLI apps without browsers. Refresh Token: exchange a long-lived refresh token for a new access token without re-authentication." },
+  { question: "How long should JWT access tokens live?", answer: "Access tokens should be short-lived — typically 5 to 60 minutes. Short expiry limits the damage if a token is stolen. Pair short-lived access tokens with longer-lived refresh tokens (hours to days) that are rotated on use (refresh token rotation). Store refresh tokens securely: httpOnly cookies for web apps, secure storage (Keychain/Keystore) for mobile apps. Never store access or refresh tokens in localStorage." },
+  { question: "What is mTLS and when is it used?", answer: "Mutual TLS (mTLS) is a form of authentication where both the client and server present X.509 certificates. Unlike standard TLS (only the server authenticates itself), mTLS verifies the client's identity at the TLS layer before any HTTP request is processed. It is used for service-to-service authentication in zero-trust architectures, Kubernetes pods using SPIFFE/SPIRE, and payment APIs. It provides very strong authentication without managing token expiry." },
+  { question: "How do I revoke a JWT if it's stateless?", answer: "JWTs cannot be revoked without some server-side state. Common strategies: (1) Short expiry + refresh token rotation — a stolen access token expires quickly; revoke the refresh token in the database. (2) Token blocklist — maintain a Redis set of revoked JTI (JWT ID) claims; check on each request (adds a Redis lookup). (3) Token versioning — store a version number per user; JWTs include the version; increment the version to invalidate all existing tokens." },
+];
+---
+<BaseLayout
+  title="API Authentication Guide: JWT, OAuth 2.0, API Keys & mTLS"
+  description="Complete API authentication guide: API keys, JWT structure and validation, refresh tokens, OAuth 2.0 flows (client credentials, auth code), mTLS for service-to-service, and comparison table."
+  tool="API authentication, JWT authentication, OAuth 2.0, API keys, mTLS, Bearer token, refresh token, access token"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "API Authentication Guide: JWT, OAuth 2.0, API Keys & mTLS",
+    "url": "https://devplaybook.cc/tools/api-authentication-guide",
+    "description": "Complete API authentication guide covering JWT, OAuth 2.0, API keys, mTLS, and comparison of authentication strategies.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">API Authentication Guide: JWT, OAuth 2.0, API Keys & mTLS</h1>
+  <p class="text-text-muted mb-6">Choosing the right authentication mechanism for your API depends on who the caller is, where tokens are stored, and what security guarantees you need. This guide walks through every major strategy with implementation examples and a comparison table.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> API keys, JWT & OAuth 2.0</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Refresh token rotation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> mTLS for service-to-service</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auth strategy comparison table</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">JWT: Structure, Validation & Refresh Tokens</h2>
+  <p class="text-text-muted mb-4">A JWT consists of three base64url-encoded parts: header (algorithm), payload (claims), and signature. Validate the signature and claims on every request:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>import jwt from 'jsonwebtoken';
+import &#123; Request, Response, NextFunction &#125; from 'express';
+
+// Issue tokens — short-lived access + long-lived refresh
+function issueTokens(userId: string, roles: string[]) &#123;
+  const accessToken = jwt.sign(
+    &#123; sub: userId, roles, type: 'access' &#125;,
+    process.env.JWT_SECRET!,
+    &#123; expiresIn: '15m', issuer: 'devplaybook.cc', audience: 'api' &#125;
+  );
+  const refreshToken = jwt.sign(
+    &#123; sub: userId, jti: crypto.randomUUID(), type: 'refresh' &#125;,
+    process.env.REFRESH_SECRET!,
+    &#123; expiresIn: '7d' &#125;
+  );
+  return &#123; accessToken, refreshToken &#125;;
+&#125;
+
+// Middleware — validates Bearer token on every protected request
+export function requireAuth(req: Request, res: Response, next: NextFunction) &#123;
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json(&#123; error: 'Missing token' &#125;);
+
+  try &#123;
+    const payload = jwt.verify(token, process.env.JWT_SECRET!, &#123;
+      issuer: 'devplaybook.cc',
+      audience: 'api',
+    &#125;) as any;
+
+    if (payload.type !== 'access') throw new Error('Wrong token type');
+    req.user = &#123; id: payload.sub, roles: payload.roles &#125;;
+    next();
+  &#125; catch (err) &#123;
+    res.status(401).json(&#123; error: 'Invalid or expired token' &#125;);
+  &#125;
+&#125;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">OAuth 2.0 Client Credentials Flow (M2M)</h2>
+  <p class="text-text-muted mb-4">For machine-to-machine authentication (background jobs, microservices), use the OAuth 2.0 Client Credentials grant — no user involved:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code># Step 1: Client requests access token using client_id + client_secret
+POST /oauth/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=svc-orders
+&client_secret=cs_live_abc123
+&scope=users:read orders:write
+
+# Step 2: Authorization server responds with short-lived access token
+&#123;
+  "access_token": "eyJhbGci...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "users:read orders:write"
+&#125;
+
+# Step 3: Service uses the token as Bearer in API calls
+GET /api/v1/users
+Authorization: Bearer eyJhbGci...
+
+# Client implementation — cache token, refresh before expiry
+class OAuth2Client &#123;
+  private token: string | null = null;
+  private expiresAt = 0;
+
+  async getToken(): Promise&lt;string&gt; &#123;
+    if (this.token && Date.now() < this.expiresAt - 30_000) return this.token;
+    const res = await fetch(process.env.TOKEN_URL!, &#123;
+      method: 'POST',
+      headers: &#123; 'Content-Type': 'application/x-www-form-urlencoded' &#125;,
+      body: new URLSearchParams(&#123; grant_type: 'client_credentials',
+        client_id: process.env.CLIENT_ID!, client_secret: process.env.CLIENT_SECRET!,
+        scope: 'users:read' &#125;),
+    &#125;);
+    const data = await res.json();
+    this.token = data.access_token;
+    this.expiresAt = Date.now() + data.expires_in * 1000;
+    return this.token!;
+  &#125;
+&#125;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">mTLS: Mutual TLS for Service-to-Service</h2>
+  <p class="text-text-muted mb-4">mTLS requires both client and server to present certificates. Zero tokens to manage — the TLS handshake IS the authentication:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>import https from 'https';
+import fs from 'fs';
+
+// Server: require client certificates
+const serverOptions = &#123;
+  key: fs.readFileSync('./certs/server.key'),
+  cert: fs.readFileSync('./certs/server.crt'),
+  ca: fs.readFileSync('./certs/ca.crt'),   // CA that issued client certs
+  requestCert: true,    // Request client cert
+  rejectUnauthorized: true,  // Reject if cert is invalid
+&#125;;
+
+https.createServer(serverOptions, app).listen(8443);
+
+// In Express middleware — extract client identity from cert
+app.use((req: any, res, next) => &#123;
+  const cert = req.socket.getPeerCertificate();
+  if (!cert.subject) return res.status(401).send('Client cert required');
+  req.serviceId = cert.subject.CN;  // e.g. 'orders-service'
+  next();
+&#125;);
+
+# Client: present its own certificate when calling the server
+# curl --cert client.crt --key client.key --cacert ca.crt https://api:8443/endpoint</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Authentication Method Comparison</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Method</th>
+          <th class="text-left px-4 py-3 font-semibold">Stateless</th>
+          <th class="text-left px-4 py-3 font-semibold">Revocable</th>
+          <th class="text-left px-4 py-3 font-semibold">Best For</th>
+          <th class="text-left px-4 py-3 font-semibold">Complexity</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">API Key</td>
+          <td class="px-4 py-3 text-red-400">No (DB lookup)</td>
+          <td class="px-4 py-3 text-green-500">Yes (delete from DB)</td>
+          <td class="px-4 py-3">Server-to-server, SDKs</td>
+          <td class="px-4 py-3 text-green-500">Low</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">JWT (Bearer)</td>
+          <td class="px-4 py-3 text-green-500">Yes</td>
+          <td class="px-4 py-3">Partial (via blocklist)</td>
+          <td class="px-4 py-3">User auth, microservices</td>
+          <td class="px-4 py-3">Medium</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">OAuth 2.0 (CC)</td>
+          <td class="px-4 py-3 text-green-500">Yes (JWT tokens)</td>
+          <td class="px-4 py-3 text-green-500">Yes (revoke refresh)</td>
+          <td class="px-4 py-3">M2M, background services</td>
+          <td class="px-4 py-3">Medium</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">OAuth 2.0 (Auth Code)</td>
+          <td class="px-4 py-3 text-green-500">Yes</td>
+          <td class="px-4 py-3 text-green-500">Yes</td>
+          <td class="px-4 py-3">User-facing web/mobile apps</td>
+          <td class="px-4 py-3">High</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">mTLS</td>
+          <td class="px-4 py-3 text-green-500">Yes (cert-based)</td>
+          <td class="px-4 py-3">Yes (CRL / OCSP)</td>
+          <td class="px-4 py-3">Zero-trust, internal services</td>
+          <td class="px-4 py-3">High</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="api-authentication-guide" relatedTags={['api', 'security', 'jwt', 'oauth', 'backend', 'authentication']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

@@ -1,0 +1,195 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is an API gateway and why do microservices need one?", answer: "An API gateway is a single entry point that sits in front of your backend services. Instead of clients calling each microservice directly, they call the gateway which handles routing, authentication, rate limiting, SSL termination, and request transformation. This decouples clients from service topology changes and keeps cross-cutting concerns out of individual services." },
+  { question: "What is rate limiting and how does it work at the gateway?", answer: "Rate limiting caps how many requests a client can make in a time window, protecting backend services from being overwhelmed. Gateways implement rate limiting using sliding window, fixed window, or token bucket algorithms. Limits can be applied per IP, per API key, per user, or globally per route. When a client exceeds the limit the gateway returns 429 Too Many Requests with a Retry-After header." },
+  { question: "How does Kong differ from AWS API Gateway?", answer: "Kong is open-source and self-hosted (or managed via Kong Cloud), giving you full control over infrastructure and configuration. It is plugin-based, so rate limiting, OAuth, caching, and logging are all plugins. AWS API Gateway is a fully managed service tightly integrated with Lambda, IAM, and CloudWatch. AWS is ideal for serverless AWS workloads; Kong is better for hybrid or multi-cloud deployments where you need portability." },
+  { question: "Can an API gateway handle authentication for all services?", answer: "Yes. This is one of the primary benefits. The gateway validates JWT tokens, API keys, or OAuth flows centrally before forwarding requests. Backend services receive pre-validated requests with user identity injected via headers (e.g. X-User-Id), eliminating duplicated auth logic across services. Each service still validates that the header was set by a trusted gateway using network policies or shared secrets." },
+  { question: "What is service mesh vs API gateway?", answer: "An API gateway manages north-south traffic — requests coming in from external clients. A service mesh (Istio, Linkerd) manages east-west traffic — communication between internal microservices. They complement each other. The gateway handles external auth, rate limiting, and routing. The service mesh handles mutual TLS between services, circuit breaking, retries, and observability for internal calls." },
+  { question: "What is request routing in an API gateway?", answer: "Request routing directs incoming requests to the appropriate backend service based on URL path, headers, query parameters, or HTTP method. For example, GET /api/v1/users routes to the user service while POST /api/v1/orders routes to the order service. Advanced gateways support canary routing (5% of traffic to v2), A/B testing, and header-based routing for testing environments." },
+];
+---
+<BaseLayout
+  title="API Gateway Patterns: Kong, AWS API Gateway & Nginx Guide"
+  description="Practical API gateway guide: rate limiting, auth middleware, request routing patterns, and a Kong vs AWS API Gateway vs Nginx comparison table for microservices."
+  tool="API gateway patterns, Kong configuration, AWS API Gateway, Nginx reverse proxy, rate limiting, microservices gateway"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "API Gateway Patterns: Kong, AWS API Gateway & Nginx Guide",
+    "url": "https://devplaybook.cc/tools/api-gateway-patterns",
+    "description": "Practical API gateway guide covering rate limiting, auth middleware, request routing, and a Kong vs AWS vs Nginx comparison.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">API Gateway Patterns: Kong, AWS API Gateway & Nginx Guide</h1>
+  <p class="text-text-muted mb-6">An API gateway is the front door to your microservices architecture. It centralizes authentication, rate limiting, routing, SSL termination, and observability so backend services stay focused on business logic. This guide covers the core patterns and tool choices.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Centralized auth & rate limiting</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Request routing & transformation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Kong, AWS GW, and Nginx examples</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Plugin-based extensibility</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Rate Limiting with Kong</h2>
+  <p class="text-text-muted mb-4">Kong plugins are applied to services or routes. The rate-limiting plugin protects a service with per-consumer limits using a sliding window algorithm:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code># Declarative Kong configuration (deck / kong.yaml)
+services:
+  - name: user-service
+    url: http://user-service:8080
+    routes:
+      - name: user-api-route
+        paths:
+          - /api/v1/users
+        methods: [GET, POST, PUT, DELETE]
+
+plugins:
+  # Rate limiting: 100 req/minute per consumer
+  - name: rate-limiting
+    service: user-service
+    config:
+      minute: 100
+      hour: 1000
+      policy: redis          # Store counters in Redis for distributed deployments
+      redis_host: redis
+      redis_port: 6379
+      fault_tolerant: true   # Allow requests if Redis is unavailable
+      hide_client_headers: false
+
+  # JWT authentication before routing
+  - name: jwt
+    service: user-service
+    config:
+      claims_to_verify: [exp]
+      key_claim_name: iss</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Auth Middleware Pattern (Express Gateway / Custom)</h2>
+  <p class="text-text-muted mb-4">When building a lightweight custom gateway in Node.js, centralize JWT validation in middleware before proxying to upstream services:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code>import express from 'express';
+import &#123; createProxyMiddleware &#125; from 'http-proxy-middleware';
+import jwt from 'jsonwebtoken';
+
+const app = express();
+
+// Auth middleware — validates JWT and injects user context
+function authMiddleware(req: any, res: any, next: any) &#123;
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json(&#123; error: 'Missing token' &#125;);
+
+  try &#123;
+    const payload = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    req.headers['x-user-id'] = payload.sub;
+    req.headers['x-user-roles'] = payload.roles?.join(',') ?? '';
+    next();
+  &#125; catch &#123;
+    res.status(401).json(&#123; error: 'Invalid token' &#125;);
+  &#125;
+&#125;
+
+// Route to user service — protected
+app.use('/api/v1/users', authMiddleware, createProxyMiddleware(&#123;
+  target: 'http://user-service:8080',
+  changeOrigin: true,
+&#125;));
+
+// Route to public service — no auth
+app.use('/api/v1/products', createProxyMiddleware(&#123;
+  target: 'http://product-service:8081',
+  changeOrigin: true,
+&#125;));</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Nginx Rate Limiting & Routing</h2>
+  <p class="text-text-muted mb-4">Nginx provides high-performance rate limiting and upstream routing with minimal configuration overhead:</p>
+  <pre class="bg-bg-surface border border-border rounded-xl p-4 overflow-x-auto text-sm font-mono mb-6"><code># nginx.conf — API gateway configuration
+http &#123;
+  # Define rate limiting zone: 10 MB memory, 10 req/sec per IP
+  limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+
+  upstream user_service   &#123; server user-service:8080; &#125;
+  upstream order_service  &#123; server order-service:8082; &#125;
+  upstream product_service &#123; server product-service:8081; &#125;
+
+  server &#123;
+    listen 80;
+
+    location /api/v1/users &#123;
+      limit_req zone=api burst=20 nodelay;
+      limit_req_status 429;
+      proxy_pass http://user_service;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header Authorization $http_authorization;
+    &#125;
+
+    location /api/v1/orders &#123;
+      limit_req zone=api burst=10 nodelay;
+      proxy_pass http://order_service;
+    &#125;
+
+    location /api/v1/products &#123;
+      # Public endpoint — higher limit
+      limit_req zone=api burst=50 nodelay;
+      proxy_pass http://product_service;
+    &#125;
+  &#125;
+&#125;</code></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Kong vs AWS API Gateway vs Nginx</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border border-border rounded-xl overflow-hidden">
+      <thead class="bg-bg-card">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold">Feature</th>
+          <th class="text-left px-4 py-3 font-semibold">Kong</th>
+          <th class="text-left px-4 py-3 font-semibold">AWS API Gateway</th>
+          <th class="text-left px-4 py-3 font-semibold">Nginx</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Hosting</td>
+          <td class="px-4 py-3">Self-hosted / Kong Cloud</td>
+          <td class="px-4 py-3">Fully managed AWS</td>
+          <td class="px-4 py-3">Self-hosted</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Auth plugins</td>
+          <td class="px-4 py-3 text-green-500">JWT, OAuth2, OIDC, Key Auth</td>
+          <td class="px-4 py-3">IAM, Cognito, Lambda</td>
+          <td class="px-4 py-3">Basic, JWT (plus)</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">Rate limiting</td>
+          <td class="px-4 py-3 text-green-500">Built-in plugin, Redis</td>
+          <td class="px-4 py-3">Built-in (usage plans)</td>
+          <td class="px-4 py-3">Built-in (limit_req)</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Cost model</td>
+          <td class="px-4 py-3">OSS free, Enterprise paid</td>
+          <td class="px-4 py-3">Per million API calls</td>
+          <td class="px-4 py-3">Free (infra cost only)</td>
+        </tr>
+        <tr class="bg-bg-surface/50">
+          <td class="px-4 py-3 font-medium">WebSocket</td>
+          <td class="px-4 py-3 text-green-500">Supported</td>
+          <td class="px-4 py-3 text-green-500">Supported</td>
+          <td class="px-4 py-3 text-green-500">Supported</td>
+        </tr>
+        <tr>
+          <td class="px-4 py-3 font-medium">Best for</td>
+          <td class="px-4 py-3">Multi-cloud, Kubernetes</td>
+          <td class="px-4 py-3">AWS Lambda, serverless</td>
+          <td class="px-4 py-3">High perf, simple routing</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="api-gateway-patterns" relatedTags={['api', 'microservices', 'backend', 'nginx', 'aws']} />
+  <FaqSection faq={faq} />
+</BaseLayout>
