@@ -1,0 +1,448 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Next.js middleware?", answer: "Next.js middleware runs before a request is processed, allowing you to modify the response, redirect users, rewrite URLs, or add headers — all at the Edge, before the page renders. It's defined in a middleware.ts file at the root of your project (or src/ directory). Middleware runs on every request that matches its config.matcher pattern." },
+  { question: "What is the matcher config in Next.js middleware?", answer: "The matcher config in middleware.ts tells Next.js which paths to run middleware on. It supports regex-like patterns: '/((?!_next/static|_next/image|favicon.ico).*)' skips static assets. You can use arrays for multiple patterns. Matcher patterns must be static strings — no dynamic values or variables." },
+  { question: "How do I protect routes with middleware?", answer: "Check authentication in middleware by reading a cookie (NextResponse.cookies.get), a header (request.headers.get), or a JWT in the Authorization header. If the user is not authenticated, call NextResponse.redirect() to send them to a login page. Always pass the request URL as the callbackUrl parameter so they return after login." },
+  { question: "What is the difference between redirect and rewrite in middleware?", answer: "redirect changes the URL visible in the browser and sends a new request to the target path. rewrite proxies the request to a different path without changing the visible URL — the user sees the original URL but gets content from the rewrite target. Rewrites are useful for A/B testing, internationalization, and clean URL routing." },
+  { question: "Can middleware access environment variables?", answer: "Yes, but with a caveat: middleware runs on the Edge Runtime, which is a restricted JavaScript environment. You can access process.env for server-side variables. However, you cannot use Node.js-specific APIs (fs, path, crypto built-ins). For JWT verification, use the Web Crypto API (crypto.subtle) or edge-compatible libraries like jose." },
+];
+---
+
+<BaseLayout
+  title="Next.js Middleware Builder — Generate middleware.ts with Auth, Redirects & A/B Tests"
+  description="Build Next.js middleware.ts code visually. Configure protected routes, redirect rules, auth checks (cookie/header/JWT), and A/B testing. Copy-ready output."
+  tool="Next.js Middleware Builder, middleware.ts Generator, Next.js Auth Middleware, Route Protection Next.js"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Next.js Middleware Builder</h1>
+  <p class="text-text-muted mb-4">Generate production-ready <code class="text-primary bg-primary/10 px-1 rounded text-sm">middleware.ts</code> for Next.js — auth protection, redirects, A/B testing, and matcher config explained.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Zero dependencies</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auth + redirect + A/B</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Matcher config explained</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Edge Runtime compatible</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+    <!-- Left: Inputs -->
+    <div class="space-y-5">
+
+      <!-- Auth Check -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Authentication Check</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Auth Check Type</label>
+            <select id="auth-type" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+              <option value="cookie">Cookie-based (session cookie)</option>
+              <option value="header">Header-based (Authorization: Bearer)</option>
+              <option value="jwt">JWT verification (jose library)</option>
+              <option value="none">No auth check</option>
+            </select>
+          </div>
+          <div id="auth-detail-cookie">
+            <label class="block text-sm font-medium mb-1.5">Cookie Name</label>
+            <input id="cookie-name" type="text" value="next-auth.session-token" placeholder="next-auth.session-token"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+          <div id="auth-detail-header" class="hidden">
+            <label class="block text-sm font-medium mb-1.5">Header Name</label>
+            <input id="header-name" type="text" value="Authorization" placeholder="Authorization"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+          <div id="auth-detail-jwt" class="hidden">
+            <label class="block text-sm font-medium mb-1.5">JWT Secret Env Var</label>
+            <input id="jwt-secret" type="text" value="AUTH_SECRET" placeholder="AUTH_SECRET"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+          <div id="auth-login-row">
+            <label class="block text-sm font-medium mb-1.5">Login Redirect Path</label>
+            <input id="login-path" type="text" value="/login" placeholder="/login"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Protected Routes -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Protected Route Patterns</h2>
+          <button id="add-route-btn" class="bg-primary text-white text-sm px-3 py-1 rounded-lg hover:opacity-90">+ Add</button>
+        </div>
+        <p class="text-xs text-text-muted mb-3">Requests matching these patterns require authentication.</p>
+        <div id="routes-container" class="space-y-2"></div>
+      </div>
+
+      <!-- Redirect Rules -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Redirect Rules</h2>
+          <button id="add-redirect-btn" class="bg-primary text-white text-sm px-3 py-1 rounded-lg hover:opacity-90">+ Add</button>
+        </div>
+        <div class="hidden md:grid grid-cols-[1fr_1fr_80px_36px] gap-2 text-xs text-text-muted font-medium mb-2 px-1">
+          <span>From</span><span>To</span><span>Type</span><span></span>
+        </div>
+        <div id="redirects-container" class="space-y-2"></div>
+      </div>
+
+      <!-- A/B Testing -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold">A/B Testing</h2>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" id="ab-enabled" class="rounded" />
+            <span>Enable</span>
+          </label>
+        </div>
+        <div id="ab-config" class="space-y-3 opacity-50 pointer-events-none">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Route to Test</label>
+              <input id="ab-route" type="text" value="/" placeholder="/"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">Variant B Path</label>
+              <input id="ab-variant" type="text" value="/home-v2" placeholder="/home-v2"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Variant B Traffic <span id="ab-pct-label" class="text-primary">50%</span></label>
+            <input id="ab-split" type="range" min="0" max="100" value="50"
+              class="w-full accent-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">A/B Cookie Name</label>
+            <input id="ab-cookie" type="text" value="ab-variant"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Output -->
+    <div class="space-y-5">
+      <!-- middleware.ts -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">middleware.ts</h2>
+          <button id="copy-mw-btn" class="border border-border text-text-muted hover:text-primary hover:border-primary text-xs px-2.5 py-1 rounded-md transition-colors">Copy</button>
+        </div>
+        <pre id="mw-output" class="text-green-400 text-xs font-mono overflow-x-auto whitespace-pre bg-bg-card border border-border rounded-lg p-3 min-h-[300px]"></pre>
+      </div>
+
+      <!-- Matcher explanation -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Matcher Config Explanation</h2>
+        </div>
+        <div id="matcher-explainer" class="text-sm text-text-muted space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Next.js Middleware Builder" relatedTags={['nextjs', 'middleware', 'auth', 'routing', 'edge', 'typescript']} />
+</BaseLayout>
+
+<script>
+  interface RouteRow { id: string; pattern: string; }
+  interface RedirectRow { id: string; from: string; to: string; type: string; }
+
+  let routes: RouteRow[] = [
+    { id: 'r1', pattern: '/dashboard/:path*' },
+    { id: 'r2', pattern: '/account/:path*' },
+    { id: 'r3', pattern: '/admin/:path*' },
+  ];
+  let redirects: RedirectRow[] = [
+    { id: 'd1', from: '/old-page', to: '/new-page', type: '307' },
+  ];
+
+  function uid(): string { return Math.random().toString(36).slice(2, 8); }
+
+  function renderRoutes(): void {
+    const el = document.getElementById('routes-container')!;
+    if (routes.length === 0) {
+      el.innerHTML = `<div class="text-center text-text-muted text-xs py-3 border border-dashed border-border rounded-lg">No protected routes. Add one above.</div>`;
+      return;
+    }
+    el.innerHTML = routes.map(r => `
+      <div class="flex gap-2 items-center" data-route-id="${r.id}">
+        <input type="text" value="${r.pattern}" placeholder="/dashboard/:path*" data-prop="pattern"
+          class="flex-1 bg-bg-card border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary font-mono" />
+        <button data-remove="${r.id}" class="text-red-400 hover:text-red-500 text-lg w-8 h-8 flex items-center justify-center rounded hover:bg-red-500/10">×</button>
+      </div>
+    `).join('');
+    el.querySelectorAll('[data-prop]').forEach(inp => {
+      inp.addEventListener('input', (e) => {
+        const t = e.target as HTMLInputElement;
+        const rowEl = t.closest('[data-route-id]') as HTMLElement;
+        routes.find(x => x.id === rowEl.dataset.routeId)!.pattern = t.value;
+        generate();
+      });
+    });
+    el.querySelectorAll('[data-remove]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        routes = routes.filter(r => r.id !== (btn as HTMLElement).dataset.remove);
+        renderRoutes(); generate();
+      });
+    });
+  }
+
+  function renderRedirects(): void {
+    const el = document.getElementById('redirects-container')!;
+    if (redirects.length === 0) {
+      el.innerHTML = `<div class="text-center text-text-muted text-xs py-3 border border-dashed border-border rounded-lg">No redirect rules.</div>`;
+      return;
+    }
+    el.innerHTML = redirects.map(r => `
+      <div class="grid grid-cols-[1fr_1fr_80px_36px] gap-2 items-center" data-redirect-id="${r.id}">
+        <input type="text" value="${r.from}" data-prop="from" placeholder="/old"
+          class="bg-bg-card border border-border rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-primary" />
+        <input type="text" value="${r.to}" data-prop="to" placeholder="/new"
+          class="bg-bg-card border border-border rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-primary" />
+        <select data-prop="type" class="bg-bg-card border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary">
+          <option value="307" ${r.type==='307'?'selected':''}>307</option>
+          <option value="308" ${r.type==='308'?'selected':''}>308</option>
+          <option value="301" ${r.type==='301'?'selected':''}>301</option>
+          <option value="302" ${r.type==='302'?'selected':''}>302</option>
+        </select>
+        <button data-remove="${r.id}" class="text-red-400 hover:text-red-500 text-lg w-8 h-8 flex items-center justify-center rounded hover:bg-red-500/10">×</button>
+      </div>
+    `).join('');
+    el.querySelectorAll('[data-prop]').forEach(inp => {
+      inp.addEventListener('input', (e) => {
+        const t = e.target as HTMLInputElement | HTMLSelectElement;
+        const rowEl = t.closest('[data-redirect-id]') as HTMLElement;
+        const r = redirects.find(x => x.id === rowEl.dataset.redirectId)!;
+        (r as any)[t.dataset.prop!] = t.value;
+        generate();
+      });
+      inp.addEventListener('change', (e) => {
+        const t = e.target as HTMLSelectElement;
+        const rowEl = t.closest('[data-redirect-id]') as HTMLElement;
+        const r = redirects.find(x => x.id === rowEl.dataset.redirectId)!;
+        (r as any)[t.dataset.prop!] = t.value;
+        generate();
+      });
+    });
+    el.querySelectorAll('[data-remove]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        redirects = redirects.filter(r => r.id !== (btn as HTMLElement).dataset.remove);
+        renderRedirects(); generate();
+      });
+    });
+  }
+
+  function generate(): void {
+    const authType = (document.getElementById('auth-type') as HTMLSelectElement).value;
+    const cookieName = (document.getElementById('cookie-name') as HTMLInputElement).value.trim() || 'next-auth.session-token';
+    const headerName = (document.getElementById('header-name') as HTMLInputElement).value.trim() || 'Authorization';
+    const jwtSecret = (document.getElementById('jwt-secret') as HTMLInputElement).value.trim() || 'AUTH_SECRET';
+    const loginPath = (document.getElementById('login-path') as HTMLInputElement).value.trim() || '/login';
+    const abEnabled = (document.getElementById('ab-enabled') as HTMLInputElement).checked;
+    const abRoute = (document.getElementById('ab-route') as HTMLInputElement).value.trim() || '/';
+    const abVariant = (document.getElementById('ab-variant') as HTMLInputElement).value.trim() || '/home-v2';
+    const abSplit = parseInt((document.getElementById('ab-split') as HTMLInputElement).value) || 50;
+    const abCookie = (document.getElementById('ab-cookie') as HTMLInputElement).value.trim() || 'ab-variant';
+
+    const lines: string[] = [];
+
+    // Imports
+    lines.push(`import { NextResponse } from 'next/server';`);
+    lines.push(`import type { NextRequest } from 'next/server';`);
+    if (authType === 'jwt') {
+      lines.push(`import { jwtVerify } from 'jose'; // npm install jose`);
+    }
+    lines.push('');
+
+    // Protected routes const
+    if (routes.length > 0 && authType !== 'none') {
+      lines.push(`const PROTECTED_ROUTES = [`);
+      routes.forEach(r => lines.push(`  '${r.pattern}',`));
+      lines.push(`];`);
+      lines.push('');
+      lines.push(`function isProtected(pathname: string): boolean {`);
+      lines.push(`  return PROTECTED_ROUTES.some(pattern => {`);
+      lines.push(`    const regex = new RegExp('^' + pattern.replace(/:[^/]+/g, '[^/]+').replace(/\*/g, '.*') + '$');`);
+      lines.push(`    return regex.test(pathname);`);
+      lines.push(`  });`);
+      lines.push(`}`);
+      lines.push('');
+    }
+
+    // Main middleware function
+    lines.push(`export async function middleware(request: NextRequest) {`);
+    lines.push(`  const { pathname } = request.nextUrl;`);
+    lines.push('');
+
+    // Redirects
+    if (redirects.length > 0) {
+      redirects.forEach(r => {
+        lines.push(`  // Redirect ${r.from} → ${r.to}`);
+        lines.push(`  if (pathname === '${r.from}') {`);
+        lines.push(`    return NextResponse.redirect(new URL('${r.to}', request.url), { status: ${r.type} });`);
+        lines.push(`  }`);
+        lines.push('');
+      });
+    }
+
+    // A/B testing
+    if (abEnabled) {
+      lines.push(`  // A/B Test: ${abRoute} → ${abVariant} (${abSplit}% variant B)`);
+      lines.push(`  if (pathname === '${abRoute}') {`);
+      lines.push(`    const abCookieVal = request.cookies.get('${abCookie}')?.value;`);
+      lines.push(`    let bucket = abCookieVal;`);
+      lines.push(`    if (!bucket) {`);
+      lines.push(`      bucket = Math.random() * 100 < ${abSplit} ? 'b' : 'a';`);
+      lines.push(`    }`);
+      lines.push(`    const res = bucket === 'b'`);
+      lines.push(`      ? NextResponse.rewrite(new URL('${abVariant}', request.url))`);
+      lines.push(`      : NextResponse.next();`);
+      lines.push(`    if (!abCookieVal) {`);
+      lines.push(`      res.cookies.set('${abCookie}', bucket, { maxAge: 60 * 60 * 24 * 30 });`);
+      lines.push(`    }`);
+      lines.push(`    return res;`);
+      lines.push(`  }`);
+      lines.push('');
+    }
+
+    // Auth check
+    if (authType !== 'none' && routes.length > 0) {
+      lines.push(`  // Auth: protect matched routes`);
+      lines.push(`  if (isProtected(pathname)) {`);
+
+      if (authType === 'cookie') {
+        lines.push(`    const session = request.cookies.get('${cookieName}')?.value;`);
+        lines.push(`    if (!session) {`);
+        lines.push(`      const loginUrl = new URL('${loginPath}', request.url);`);
+        lines.push(`      loginUrl.searchParams.set('callbackUrl', pathname);`);
+        lines.push(`      return NextResponse.redirect(loginUrl);`);
+        lines.push(`    }`);
+      } else if (authType === 'header') {
+        lines.push(`    const token = request.headers.get('${headerName}')?.replace('Bearer ', '');`);
+        lines.push(`    if (!token) {`);
+        lines.push(`      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });`);
+        lines.push(`    }`);
+      } else if (authType === 'jwt') {
+        lines.push(`    const token = request.cookies.get('token')?.value`);
+        lines.push(`      ?? request.headers.get('Authorization')?.replace('Bearer ', '');`);
+        lines.push(`    if (!token) {`);
+        lines.push(`      return NextResponse.redirect(new URL('${loginPath}', request.url));`);
+        lines.push(`    }`);
+        lines.push(`    try {`);
+        lines.push(`      const secret = new TextEncoder().encode(process.env.${jwtSecret});`);
+        lines.push(`      await jwtVerify(token, secret);`);
+        lines.push(`    } catch {`);
+        lines.push(`      const loginUrl = new URL('${loginPath}', request.url);`);
+        lines.push(`      loginUrl.searchParams.set('callbackUrl', pathname);`);
+        lines.push(`      return NextResponse.redirect(loginUrl);`);
+        lines.push(`    }`);
+      }
+
+      lines.push(`  }`);
+      lines.push('');
+    }
+
+    lines.push(`  return NextResponse.next();`);
+    lines.push(`}`);
+    lines.push('');
+
+    // Matcher config
+    const allPatterns = [
+      ...routes.map(r => r.pattern),
+      ...redirects.map(r => r.from),
+      ...(abEnabled ? [abRoute] : []),
+    ];
+    const unique = [...new Set(allPatterns)].filter(Boolean);
+
+    lines.push(`export const config = {`);
+    lines.push(`  matcher: [`);
+    lines.push(`    // Skip Next.js internals and static files`);
+    lines.push(`    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',`);
+    if (unique.length > 0) {
+      unique.forEach(p => lines.push(`    '${p}',`));
+    }
+    lines.push(`  ],`);
+    lines.push(`};`);
+
+    document.getElementById('mw-output')!.textContent = lines.join('\n');
+
+    // Matcher explainer
+    const explEl = document.getElementById('matcher-explainer')!;
+    const items: string[] = [];
+    items.push('<div class="bg-primary/5 border border-primary/20 rounded-lg p-3 text-xs font-mono">');
+    items.push('  <div class="text-primary font-semibold mb-2">Matcher Pattern Breakdown</div>');
+    items.push('  <div class="space-y-1.5 text-text-muted">');
+    items.push('    <div><span class="text-yellow-400">_next/static</span> — skip bundled JS/CSS</div>');
+    items.push('    <div><span class="text-yellow-400">_next/image</span> — skip image optimization routes</div>');
+    items.push('    <div><span class="text-yellow-400">favicon.ico</span> — skip favicon</div>');
+    items.push('    <div><span class="text-yellow-400">.*\\.(?:svg|png|...)</span> — skip image files</div>');
+    if (routes.length > 0) routes.forEach(r => items.push(`    <div><span class="text-green-400">${r.pattern}</span> — protected route</div>`));
+    if (redirects.length > 0) redirects.forEach(r => items.push(`    <div><span class="text-blue-400">${r.from}</span> → <span class="text-blue-400">${r.to}</span> (${r.type})</div>`));
+    if (abEnabled) items.push(`    <div><span class="text-purple-400">${abRoute}</span> — A/B test route</div>`);
+    items.push('  </div>');
+    items.push('</div>');
+    explEl.innerHTML = items.join('\n');
+  }
+
+  // Auth type toggle
+  document.getElementById('auth-type')!.addEventListener('change', () => {
+    const val = (document.getElementById('auth-type') as HTMLSelectElement).value;
+    document.getElementById('auth-detail-cookie')!.classList.toggle('hidden', val !== 'cookie');
+    document.getElementById('auth-detail-header')!.classList.toggle('hidden', val !== 'header');
+    document.getElementById('auth-detail-jwt')!.classList.toggle('hidden', val !== 'jwt');
+    document.getElementById('auth-login-row')!.classList.toggle('hidden', val === 'none' || val === 'header');
+    generate();
+  });
+
+  // A/B toggle
+  document.getElementById('ab-enabled')!.addEventListener('change', () => {
+    const enabled = (document.getElementById('ab-enabled') as HTMLInputElement).checked;
+    const cfg = document.getElementById('ab-config')!;
+    cfg.classList.toggle('opacity-50', !enabled);
+    cfg.classList.toggle('pointer-events-none', !enabled);
+    generate();
+  });
+
+  // A/B slider
+  document.getElementById('ab-split')!.addEventListener('input', () => {
+    const val = (document.getElementById('ab-split') as HTMLInputElement).value;
+    document.getElementById('ab-pct-label')!.textContent = `${val}%`;
+    generate();
+  });
+
+  // Copy
+  document.getElementById('copy-mw-btn')!.addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('mw-output')!.textContent ?? '').then(() => {
+      const btn = document.getElementById('copy-mw-btn')!;
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  });
+
+  // Add rows
+  document.getElementById('add-route-btn')!.addEventListener('click', () => {
+    routes.push({ id: uid(), pattern: '/protected/:path*' });
+    renderRoutes(); generate();
+  });
+  document.getElementById('add-redirect-btn')!.addEventListener('click', () => {
+    redirects.push({ id: uid(), from: '/old', to: '/new', type: '307' });
+    renderRedirects(); generate();
+  });
+
+  // Config inputs
+  ['cookie-name','header-name','jwt-secret','login-path','ab-route','ab-variant','ab-cookie'].forEach(id => {
+    document.getElementById(id)!.addEventListener('input', generate);
+  });
+
+  renderRoutes();
+  renderRedirects();
+  generate();
+</script>
