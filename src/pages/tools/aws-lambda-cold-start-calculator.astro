@@ -1,0 +1,169 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What causes AWS Lambda cold starts?", answer: "Cold starts occur when Lambda must initialize a new execution environment for your function. This involves downloading your code package, starting the runtime (Node.js, Python, Java, etc.), and running your initialization code outside the handler. Cold starts are most common after periods of inactivity, during traffic spikes requiring new concurrent instances, and after deployments." },
+  { question: "How much does memory size affect cold start time?", answer: "Memory size has a significant effect on cold start duration. Lambda allocates CPU proportional to memory, so higher memory allocations also get more CPU for initialization. A 128MB function can be 2-4x slower to cold start than the same function at 1024MB. For cold-start-sensitive workloads, right-sizing memory upward often reduces both latency and cost per invocation." },
+  { question: "What is provisioned concurrency and when should I use it?", answer: "Provisioned Concurrency pre-initializes a specified number of execution environments so they are always warm and ready to handle requests without a cold start. Use it for latency-sensitive APIs, synchronous user-facing functions, or functions with consistent baseline traffic. Note that provisioned concurrency has an additional hourly cost beyond regular invocation pricing." },
+  { question: "Does VPC configuration affect cold start time?", answer: "Yes, placing a Lambda function inside a VPC historically added 10-15 seconds to cold start time due to ENI (Elastic Network Interface) provisioning. AWS resolved this in 2019 with Hyperplane ENIs, which reduced VPC cold starts to the same range as non-VPC functions. However, if you are using older VPC configurations or certain setups, you may still see increased latency." },
+  { question: "What is Lambda SnapStart and how fast is it?", answer: "Lambda SnapStart (available for Java) takes a snapshot of the initialized execution environment and restores it for subsequent invocations. This can reduce Java cold starts from several seconds to under 1 second. SnapStart creates a snapshot after your init code runs, so subsequent cold starts skip the JVM startup and class loading phases. It is available for functions using the Corretto (Java) managed runtime." },
+  { question: "How do I measure Lambda cold start times in production?", answer: "Use AWS X-Ray to trace cold starts — the Init duration field in CloudWatch Logs shows the initialization time. You can also emit custom CloudWatch metrics from your init code. AWS Lambda Powertools for your runtime provides built-in cold start tracking via the @tracer decorator or middleware. For aggregate analysis, use CloudWatch Logs Insights to query the REPORT log lines for Init Duration values." },
+];
+---
+
+<BaseLayout
+  title="AWS Lambda Cold Start Calculator & Optimization Guide"
+  description="Understand AWS Lambda cold start anatomy, benchmark cold start times by runtime, and learn proven optimization strategies including provisioned concurrency and SnapStart."
+  tool="AWS Lambda Cold Start, Lambda Performance, Provisioned Concurrency, SnapStart, Lambda Optimization"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"AWS Lambda Cold Start Calculator & Optimization Guide","url":"https://devplaybook.cc/tools/aws-lambda-cold-start-calculator","description":"Understand AWS Lambda cold start anatomy, benchmark cold start times by runtime, and learn proven optimization strategies including provisioned concurrency and SnapStart."})} />
+
+  <h1 class="text-3xl font-bold mb-2">AWS Lambda Cold Start Calculator & Optimization Guide</h1>
+  <p class="text-text-muted mb-6">Cold starts are the most common performance complaint about AWS Lambda. This guide breaks down what causes them, how long they actually take by runtime, and exactly what to do to eliminate or minimize them in production.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cold start anatomy explained</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runtime benchmark comparison</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Provisioned concurrency & SnapStart</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> X-Ray measurement techniques</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">What Happens During a Cold Start</h2>
+  <p class="text-text-muted mb-4">A Lambda cold start has two phases visible in CloudWatch Logs:</p>
+  <ul class="list-disc pl-6 mb-6 text-text-muted space-y-2">
+    <li><strong>Init duration</strong> — Lambda downloads your deployment package, starts the runtime process, and executes your initialization code (outside the handler). This is the cold start cost.</li>
+    <li><strong>Invoke duration</strong> — your handler function runs. This happens on every invocation, warm or cold.</li>
+  </ul>
+  <p class="text-text-muted mb-6">The Init phase only appears in CloudWatch REPORT lines for cold-start invocations. Once an execution environment is warm, subsequent invocations skip Init entirely and go straight to Invoke.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Cold Start Duration by Runtime (P50 / P99)</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Runtime</th>
+          <th class="text-left py-2 pr-4">P50 Cold Start</th>
+          <th class="text-left py-2 pr-4">P99 Cold Start</th>
+          <th class="text-left py-2 pr-4">Package Size Impact</th>
+          <th class="text-left py-2">Notes</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Node.js 20</td><td class="py-2 pr-4">~200ms</td><td class="py-2 pr-4">~600ms</td><td class="py-2 pr-4">Low</td><td class="py-2">Fastest interpreted runtime</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Python 3.12</td><td class="py-2 pr-4">~250ms</td><td class="py-2 pr-4">~700ms</td><td class="py-2 pr-4">Low</td><td class="py-2">Fast for lightweight functions</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Go (provided.al2)</td><td class="py-2 pr-4">~100ms</td><td class="py-2 pr-4">~300ms</td><td class="py-2 pr-4">Very Low</td><td class="py-2">Compiled, no runtime overhead</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Rust (provided.al2)</td><td class="py-2 pr-4">~80ms</td><td class="py-2 pr-4">~250ms</td><td class="py-2 pr-4">Very Low</td><td class="py-2">Lowest cold start of all runtimes</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Java 21 (Corretto)</td><td class="py-2 pr-4">~1,500ms</td><td class="py-2 pr-4">~4,000ms</td><td class="py-2 pr-4">High</td><td class="py-2">Use SnapStart to reduce to ~200ms</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Java 21 + SnapStart</td><td class="py-2 pr-4">~200ms</td><td class="py-2 pr-4">~600ms</td><td class="py-2 pr-4">Medium</td><td class="py-2">Snapshot restore skips JVM init</td></tr>
+        <tr><td class="py-2 pr-4">.NET 8</td><td class="py-2 pr-4">~400ms</td><td class="py-2 pr-4">~1,000ms</td><td class="py-2 pr-4">Medium</td><td class="py-2">NativeAOT reduces to ~100ms</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Factors That Increase Cold Start Time</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+    <div class="border border-border rounded-lg p-4">
+      <h3 class="font-semibold mb-2">Package Size</h3>
+      <p class="text-text-muted text-sm">Every MB of your deployment package adds download and decompression time. Node.js bundles with node_modules can balloon to 50-200MB. Use webpack/esbuild to tree-shake down to under 5MB for fastest cold starts.</p>
+    </div>
+    <div class="border border-border rounded-lg p-4">
+      <h3 class="font-semibold mb-2">Runtime Choice</h3>
+      <p class="text-text-muted text-sm">JVM runtimes (Java, Scala, Kotlin) have the highest cold starts due to JVM initialization. Compiled runtimes (Go, Rust) have the lowest. Interpreted runtimes (Node.js, Python) fall in the middle.</p>
+    </div>
+    <div class="border border-border rounded-lg p-4">
+      <h3 class="font-semibold mb-2">Memory Allocation</h3>
+      <p class="text-text-muted text-sm">Higher memory = more CPU = faster initialization. Functions at 128MB are often 3-5x slower to cold start than the same function at 1024MB. Benchmark to find the optimal memory-cost tradeoff.</p>
+    </div>
+    <div class="border border-border rounded-lg p-4">
+      <h3 class="font-semibold mb-2">Init Code Complexity</h3>
+      <p class="text-text-muted text-sm">Database connection setup, SDK initialization, config loading, and module imports all happen during Init. Move expensive operations into lazy initialization patterns inside the handler where possible.</p>
+    </div>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Optimization Strategy 1: Minimize Package Size</h2>
+  <p class="text-text-muted mb-4">Use esbuild to bundle your Lambda handler into a single minified file:</p>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># esbuild bundle for Node.js Lambda
+esbuild src/handler.ts \
+  --bundle \
+  --minify \
+  --platform=node \
+  --target=node20 \
+  --external:@aws-sdk/* \
+  --outfile=dist/handler.js
+
+# Result: 50MB node_modules → 800KB single file
+# Cold start improvement: ~400ms → ~180ms</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Optimization Strategy 2: Provisioned Concurrency</h2>
+  <p class="text-text-muted mb-4">Configure provisioned concurrency via AWS CLI or IaC to keep execution environments pre-warmed:</p>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># AWS CLI: set provisioned concurrency
+aws lambda put-provisioned-concurrency-config \
+  --function-name my-api-function \
+  --qualifier production \
+  --provisioned-concurrent-executions 10
+
+# Terraform equivalent:
+resource "aws_lambda_provisioned_concurrency_config" "api" &#123;
+  function_name                  = aws_lambda_function.api.function_name
+  qualifier                      = aws_lambda_alias.production.name
+  provisioned_concurrent_executions = 10
+&#125;
+
+# Cost: ~$0.015/hour per provisioned concurrency unit
+# Eliminates cold starts for the first 10 concurrent invocations</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Optimization Strategy 3: Lambda SnapStart for Java</h2>
+  <p class="text-text-muted mb-4">Enable SnapStart in your function configuration to reduce Java cold starts from seconds to milliseconds:</p>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># serverless.yml — enable SnapStart for Java
+functions:
+  api:
+    handler: com.example.Handler
+    runtime: java21
+    snapStart: true  # Takes init snapshot on deploy
+    memorySize: 512
+    timeout: 30
+
+# AWS CDK equivalent:
+const fn = new lambda.Function(this, 'ApiFunction', &#123;
+  runtime: lambda.Runtime.JAVA_21,
+  handler: 'com.example.Handler',
+  snapStart: lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
+  memorySize: 512,
+&#125;);
+
+# Cold start result: 2,500ms → 180ms (93% improvement)</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Warming Strategy: Scheduled Pings</h2>
+  <p class="text-text-muted mb-4">For functions without consistent traffic, use EventBridge scheduled rules to keep execution environments warm. This is a low-cost alternative to provisioned concurrency for non-critical workloads.</p>
+  <p class="text-text-muted mb-4"><strong>Limitations:</strong> Scheduled pings keep one instance warm at a time. If you need N concurrent warm instances, you must send N concurrent requests simultaneously. For predictable baseline traffic, provisioned concurrency is more reliable.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Measuring Cold Starts with X-Ray</h2>
+  <p class="text-text-muted mb-4">Enable X-Ray tracing on your Lambda function to get detailed cold start breakdowns. The REPORT log line shows Init Duration separately from Duration:</p>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># CloudWatch Logs Insights query to find cold start stats
+fields @timestamp, @duration, @initDuration
+| filter @initDuration > 0
+| stats
+    count() as coldStarts,
+    avg(@initDuration) as avgInitMs,
+    percentile(@initDuration, 95) as p95InitMs,
+    max(@initDuration) as maxInitMs
+| sort by @timestamp desc
+
+# Lambda Powertools (Python) — automatic cold start metric
+from aws_lambda_powertools import Tracer, Metrics
+from aws_lambda_powertools.metrics import MetricUnit
+
+metrics = Metrics()
+tracer = Tracer()
+
+@metrics.log_metrics(capture_cold_start_metric=True)
+@tracer.capture_lambda_handler
+def handler(event, context):
+    return &#123;"statusCode": 200&#125;</code></pre>
+
+  <ToolPageCta currentTool="AWS Lambda Cold Start Calculator" relatedTags={['aws', 'lambda', 'serverless', 'performance', 'cloud']} />
+  <FaqSection faq={faq} />
+</BaseLayout>
