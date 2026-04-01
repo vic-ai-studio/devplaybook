@@ -1,0 +1,248 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is HashiCorp Vault and what problems does it solve?", answer: "HashiCorp Vault is a secrets management tool that centralizes the storage, access control, and auditing of sensitive data: API keys, database passwords, TLS certificates, SSH keys, and cloud provider credentials. Without Vault, secrets typically live in environment variables, .env files, or config maps — scattered, often version-controlled by accident, with no audit trail. Vault solves this by providing a single encrypted store with fine-grained access policies, dynamic secret generation (credentials that expire automatically), full audit logging, and multiple authentication methods." },
+  { question: "What is the difference between KV v1 and KV v2 secrets engines?", answer: "KV (Key-Value) v1 stores secrets without versioning — each write overwrites the previous value. KV v2 adds versioning: every write creates a new version, and you can read, restore, or delete specific versions. KV v2 also adds metadata like created_time and deletion_time. For most production use cases, use KV v2 because it gives you an audit trail of how secrets changed over time and the ability to roll back to a previous version if a secret is accidentally overwritten. Enable with: vault secrets enable -version=2 kv." },
+  { question: "What are dynamic secrets and why are they more secure?", answer: "Dynamic secrets are credentials generated on-demand by Vault and automatically revoked after a configurable TTL (time-to-live). For example, the Vault database secrets engine can create a unique PostgreSQL username and password when an application requests credentials. These credentials expire after 1 hour and are automatically deleted. This is far more secure than static credentials because: compromised credentials expire quickly, each application gets unique credentials (breach isolation), and Vault's audit log shows exactly who requested which credential and when." },
+  { question: "How does Vault Kubernetes authentication work?", answer: "The Kubernetes auth method lets pods authenticate to Vault using their Kubernetes service account JWT token (automatically mounted at /var/run/secrets/kubernetes.io/serviceaccount/token). The pod sends this token to Vault, Vault verifies it with the Kubernetes API server, and if valid, returns a Vault token with the policies you configured for that service account. This means pods authenticate without needing any pre-shared secrets. The Vault Agent sidecar or the Vault Secrets Operator automates this flow, injecting secrets directly into the pod's filesystem." },
+  { question: "What is the Vault Agent sidecar and how does it work?", answer: "The Vault Agent is a daemon that runs alongside your application as a sidecar container (or init container). It authenticates to Vault automatically, requests secrets, renders them to a file or environment variable on a shared volume, and renews them before they expire. You configure it with annotations on your pod: vault.hashicorp.com/agent-inject: 'true', vault.hashicorp.com/role: 'my-app', vault.hashicorp.com/agent-inject-secret-config.txt: 'secret/my-app/config'. The agent writes the secret to /vault/secrets/config.txt which your app reads at runtime." },
+  { question: "How does Vault compare to AWS Secrets Manager and Doppler?", answer: "AWS Secrets Manager is AWS-native, tightly integrated with RDS (automatic rotation), Lambda, and IAM — easiest for AWS-only workloads with a simple UI. It costs $0.40/secret/month. Vault is cloud-agnostic with a broader feature set: dynamic secrets for many backends (databases, AWS, GCP, Azure, SSH), PKI engine, Transit encryption-as-a-service, and support for on-premises deployments. Vault requires more operational overhead. Doppler is a developer-friendly SaaS secrets manager with excellent DX (CLI, GitHub integration, environment syncing) but fewer advanced features than Vault. Choose Vault for multi-cloud or complex secrets workflows, AWS Secrets Manager for pure AWS, Doppler for simplicity." },
+];
+---
+
+<BaseLayout
+  title="HashiCorp Vault: Secrets Management, KV Engine & K8s Integration"
+  description="Complete guide to HashiCorp Vault: dev server quickstart, KV v2 secrets, dynamic database credentials, Kubernetes auth, Vault Agent sidecar, AppRole auth, and comparison with AWS Secrets Manager and Doppler."
+  tool="HashiCorp Vault, secrets management, KV secrets, Kubernetes Vault, App Role, dynamic secrets"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "HashiCorp Vault: Secrets Management, KV Engine & K8s Integration",
+    "url": "https://devplaybook.cc/tools/vault-hashicorp",
+    "description": "Complete guide to HashiCorp Vault: KV secrets, dynamic credentials, Kubernetes integration, Vault Agent, and AppRole authentication.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">HashiCorp Vault</h1>
+  <p class="text-text-muted mb-6">
+    Centralize secrets management across cloud and on-premises. Store static secrets, generate dynamic credentials that expire automatically, and control access with fine-grained policies and full audit logging.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> KV v2 versioned secrets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dynamic database credentials</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Kubernetes auth + Agent sidecar</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Full audit logging</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Dev Server Quickstart</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install Vault CLI
+brew install vault    # macOS
+# Linux: download from releases.hashicorp.com/vault/
+
+# Start a dev server (in-memory, do NOT use in production)
+vault server -dev -dev-root-token-id="root"
+
+# In a new terminal, set env vars
+export VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_TOKEN='root'
+
+# Verify connectivity
+vault status</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">KV v2 Secrets Engine</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Enable KV v2 at a path
+vault secrets enable -path=secret -version=2 kv
+
+# Write a secret
+vault kv put secret/my-app/config \
+  db_url="postgres://user:pass@db:5432/myapp" \
+  api_key="sk-abc123"
+
+# Read the latest version
+vault kv get secret/my-app/config
+
+# Read a specific version
+vault kv get -version=1 secret/my-app/config
+
+# Update (creates new version)
+vault kv put secret/my-app/config \
+  db_url="postgres://user:newpass@db:5432/myapp" \
+  api_key="sk-abc123"
+
+# List all versions (metadata)
+vault kv metadata get secret/my-app/config
+
+# Delete (soft delete — still recoverable)
+vault kv delete secret/my-app/config
+
+# Permanently destroy version 1
+vault kv destroy -versions=1 secret/my-app/config</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Dynamic Database Credentials</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Enable the database secrets engine
+vault secrets enable database
+
+# Configure PostgreSQL connection (Vault connects with a superuser to create creds)
+vault write database/config/my-postgres \
+  plugin_name=postgresql-database-plugin \
+  allowed_roles="app-role" \
+  connection_url="postgresql://&#123;&#123;username&#125;&#125;:&#123;&#123;password&#125;&#125;@postgres:5432/myapp?sslmode=disable" \
+  username="vault_superuser" \
+  password="superpassword"
+
+# Create a role with a SQL template for credential creation
+vault write database/roles/app-role \
+  db_name=my-postgres \
+  creation_statements="CREATE ROLE \"&#123;&#123;name&#125;&#125;\" WITH LOGIN PASSWORD '&#123;&#123;password&#125;&#125;' VALID UNTIL '&#123;&#123;expiration&#125;&#125;';
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO \"&#123;&#123;name&#125;&#125;\";" \
+  default_ttl="1h" \
+  max_ttl="24h"
+
+# Request dynamic credentials (each call returns unique creds)
+vault read database/creds/app-role
+# Key                Value
+# lease_duration     1h
+# username           v-app-role-xK3mQ9pZ2r-1234567890
+# password           A1b2C3d4E5f6G7h8I9j0</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Kubernetes Auth and Vault Agent Sidecar</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># 1. Enable Kubernetes auth method in Vault
+vault auth enable kubernetes
+
+# 2. Configure with cluster details (run inside the cluster)
+vault write auth/kubernetes/config \
+  kubernetes_host="https://$KUBERNETES_PORT_443_TCP_ADDR:443" \
+  token_reviewer_jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+# 3. Create a Vault policy for the app
+vault policy write my-app - &lt;&lt;EOF
+path "secret/data/my-app/*" &#123;
+  capabilities = ["read"]
+&#125;
+path "database/creds/app-role" &#123;
+  capabilities = ["read"]
+&#125;
+EOF
+
+# 4. Create a Vault role binding Kubernetes SA to policy
+vault write auth/kubernetes/role/my-app \
+  bound_service_account_names=my-app-sa \
+  bound_service_account_namespaces=production \
+  policies=my-app \
+  ttl=24h</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Pod with Vault Agent sidecar annotations
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "my-app"
+        # Inject KV secret to /vault/secrets/config.txt
+        vault.hashicorp.com/agent-inject-secret-config.txt: "secret/data/my-app/config"
+        # Custom template for the secret file format
+        vault.hashicorp.com/agent-inject-template-config.txt: |
+          &#123;&#123;- with secret "secret/data/my-app/config" -&#125;&#125;
+          DB_URL=&#123;&#123; .Data.data.db_url &#125;&#125;
+          API_KEY=&#123;&#123; .Data.data.api_key &#125;&#125;
+          &#123;&#123;- end -&#125;&#125;
+    spec:
+      serviceAccountName: my-app-sa
+      containers:
+        - name: my-app
+          image: my-app:latest
+          # App reads secrets from /vault/secrets/config.txt</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">AppRole Authentication (for CI/CD)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Enable AppRole auth
+vault auth enable approle
+
+# Create AppRole for a CI/CD pipeline
+vault write auth/approle/role/ci-pipeline \
+  secret_id_ttl=10m \
+  token_num_uses=10 \
+  token_ttl=20m \
+  token_max_ttl=30m \
+  policies=my-app
+
+# Get the Role ID (static, safe to store)
+vault read auth/approle/role/ci-pipeline/role-id
+# role_id: 675a50e7-cfe0-be28-...
+
+# Generate a Secret ID (rotate frequently)
+vault write -f auth/approle/role/ci-pipeline/secret-id
+# secret_id: ed0a642f-2acf-...
+
+# In CI/CD: login with role_id + secret_id to get a Vault token
+vault write auth/approle/login \
+  role_id="675a50e7-cfe0-be28-..." \
+  secret_id="ed0a642f-2acf-..."
+# Returns: token, lease_duration, etc.</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Vault vs AWS Secrets Manager vs Doppler</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">HashiCorp Vault</th>
+          <th class="border border-border px-3 py-2 text-left">AWS Secrets Manager</th>
+          <th class="border border-border px-3 py-2 text-left">Doppler</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Dynamic secrets</td>
+          <td class="border border-border px-3 py-2">Yes (DB, AWS, GCP, SSH, PKI)</td>
+          <td class="border border-border px-3 py-2">Limited (RDS rotation)</td>
+          <td class="border border-border px-3 py-2">No</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Cloud agnostic</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+          <td class="border border-border px-3 py-2">AWS only</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Kubernetes integration</td>
+          <td class="border border-border px-3 py-2">Native (Agent, Operator)</td>
+          <td class="border border-border px-3 py-2">Via CSI driver</td>
+          <td class="border border-border px-3 py-2">Via operator</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Encryption-as-a-service</td>
+          <td class="border border-border px-3 py-2">Yes (Transit engine)</td>
+          <td class="border border-border px-3 py-2">Via KMS</td>
+          <td class="border border-border px-3 py-2">No</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Operational overhead</td>
+          <td class="border border-border px-3 py-2">High (self-managed)</td>
+          <td class="border border-border px-3 py-2">Low (managed)</td>
+          <td class="border border-border px-3 py-2">Low (managed)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Cost</td>
+          <td class="border border-border px-3 py-2">Free OSS / HCP Vault</td>
+          <td class="border border-border px-3 py-2">$0.40/secret/month</td>
+          <td class="border border-border px-3 py-2">Free tier / $6.99+/user</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="HashiCorp Vault" relatedTags={['vault', 'secrets', 'security', 'hashicorp', 'devops']} />
+</BaseLayout>

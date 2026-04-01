@@ -1,0 +1,285 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is HashiCorp Packer and why build machine images?", answer: "HashiCorp Packer is an open-source tool that automates the creation of identical machine images for multiple platforms (AWS AMI, GCP image, Azure VHD, Docker, VMware, VirtualBox) from a single configuration. The 'immutable infrastructure' philosophy it enables means: instead of SSHing into servers to update software (mutable), you build a new image with the changes baked in and replace running instances. Benefits: servers in production are identical to what was tested, deployments are faster (no configuration at boot time), rollbacks mean launching the previous image version, and there are no configuration drift or snowflake server problems." },
+  { question: "What is the difference between Packer HCL2 and JSON templates?", answer: "Packer originally used JSON templates (.json) but introduced HCL2 templates (.pkr.hcl) in Packer 1.7. HCL2 is now the recommended format. HCL2 advantages: variables with validation, for_each for building multiple images, locals blocks for computed values, native Packer functions, better error messages, and support for multiple source blocks in a single file. JSON templates still work but are legacy. Use HCL2 for new projects. The packer hcl2_upgrade command converts existing JSON templates to HCL2." },
+  { question: "How does Packer integrate with Terraform?", answer: "A common pattern: Packer builds an AMI with your application pre-installed, then Terraform provisions EC2 instances using that AMI ID. Packer outputs the artifact ID (e.g., ami-0abc123456) after a successful build. You can pass this ID to Terraform via a data source (aws_ami with filter on tags), a Terraform variable in your CI/CD pipeline (TF_VAR_ami_id=$PACKER_AMI_ID), or by storing it in SSM Parameter Store and reading it in Terraform with aws_ssm_parameter. This fully automates the image → infrastructure pipeline." },
+  { question: "What provisioners does Packer support?", answer: "Packer provisioners run inside the temporary machine during the build to install software and configure the image. Key provisioners: shell (run bash/PowerShell scripts), ansible (run an Ansible playbook against the machine, no agent needed), file (copy files into the image), chef-solo, puppet, salt-masterless, and powershell (for Windows). The ansible provisioner is popular for teams already using Ansible — you can reuse existing playbooks to build both running servers and pre-baked machine images with the same codebase." },
+  { question: "How do I build Packer images in a CI/CD pipeline (GitHub Actions)?", answer: "Store your Packer templates in Git. In GitHub Actions, use the hashicorp/setup-packer action to install Packer, then run packer init, packer validate, and packer build. Pass AWS credentials via environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY or use OIDC for keyless auth). Tag the resulting AMI with the Git commit SHA and branch name for traceability. Trigger image builds only when relevant files change (e.g., packer/ directory or application code), not on every commit, to avoid unnecessary builds." },
+  { question: "Can Packer build Docker images? How does it differ from a Dockerfile?", answer: "Yes, Packer can build Docker images using the docker builder. The key difference: Packer uses the same provisioner model (shell, Ansible, file) regardless of the target platform, so you can build an AWS AMI and a Docker image with the same provisioner scripts, ensuring they are identical. Dockerfiles use a different syntax and layer model optimized for Docker specifically. For teams building both VM images and Docker images, Packer provides consistency. For Docker-only workflows, Dockerfiles are simpler and better supported by the Docker ecosystem (multi-stage builds, BuildKit cache, etc.)." },
+];
+---
+
+<BaseLayout
+  title="HashiCorp Packer: Build Machine Images for AWS, GCP & Azure"
+  description="Complete guide to HashiCorp Packer: HCL2 template structure, building AWS AMIs, shell and Ansible provisioners, post-processors, Terraform integration, GitHub Actions CI, and Packer vs Docker comparison."
+  tool="Packer, machine images, AMI, GCP image, Azure image, HashiCorp, infrastructure as code"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "HashiCorp Packer: Build Machine Images for AWS, GCP & Azure",
+    "url": "https://devplaybook.cc/tools/packer",
+    "description": "Complete guide to Packer: HCL2 templates, AWS AMI builds, Ansible provisioners, Terraform integration, and GitHub Actions CI for image pipelines.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">HashiCorp Packer</h1>
+  <p class="text-text-muted mb-6">
+    Build identical machine images for AWS, GCP, Azure, Docker, and more from a single HCL2 template. Bake your application into immutable AMIs and ship faster, safer deployments with zero configuration drift.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-cloud: AWS / GCP / Azure / VMware</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Shell + Ansible provisioners</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HCL2 templates</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Integrates with Terraform</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installing Packer</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># macOS
+brew tap hashicorp/tap
+brew install hashicorp/tap/packer
+
+# Linux
+wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install packer
+
+# Verify
+packer version</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">HCL2 Template Structure</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">A Packer HCL2 template has three top-level blocks: <code>packer</code> (required plugins), <code>source</code> (what to build and where), and <code>build</code> (what to do inside):</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># aws-ami.pkr.hcl
+
+# 1. Required plugins
+packer &#123;
+  required_plugins &#123;
+    amazon = &#123;
+      version = ">= 1.3.0"
+      source  = "github.com/hashicorp/amazon"
+    &#125;
+  &#125;
+&#125;
+
+# 2. Variables
+variable "aws_region" &#123;
+  type    = string
+  default = "us-east-1"
+&#125;
+
+variable "app_version" &#123;
+  type = string
+&#125;
+
+# 3. Locals (computed values)
+locals &#123;
+  timestamp = regex_replace(timestamp(), "[- TZ:]", "")
+  ami_name  = "my-app-&#123;&#123;var.app_version&#125;&#125;-$&#123;local.timestamp&#125;"
+&#125;
+
+# 4. Source block (what to build)
+source "amazon-ebs" "ubuntu" &#123;
+  ami_name      = local.ami_name
+  instance_type = "t3.medium"
+  region        = var.aws_region
+
+  source_ami_filter &#123;
+    filters = &#123;
+      name                = "ubuntu/images/*ubuntu-jammy-22.04-amd64-server-*"
+      root-device-type    = "ebs"
+      virtualization-type = "hvm"
+    &#125;
+    most_recent = true
+    owners      = ["099720109477"]  # Canonical
+  &#125;
+
+  ssh_username = "ubuntu"
+
+  tags = &#123;
+    Name        = local.ami_name
+    AppVersion  = var.app_version
+    BuildDate   = local.timestamp
+    ManagedBy   = "Packer"
+  &#125;
+&#125;
+
+# 5. Build block (provisioners run inside the machine)
+build &#123;
+  name    = "my-app-ami"
+  sources = ["source.amazon-ebs.ubuntu"]
+
+  # Provisioner 1: Shell scripts
+  provisioner "shell" &#123;
+    inline = [
+      "sudo apt-get update -y",
+      "sudo apt-get install -y nginx nodejs npm",
+      "sudo systemctl enable nginx",
+    ]
+  &#125;
+
+  # Provisioner 2: Copy application files
+  provisioner "file" &#123;
+    source      = "app/"
+    destination = "/home/ubuntu/app"
+  &#125;
+
+  # Provisioner 3: Run setup script
+  provisioner "shell" &#123;
+    script = "scripts/setup-app.sh"
+    environment_vars = [
+      "APP_VERSION=$&#123;var.app_version&#125;",
+    ]
+  &#125;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Using Ansible Provisioner</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># packer &#123;
+#   required_plugins &#123;
+#     ansible = &#123;
+#       version = ">= 1.1.0"
+#       source  = "github.com/hashicorp/ansible"
+#     &#125;
+#   &#125;
+# &#125;
+
+build &#123;
+  sources = ["source.amazon-ebs.ubuntu"]
+
+  # Packer connects via SSH and runs Ansible against the temporary instance
+  # No Ansible agent required on the target machine
+  provisioner "ansible" &#123;
+    playbook_file   = "ansible/site.yml"
+    user            = "ubuntu"
+    use_proxy       = false
+    extra_arguments = [
+      "--extra-vars", "app_version=$&#123;var.app_version&#125; env=production",
+      "--tags", "app,nginx",
+    ]
+    ansible_env_vars = [
+      "ANSIBLE_HOST_KEY_CHECKING=False",
+    ]
+  &#125;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Building and Running Packer</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Initialize (download required plugins)
+packer init .
+
+# Validate the template (syntax + variable checks)
+packer validate -var "app_version=1.4.2" aws-ami.pkr.hcl
+
+# Build the AMI (requires AWS credentials in env)
+export AWS_ACCESS_KEY_ID="AKIA..."
+export AWS_SECRET_ACCESS_KEY="..."
+# or use an IAM instance profile if running in AWS
+
+packer build -var "app_version=1.4.2" aws-ami.pkr.hcl
+
+# Output:
+# --> amazon-ebs.ubuntu: AMI: ami-0a1b2c3d4e5f67890
+# Build 'amazon-ebs.ubuntu' finished after 8 minutes.
+
+# Build multiple targets (parallel)
+packer build -parallel-builds=2 .   # builds all .pkr.hcl files in directory</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">GitHub Actions CI for Image Builds</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># .github/workflows/build-ami.yml
+name: Build AMI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packer/**'
+      - 'ansible/**'
+      - 'scripts/**'
+
+permissions:
+  id-token: write   # for OIDC (keyless AWS auth)
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789:role/GitHubActionsPackerRole
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-packer@main
+        with:
+          version: "latest"
+
+      - name: Packer Init
+        run: packer init packer/
+
+      - name: Packer Validate
+        run: packer validate -var "app_version=$&#123;&#123; github.sha &#125;&#125;" packer/
+
+      - name: Packer Build
+        run: packer build -var "app_version=$&#123;&#123; github.sha &#125;&#125;" packer/
+
+      - name: Store AMI ID in SSM
+        run: |
+          AMI_ID=$(cat packer-manifest.json | jq -r '.builds[0].artifact_id' | cut -d: -f2)
+          aws ssm put-parameter --name /my-app/ami-id --value $AMI_ID --type String --overwrite</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Packer vs Docker for Immutable Infrastructure</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Aspect</th>
+          <th class="border border-border px-3 py-2 text-left">Packer (Machine Images)</th>
+          <th class="border border-border px-3 py-2 text-left">Docker (Container Images)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Output format</td>
+          <td class="border border-border px-3 py-2">AMI, GCP Image, Azure VHD, OVF</td>
+          <td class="border border-border px-3 py-2">OCI container image</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Runtime</td>
+          <td class="border border-border px-3 py-2">Full VM (kernel + OS)</td>
+          <td class="border border-border px-3 py-2">Shared kernel (namespaces)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Startup time</td>
+          <td class="border border-border px-3 py-2">Minutes (VM boot)</td>
+          <td class="border border-border px-3 py-2">Seconds (container start)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Isolation</td>
+          <td class="border border-border px-3 py-2">Full hardware isolation</td>
+          <td class="border border-border px-3 py-2">Process isolation</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">EC2 fleets, legacy apps, compliance</td>
+          <td class="border border-border px-3 py-2">Microservices, Kubernetes</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Multi-platform build</td>
+          <td class="border border-border px-3 py-2">Yes (same template, multiple clouds)</td>
+          <td class="border border-border px-3 py-2">Yes (multi-arch via buildx)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="HashiCorp Packer" relatedTags={['packer', 'aws', 'ami', 'iac', 'hashicorp', 'devops']} />
+</BaseLayout>

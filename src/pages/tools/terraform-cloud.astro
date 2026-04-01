@@ -1,0 +1,260 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Terraform Cloud and how does it differ from running Terraform locally?", answer: "Terraform Cloud is HashiCorp's managed service that provides remote state storage, a locked execution environment, team access controls, cost estimation, and Sentinel policy enforcement — all in the cloud. When running Terraform locally, state files live on your machine or an S3 bucket you manage, runs execute on your laptop (with your environment variables), and there is no built-in team collaboration or audit trail. Terraform Cloud centralizes all of this: state is encrypted and versioned automatically, runs are reproducible in an isolated environment, and every plan and apply is logged with who triggered it." },
+  { question: "How does VCS-driven (GitHub) workflow work in Terraform Cloud?", answer: "Connect your Terraform Cloud workspace to a GitHub repository. When you open a pull request, Terraform Cloud automatically runs terraform plan and posts the plan output as a PR comment. When the PR is merged to the main branch, Terraform Cloud runs terraform apply automatically. This creates a GitOps-style workflow where infrastructure changes go through code review before being applied. You configure the VCS connection in workspace settings by installing the Terraform Cloud GitHub App and specifying the working directory and trigger patterns." },
+  { question: "What is the difference between Terraform Cloud and Terraform Enterprise?", answer: "Terraform Cloud is the SaaS offering hosted by HashiCorp at app.terraform.io — you do not manage the infrastructure running it. Terraform Enterprise is the self-hosted version you install on your own servers (VM or Kubernetes), giving you full control over data residency, network isolation, and compliance requirements. Terraform Enterprise also includes additional enterprise features like audit logging, SAML/SSO integration, and higher Sentinel tier limits. Most teams start with Terraform Cloud Free or Plus tiers and only move to Enterprise for strict data sovereignty requirements." },
+  { question: "How do I use remote state in Terraform Cloud from another workspace?", answer: "In your consumer workspace, declare a terraform_remote_state data source pointing to the producer workspace: data terraform_remote_state vpc &#123; backend = 'remote' config = &#123; organization = 'my-org' workspaces = &#123; name = 'vpc-prod' &#125; &#125; &#125;. Then reference outputs: data.terraform_remote_state.vpc.outputs.vpc_id. You must also enable 'Remote state sharing' in the producer workspace settings under General > Remote state sharing and add the consumer workspace to the allow list. This is how you compose infrastructure across multiple workspaces without hardcoding values." },
+  { question: "What is Sentinel policy enforcement in Terraform Cloud?", answer: "Sentinel is HashiCorp's policy-as-code framework embedded in Terraform Cloud. You write policies in Sentinel language that run between the plan and apply phases. Policies can enforce rules like 'all S3 buckets must have versioning enabled' or 'no instance type larger than t3.xlarge is allowed in dev'. Policies have three enforcement modes: advisory (pass/fail logged but apply continues), soft-mandatory (can be overridden by a privileged user), and hard-mandatory (blocks apply unconditionally). Sentinel is available on Terraform Cloud Plus and Terraform Enterprise." },
+  { question: "How do I integrate Terraform Cloud with GitHub Actions?", answer: "Use the hashicorp/setup-terraform GitHub Action to install Terraform, then authenticate to Terraform Cloud using a TFC API token stored as a GitHub secret. Set TF_API_TOKEN in your workflow environment. On pull_request events, run terraform plan; on push to main, run terraform apply. Alternatively, use Terraform Cloud's native VCS integration which avoids managing tokens in GitHub and provides richer plan output in the TFC UI. The native VCS integration is recommended for most teams as it provides better visibility and audit trails." },
+];
+---
+
+<BaseLayout
+  title="Terraform Cloud: Remote State, CI/CD Workspaces & Team Workflows"
+  description="Complete guide to Terraform Cloud: remote state setup, workspace VCS integration, Sentinel policies, GitHub Actions CI/CD, and comparison with Terraform Enterprise and local state. Free DevOps reference."
+  tool="Terraform Cloud, remote state, workspaces, IaC, HashiCorp, CI/CD, Terraform"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Terraform Cloud: Remote State, CI/CD Workspaces & Team Workflows",
+    "url": "https://devplaybook.cc/tools/terraform-cloud",
+    "description": "Complete guide to Terraform Cloud: remote state, VCS-driven workspaces, Sentinel policies, and CI/CD integration.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Terraform Cloud</h1>
+  <p class="text-text-muted mb-6">
+    HashiCorp's managed platform for Terraform — remote state storage, locked execution environments, team access controls, cost estimation, and Sentinel policy enforcement with zero infrastructure to manage.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Remote state & locking</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> VCS-driven plan/apply</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Sentinel policy enforcement</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GitHub Actions integration</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Terraform Cloud?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Terraform Cloud (TFC) is HashiCorp's managed SaaS platform that extends open-source Terraform with collaboration, security, and governance features. At its core it solves three problems that arise when teams use Terraform: <strong>state management</strong> (where is the state file and who can access it?), <strong>execution consistency</strong> (runs on different machines produce different results due to different provider versions), and <strong>team workflows</strong> (who approved this apply and when?).
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    TFC organizes work into <strong>workspaces</strong> — each workspace is an isolated Terraform working directory with its own state, variables, run history, and access controls. Workspaces map loosely to environments (dev/staging/prod) or infrastructure components (vpc/eks/rds). Runs (plans and applies) execute on HashiCorp-managed compute in an isolated, reproducible environment.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Configuring Remote State</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">Add the <code>cloud</code> block to your Terraform configuration to store state in Terraform Cloud:</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># main.tf — configure Terraform Cloud backend
+terraform &#123;
+  required_version = ">= 1.1.0"
+
+  cloud &#123;
+    organization = "my-org"
+
+    workspaces &#123;
+      name = "api-production"
+    &#125;
+  &#125;
+
+  required_providers &#123;
+    aws = &#123;
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    &#125;
+  &#125;
+&#125;
+
+# Authenticate via environment variable or interactive login
+# export TF_TOKEN_app_terraform_io="your-api-token"
+# OR run: terraform login</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">VCS-Driven Workflow (GitHub Integration)</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">Connect a workspace to your GitHub repository for automatic plan-on-PR and apply-on-merge workflows:</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># In Terraform Cloud UI:
+# Workspace → Settings → Version Control → Connect to VCS
+# Install the Terraform Cloud GitHub App
+# Select repository and configure:
+#   - Working directory: infra/aws/production
+#   - Trigger: Only files in working directory
+#   - Auto apply: enabled for main branch only
+
+# PR workflow (automatic):
+# 1. Developer opens PR → TFC runs terraform plan
+# 2. Plan output posted as PR comment
+# 3. Reviewer approves the plan in TFC UI
+# 4. PR merged → TFC runs terraform apply automatically
+# 5. Apply output stored in run history with committer identity</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cross-Workspace Remote State</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># In producer workspace (vpc-production), expose outputs:
+output "vpc_id" &#123;
+  value = aws_vpc.main.id
+&#125;
+output "private_subnet_ids" &#123;
+  value = aws_subnet.private[*].id
+&#125;
+
+# In consumer workspace (eks-production), read remote state:
+data "terraform_remote_state" "vpc" &#123;
+  backend = "remote"
+  config = &#123;
+    organization = "my-org"
+    workspaces = &#123;
+      name = "vpc-production"
+    &#125;
+  &#125;
+&#125;
+
+resource "aws_eks_cluster" "main" &#123;
+  name     = "production"
+  role_arn = aws_iam_role.eks.arn
+
+  vpc_config &#123;
+    subnet_ids = data.terraform_remote_state.vpc.outputs.private_subnet_ids
+  &#125;
+&#125;
+
+# Also enable remote state sharing in TFC:
+# vpc-production workspace → Settings → Remote state sharing → Add eks-production</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Sentinel Policy Enforcement</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># policies/require-s3-versioning.sentinel
+import "tfplan/v2" as tfplan
+
+# Find all S3 bucket resources in the plan
+s3_buckets = filter tfplan.resource_changes as _, rc &#123;
+  rc.type is "aws_s3_bucket" and
+  rc.mode is "managed" and
+  rc.change.actions contains "create"
+&#125;
+
+# Policy rule: all new S3 buckets must enable versioning
+main = rule &#123;
+  all s3_buckets as _, bucket &#123;
+    bucket.change.after.versioning[0].enabled is true
+  &#125;
+&#125;
+
+# policy-set configuration (sentinel.hcl):
+# policy "require-s3-versioning" &#123;
+#   source            = "./policies/require-s3-versioning.sentinel"
+#   enforcement_level = "soft-mandatory"
+# &#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">GitHub Actions Integration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># .github/workflows/terraform.yml
+name: Terraform CI
+
+on:
+  pull_request:
+    paths: ['infra/**']
+  push:
+    branches: [main]
+    paths: ['infra/**']
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/aws/production
+    env:
+      TF_API_TOKEN: $&#123;&#123; secrets.TF_API_TOKEN &#125;&#125;
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+          cli_config_credentials_token: $&#123;&#123; secrets.TF_API_TOKEN &#125;&#125;
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        if: github.event_name == 'pull_request'
+        run: terraform plan -no-color
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Terraform Cloud vs Terraform Enterprise vs Local</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Local / S3 Backend</th>
+          <th class="border border-border px-3 py-2 text-left">Terraform Cloud</th>
+          <th class="border border-border px-3 py-2 text-left">Terraform Enterprise</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Hosting</td>
+          <td class="border border-border px-3 py-2">Self-managed</td>
+          <td class="border border-border px-3 py-2">HashiCorp SaaS</td>
+          <td class="border border-border px-3 py-2">Self-hosted</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Remote state</td>
+          <td class="border border-border px-3 py-2">Manual (S3 + DynamoDB)</td>
+          <td class="border border-border px-3 py-2">Built-in, encrypted</td>
+          <td class="border border-border px-3 py-2">Built-in, encrypted</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Remote execution</td>
+          <td class="border border-border px-3 py-2">No</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Sentinel policies</td>
+          <td class="border border-border px-3 py-2">No</td>
+          <td class="border border-border px-3 py-2">Plus tier+</td>
+          <td class="border border-border px-3 py-2">Yes (all tiers)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Cost estimation</td>
+          <td class="border border-border px-3 py-2">No</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Data residency</td>
+          <td class="border border-border px-3 py-2">Full control</td>
+          <td class="border border-border px-3 py-2">HashiCorp US/EU</td>
+          <td class="border border-border px-3 py-2">Full control</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Cost</td>
+          <td class="border border-border px-3 py-2">AWS S3 + DynamoDB fees</td>
+          <td class="border border-border px-3 py-2">Free (500 resources) / $20+ per user</td>
+          <td class="border border-border px-3 py-2">Enterprise contract</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Best Practices</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Use one workspace per environment per infrastructure component (e.g., <code>vpc-dev</code>, <code>vpc-prod</code>, <code>eks-prod</code>)</li>
+    <li>Store sensitive variables (AWS keys, database passwords) as sensitive workspace variables — never in <code>.tfvars</code> files committed to Git</li>
+    <li>Enable cost estimation and review it before approving applies to avoid surprise AWS bills</li>
+    <li>Use run triggers to automatically re-plan downstream workspaces when upstream state changes</li>
+    <li>Pin Terraform and provider versions to avoid unexpected behavior from automatic upgrades</li>
+    <li>Enable the "Require two-factor authentication" organization setting for all users</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Terraform Cloud" relatedTags={['terraform', 'iac', 'devops', 'cloud', 'hashicorp']} />
+</BaseLayout>

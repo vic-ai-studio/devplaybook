@@ -1,0 +1,194 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Kubernetes Dashboard and what can it do?", answer: "Kubernetes Dashboard is the official web-based UI for Kubernetes clusters. It lets you view and manage workloads (Deployments, StatefulSets, DaemonSets), Services, ConfigMaps, Secrets, PersistentVolumes, Namespaces, and Nodes from a browser. You can create, edit, and delete resources using the GUI, scale Deployments, trigger rolling restarts, view pod logs, and exec into containers — all without needing kubectl installed locally." },
+  { question: "How do I create a service account token to log in to the Dashboard?", answer: "Create a ServiceAccount and bind it to the cluster-admin ClusterRole. Then generate a token: kubectl create token admin-user -n kubernetes-dashboard. This produces a bearer token you paste into the Dashboard login screen. For long-lived tokens (Kubernetes 1.24+), create a Secret of type kubernetes.io/service-account-token referencing the ServiceAccount and retrieve the token with: kubectl get secret admin-user-secret -n kubernetes-dashboard -o jsonpath='{.data.token}' | base64 -d" },
+  { question: "Is Kubernetes Dashboard safe to expose publicly?", answer: "No — the Dashboard should never be exposed directly to the internet. Access it exclusively via kubectl proxy (localhost tunnel) or through a VPN-protected ingress with authentication. The Dashboard historically had security vulnerabilities (CVE-2018-18264) when exposed with broad RBAC permissions. Always apply least-privilege RBAC, disable anonymous access, and use kubectl proxy or port-forwarding for access. For production monitoring, consider pairing it with an identity-aware proxy like Pomerium or oauth2-proxy." },
+  { question: "What is the difference between Kubernetes Dashboard, Lens, and k9s?", answer: "Kubernetes Dashboard is browser-based and runs inside your cluster, requiring no local installation beyond kubectl proxy. Lens is a desktop Electron app with a rich GUI, multi-cluster support, built-in metrics, and a marketplace for extensions — ideal for developers managing many clusters. k9s is a terminal UI (TUI) that runs in your shell, extremely fast and keyboard-driven, preferred by power users who live in the terminal. For quick cluster-wide visibility with no local tooling, Dashboard wins. For daily multi-cluster workflows, Lens or k9s are faster." },
+  { question: "How do I upgrade the Kubernetes Dashboard?", answer: "Apply the latest recommended manifest from the official GitHub release: kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v3.x.x/aio/deploy/recommended.yaml. Check the Dashboard GitHub releases page for the latest version tag. Always read the upgrade notes because RBAC requirements and namespace conventions change between major versions. Verify the running version at the bottom of the Dashboard UI after upgrading." },
+  { question: "Can I use Kubernetes Dashboard with metrics (CPU/memory graphs)?", answer: "Yes. Install the Metrics Server in your cluster first (kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml), then the Dashboard will automatically display CPU and memory usage graphs for nodes and pods. Without Metrics Server the graphs section shows empty data. For advanced metrics and alerting, complement the Dashboard with Prometheus + Grafana rather than relying solely on the Dashboard's built-in graphs." },
+];
+---
+
+<BaseLayout
+  title="Kubernetes Dashboard: Install, Access & Cluster Management Guide"
+  description="Complete guide to Kubernetes Dashboard: kubectl apply installation, kubectl proxy access, RBAC token setup, workload management, and comparison with Lens and k9s. Free reference for DevOps engineers."
+  tool="Kubernetes dashboard, k8s dashboard, kubectl proxy, cluster management, K8s UI"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Kubernetes Dashboard: Install, Access & Cluster Management Guide",
+    "url": "https://devplaybook.cc/tools/kubernetes-dashboard",
+    "description": "Complete guide to Kubernetes Dashboard: installation, kubectl proxy access, RBAC token setup, and comparison with Lens and k9s.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Kubernetes Dashboard</h1>
+  <p class="text-text-muted mb-6">
+    The official web UI for Kubernetes. Manage workloads, inspect pod logs, scale Deployments, and troubleshoot your cluster — all from a browser with no additional tooling.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> One-command installation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> kubectl proxy secure access</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> RBAC token authentication</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Workloads, Services, Namespaces</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Kubernetes Dashboard?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Kubernetes Dashboard is the official general-purpose web UI for Kubernetes clusters, maintained by the Kubernetes project under the <code>kubernetes/dashboard</code> GitHub repository. It runs as a Deployment inside your cluster and provides a visual interface for every aspect of cluster state: Deployments, ReplicaSets, StatefulSets, DaemonSets, Jobs, CronJobs, Pods, Services, Ingresses, ConfigMaps, Secrets, PersistentVolumes, Nodes, and Namespaces.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Beyond read-only inspection, the Dashboard supports full CRUD operations — you can create resources by pasting YAML, edit live manifests inline, delete objects, scale Deployments up or down, trigger rolling restarts, view streaming pod logs, and exec into container shells. When paired with Metrics Server it also shows real-time CPU and memory utilization graphs for nodes and pods.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation via kubectl apply</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">Deploy the Dashboard using the official recommended manifest:</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Deploy Kubernetes Dashboard (check GitHub for latest version tag)
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v3.0.0/aio/deploy/recommended.yaml
+
+# Verify pods are running in the kubernetes-dashboard namespace
+kubectl get pods -n kubernetes-dashboard
+
+# Expected output:
+# NAME                                         READY   STATUS    RESTARTS
+# dashboard-metrics-scraper-7b68d5954d-xkz2r   1/1     Running   0
+# kubernetes-dashboard-6b8958bdf5-kwxvf         1/1     Running   0</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Accessing the Dashboard via kubectl proxy</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">The safest way to access the Dashboard is through <code>kubectl proxy</code>, which creates an encrypted tunnel to the API server without exposing any ports:</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Start the proxy (runs in foreground, Ctrl+C to stop)
+kubectl proxy
+
+# Access the Dashboard at:
+# http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Creating an Admin Service Account & Token</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">The Dashboard requires a bearer token for authentication. Create a service account with cluster-admin access:</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># 1. Create ServiceAccount
+kubectl create serviceaccount admin-user -n kubernetes-dashboard
+
+# 2. Bind to cluster-admin ClusterRole
+kubectl create clusterrolebinding admin-user \
+  --clusterrole=cluster-admin \
+  --serviceaccount=kubernetes-dashboard:admin-user
+
+# 3. Generate a token (Kubernetes 1.24+)
+kubectl create token admin-user -n kubernetes-dashboard
+
+# For a long-lived token, create a Secret:
+cat &lt;&lt;EOF | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: admin-user-secret
+  namespace: kubernetes-dashboard
+  annotations:
+    kubernetes.io/service-account.name: admin-user
+type: kubernetes.io/service-account-token
+EOF
+
+# Retrieve the token value
+kubectl get secret admin-user-secret -n kubernetes-dashboard \
+  -o jsonpath='&#123;.data.token&#125;' | base64 -d</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Managing Workloads from the Dashboard UI</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">Once logged in, the left sidebar gives you access to all resource types. Key workflows:</p>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Deployments</strong> — view replica counts, image versions, rollout status; click "Scale" to change replicas instantly</li>
+    <li><strong>Pod logs</strong> — click any Pod → Logs tab for streaming stdout/stderr with search and download</li>
+    <li><strong>Exec into container</strong> — click Pod → Exec for a web-based shell (requires exec RBAC permission)</li>
+    <li><strong>Rolling restart</strong> — click Deployment → three-dot menu → Restart to trigger a rolling redeploy without changing image</li>
+    <li><strong>Edit live YAML</strong> — click any resource → Edit to modify the manifest and apply changes inline</li>
+    <li><strong>Create resources</strong> — click the "+" button in the top-right to paste or upload YAML/JSON</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installing Metrics Server for CPU/Memory Graphs</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install Metrics Server
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+# For local clusters (minikube, kind) add --kubelet-insecure-tls flag:
+kubectl patch deployment metrics-server -n kube-system \
+  --type='json' -p='[&#123;"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"&#125;]'
+
+# Verify Metrics Server is working
+kubectl top nodes
+kubectl top pods -A</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Kubernetes Dashboard vs Lens vs k9s</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">K8s Dashboard</th>
+          <th class="border border-border px-3 py-2 text-left">Lens</th>
+          <th class="border border-border px-3 py-2 text-left">k9s</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Interface</td>
+          <td class="border border-border px-3 py-2">Browser (web UI)</td>
+          <td class="border border-border px-3 py-2">Desktop app (Electron)</td>
+          <td class="border border-border px-3 py-2">Terminal (TUI)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Installation</td>
+          <td class="border border-border px-3 py-2">Runs inside cluster</td>
+          <td class="border border-border px-3 py-2">Local install (Mac/Win/Linux)</td>
+          <td class="border border-border px-3 py-2">Local binary</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Multi-cluster</td>
+          <td class="border border-border px-3 py-2">One cluster per instance</td>
+          <td class="border border-border px-3 py-2">Yes (sidebar switcher)</td>
+          <td class="border border-border px-3 py-2">Yes (kubeconfig contexts)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Speed</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2">Fast</td>
+          <td class="border border-border px-3 py-2">Very fast</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Built-in metrics</td>
+          <td class="border border-border px-3 py-2">Via Metrics Server</td>
+          <td class="border border-border px-3 py-2">Built-in (Prometheus)</td>
+          <td class="border border-border px-3 py-2">Via Metrics Server</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Cost</td>
+          <td class="border border-border px-3 py-2">Free / open source</td>
+          <td class="border border-border px-3 py-2">Free tier + paid Pro</td>
+          <td class="border border-border px-3 py-2">Free / open source</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Shared team access, no local install</td>
+          <td class="border border-border px-3 py-2">GUI-oriented engineers, multi-cluster</td>
+          <td class="border border-border px-3 py-2">Power users, fast navigation</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Security Best Practices</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Never expose the Dashboard with a NodePort or LoadBalancer service publicly — always use <code>kubectl proxy</code> or a VPN-protected ingress</li>
+    <li>Use least-privilege RBAC — create role-specific ServiceAccounts rather than binding everyone to cluster-admin</li>
+    <li>Disable anonymous access in the Dashboard deployment args: <code>--enable-insecure-login=false</code></li>
+    <li>Rotate service account tokens regularly; prefer short-lived tokens generated with <code>kubectl create token</code></li>
+    <li>For team access, front the Dashboard with an identity-aware proxy (oauth2-proxy, Pomerium) rather than sharing a cluster-admin token</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Kubernetes Dashboard" relatedTags={['kubernetes', 'devops', 'containers', 'k8s', 'cluster-management']} />
+</BaseLayout>

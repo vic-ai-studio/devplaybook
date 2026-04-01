@@ -1,0 +1,247 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Consul and what are its main use cases?", answer: "HashiCorp Consul is a distributed service networking solution with three core capabilities: service discovery (finding where services are running), health checking (automatically routing traffic away from unhealthy instances), and key-value store (distributed configuration). With Consul Connect, it also provides a service mesh with automatic mTLS between services. Use cases include: microservices communicating across dynamic IP addresses, automatic failover when a service crashes, distributed configuration management, and zero-trust networking between services with encrypted mTLS connections." },
+  { question: "How does Consul service discovery differ from Kubernetes native DNS?", answer: "Kubernetes kube-dns provides basic DNS-based service discovery within a single cluster using service names like my-service.namespace.svc.cluster.local. Consul extends this to multi-cluster and hybrid environments (VMs + containers), provides health checking at the service level (not just pod level), supports external services not running in Kubernetes, and integrates with non-Kubernetes environments like legacy VMs. For pure Kubernetes-only workloads, kube-dns is simpler. Consul shines in multi-datacenter setups, hybrid cloud, or when you need fine-grained health checks." },
+  { question: "What is Consul Connect and how does mTLS work?", answer: "Consul Connect is the service mesh component of Consul. It automatically provisions TLS certificates for each service and configures sidecar proxies (Envoy by default) to enforce mutual TLS (mTLS) between services. When service A calls service B, both sides authenticate via certificates issued by Consul's built-in CA. Intentions define which services are allowed to communicate — by default, all communication is blocked and you explicitly allow pairs. This implements zero-trust networking: services cannot communicate unless explicitly permitted, and all traffic is encrypted in transit." },
+  { question: "How do I register a service in Consul?", answer: "Services can be registered in three ways: (1) Config file on the Consul agent — drop a JSON or HCL file in the Consul config directory with the service definition. (2) HTTP API — POST to /v1/agent/service/register with the service definition JSON. (3) Kubernetes integration — deploy the Consul Helm chart and annotate pods with consul.hashicorp.com/connect-inject: 'true'; Consul automatically registers the pods as services. The service definition includes name, port, tags, and health checks (HTTP, TCP, script, or TTL-based)." },
+  { question: "How does the Consul KV store compare to etcd or Redis for configuration?", answer: "Consul's KV store is designed for distributed configuration — it supports watches (get notified when a key changes), transactions, and replication across datacenters. It is not designed for high-throughput writes or large values (unlike Redis). Compared to etcd, Consul KV is simpler to use (REST API, web UI, CLI) and integrates naturally with Consul's service discovery and health checking. etcd is optimized for Kubernetes metadata storage with stronger consistency guarantees. Use Consul KV for application configuration that changes occasionally, Vault for secrets, and Redis for caching or high-frequency data." },
+  { question: "What is the difference between Consul, Istio, and Kubernetes native service mesh?", answer: "Consul Connect uses Envoy proxies but is simpler to configure and operates across multiple platforms (VMs, containers, bare metal). Istio is Kubernetes-native with more advanced traffic management (canary, circuit breaking, retries, timeouts), richer observability, and more complex configuration. Kubernetes Gateway API provides basic ingress/service networking but is not a full service mesh. Consul wins for multi-platform, hybrid, or HashiCorp stack users. Istio wins for teams needing advanced Kubernetes traffic management. For simple Kubernetes mTLS without a full service mesh, Cilium or Linkerd are lighter alternatives." },
+];
+---
+
+<BaseLayout
+  title="HashiCorp Consul: Service Mesh, Discovery & Key-Value Store Guide"
+  description="Complete guide to HashiCorp Consul: Docker quickstart, service registration, health checks, KV store, Consul Connect mTLS service mesh, DNS interface, and comparison with Kubernetes DNS and Istio."
+  tool="Consul, service mesh, service discovery, health checks, KV store, mTLS, HashiCorp"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "HashiCorp Consul: Service Mesh, Discovery & Key-Value Store Guide",
+    "url": "https://devplaybook.cc/tools/consul",
+    "description": "Complete guide to Consul: service discovery, health checks, KV store, Connect mTLS service mesh, and comparison with Kubernetes DNS and Istio.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">HashiCorp Consul</h1>
+  <p class="text-text-muted mb-6">
+    Service networking for any runtime, any cloud. Consul provides service discovery, health checking, distributed key-value configuration, and a zero-trust service mesh with automatic mTLS across VMs, containers, and Kubernetes.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-platform service discovery</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Health-aware load balancing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Consul Connect mTLS mesh</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Distributed KV configuration</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Docker Quickstart</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Start a Consul dev agent (in-memory, single node)
+docker run -d \
+  --name consul \
+  -p 8500:8500 \
+  -p 8600:8600/udp \
+  hashicorp/consul:latest \
+  consul agent -dev -client=0.0.0.0
+
+# Access the web UI at http://localhost:8500
+
+# Install the Consul CLI (macOS)
+brew install consul
+
+# Point CLI at local agent
+export CONSUL_HTTP_ADDR=http://localhost:8500
+
+# Check cluster members
+consul members
+
+# Verify health
+consul operator autopilot get-config</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Service Registration and Health Checks</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Register a service via config file (drop in /etc/consul.d/)
+# /etc/consul.d/web.json
+&#123;
+  "service": &#123;
+    "name": "web",
+    "id": "web-1",
+    "tags": ["production", "v2"],
+    "address": "10.0.0.10",
+    "port": 8080,
+    "check": &#123;
+      "id": "web-health",
+      "name": "HTTP health check",
+      "http": "http://localhost:8080/health",
+      "method": "GET",
+      "interval": "10s",
+      "timeout": "3s"
+    &#125;
+  &#125;
+&#125;
+
+# Register via HTTP API
+curl -X PUT http://localhost:8500/v1/agent/service/register \
+  -H 'Content-Type: application/json' \
+  -d '&#123;
+    "Name": "api",
+    "Port": 3000,
+    "Check": &#123;
+      "TCP": "localhost:3000",
+      "Interval": "10s"
+    &#125;
+  &#125;'
+
+# Query registered services
+consul catalog services
+
+# Check service health
+consul health service web --passing</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">DNS Interface for Service Discovery</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Consul provides a DNS interface at port 8600
+# Services are resolvable as: service-name.service.consul
+
+# Resolve healthy instances of the 'web' service
+dig @127.0.0.1 -p 8600 web.service.consul
+
+# Resolve with specific tag (only production instances)
+dig @127.0.0.1 -p 8600 production.web.service.consul
+
+# Resolve SRV record (includes port information)
+dig @127.0.0.1 -p 8600 web.service.consul SRV
+
+# Configure system DNS to use Consul (Linux with systemd-resolved)
+cat &gt; /etc/systemd/resolved.conf.d/consul.conf &lt;&lt;EOF
+[Resolve]
+DNS=127.0.0.1:8600
+Domains=~consul
+EOF
+systemctl restart systemd-resolved
+
+# Now applications can just use: http://web.service.consul:8080</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Key-Value Store for Configuration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Write configuration values
+consul kv put config/my-app/db_host "postgres.service.consul"
+consul kv put config/my-app/max_connections "50"
+consul kv put config/my-app/feature_flags '&#123;"dark_mode": true, "beta": false&#125;'
+
+# Read a value
+consul kv get config/my-app/db_host
+
+# List all keys under a prefix
+consul kv get --recurse config/my-app/
+
+# Watch for changes (blocks until key changes, then prints new value)
+consul watch -type=key -key=config/my-app/db_host cat
+
+# Delete a key
+consul kv delete config/my-app/old_setting
+
+# Application integration (Go example):
+# client, _ := api.NewClient(api.DefaultConfig())
+# kv := client.KV()
+# pair, _, _ := kv.Get("config/my-app/db_host", nil)
+# fmt.Println(string(pair.Value))</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Consul Connect: mTLS Service Mesh</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Enable Connect in Consul config
+&#123;
+  "connect": &#123;
+    "enabled": true
+  &#125;
+&#125;
+
+# Register a service with Connect sidecar proxy
+&#123;
+  "service": &#123;
+    "name": "api",
+    "port": 8080,
+    "connect": &#123;
+      "sidecar_service": &#123;
+        "proxy": &#123;
+          "upstreams": [
+            &#123;
+              "destination_name": "database",
+              "local_bind_port": 5432
+            &#125;
+          ]
+        &#125;
+      &#125;
+    &#125;
+  &#125;
+&#125;
+
+# Create an Intention: allow api → database
+consul intention create api database
+
+# Block all traffic except explicitly allowed pairs
+consul intention create -deny "*" "*"
+consul intention create api database    # allow
+consul intention create frontend api    # allow
+
+# Traffic flow with Connect:
+# frontend:app → frontend:sidecar(mTLS) → api:sidecar(mTLS) → api:app
+# All traffic encrypted, all connections authorized by intentions</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Consul vs Kubernetes DNS vs Istio</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Consul</th>
+          <th class="border border-border px-3 py-2 text-left">Kubernetes DNS (kube-dns)</th>
+          <th class="border border-border px-3 py-2 text-left">Istio</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Multi-platform</td>
+          <td class="border border-border px-3 py-2">Yes (VMs + containers)</td>
+          <td class="border border-border px-3 py-2">Kubernetes only</td>
+          <td class="border border-border px-3 py-2">Kubernetes only</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Service mesh / mTLS</td>
+          <td class="border border-border px-3 py-2">Yes (Connect)</td>
+          <td class="border border-border px-3 py-2">No</td>
+          <td class="border border-border px-3 py-2">Yes (advanced)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Traffic management</td>
+          <td class="border border-border px-3 py-2">Basic (intentions)</td>
+          <td class="border border-border px-3 py-2">None</td>
+          <td class="border border-border px-3 py-2">Advanced (canary, retries)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">KV store</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+          <td class="border border-border px-3 py-2">No</td>
+          <td class="border border-border px-3 py-2">No</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Complexity</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2">Low</td>
+          <td class="border border-border px-3 py-2">High</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Multi-cloud, hybrid, HashiCorp stack</td>
+          <td class="border border-border px-3 py-2">Simple K8s service discovery</td>
+          <td class="border border-border px-3 py-2">Advanced K8s traffic management</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="HashiCorp Consul" relatedTags={['consul', 'service-mesh', 'hashicorp', 'devops', 'microservices']} />
+</BaseLayout>

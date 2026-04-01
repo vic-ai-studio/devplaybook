@@ -1,0 +1,261 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Helm and why use it for Kubernetes?", answer: "Helm is the package manager for Kubernetes. Without Helm, deploying an application means writing and managing many individual YAML files for Deployments, Services, ConfigMaps, Secrets, Ingresses, HPA, etc. Helm bundles these into a Chart with Go templates and a values.yaml file, making deployments repeatable, parameterizable, and versioned. A single helm install command deploys the entire application. helm upgrade rolls out changes. helm rollback reverts to a previous version. Helm also maintains release history so you can see every version ever deployed." },
+  { question: "What is the structure of a Helm chart?", answer: "A Helm chart is a directory with: Chart.yaml (metadata: name, version, appVersion, description), values.yaml (default configuration values), templates/ (Go template YAML files for Kubernetes resources), charts/ (chart dependencies), and optional files like .helmignore, README.md, LICENSE. The templates/ directory typically contains deployment.yaml, service.yaml, ingress.yaml, serviceaccount.yaml, hpa.yaml, and _helpers.tpl (shared template partials). Values from values.yaml are injected into templates using the &#123;&#123; .Values.xxx &#125;&#125; syntax." },
+  { question: "How do I override values when installing a Helm chart?", answer: "There are three ways: (1) Pass a custom values file: helm install my-app ./my-chart -f production-values.yaml. (2) Pass individual values on the command line: helm install my-app ./my-chart --set replicaCount=3 --set image.tag=v1.2.3. (3) Combine both: helm install my-app ./my-chart -f base-values.yaml --set env=production. Values files are merged in order (right overrides left), and --set values override all files. For Argo CD deployments, specify values in the Application spec's helm.values block." },
+  { question: "What is the difference between helm install and helm upgrade?", answer: "helm install creates a new release (fails if the release already exists). helm upgrade updates an existing release to a new chart version or new values. helm upgrade --install is the idempotent combination that creates the release if it does not exist or upgrades it if it does — ideal for CI/CD pipelines where you do not know whether a first-time deploy or an upgrade is needed. helm rollback RELEASE_NAME REVISION reverts to any previous revision stored in release history. Use helm history RELEASE_NAME to see all revisions." },
+  { question: "How do I find and use community Helm charts from Artifact Hub?", answer: "Artifact Hub (artifacthub.io) is the official discovery hub for Helm charts. Search for any application (nginx, postgresql, redis, prometheus, etc.) and find charts from vendors and the community. To use a chart: (1) Add the repo: helm repo add bitnami https://charts.bitnami.com/bitnami. (2) Search: helm search repo bitnami/postgresql. (3) Inspect default values: helm show values bitnami/postgresql. (4) Install with overrides: helm install my-db bitnami/postgresql --set auth.postgresPassword=secret. Always inspect the chart values and read the README before installing community charts." },
+  { question: "What is the difference between Helm and Kustomize?", answer: "Helm uses Go templates and a packaging model — you author templates with placeholders and provide values to fill them. This makes Helm very powerful for distributing reusable charts to others (like the Bitnami library), but templates can become complex. Kustomize uses strategic merge patches and JSON patches on plain Kubernetes YAML — no templating language, no placeholders. This makes Kustomize simpler and less error-prone for managing environment-specific overlays of your own apps. Many teams use both: Helm for third-party charts (databases, ingress controllers), Kustomize for their own application manifests." },
+];
+---
+
+<BaseLayout
+  title="Helm Charts: Create, Package & Deploy Kubernetes Applications"
+  description="Complete guide to Helm charts: helm create structure, templates, values.yaml, helm install/upgrade/rollback, chart dependencies, Artifact Hub, publishing charts, and Helm vs Kustomize comparison."
+  tool="Helm, Helm charts, Kubernetes package manager, helm install, templates, values.yaml"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Helm Charts: Create, Package & Deploy Kubernetes Applications",
+    "url": "https://devplaybook.cc/tools/helm-charts",
+    "description": "Complete guide to Helm: chart structure, templates, values.yaml, install/upgrade/rollback, dependencies, and Helm vs Kustomize.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Helm Charts</h1>
+  <p class="text-text-muted mb-6">
+    The package manager for Kubernetes. Bundle your application's YAML into versioned, parameterizable charts. Install, upgrade, and rollback with single commands — and share charts via Artifact Hub.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Parameterized templates</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Install / upgrade / rollback</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Chart dependencies</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Artifact Hub ecosystem</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installing Helm and Creating Your First Chart</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install Helm
+brew install helm          # macOS
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash  # Linux
+
+# Scaffold a new chart
+helm create my-app
+
+# Chart directory structure:
+# my-app/
+#   Chart.yaml          — chart metadata (name, version, appVersion)
+#   values.yaml         — default configuration values
+#   templates/
+#     deployment.yaml   — Deployment template
+#     service.yaml      — Service template
+#     ingress.yaml      — Ingress template
+#     hpa.yaml          — HorizontalPodAutoscaler template
+#     serviceaccount.yaml
+#     _helpers.tpl      — shared template helpers
+#   charts/             — chart dependencies
+#   .helmignore         — files to exclude from packaging</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Chart Metadata and Values</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Chart.yaml
+apiVersion: v2
+name: my-app
+description: A Helm chart for My Application
+type: application
+version: 0.2.0       # chart version (semver)
+appVersion: "1.4.2"  # app version being packaged
+
+# values.yaml — default values (override with -f or --set)
+replicaCount: 1
+
+image:
+  repository: my-org/my-app
+  pullPolicy: IfNotPresent
+  tag: ""   # defaults to Chart.appVersion if empty
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: "nginx"
+  hosts:
+    - host: my-app.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Deployment Template with Values Injection</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: &#123;&#123; include "my-app.fullname" . &#125;&#125;
+  labels:
+    &#123;&#123;- include "my-app.labels" . | nindent 4 &#125;&#125;
+spec:
+  &#123;&#123;- if not .Values.autoscaling.enabled &#125;&#125;
+  replicas: &#123;&#123; .Values.replicaCount &#125;&#125;
+  &#123;&#123;- end &#125;&#125;
+  selector:
+    matchLabels:
+      &#123;&#123;- include "my-app.selectorLabels" . | nindent 6 &#125;&#125;
+  template:
+    metadata:
+      labels:
+        &#123;&#123;- include "my-app.selectorLabels" . | nindent 8 &#125;&#125;
+    spec:
+      containers:
+        - name: &#123;&#123; .Chart.Name &#125;&#125;
+          image: "&#123;&#123; .Values.image.repository &#125;&#125;:&#123;&#123; .Values.image.tag | default .Chart.AppVersion &#125;&#125;"
+          imagePullPolicy: &#123;&#123; .Values.image.pullPolicy &#125;&#125;
+          ports:
+            - containerPort: 8080
+          resources:
+            &#123;&#123;- toYaml .Values.resources | nindent 12 &#125;&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Install, Upgrade, and Rollback</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install (dry-run first to preview rendered manifests)
+helm install my-app ./my-app --dry-run --debug
+
+# Install with production overrides
+helm install my-app ./my-app \
+  --namespace production \
+  --create-namespace \
+  -f values-production.yaml \
+  --set image.tag=v1.4.2
+
+# Upgrade (or install if not exists)
+helm upgrade --install my-app ./my-app \
+  --namespace production \
+  -f values-production.yaml \
+  --set image.tag=v1.5.0 \
+  --atomic \        # rollback automatically if upgrade fails
+  --timeout 5m
+
+# List releases
+helm list -n production
+
+# View release history
+helm history my-app -n production
+
+# Rollback to revision 2
+helm rollback my-app 2 -n production
+
+# Uninstall
+helm uninstall my-app -n production</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Chart Dependencies</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Chart.yaml — declare dependencies
+dependencies:
+  - name: postgresql
+    version: "15.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled   # only install if values.postgresql.enabled=true
+  - name: redis
+    version: "19.x.x"
+    repository: https://charts.bitnami.com/bitnami
+
+# values.yaml — configure and enable/disable dependencies
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: changeme
+    database: myapp
+
+redis:
+  enabled: true
+  auth:
+    enabled: false
+
+# Download dependencies (creates charts/ directory)
+helm dependency update ./my-app
+
+# Install with all dependencies
+helm install my-app ./my-app</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Packaging and Publishing to OCI Registry</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Package the chart into a .tgz archive
+helm package ./my-app
+# Creates: my-app-0.2.0.tgz
+
+# Push to an OCI registry (GitHub Container Registry)
+helm push my-app-0.2.0.tgz oci://ghcr.io/my-org/helm-charts
+
+# Install from OCI registry
+helm install my-app oci://ghcr.io/my-org/helm-charts/my-app --version 0.2.0
+
+# For a traditional Helm repo, generate index.yaml and host on GitHub Pages:
+helm repo index . --url https://my-org.github.io/helm-charts
+# Then users add: helm repo add my-org https://my-org.github.io/helm-charts</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Helm vs Kustomize</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Helm</th>
+          <th class="border border-border px-3 py-2 text-left">Kustomize</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Templating</td>
+          <td class="border border-border px-3 py-2">Go templates (full logic)</td>
+          <td class="border border-border px-3 py-2">No templating (patches only)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Distribution</td>
+          <td class="border border-border px-3 py-2">Charts via Artifact Hub / OCI</td>
+          <td class="border border-border px-3 py-2">Git repos / local paths</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Release management</td>
+          <td class="border border-border px-3 py-2">Yes (history, rollback)</td>
+          <td class="border border-border px-3 py-2">No (use Git for history)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Learning curve</td>
+          <td class="border border-border px-3 py-2">Higher (Go templates)</td>
+          <td class="border border-border px-3 py-2">Lower (plain YAML + patches)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">3rd party charts</td>
+          <td class="border border-border px-3 py-2">Huge ecosystem (Artifact Hub)</td>
+          <td class="border border-border px-3 py-2">Limited</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Distributable, parameterized packages</td>
+          <td class="border border-border px-3 py-2">Own app overlays, GitOps</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Helm Charts" relatedTags={['helm', 'kubernetes', 'devops', 'containers', 'k8s']} />
+</BaseLayout>

@@ -1,0 +1,264 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "How do I connect Prometheus to Grafana?", answer: "In Grafana, go to Configuration → Data Sources → Add data source → select Prometheus. Enter the Prometheus server URL (e.g., http://prometheus:9090 if they are in the same Docker network, or http://localhost:9090 for local setups). Click Save & Test — Grafana will verify the connection. You can now create panels using PromQL queries. If using Grafana Cloud, you can push metrics to the hosted Prometheus-compatible endpoint using the remote_write config in your Prometheus server." },
+  { question: "What is the difference between Grafana, Datadog, and New Relic?", answer: "Grafana is open-source visualization software that connects to your own data sources (Prometheus, InfluxDB, Loki, Elasticsearch, etc.) — you own and manage the data. Datadog and New Relic are full-stack observability SaaS platforms that include data ingestion, storage, APM, log management, and alerting in a single product with per-host or per-GB pricing. Grafana is cheaper and gives you data sovereignty, but requires more setup. Datadog and New Relic are faster to set up with better out-of-box APM and less operational overhead, but cost more at scale. Grafana Cloud offers a managed SaaS tier with a generous free tier." },
+  { question: "How do I provision Grafana dashboards as code?", answer: "Use Grafana's provisioning system: place dashboard JSON files in /etc/grafana/provisioning/dashboards/ and a YAML provider config that tells Grafana where to load them from. When Grafana starts, it automatically imports the dashboards. For GitOps workflows, store dashboard JSON in your Git repository and mount it via Kubernetes ConfigMap or Docker volume. The Grafana Terraform provider (grafana/grafana) can also manage dashboards, folders, data sources, and alerts as code, which is the recommended approach for production environments." },
+  { question: "What is a Grafana variable and how does I use them in dashboards?", answer: "Grafana variables are dynamic query parameters displayed as dropdowns at the top of a dashboard. For example, a $namespace variable with query label_values(kube_pod_info, namespace) populates a dropdown of all Kubernetes namespaces. Panels then use $namespace in their PromQL queries: rate(http_requests_total&#123;namespace='$namespace'&#125;[5m]). Variables make a single dashboard reusable across multiple environments, services, or regions without duplicating panels. Chain variables together by making one variable's options depend on the selection of another." },
+  { question: "How do I set up Grafana alerts with notification channels?", answer: "In Grafana 9+, use the Alerting menu (the bell icon) to create Alert Rules. Each rule defines a PromQL query, evaluation interval, condition thresholds (e.g., alert when value > 100 for 5 minutes), and labels. Contact points define where alerts are sent: Slack, PagerDuty, email, OpsGenie, webhook. Notification policies route alerts to contact points based on label matchers. For example, route alerts with severity=critical to PagerDuty and severity=warning to a Slack channel. Grafana also supports alert silences and inhibition rules." },
+  { question: "What is Grafana Cloud and what does the free tier include?", answer: "Grafana Cloud is the managed SaaS version of the Grafana stack (Grafana + Prometheus + Loki + Tempo + k6). The free tier includes: 10,000 active series for metrics (Prometheus), 50GB of logs (Loki), 50GB of traces (Tempo), 500 VUh of k6 load testing, 3 active users, and 14-day retention. This is sufficient for small projects or evaluation. The free tier has no credit card requirement. Paid plans start at $8/month per user with higher limits and longer retention, scaling to custom enterprise contracts." },
+];
+---
+
+<BaseLayout
+  title="Grafana Dashboard: Setup, Prometheus Integration & Alert Rules"
+  description="Complete guide to Grafana: Docker quickstart, Prometheus datasource setup, building dashboards with variables, alert rules, provisioning dashboards as code, and comparison with Datadog and New Relic."
+  tool="Grafana, dashboard, Prometheus, observability, metrics, alerting, visualization"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Grafana Dashboard: Setup, Prometheus Integration & Alert Rules",
+    "url": "https://devplaybook.cc/tools/grafana-dashboard",
+    "description": "Complete guide to Grafana dashboards: Docker setup, Prometheus integration, variables, alert rules, and dashboard-as-code provisioning.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Grafana Dashboard</h1>
+  <p class="text-text-muted mb-6">
+    The open-source observability platform for visualizing metrics, logs, and traces. Connect Prometheus, InfluxDB, Elasticsearch, Loki, and 50+ other data sources into unified dashboards with alerting.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Prometheus + PromQL</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 50+ data source plugins</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dashboard-as-code provisioning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Built-in alerting engine</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Docker Quickstart: Grafana + Prometheus Stack</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># docker-compose.yml — Grafana + Prometheus + Node Exporter
+version: "3.8"
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning
+
+volumes:
+  grafana-data:</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># prometheus.yml — scrape config
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  - job_name: 'my-app'
+    static_configs:
+      - targets: ['app:8080']  # your app must expose /metrics</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Connecting Prometheus as a Data Source</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    After starting the stack, open <code>http://localhost:3000</code> (admin / admin123). Go to <strong>Configuration → Data Sources → Add data source → Prometheus</strong>. Set the URL to <code>http://prometheus:9090</code> (using the Docker service name). Click <strong>Save & Test</strong>. You are now ready to write PromQL queries in panels.
+  </p>
+  <p class="text-text-muted mb-3 leading-relaxed">Common PromQL queries for Node.js applications:</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># HTTP request rate (per second over 5 minutes)
+rate(http_requests_total[5m])
+
+# P95 request latency
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+
+# Error rate percentage
+rate(http_requests_total&#123;status=~"5.."&#125;[5m]) / rate(http_requests_total[5m]) * 100
+
+# CPU usage per pod (Kubernetes)
+rate(container_cpu_usage_seconds_total&#123;container!=""&#125;[5m]) * 1000
+
+# Memory usage per pod
+container_memory_working_set_bytes&#123;container!=""&#125; / 1024 / 1024  # in MB</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Dashboard Variables & Templating</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># In Dashboard Settings → Variables, create:
+
+# Variable 1: namespace selector
+# Name: namespace
+# Type: Query
+# Query: label_values(kube_pod_info, namespace)
+# Multi-value: true, Include All: true
+
+# Variable 2: pod selector (depends on namespace)
+# Name: pod
+# Type: Query
+# Query: label_values(kube_pod_info&#123;namespace="$namespace"&#125;, pod)
+
+# Use variables in panel queries:
+# CPU per selected pod:
+rate(container_cpu_usage_seconds_total&#123;
+  namespace="$namespace",
+  pod="$pod",
+  container!=""
+&#125;[5m])
+
+# This creates a reusable dashboard that works
+# for any namespace/pod combination via dropdowns</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Provisioning Dashboards as Code</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># provisioning/dashboards/dashboard.yml (provider config)
+apiVersion: 1
+providers:
+  - name: 'default'
+    orgId: 1
+    folder: 'Provisioned'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
+
+# provisioning/datasources/prometheus.yml
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+
+# Place dashboard JSON files in the dashboards/ folder.
+# Export from UI: Dashboard → Share → Export → Save to file.
+# Grafana auto-imports them on startup and every 30 seconds.</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Alert Rules and Notification Channels</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Grafana 9+ alert rule (YAML format for provisioning)
+# provisioning/alerting/rules.yml
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: Application Alerts
+    folder: Alerts
+    interval: 1m
+    rules:
+      - uid: high-error-rate
+        title: High Error Rate
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(http_requests_total&#123;status=~"5.."&#125;[5m]) / rate(http_requests_total[5m]) * 100
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [5]  # alert if error rate > 5%
+                    type: gt
+                  reducer:
+                    type: last
+              type: threshold
+              refId: C
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        labels:
+          severity: critical</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Grafana vs Datadog vs New Relic</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Grafana (self-hosted)</th>
+          <th class="border border-border px-3 py-2 text-left">Grafana Cloud</th>
+          <th class="border border-border px-3 py-2 text-left">Datadog</th>
+          <th class="border border-border px-3 py-2 text-left">New Relic</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Hosting</td>
+          <td class="border border-border px-3 py-2">Self-managed</td>
+          <td class="border border-border px-3 py-2">Managed SaaS</td>
+          <td class="border border-border px-3 py-2">Managed SaaS</td>
+          <td class="border border-border px-3 py-2">Managed SaaS</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Free tier</td>
+          <td class="border border-border px-3 py-2">Fully free (OSS)</td>
+          <td class="border border-border px-3 py-2">10k series, 50GB logs</td>
+          <td class="border border-border px-3 py-2">14-day trial only</td>
+          <td class="border border-border px-3 py-2">100GB/month free</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">APM tracing</td>
+          <td class="border border-border px-3 py-2">Via Tempo (manual)</td>
+          <td class="border border-border px-3 py-2">Via Tempo</td>
+          <td class="border border-border px-3 py-2">Built-in (excellent)</td>
+          <td class="border border-border px-3 py-2">Built-in (excellent)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Data ownership</td>
+          <td class="border border-border px-3 py-2">Full control</td>
+          <td class="border border-border px-3 py-2">Grafana Labs</td>
+          <td class="border border-border px-3 py-2">Datadog</td>
+          <td class="border border-border px-3 py-2">New Relic</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Cost at scale</td>
+          <td class="border border-border px-3 py-2">Low (infra only)</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2">High ($18–$23/host/month)</td>
+          <td class="border border-border px-3 py-2">Medium ($0.30/GB ingest)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Grafana Dashboard" relatedTags={['grafana', 'prometheus', 'observability', 'monitoring', 'devops']} />
+</BaseLayout>

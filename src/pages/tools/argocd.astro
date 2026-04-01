@@ -1,0 +1,242 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is GitOps and why use Argo CD for it?", answer: "GitOps is a deployment methodology where the desired state of your infrastructure and applications is stored in Git as the single source of truth. Changes happen through pull requests, not manual kubectl commands. Argo CD implements GitOps for Kubernetes by continuously watching your Git repo and reconciling the cluster state to match. If someone manually changes something in the cluster (drift), Argo CD detects it and can automatically revert it. Benefits: full audit trail in Git, easy rollbacks (git revert), PR-based approvals, and self-healing clusters." },
+  { question: "How does Argo CD handle Helm chart deployments?", answer: "Argo CD has native Helm support — point an Application at a Helm chart (from a Helm repo, OCI registry, or Git path) and Argo CD renders the chart with your values.yaml, then syncs the resulting manifests to the cluster. You can override values in the Application spec using helm.values or helm.parameters. Argo CD also supports ApplicationSets to deploy the same Helm chart to multiple clusters or environments with different values, making multi-environment Helm deployments manageable from a single config." },
+  { question: "What is the difference between Argo CD and Flux?", answer: "Both are GitOps tools for Kubernetes, but they differ in design philosophy. Argo CD has a rich web UI, CLI, and REST API making it more accessible and visible — great for teams who want a control plane dashboard. Flux is UI-less, purely CRD/controller-based, more lightweight, and follows a strict GitOps push model. Argo CD supports both push (webhook-triggered) and pull (periodic polling) sync. Flux v2 is more modular and composable. For teams wanting visibility and a UI, Argo CD is the standard choice. Flux is preferred in environments where all configuration must live exclusively in Git." },
+  { question: "How do I configure auto-sync, pruning, and self-healing?", answer: "In the Application spec set: syncPolicy.automated.prune: true (delete resources removed from Git), syncPolicy.automated.selfHeal: true (revert manual changes to match Git). Auto-sync without selfHeal means Argo CD syncs when Git changes but ignores manual edits. Auto-sync with selfHeal means any cluster drift is reverted within the sync interval (default 3 minutes). Be careful with prune in production — a misconfigured Application could delete production resources if Git accidentally removes manifests." },
+  { question: "How does Argo CD RBAC work?", answer: "Argo CD has its own RBAC system on top of Kubernetes RBAC. You define roles in the argocd-rbac-cm ConfigMap using a policy.csv format. Built-in roles are role:readonly (view only) and role:admin (full access). You can create custom roles like role:developer that can sync applications but not delete them. SSO integration (Dex, OIDC, GitHub, Google, LDAP) lets you map identity provider groups to Argo CD roles — for example, map the GitHub team 'ops-team' to role:admin and 'dev-team' to a custom role:developer." },
+  { question: "What is an ApplicationSet and when should I use it?", answer: "ApplicationSet is a controller that generates multiple Argo CD Applications from a single template using generators. The List generator creates apps from a static list; the Git generator discovers apps from directory structure or JSON files in a Git repo; the Cluster generator creates an app per registered cluster. Use ApplicationSets when you need the same application deployed to multiple environments (dev/staging/prod) or multiple clusters with different values, avoiding repetitive Application YAML. It is the standard way to manage fleet-scale deployments." },
+];
+---
+
+<BaseLayout
+  title="Argo CD: GitOps Continuous Delivery for Kubernetes Setup Guide"
+  description="Complete guide to Argo CD: GitOps concepts, Helm installation, Application manifests, auto-sync policies, Helm and Kustomize deployments, RBAC, SSO, and comparison with Flux. Free Kubernetes reference."
+  tool="Argo CD, GitOps, Kubernetes, continuous delivery, Helm, Kustomize, app sync"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Argo CD: GitOps Continuous Delivery for Kubernetes Setup Guide",
+    "url": "https://devplaybook.cc/tools/argocd",
+    "description": "Complete guide to Argo CD: GitOps setup, Application manifests, Helm/Kustomize deployments, auto-sync, RBAC, and Flux comparison.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Argo CD</h1>
+  <p class="text-text-muted mb-6">
+    Declarative GitOps continuous delivery for Kubernetes. Argo CD watches your Git repositories and automatically syncs your cluster to match, with a rich web UI, RBAC, and Helm/Kustomize support.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Git as source of truth</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Helm + Kustomize native</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auto-sync + self-heal</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> RBAC + SSO</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installing Argo CD via Helm</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Add the Argo CD Helm repository
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+
+# Create namespace and install
+kubectl create namespace argocd
+helm install argocd argo/argo-cd \
+  --namespace argocd \
+  --set server.service.type=LoadBalancer \
+  --set configs.params."server\.insecure"=true  # for local dev only
+
+# Get the initial admin password
+kubectl get secret argocd-initial-admin-secret -n argocd \
+  -o jsonpath="&#123;.data.password&#125;" | base64 -d
+
+# Access the UI (if using port-forward)
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# Open: https://localhost:8080 (admin / password from above)
+
+# Install the argocd CLI
+brew install argocd   # macOS
+argocd login localhost:8080 --username admin --password YOUR_PASSWORD --insecure</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Deploying Your First Application</h2>
+  <p class="text-text-muted mb-3 leading-relaxed">Create an Application manifest that tells Argo CD which Git repo to watch and which cluster/namespace to sync to:</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># application.yaml — point Argo CD at your Git repo
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app
+  namespace: argocd
+spec:
+  project: default
+
+  # Where to get the manifests
+  source:
+    repoURL: https://github.com/my-org/my-app-config
+    targetRevision: HEAD
+    path: k8s/production
+
+  # Where to deploy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-app
+
+  # Sync policy
+  syncPolicy:
+    automated:
+      prune: true      # delete resources removed from Git
+      selfHeal: true   # revert manual changes
+    syncOptions:
+      - CreateNamespace=true
+
+kubectl apply -f application.yaml -n argocd</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Helm Chart Deployment</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-ingress
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes.github.io/ingress-nginx
+    chart: ingress-nginx
+    targetRevision: 4.10.0
+    helm:
+      releaseName: ingress-nginx
+      values: |
+        controller:
+          replicaCount: 2
+          service:
+            type: LoadBalancer
+          metrics:
+            enabled: true
+          podAnnotations:
+            prometheus.io/scrape: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ingress-nginx
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Kustomize Overlays</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Git repo structure for Kustomize overlays:
+# k8s/
+#   base/
+#     deployment.yaml
+#     service.yaml
+#     kustomization.yaml
+#   overlays/
+#     dev/
+#       kustomization.yaml    # patches: replicas=1, image=dev-tag
+#     production/
+#       kustomization.yaml    # patches: replicas=3, image=stable-tag
+
+# Argo CD Application for production overlay:
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app-production
+  namespace: argocd
+spec:
+  source:
+    repoURL: https://github.com/my-org/my-app-config
+    targetRevision: HEAD
+    path: k8s/overlays/production   # Argo CD auto-detects kustomization.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-app-production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Argo CD vs Flux</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse mb-6">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Argo CD</th>
+          <th class="border border-border px-3 py-2 text-left">Flux v2</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Web UI</td>
+          <td class="border border-border px-3 py-2">Yes (rich)</td>
+          <td class="border border-border px-3 py-2">No (CLI only)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">CLI</td>
+          <td class="border border-border px-3 py-2">argocd CLI</td>
+          <td class="border border-border px-3 py-2">flux CLI</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Helm support</td>
+          <td class="border border-border px-3 py-2">Yes (native)</td>
+          <td class="border border-border px-3 py-2">Yes (HelmRelease CRD)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Multi-tenancy</td>
+          <td class="border border-border px-3 py-2">Projects + RBAC</td>
+          <td class="border border-border px-3 py-2">Namespace isolation</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">ApplicationSet</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+          <td class="border border-border px-3 py-2">No (use Kustomize)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Resource footprint</td>
+          <td class="border border-border px-3 py-2">Medium (~500MB)</td>
+          <td class="border border-border px-3 py-2">Light (~200MB)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Teams wanting UI + visibility</td>
+          <td class="border border-border px-3 py-2">Pure GitOps purists, lightweight</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">RBAC and SSO Setup</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># argocd-rbac-cm ConfigMap (in argocd namespace)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.default: role:readonly
+  policy.csv: |
+    # Admins: full access
+    p, role:admin, applications, *, */*, allow
+    p, role:admin, clusters, *, *, allow
+    p, role:admin, repositories, *, *, allow
+
+    # Developers: sync apps but no delete
+    p, role:developer, applications, get, */*, allow
+    p, role:developer, applications, sync, */*, allow
+    p, role:developer, applications, create, */*, allow
+    p, role:developer, applications, update, */*, allow
+
+    # Map GitHub team to role
+    g, my-org:ops-team, role:admin
+    g, my-org:dev-team, role:developer</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Argo CD" relatedTags={['argocd', 'gitops', 'kubernetes', 'devops', 'continuous-delivery']} />
+</BaseLayout>
