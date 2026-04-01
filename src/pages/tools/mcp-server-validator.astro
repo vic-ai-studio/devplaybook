@@ -1,0 +1,417 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is MCP (Model Context Protocol)?", answer: "MCP is an open standard by Anthropic that lets LLM applications connect to external data sources and tools. An MCP server exposes 'tools', 'resources', and 'prompts' that AI assistants can use. Think of it as a plugin system for LLMs — a server can provide database access, file operations, API integrations, or any other capability." },
+  { question: "How do I configure an MCP server?", answer: "MCP servers are configured in a JSON file (usually claude_desktop_config.json or mcp.json). Each server entry has a name, command to run the server, args, and optional env variables. Example: {\"mcpServers\": {\"filesystem\": {\"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-filesystem\", \"/path/to/files\"]}}}. Claude Desktop, Cursor, and other MCP clients load this config." },
+  { question: "What is the difference between stdio and SSE transport?", answer: "stdio transport runs the MCP server as a child process and communicates over stdin/stdout — best for local servers. SSE (Server-Sent Events) transport connects to an HTTP server via GET for events and POST for requests — best for remote or already-running servers. stdio is simpler for local development; SSE enables multi-client scenarios." },
+  { question: "How do I test if my MCP server works?", answer: "Use the MCP Inspector: npx @modelcontextprotocol/inspector. It connects to your server and shows all available tools, resources, and prompts, and lets you invoke them directly. For Claude Desktop, check the logs in ~/Library/Logs/Claude/ (Mac) or %APPDATA%/Claude/logs/ (Windows). Errors in the server startup are visible there." },
+  { question: "What security considerations exist for MCP servers?", answer: "Be careful with filesystem access — limit to specific directories. Never expose secrets in the MCP config file (use env vars instead). For remote SSE servers, use authentication headers. Review tool descriptions carefully — they become part of the LLM context and could influence behavior. Only connect to trusted MCP servers." },
+];
+---
+
+<BaseLayout
+  title="MCP Server Validator — Validate MCP Server Config JSON for Claude & AI Tools"
+  description="Validate your MCP (Model Context Protocol) server configuration JSON. Check for syntax errors, missing required fields, and common configuration issues for Claude Desktop and Cursor."
+  tool="MCP Server Validator, MCP Config Validator, Model Context Protocol Config Checker, Claude MCP Setup Validator, MCP JSON Validator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">MCP Server Validator</h1>
+  <p class="text-text-muted mb-4">Validate your MCP (Model Context Protocol) server configuration JSON. Catch syntax errors, missing fields, and common misconfigurations before connecting to Claude Desktop or Cursor.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JSON syntax validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Schema checking</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Common issue detection</span>
+  </div>
+
+  <!-- Config Type -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Config Format</h2>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <label class="flex items-center gap-2 cursor-pointer p-3 border border-border rounded-lg hover:border-primary/50 transition-colors">
+        <input type="radio" name="config-format" value="claude-desktop" class="format-radio" checked />
+        <div>
+          <div class="text-sm font-medium">Claude Desktop</div>
+          <div class="text-xs text-text-muted">claude_desktop_config.json</div>
+        </div>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer p-3 border border-border rounded-lg hover:border-primary/50 transition-colors">
+        <input type="radio" name="config-format" value="cursor" class="format-radio" />
+        <div>
+          <div class="text-sm font-medium">Cursor / VS Code</div>
+          <div class="text-xs text-text-muted">.cursor/mcp.json</div>
+        </div>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer p-3 border border-border rounded-lg hover:border-primary/50 transition-colors">
+        <input type="radio" name="config-format" value="generic" class="format-radio" />
+        <div>
+          <div class="text-sm font-medium">Generic MCP</div>
+          <div class="text-xs text-text-muted">mcp.json</div>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <!-- JSON Input -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">Configuration JSON</h2>
+      <div class="flex gap-2">
+        <button id="load-example" class="text-xs text-primary hover:underline">Load example</button>
+        <button id="format-btn" class="text-xs text-text-muted hover:text-text">Format JSON</button>
+        <button id="clear-btn" class="text-xs text-text-muted hover:text-text">Clear</button>
+      </div>
+    </div>
+    <textarea id="config-input" rows="16" spellcheck="false"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+      placeholder="Paste your MCP config JSON here..."></textarea>
+    <button id="validate-btn" class="mt-3 bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">Validate Config</button>
+  </div>
+
+  <!-- Results -->
+  <div id="results-section" class="hidden space-y-4 mb-6">
+    <!-- Status -->
+    <div id="status-banner" class="rounded-xl p-4 text-sm font-medium"></div>
+
+    <!-- Issues -->
+    <div id="issues-list" class="space-y-3"></div>
+
+    <!-- Parsed Servers -->
+    <div id="servers-section" class="hidden bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-4">Detected MCP Servers</h2>
+      <div id="servers-list" class="space-y-4"></div>
+    </div>
+
+    <!-- Config Locations -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-3">Config File Locations</h2>
+      <div id="config-locations" class="text-xs font-mono space-y-1.5 text-text-muted"></div>
+    </div>
+  </div>
+
+  <!-- Quick Reference -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">MCP Config Schema Reference</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+      <div>
+        <h3 class="font-medium text-sm mb-2">Required Fields (stdio server)</h3>
+        <div class="space-y-1 font-mono text-text-muted">
+          <div><span class="text-primary">command</span>: string — executable to run</div>
+          <div><span class="text-primary">args</span>: string[] — command arguments</div>
+        </div>
+        <h3 class="font-medium text-sm mb-2 mt-3">Optional Fields</h3>
+        <div class="space-y-1 font-mono text-text-muted">
+          <div><span class="text-yellow-400">env</span>: object — environment variables</div>
+          <div><span class="text-yellow-400">disabled</span>: boolean — skip this server</div>
+          <div><span class="text-yellow-400">alwaysAllow</span>: string[] — pre-approved tools</div>
+        </div>
+      </div>
+      <div>
+        <h3 class="font-medium text-sm mb-2">Required Fields (SSE server)</h3>
+        <div class="space-y-1 font-mono text-text-muted">
+          <div><span class="text-primary">url</span>: string — SSE endpoint URL</div>
+        </div>
+        <h3 class="font-medium text-sm mb-2 mt-3">Claude Desktop Structure</h3>
+        <pre id="schema-example" class="bg-bg-card border border-border rounded-lg p-2 leading-relaxed text-text-muted overflow-x-auto"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="MCP Server Validator" relatedTags={['mcp', 'claude', 'ai', 'model-context-protocol', 'config', 'validation']} />
+</BaseLayout>
+
+<script>
+  // Set schema example content (avoid JSX parsing curly braces in HTML)
+  const schemaEl = document.getElementById('schema-example');
+  if (schemaEl) schemaEl.textContent = '{\n  "mcpServers": {\n    "server-name": {\n      "command": "npx",\n      "args": ["-y", "pkg"]\n    }\n  }\n}';
+
+  interface ValidationIssue {
+    severity: 'error' | 'warning' | 'info';
+    message: string;
+    path?: string;
+    fix?: string;
+  }
+
+  const EXAMPLES: Record<string, string> = {
+    'claude-desktop': '{\n  "mcpServers": {\n    "filesystem": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/user/Documents"]\n    },\n    "postgres": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]\n    },\n    "github": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-github"],\n      "env": {\n        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here"\n      }\n    }\n  }\n}',
+    'cursor': '{\n  "mcpServers": {\n    "my-tool-server": {\n      "command": "node",\n      "args": ["./dist/server.js"],\n      "env": {\n        "API_KEY": "your_key"\n      }\n    },\n    "remote-server": {\n      "url": "https://my-mcp-server.example.com/sse"\n    }\n  }\n}',
+    'generic': '{\n  "servers": [\n    {\n      "name": "local-tools",\n      "transport": "stdio",\n      "command": "python3",\n      "args": ["-m", "my_mcp_server"]\n    }\n  ]\n}',
+  };
+
+  const CONFIG_LOCATIONS: Record<string, string[]> = {
+    'claude-desktop': [
+      'macOS: ~/Library/Application Support/Claude/claude_desktop_config.json',
+      'Windows: %APPDATA%/Claude/claude_desktop_config.json',
+      'Linux: ~/.config/Claude/claude_desktop_config.json',
+    ],
+    'cursor': [
+      'Project: .cursor/mcp.json',
+      'Global: ~/.cursor/mcp.json',
+    ],
+    'generic': [
+      'Check your MCP client documentation for config file location',
+    ],
+  };
+
+  function getFormat(): string {
+    return (document.querySelector('.format-radio:checked') as HTMLInputElement)?.value || 'claude-desktop';
+  }
+
+  function validateConfig(json: string, format: string): ValidationIssue[] {
+    const issues: ValidationIssue[] = [];
+    let config: Record<string, unknown>;
+
+    try {
+      config = JSON.parse(json);
+    } catch (e) {
+      const err = e as SyntaxError;
+      issues.push({
+        severity: 'error',
+        message: `Invalid JSON: ${err.message}`,
+        fix: 'Fix JSON syntax — check for missing commas, brackets, or quotes',
+      });
+      return issues;
+    }
+
+    // Format-specific validation
+    if (format === 'claude-desktop' || format === 'cursor') {
+      if (!config.mcpServers) {
+        issues.push({
+          severity: 'error', path: 'mcpServers',
+          message: 'Missing required "mcpServers" key at root',
+          fix: 'Wrap your servers in: { "mcpServers": { ... } }',
+        });
+        return issues;
+      }
+
+      const servers = config.mcpServers as Record<string, unknown>;
+      if (typeof servers !== 'object' || Array.isArray(servers)) {
+        issues.push({
+          severity: 'error', path: 'mcpServers',
+          message: '"mcpServers" must be an object, not an array',
+          fix: 'Use an object with named server keys, not an array',
+        });
+        return issues;
+      }
+
+      if (Object.keys(servers).length === 0) {
+        issues.push({
+          severity: 'warning',
+          message: '"mcpServers" is empty — no servers will be loaded',
+        });
+      }
+
+      Object.entries(servers).forEach(([name, serverConfig]) => {
+        const srv = serverConfig as Record<string, unknown>;
+        const path = `mcpServers.${name}`;
+
+        if (!srv || typeof srv !== 'object') {
+          issues.push({ severity: 'error', path, message: `Server "${name}" must be an object` });
+          return;
+        }
+
+        const hasCommand = 'command' in srv;
+        const hasUrl = 'url' in srv;
+
+        if (!hasCommand && !hasUrl) {
+          issues.push({
+            severity: 'error', path,
+            message: `Server "${name}": missing required "command" (stdio) or "url" (SSE)`,
+            fix: 'Add "command": "npx" for npm packages or "url": "https://..." for SSE',
+          });
+        }
+
+        if (hasCommand && typeof srv.command !== 'string') {
+          issues.push({ severity: 'error', path, message: `Server "${name}": "command" must be a string` });
+        }
+
+        if (hasCommand && srv.args !== undefined) {
+          if (!Array.isArray(srv.args)) {
+            issues.push({ severity: 'error', path, message: `Server "${name}": "args" must be an array` });
+          } else {
+            const nonStrings = (srv.args as unknown[]).filter(a => typeof a !== 'string');
+            if (nonStrings.length > 0) {
+              issues.push({ severity: 'error', path, message: `Server "${name}": all "args" elements must be strings` });
+            }
+          }
+        }
+
+        if (hasUrl && typeof srv.url !== 'string') {
+          issues.push({ severity: 'error', path, message: `Server "${name}": "url" must be a string` });
+        }
+
+        if (hasUrl && typeof srv.url === 'string' && !srv.url.startsWith('http')) {
+          issues.push({ severity: 'warning', path, message: `Server "${name}": "url" should start with http:// or https://` });
+        }
+
+        if (srv.env !== undefined) {
+          if (typeof srv.env !== 'object' || Array.isArray(srv.env)) {
+            issues.push({ severity: 'error', path, message: `Server "${name}": "env" must be an object` });
+          } else {
+            const envObj = srv.env as Record<string, unknown>;
+            const nonStrings = Object.entries(envObj).filter(([, v]) => typeof v !== 'string');
+            if (nonStrings.length > 0) {
+              issues.push({ severity: 'warning', path, message: `Server "${name}": all "env" values should be strings` });
+            }
+            // Check for potential secrets in config
+            Object.keys(envObj).forEach(k => {
+              if (k.match(/TOKEN|SECRET|PASSWORD|KEY|CREDENTIAL/i)) {
+                const val = envObj[k] as string;
+                if (val && val.length > 5 && !val.startsWith('$') && !val.includes('your_') && !val.includes('placeholder')) {
+                  issues.push({
+                    severity: 'warning', path: `${path}.env.${k}`,
+                    message: `Possible secret in "env.${k}" — avoid hardcoding credentials`,
+                    fix: 'Use environment variable references or a secrets manager',
+                  });
+                }
+              }
+            });
+          }
+        }
+
+        // Server name checks
+        if (name.includes(' ')) {
+          issues.push({ severity: 'warning', path, message: `Server name "${name}" contains spaces — use kebab-case`, fix: `Rename to "${name.replace(/\s+/g, '-')}"` });
+        }
+        if (name !== name.toLowerCase()) {
+          issues.push({ severity: 'info', path, message: `Server name "${name}" has uppercase letters — convention is lowercase` });
+        }
+      });
+    }
+
+    if (issues.length === 0) {
+      issues.push({
+        severity: 'info',
+        message: 'Config looks valid! No issues found.',
+      });
+    }
+
+    return issues;
+  }
+
+  function parseServers(json: string): Record<string, Record<string, unknown>> | null {
+    try {
+      const config = JSON.parse(json) as Record<string, unknown>;
+      return config.mcpServers as Record<string, Record<string, unknown>> || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function validate() {
+    const json = (document.getElementById('config-input') as HTMLTextAreaElement).value.trim();
+    const format = getFormat();
+    if (!json) return;
+
+    const issues = validateConfig(json, format);
+    const errors = issues.filter(i => i.severity === 'error').length;
+    const warnings = issues.filter(i => i.severity === 'warning').length;
+
+    const section = document.getElementById('results-section')!;
+    section.classList.remove('hidden');
+
+    // Status banner
+    const banner = document.getElementById('status-banner')!;
+    if (errors > 0) {
+      banner.className = 'rounded-xl p-4 text-sm font-medium bg-red-500/10 border border-red-500/30 text-red-400';
+      banner.textContent = `${errors} error${errors !== 1 ? 's' : ''} found — config will not load correctly`;
+    } else if (warnings > 0) {
+      banner.className = 'rounded-xl p-4 text-sm font-medium bg-yellow-500/10 border border-yellow-500/30 text-yellow-400';
+      banner.textContent = `Config is valid with ${warnings} warning${warnings !== 1 ? 's' : ''} — review suggestions`;
+    } else {
+      banner.className = 'rounded-xl p-4 text-sm font-medium bg-green-500/10 border border-green-500/30 text-green-400';
+      banner.textContent = 'Config is valid — ready to use';
+    }
+
+    // Issues list
+    const issuesList = document.getElementById('issues-list')!;
+    issuesList.innerHTML = issues.filter(i => !(i.severity === 'info' && i.message.includes('valid!'))).map(issue => {
+      const colors = {
+        error: { bg: 'bg-red-500/10 border-red-500/30', icon: '✕', text: 'text-red-400' },
+        warning: { bg: 'bg-yellow-500/10 border-yellow-500/30', icon: '⚠', text: 'text-yellow-400' },
+        info: { bg: 'bg-blue-500/10 border-blue-500/30', icon: 'i', text: 'text-blue-400' },
+      }[issue.severity];
+      return `<div class="border ${colors.bg} rounded-xl p-4">
+        <div class="flex items-start gap-3">
+          <span class="${colors.text} font-bold text-lg leading-none mt-0.5">${colors.icon}</span>
+          <div class="flex-1">
+            <div class="text-sm font-medium">${escapeHtml(issue.message)}</div>
+            ${issue.path ? `<div class="text-xs text-text-muted mt-0.5 font-mono">${escapeHtml(issue.path)}</div>` : ''}
+            ${issue.fix ? `<div class="mt-2 text-xs text-text-muted"><span class="text-green-400 font-medium">Fix: </span>${escapeHtml(issue.fix)}</div>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Servers section
+    const servers = parseServers(json);
+    const serversSection = document.getElementById('servers-section')!;
+    if (servers && Object.keys(servers).length > 0) {
+      serversSection.classList.remove('hidden');
+      document.getElementById('servers-list')!.innerHTML = Object.entries(servers).map(([name, srv]) => {
+        const hasCmd = 'command' in srv;
+        const transport = hasCmd ? 'stdio' : 'url' in srv ? 'SSE' : 'unknown';
+        const cmd = hasCmd ? `${srv.command} ${((srv.args as string[]) || []).join(' ')}` : (srv.url as string) || '';
+        const hasEnv = srv.env && Object.keys(srv.env as object).length > 0;
+        return `<div class="p-3 border border-border rounded-lg">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="font-mono font-semibold text-sm text-primary">${escapeHtml(name)}</span>
+            <span class="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-mono">${transport}</span>
+            ${hasEnv ? '<span class="text-xs bg-yellow-500/10 text-yellow-400 px-1.5 py-0.5 rounded">env vars</span>' : ''}
+          </div>
+          <div class="text-xs font-mono text-text-muted truncate">${escapeHtml(cmd)}</div>
+        </div>`;
+      }).join('');
+    } else {
+      serversSection.classList.add('hidden');
+    }
+
+    // Config locations
+    const locations = CONFIG_LOCATIONS[format] || CONFIG_LOCATIONS['generic'];
+    document.getElementById('config-locations')!.innerHTML = locations.map(l => `<div>${escapeHtml(l)}</div>`).join('');
+  }
+
+  document.getElementById('validate-btn')!.addEventListener('click', validate);
+
+  document.getElementById('load-example')!.addEventListener('click', () => {
+    const format = getFormat();
+    (document.getElementById('config-input') as HTMLTextAreaElement).value = EXAMPLES[format] || '';
+    validate();
+  });
+
+  document.getElementById('format-btn')!.addEventListener('click', () => {
+    const el = document.getElementById('config-input') as HTMLTextAreaElement;
+    try {
+      el.value = JSON.stringify(JSON.parse(el.value), null, 2);
+    } catch (_e) { /* invalid JSON */ }
+  });
+
+  document.getElementById('clear-btn')!.addEventListener('click', () => {
+    (document.getElementById('config-input') as HTMLTextAreaElement).value = '';
+    document.getElementById('results-section')!.classList.add('hidden');
+  });
+
+  document.querySelectorAll('.format-radio').forEach(el => el.addEventListener('change', () => {
+    const format = getFormat();
+    const locations = CONFIG_LOCATIONS[format] || CONFIG_LOCATIONS['generic'];
+    if (document.getElementById('config-locations')) {
+      document.getElementById('config-locations')!.innerHTML = locations.map(l => `<div>${l}</div>`).join('');
+    }
+  }));
+
+  document.getElementById('config-input')!.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) validate();
+  });
+
+  // Init locations
+  document.getElementById('config-locations')!.innerHTML = CONFIG_LOCATIONS['claude-desktop'].map(l => `<div>${l}</div>`).join('');
+  document.getElementById('results-section')!.classList.add('hidden');
+</script>
