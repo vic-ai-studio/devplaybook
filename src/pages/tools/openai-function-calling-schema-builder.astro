@@ -1,0 +1,274 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is function calling in OpenAI and Anthropic APIs?", answer: "Function calling (also called 'tool use') lets LLMs decide when to invoke predefined functions and extract the right arguments from natural language. Instead of parsing free-form text, the model returns structured JSON that maps exactly to your function's parameters. This enables reliable structured output, API orchestration, and multi-step agent workflows." },
+  { question: "What's the difference between OpenAI tools and Anthropic tools?", answer: "Both use JSON Schema for parameter definitions but have slightly different wrapper formats. OpenAI uses type: 'function' with a nested 'function' object containing name, description, and parameters. Anthropic uses a flatter structure with name, description, and input_schema directly in the tool object. This builder generates both formats." },
+  { question: "What JSON Schema types are supported?", answer: "Both APIs support the core JSON Schema types: string, number, integer, boolean, array, object. Strings can have enum constraints (picklist), format hints (date, email, uri), and minLength/maxLength. Numbers support minimum/maximum. Arrays support items type. Objects support nested properties recursively." },
+  { question: "When should I use strict mode?", answer: "OpenAI's strict mode (strict: true) enforces that the model can only output parameters defined in your schema — no extra fields. This guarantees structured output but requires all required fields to be explicitly listed and does not allow additionalProperties. Use strict mode when you need guaranteed JSON compliance in production." },
+  { question: "How many functions should I define per request?", answer: "Keep it focused. 1–3 functions works best for most use cases. More than 10 functions can confuse the model and increase latency. If you have many operations, group related ones into a single function with an action parameter (e.g. action: 'create'|'update'|'delete') rather than three separate functions. Always test which function(s) actually get called with your specific prompts." },
+];
+
+const typeOptions = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
+---
+
+<BaseLayout
+  title="OpenAI Function Calling Schema Builder — Tool/Function JSON Schema Generator"
+  description="Visually build OpenAI and Anthropic tool/function calling JSON schemas. Add parameters, set types and enums, mark required fields, then copy the generated schema for GPT-4o or Claude."
+  tool="OpenAI function calling, tool use schema, JSON schema builder, GPT-4o tools, Anthropic tool use, function calling generator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">OpenAI Function Calling Schema Builder</h1>
+  <p class="text-text-muted mb-4">Visually define your function parameters and instantly generate the correct JSON schema for OpenAI and Anthropic tool/function calling APIs.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OpenAI & Anthropic formats</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Add/remove parameters</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Enums, types, required</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> One-click copy</span>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+    <!-- Builder panel -->
+    <div class="space-y-5">
+      <!-- Function metadata -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-4">Function Definition</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Function name <span class="text-red-400">*</span></label>
+            <input id="fn-name" type="text" value="get_weather" placeholder="snake_case_name"
+              class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+            <div class="text-xs text-text-muted mt-1">Use snake_case. No spaces or special characters.</div>
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Description <span class="text-red-400">*</span></label>
+            <textarea id="fn-desc" rows="2" placeholder="Describe what this function does. Be specific — the model uses this to decide when to call it."
+              class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none">Get the current weather for a given location</textarea>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="strict-mode" type="checkbox" class="w-4 h-4 accent-primary" />
+              <span class="text-sm">Strict mode (OpenAI only)</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Parameters -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold">Parameters</h2>
+          <button id="add-param-btn"
+            class="text-xs px-3 py-1.5 bg-primary/10 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition-all font-semibold">
+            + Add Parameter
+          </button>
+        </div>
+        <div id="params-list" class="space-y-3">
+          <!-- Populated by JS -->
+        </div>
+        <div id="no-params" class="text-sm text-text-muted text-center py-4 hidden">No parameters defined. Click "Add Parameter" to start.</div>
+      </div>
+    </div>
+
+    <!-- Output panel -->
+    <div class="space-y-4 sticky top-4">
+      <!-- Format selector -->
+      <div class="flex gap-2">
+        <button id="fmt-openai" class="fmt-btn flex-1 text-sm py-2 rounded-lg border border-primary text-primary bg-primary/10 font-semibold transition-all">OpenAI</button>
+        <button id="fmt-anthropic" class="fmt-btn flex-1 text-sm py-2 rounded-lg border border-border text-text-muted hover:border-primary hover:text-primary transition-all">Anthropic</button>
+      </div>
+
+      <!-- Schema output -->
+      <div class="bg-bg-card border border-border rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-2.5 border-b border-border">
+          <span class="text-xs font-semibold text-text-muted uppercase tracking-wide" id="schema-label">OpenAI Tool Schema</span>
+          <button id="copy-btn" class="text-xs px-3 py-1 bg-primary/10 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition-all">Copy JSON</button>
+        </div>
+        <pre id="schema-output" class="text-xs p-4 overflow-auto max-h-[400px] text-green-400 font-mono whitespace-pre leading-relaxed">—</pre>
+      </div>
+
+      <!-- Usage snippet -->
+      <div class="bg-bg-card border border-border rounded-xl overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-2.5 border-b border-border">
+          <span class="text-xs font-semibold text-text-muted uppercase tracking-wide">Python Usage</span>
+          <button id="copy-code-btn" class="text-xs px-3 py-1 bg-primary/10 text-primary border border-primary/30 rounded-lg hover:bg-primary/20 transition-all">Copy</button>
+        </div>
+        <pre id="code-output" class="text-xs p-4 overflow-auto max-h-[200px] text-blue-300 font-mono whitespace-pre leading-relaxed">—</pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-8">
+    <FaqSection faq={faq} />
+    <ToolPageCta currentTool="OpenAI Function Calling Schema Builder" relatedTags={['ai', 'openai', 'anthropic', 'function-calling', 'json-schema', 'tools', 'llm']} />
+  </div>
+</BaseLayout>
+
+<script>
+  interface Param {
+    id: string;
+    name: string;
+    type: string;
+    description: string;
+    required: boolean;
+    enumValues: string;
+    itemType: string;
+  }
+
+  var params: Param[] = [
+    { id: 'p1', name: 'location', type: 'string', description: 'City and country, e.g. "Tokyo, Japan"', required: true, enumValues: '', itemType: 'string' },
+    { id: 'p2', name: 'unit', type: 'string', description: 'Temperature unit', required: false, enumValues: 'celsius,fahrenheit', itemType: 'string' },
+  ];
+  var formatMode = 'openai';
+
+  function uid() { return 'p' + Math.random().toString(36).slice(2, 7); }
+
+  function renderParams() {
+    var list = document.getElementById('params-list')!;
+    var none = document.getElementById('no-params')!;
+    if (params.length === 0) { list.innerHTML = ''; none.classList.remove('hidden'); return; }
+    none.classList.add('hidden');
+    list.innerHTML = params.map(function(p) {
+      return `<div class="param-item border border-border rounded-lg p-3 bg-bg-surface" data-pid="${p.id}">
+        <div class="flex gap-2 mb-2">
+          <input type="text" placeholder="param_name" value="${p.name}"
+            class="param-name flex-1 bg-bg-card border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-primary" />
+          <select class="param-type bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary">
+            ${['string','number','integer','boolean','array','object'].map(function(t) {
+              return `<option value="${t}" ${p.type === t ? 'selected' : ''}>${t}</option>`;
+            }).join('')}
+          </select>
+          <label class="flex items-center gap-1 text-xs">
+            <input type="checkbox" class="param-required accent-primary" ${p.required ? 'checked' : ''} />
+            <span class="text-text-muted">req</span>
+          </label>
+          <button class="param-del text-red-400 hover:text-red-300 text-lg leading-none px-1">×</button>
+        </div>
+        <input type="text" placeholder="Description for the model..." value="${p.description}"
+          class="param-desc w-full bg-bg-card border border-border rounded px-2 py-1 text-xs mb-2 focus:outline-none focus:border-primary" />
+        <input type="text" placeholder='Enum values (comma-separated), e.g. "celsius,fahrenheit"' value="${p.enumValues}"
+          class="param-enum w-full bg-bg-card border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary" />
+      </div>`;
+    }).join('');
+
+    // Bind events
+    list.querySelectorAll('.param-item').forEach(function(item) {
+      var el = item as HTMLElement;
+      var pid = el.dataset.pid!;
+      var p = params.find(function(x) { return x.id === pid; })!;
+
+      el.querySelector('.param-name')!.addEventListener('input', function(this: HTMLInputElement) { p.name = this.value; generate(); });
+      el.querySelector('.param-type')!.addEventListener('change', function(this: HTMLSelectElement) { p.type = this.value; generate(); });
+      el.querySelector('.param-required')!.addEventListener('change', function(this: HTMLInputElement) { p.required = this.checked; generate(); });
+      el.querySelector('.param-desc')!.addEventListener('input', function(this: HTMLInputElement) { p.description = this.value; generate(); });
+      el.querySelector('.param-enum')!.addEventListener('input', function(this: HTMLInputElement) { p.enumValues = this.value; generate(); });
+      el.querySelector('.param-del')!.addEventListener('click', function() {
+        params = params.filter(function(x) { return x.id !== pid; });
+        renderParams();
+        generate();
+      });
+    });
+  }
+
+  function buildParamSchema(p: Param): Record<string, any> {
+    var schema: Record<string, any> = { type: p.type };
+    if (p.description) schema.description = p.description;
+    if (p.enumValues && p.type === 'string') {
+      var vals = p.enumValues.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      if (vals.length) schema.enum = vals;
+    }
+    if (p.type === 'array') schema.items = { type: p.itemType || 'string' };
+    return schema;
+  }
+
+  function generate() {
+    var name = (document.getElementById('fn-name') as HTMLInputElement).value || 'my_function';
+    var desc = (document.getElementById('fn-desc') as HTMLTextAreaElement).value || '';
+    var strict = (document.getElementById('strict-mode') as HTMLInputElement).checked;
+
+    var properties: Record<string, any> = {};
+    var required: string[] = [];
+    params.forEach(function(p) {
+      if (!p.name) return;
+      properties[p.name] = buildParamSchema(p);
+      if (p.required) required.push(p.name);
+    });
+
+    var paramSchema: Record<string, any> = { type: 'object', properties };
+    if (required.length) paramSchema.required = required;
+    if (strict) paramSchema.additionalProperties = false;
+
+    var openaiSchema: Record<string, any> = {
+      type: 'function',
+      function: { name, description: desc, parameters: paramSchema }
+    };
+    if (strict) openaiSchema.function.strict = true;
+
+    var anthropicSchema = { name, description: desc, input_schema: paramSchema };
+
+    var schema = formatMode === 'openai' ? openaiSchema : anthropicSchema;
+    document.getElementById('schema-output')!.textContent = JSON.stringify(schema, null, 2);
+
+    // Python snippet
+    var code = formatMode === 'openai'
+      ? `from openai import OpenAI
+client = OpenAI()
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Your prompt here"}],
+    tools=[${JSON.stringify(schema, null, 4).replace(/\n/g, '\n    ')}],
+    tool_choice="auto"
+)`
+      : `import anthropic
+client = anthropic.Anthropic()
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=1024,
+    tools=[${JSON.stringify(schema, null, 4).replace(/\n/g, '\n    ')}],
+    messages=[{"role": "user", "content": "Your prompt here"}]
+)`;
+    document.getElementById('code-output')!.textContent = code;
+  }
+
+  document.getElementById('add-param-btn')!.addEventListener('click', function() {
+    params.push({ id: uid(), name: '', type: 'string', description: '', required: false, enumValues: '', itemType: 'string' });
+    renderParams();
+    generate();
+  });
+
+  document.getElementById('fn-name')!.addEventListener('input', generate);
+  document.getElementById('fn-desc')!.addEventListener('input', generate);
+  document.getElementById('strict-mode')!.addEventListener('change', generate);
+
+  document.querySelectorAll('.fmt-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(this: HTMLElement) {
+      formatMode = this.id === 'fmt-openai' ? 'openai' : 'anthropic';
+      document.querySelectorAll('.fmt-btn').forEach(function(b) {
+        b.classList.remove('border-primary','text-primary','bg-primary/10','font-semibold');
+        b.classList.add('border-border','text-text-muted');
+      });
+      this.classList.add('border-primary','text-primary','bg-primary/10','font-semibold');
+      this.classList.remove('border-border','text-text-muted');
+      document.getElementById('schema-label')!.textContent = formatMode === 'openai' ? 'OpenAI Tool Schema' : 'Anthropic Tool Schema';
+      generate();
+    });
+  });
+
+  function copyText(id: string, btnId: string) {
+    var text = document.getElementById(id)!.textContent || '';
+    navigator.clipboard.writeText(text).then(function() {
+      var btn = document.getElementById(btnId)!;
+      var orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = orig; }, 1500);
+    });
+  }
+  document.getElementById('copy-btn')!.addEventListener('click', function() { copyText('schema-output', 'copy-btn'); });
+  document.getElementById('copy-code-btn')!.addEventListener('click', function() { copyText('code-output', 'copy-code-btn'); });
+
+  renderParams();
+  generate();
+</script>

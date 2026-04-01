@@ -1,0 +1,299 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a context window and why does it matter?", answer: "A context window is the total number of tokens an LLM can process in a single request, combining input (system prompt + conversation history + documents) and output (the model's reply). If your total tokens exceed the context window, the model truncates old context or rejects the request. Choosing a model with the right context window size prevents costly failures in production." },
+  { question: "How do I count tokens?", answer: "The standard approximation is 1 token ≈ 4 characters or about 0.75 words for English text. Code is often denser — Python/JS typically runs 3-4 chars/token. This tool uses the 4 chars/token approximation. For exact counts, use tiktoken (OpenAI) or the Anthropic tokenizer API. Gemini and other non-OpenAI models have similar but not identical tokenizers." },
+  { question: "What fits in 1 million tokens?", answer: "1 million tokens ≈ 750,000 words ≈ the entirety of Harry Potter (all 7 books). Practically: a full codebase of ~1,000 files, a 700-page technical manual, or ~10 hours of meeting transcripts. Gemini 1.5 Pro and Claude 3.5 support 1M+ tokens, enabling whole-repository analysis in a single call." },
+  { question: "What are input vs output token limits?", answer: "Most models have separate input and output limits. Claude 3.5 Sonnet allows 200K input tokens but only 8,192 output tokens. GPT-4o allows 128K input but 16,384 output. Output limits matter for long-form generation tasks (documents, code, analyses). If you need longer outputs, use streaming and chain multiple calls." },
+  { question: "Does a larger context window cost more?", answer: "Yes. Pricing is typically per input token and per output token. A 100K-token prompt costs roughly 100x more than a 1K-token prompt at the same per-token rate. Using prompt caching (Anthropic/OpenAI) can reduce repeated large-context costs by 50-90%. Always benchmark your actual context usage before choosing a model tier." },
+];
+
+const models = [
+  { name: 'Claude 3.5 Sonnet', provider: 'Anthropic', contextK: 200, outputK: 8, color: '#a78bfa', tier: 'flagship' },
+  { name: 'Claude 3.5 Haiku', provider: 'Anthropic', contextK: 200, outputK: 8, color: '#8b5cf6', tier: 'fast' },
+  { name: 'Claude 3 Opus', provider: 'Anthropic', contextK: 200, outputK: 4, color: '#7c3aed', tier: 'powerful' },
+  { name: 'GPT-4o', provider: 'OpenAI', contextK: 128, outputK: 16, color: '#34d399', tier: 'flagship' },
+  { name: 'GPT-4o Mini', provider: 'OpenAI', contextK: 128, outputK: 16, color: '#10b981', tier: 'fast' },
+  { name: 'GPT-3.5 Turbo', provider: 'OpenAI', contextK: 16, outputK: 4, color: '#6ee7b7', tier: 'budget' },
+  { name: 'Gemini 1.5 Pro', provider: 'Google', contextK: 1000, outputK: 8, color: '#60a5fa', tier: 'flagship' },
+  { name: 'Gemini 1.5 Flash', provider: 'Google', contextK: 1000, outputK: 8, color: '#3b82f6', tier: 'fast' },
+  { name: 'Gemini 2.0 Flash', provider: 'Google', contextK: 1048, outputK: 8, color: '#2563eb', tier: 'flagship' },
+  { name: 'Llama 3.1 405B', provider: 'Meta', contextK: 128, outputK: 4, color: '#fb923c', tier: 'open' },
+  { name: 'Llama 3.1 70B', provider: 'Meta', contextK: 128, outputK: 4, color: '#f97316', tier: 'open' },
+  { name: 'Mistral Large', provider: 'Mistral', contextK: 128, outputK: 4, color: '#fbbf24', tier: 'flagship' },
+  { name: 'Qwen 2.5 72B', provider: 'Alibaba', contextK: 128, outputK: 8, color: '#f43f5e', tier: 'open' },
+  { name: 'DeepSeek V3', provider: 'DeepSeek', contextK: 64, outputK: 8, color: '#ec4899', tier: 'open' },
+];
+
+const maxCtx = Math.max(...models.map(m => m.contextK));
+---
+
+<BaseLayout
+  title="AI Context Window Visualizer — Compare LLM Token Limits"
+  description="Visual comparison of AI model context window sizes. See how much text, code, or documents fit into GPT-4o, Claude 3.5, Gemini 1.5, Llama, and more. Paste text to see which models can handle it."
+  tool="AI context window, LLM token limit, context window comparison, GPT-4o context, Claude context window, Gemini 1M tokens"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Context Window Visualizer</h1>
+  <p class="text-text-muted mb-4">Compare token limits across 14 major AI models. Paste your text to instantly see which models can fit your content — and which can't.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 14 models across 6 providers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Paste text to test fit</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual bar chart</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Input + output limits</span>
+  </div>
+
+  <!-- Text input for token estimation -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold">Paste Your Text to Test</h2>
+      <div class="flex gap-2">
+        <button id="sample-code" class="text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all">Sample code</button>
+        <button id="sample-doc" class="text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all">Sample doc</button>
+        <button id="clear-text" class="text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-red-400 hover:text-red-400 transition-all">Clear</button>
+      </div>
+    </div>
+    <textarea id="text-input" rows="5" placeholder="Paste your system prompt, document, codebase excerpt, or any text here..."
+      class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none font-mono"></textarea>
+    <div class="flex items-center gap-4 mt-2 text-xs text-text-muted">
+      <span>Estimated: <span id="tok-count" class="font-bold text-primary">0</span> tokens</span>
+      <span>≈ <span id="word-count" class="font-semibold">0</span> words</span>
+      <span>≈ <span id="char-count" class="font-semibold">0</span> chars</span>
+    </div>
+  </div>
+
+  <!-- Filter + sort -->
+  <div class="flex gap-2 flex-wrap items-center mb-5">
+    <span class="text-xs text-text-muted">Filter:</span>
+    <button class="filter-btn text-xs px-3 py-1 rounded-full border border-primary text-primary bg-primary/10 font-semibold transition-all" data-f="all">All</button>
+    <button class="filter-btn text-xs px-3 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-f="anthropic">Anthropic</button>
+    <button class="filter-btn text-xs px-3 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-f="openai">OpenAI</button>
+    <button class="filter-btn text-xs px-3 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-f="google">Google</button>
+    <button class="filter-btn text-xs px-3 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-f="open">Open Source</button>
+    <button id="show-fits" class="text-xs px-3 py-1 rounded-full border border-green-500/40 text-green-400 hover:bg-green-500/10 transition-all hidden">Show only fitting</button>
+  </div>
+
+  <!-- Visual bar chart -->
+  <div id="model-bars" class="space-y-2.5 mb-8">
+    {models.map(m => (
+      <div
+        class="model-row flex items-center gap-3"
+        data-provider={m.provider.toLowerCase()}
+        data-tier={m.tier}
+        data-ctx={m.contextK * 1000}
+      >
+        <div class="text-sm w-44 shrink-0">
+          <div class="font-semibold truncate">{m.name}</div>
+          <div class="text-xs text-text-muted">{m.provider}</div>
+        </div>
+        <div class="flex-1 relative h-7">
+          <!-- Background -->
+          <div class="absolute inset-0 bg-bg-card border border-border rounded-lg overflow-hidden">
+            <!-- Context bar -->
+            <div
+              class="ctx-bar h-full rounded-lg transition-all duration-500 opacity-70"
+              style={`width: ${(m.contextK / maxCtx) * 100}%; background-color: ${m.color}; min-width: 2px`}
+            ></div>
+            <!-- Usage overlay (injected by JS) -->
+          </div>
+          <!-- Fit indicator (injected by JS) -->
+        </div>
+        <div class="text-right w-20 shrink-0">
+          <div class="text-sm font-bold tabular-nums" style={`color: ${m.color}`}>{m.contextK >= 1000 ? (m.contextK / 1000).toFixed(0) + 'M' : m.contextK + 'K'}</div>
+          <div class="text-xs text-text-muted">ctx</div>
+        </div>
+        <div class="text-right w-14 shrink-0">
+          <div class="text-xs text-text-muted tabular-nums">{m.outputK}K out</div>
+          <div id={`fit-${m.name.replace(/\s/g,'_')}`} class="fit-badge text-xs font-bold"></div>
+        </div>
+      </div>
+    ))}
+  </div>
+
+  <!-- Reference table -->
+  <h2 class="text-base font-semibold mb-4">What Fits in Common Context Windows</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm min-w-[520px]">
+      <thead>
+        <tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-3 pr-4 font-medium">Context Size</th>
+          <th class="text-left pb-3 pr-4 font-medium">Approx Words</th>
+          <th class="text-left pb-3 font-medium">What Fits</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border text-sm">
+        <tr class="hover:bg-bg-card/50"><td class="py-2.5 pr-4 font-mono font-semibold">4K</td><td class="py-2.5 pr-4 text-text-muted">~3,000</td><td class="py-2.5">A few pages of text, short code files, simple chatbot turns</td></tr>
+        <tr class="hover:bg-bg-card/50"><td class="py-2.5 pr-4 font-mono font-semibold">16K</td><td class="py-2.5 pr-4 text-text-muted">~12,000</td><td class="py-2.5">A short book chapter, small codebase, multi-turn chat history</td></tr>
+        <tr class="hover:bg-bg-card/50"><td class="py-2.5 pr-4 font-mono font-semibold">32K</td><td class="py-2.5 pr-4 text-text-muted">~24,000</td><td class="py-2.5">A short novel chapter, a full module of code, long research paper</td></tr>
+        <tr class="hover:bg-bg-card/50"><td class="py-2.5 pr-4 font-mono font-semibold">128K</td><td class="py-2.5 pr-4 text-text-muted">~96,000</td><td class="py-2.5">A 300-page book, 100+ code files, full spec + implementation</td></tr>
+        <tr class="hover:bg-bg-card/50"><td class="py-2.5 pr-4 font-mono font-semibold">200K</td><td class="py-2.5 pr-4 text-text-muted">~150,000</td><td class="py-2.5">~400 pages, a medium codebase, an entire product documentation set</td></tr>
+        <tr class="hover:bg-bg-card/50"><td class="py-2.5 pr-4 font-mono font-semibold">1M+</td><td class="py-2.5 pr-4 text-text-muted">~750,000+</td><td class="py-2.5">All 7 Harry Potter books, 1,000+ code files, hours of transcripts</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Context Window Visualizer" relatedTags={['ai', 'llm', 'context-window', 'tokens', 'gpt-4o', 'claude', 'gemini']} />
+</BaseLayout>
+
+<script>
+  var userTokens = 0;
+  var activeFilter = 'all';
+  var showFitsOnly = false;
+
+  // Model data mirrored for JS
+  var models = [
+    { name: 'Claude 3.5 Sonnet', provider: 'anthropic', contextK: 200, tier: 'flagship' },
+    { name: 'Claude 3.5 Haiku', provider: 'anthropic', contextK: 200, tier: 'fast' },
+    { name: 'Claude 3 Opus', provider: 'anthropic', contextK: 200, tier: 'powerful' },
+    { name: 'GPT-4o', provider: 'openai', contextK: 128, tier: 'flagship' },
+    { name: 'GPT-4o Mini', provider: 'openai', contextK: 128, tier: 'fast' },
+    { name: 'GPT-3.5 Turbo', provider: 'openai', contextK: 16, tier: 'budget' },
+    { name: 'Gemini 1.5 Pro', provider: 'google', contextK: 1000, tier: 'flagship' },
+    { name: 'Gemini 1.5 Flash', provider: 'google', contextK: 1000, tier: 'fast' },
+    { name: 'Gemini 2.0 Flash', provider: 'google', contextK: 1048, tier: 'flagship' },
+    { name: 'Llama 3.1 405B', provider: 'open', contextK: 128, tier: 'open' },
+    { name: 'Llama 3.1 70B', provider: 'open', contextK: 128, tier: 'open' },
+    { name: 'Mistral Large', provider: 'open', contextK: 128, tier: 'flagship' },
+    { name: 'Qwen 2.5 72B', provider: 'open', contextK: 128, tier: 'open' },
+    { name: 'DeepSeek V3', provider: 'open', contextK: 64, tier: 'open' },
+  ];
+
+  function estimateTokens(text: string): number {
+    return Math.round(text.length / 4);
+  }
+
+  function updateTokenCount() {
+    var text = (document.getElementById('text-input') as HTMLTextAreaElement).value;
+    userTokens = estimateTokens(text);
+    document.getElementById('tok-count')!.textContent = userTokens.toLocaleString();
+    document.getElementById('word-count')!.textContent = text.split(/\s+/).filter(Boolean).length.toLocaleString();
+    document.getElementById('char-count')!.textContent = text.length.toLocaleString();
+
+    var hasFit = userTokens > 0 && models.some(function(m) { return m.contextK * 1000 >= userTokens; });
+    document.getElementById('show-fits')!.classList.toggle('hidden', !hasFit);
+
+    updateFitBadges();
+  }
+
+  function updateFitBadges() {
+    models.forEach(function(m) {
+      var badge = document.getElementById('fit-' + m.name.replace(/\s/g, '_'));
+      if (!badge) return;
+      if (userTokens === 0) { badge.textContent = ''; return; }
+      var fits = m.contextK * 1000 >= userTokens;
+      badge.textContent = fits ? '✓ fits' : '✗ too small';
+      badge.className = 'fit-badge text-xs font-bold ' + (fits ? 'text-green-400' : 'text-red-400');
+    });
+    applyFilter();
+  }
+
+  function applyFilter() {
+    document.querySelectorAll('.model-row').forEach(function(row) {
+      var el = row as HTMLElement;
+      var provider = el.dataset.provider!;
+      var ctx = parseInt(el.dataset.ctx!);
+      var providerMatch = activeFilter === 'all' ||
+        (activeFilter === 'open' && ['meta', 'alibaba', 'deepseek', 'open', 'mistral'].includes(provider)) ||
+        provider === activeFilter;
+      var fitMatch = !showFitsOnly || userTokens === 0 || ctx >= userTokens;
+      el.style.display = (providerMatch && fitMatch) ? '' : 'none';
+    });
+  }
+
+  document.getElementById('text-input')!.addEventListener('input', updateTokenCount);
+
+  document.querySelectorAll('.filter-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(this: HTMLElement) {
+      activeFilter = this.dataset.f!;
+      document.querySelectorAll('.filter-btn').forEach(function(b) {
+        b.classList.remove('border-primary','text-primary','bg-primary/10','font-semibold');
+        b.classList.add('border-border','text-text-muted');
+      });
+      this.classList.add('border-primary','text-primary','bg-primary/10','font-semibold');
+      this.classList.remove('border-border','text-text-muted');
+      applyFilter();
+    });
+  });
+
+  document.getElementById('show-fits')!.addEventListener('click', function() {
+    showFitsOnly = !showFitsOnly;
+    this.textContent = showFitsOnly ? 'Show all models' : 'Show only fitting';
+    this.classList.toggle('bg-green-500/10', showFitsOnly);
+    applyFilter();
+  });
+
+  var sampleCode = `// UserService.ts - User management service
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from './user.entity';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+
+@Injectable()
+export class UserService {
+  constructor(@InjectRepository(User) private userRepo: Repository<User>) {}
+
+  async create(dto: CreateUserDto): Promise<User> {
+    const user = this.userRepo.create(dto);
+    return this.userRepo.save(user);
+  }
+
+  async findAll(): Promise<User[]> {
+    return this.userRepo.find({ where: { deletedAt: null } });
+  }
+
+  async findOne(id: string): Promise<User | null> {
+    return this.userRepo.findOne({ where: { id } });
+  }
+
+  async update(id: string, dto: UpdateUserDto): Promise<User> {
+    await this.userRepo.update(id, dto);
+    return this.findOne(id) as Promise<User>;
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.userRepo.softDelete(id);
+  }
+}`;
+
+  var sampleDoc = `# Product Requirements Document: AI Assistant Feature
+
+## Overview
+This document describes requirements for the AI Assistant feature to be shipped in Q2 2026.
+
+## Problem Statement
+Users spend an average of 45 minutes per day on repetitive data entry and formatting tasks. Our platform currently has no AI-assisted automation, creating a competitive disadvantage versus newer entrants.
+
+## Goals
+1. Reduce time spent on repetitive tasks by 60% for power users
+2. Achieve 85% user satisfaction score for AI-generated suggestions
+3. Ship MVP to 10% of users by March 31, 2026
+
+## Non-Goals
+- Full autonomous task execution without user confirmation
+- Integration with third-party AI providers in MVP
+- Mobile application changes in this phase
+
+## User Stories
+As a power user, I want to describe a task in natural language so that the system automatically performs it without manual configuration.
+As a manager, I want to see which AI suggestions were accepted vs rejected so that I can tune the quality over time.`;
+
+  document.getElementById('sample-code')!.addEventListener('click', function() {
+    (document.getElementById('text-input') as HTMLTextAreaElement).value = sampleCode;
+    updateTokenCount();
+  });
+  document.getElementById('sample-doc')!.addEventListener('click', function() {
+    (document.getElementById('text-input') as HTMLTextAreaElement).value = sampleDoc;
+    updateTokenCount();
+  });
+  document.getElementById('clear-text')!.addEventListener('click', function() {
+    (document.getElementById('text-input') as HTMLTextAreaElement).value = '';
+    updateTokenCount();
+  });
+</script>

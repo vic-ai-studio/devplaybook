@@ -1,0 +1,335 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How does Anthropic prompt caching work?", answer: "Anthropic's Claude prompt caching stores a processed version of your prompt prefix in memory. If you send the same prefix (at least 1,024 tokens for Claude 3 Haiku, 2,048 for Sonnet/Opus) on subsequent requests, cached tokens are charged at 10% of the normal input rate instead of 100%. Cache entries persist for 5 minutes with a sliding window refresh." },
+  { question: "Does OpenAI have prompt caching?", answer: "Yes. OpenAI automatically caches prompt prefixes for GPT-4o and GPT-4o-mini on prompts of 1,024+ tokens. Cached tokens are charged at 50% of the input rate (not as aggressive as Anthropic's 10%). Cache hits occur when the prefix matches a previous request exactly. No explicit cache management is needed." },
+  { question: "What is a cache hit rate?", answer: "Cache hit rate is the percentage of your requests that successfully reuse a cached prompt. A 90% cache hit rate means 9 out of 10 requests use the cached version. Higher hit rates occur when you have a consistent large system prompt sent on every request. Hit rates drop when prompts vary significantly between requests." },
+  { question: "How do I maximize cache hit rate?", answer: "Structure prompts with the large, stable content first (system instructions, documents, tools) followed by the dynamic content (user message). Cache is keyed on the exact prefix — even a single character change invalidates it. Pin your static system prompt and append dynamic user input at the end. Use cache_control: {type: 'ephemeral'} in Claude to explicitly mark cache breakpoints." },
+  { question: "Is prompt caching always worth it?", answer: "Caching saves money on repeated large system prompts but adds a cache write cost (25% on Anthropic, 100% on OpenAI — cache writes are charged normally). The savings are largest when: (1) your system prompt is very large (1K+ tokens), (2) cache hit rate is high (>50%), and (3) you make many requests per session. Low-volume or highly variable prompts won't benefit much." },
+];
+
+const providers = [
+  {
+    id: 'anthropic-haiku',
+    name: 'Claude 3.5 Haiku',
+    inputRate: 0.0008,
+    outputRate: 0.004,
+    cacheReadRate: 0.00008,
+    cacheWriteRate: 0.0001,
+    minCacheTokens: 1024,
+    cacheWriteMultiplier: 1.25,
+    note: 'Cache read = 10% of input. Cache write = 25% surcharge on cached tokens.',
+  },
+  {
+    id: 'anthropic-sonnet',
+    name: 'Claude 3.5 Sonnet',
+    inputRate: 0.003,
+    outputRate: 0.015,
+    cacheReadRate: 0.0003,
+    cacheWriteRate: 0.00375,
+    minCacheTokens: 2048,
+    cacheWriteMultiplier: 1.25,
+    note: 'Cache read = 10% of input. Min cache prefix: 2,048 tokens.',
+  },
+  {
+    id: 'anthropic-opus',
+    name: 'Claude 3 Opus',
+    inputRate: 0.015,
+    outputRate: 0.075,
+    cacheReadRate: 0.0015,
+    cacheWriteRate: 0.01875,
+    minCacheTokens: 2048,
+    cacheWriteMultiplier: 1.25,
+    note: 'Cache read = 10% of input. Largest savings on expensive model.',
+  },
+  {
+    id: 'openai-gpt4o',
+    name: 'GPT-4o',
+    inputRate: 0.005,
+    outputRate: 0.015,
+    cacheReadRate: 0.0025,
+    cacheWriteRate: 0.005,
+    minCacheTokens: 1024,
+    cacheWriteMultiplier: 1.0,
+    note: 'Cache read = 50% of input. Automatic, no explicit management needed.',
+  },
+  {
+    id: 'openai-gpt4o-mini',
+    name: 'GPT-4o Mini',
+    inputRate: 0.00015,
+    outputRate: 0.0006,
+    cacheReadRate: 0.000075,
+    cacheWriteRate: 0.00015,
+    minCacheTokens: 1024,
+    cacheWriteMultiplier: 1.0,
+    note: 'Cache read = 50% of input. Cheapest model, smaller absolute savings.',
+  },
+];
+---
+
+<BaseLayout
+  title="Prompt Caching Calculator — Anthropic Claude & OpenAI Savings Estimator"
+  description="Calculate how much you save with Anthropic prompt caching and OpenAI automatic caching. Enter your system prompt size, cache hit rate, and monthly volume to see exact cost deltas."
+  tool="prompt caching calculator, Anthropic cache savings, Claude prompt caching, OpenAI cached tokens, cache hit rate, LLM cost optimization"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Prompt Caching Calculator</h1>
+  <p class="text-text-muted mb-4">Calculate exact savings from Anthropic and OpenAI prompt caching. Adjust system prompt size, cache hit rate, and monthly request volume to see your cost delta.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Anthropic (10% cache read) & OpenAI (50%)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cache write surcharge included</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Monthly savings projection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Break-even analysis</span>
+  </div>
+
+  <!-- Inputs -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-sm font-semibold mb-4">Prompt Configuration</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Cached prefix size (tokens) — system prompt, docs, tools</label>
+          <div class="flex gap-2 flex-wrap mb-2">
+            <button class="sys-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="1024">1K</button>
+            <button class="sys-preset text-xs px-2.5 py-1 rounded-full border border-primary text-primary bg-primary/10 transition-all" data-val="4000">4K</button>
+            <button class="sys-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="16000">16K</button>
+            <button class="sys-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="50000">50K</button>
+          </div>
+          <input id="cached-tokens" type="number" min="1024" value="4000" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Dynamic input tokens per request (user message)</label>
+          <input id="dynamic-tokens" type="number" min="1" value="200" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Output tokens per request</label>
+          <input id="output-tokens" type="number" min="1" value="500" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-sm font-semibold mb-4">Usage Parameters</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Cache hit rate (%)</label>
+          <div class="flex items-center gap-3">
+            <input id="hit-rate-slider" type="range" min="0" max="100" value="80" class="flex-1 accent-primary" />
+            <input id="hit-rate-input" type="number" min="0" max="100" value="80" class="w-16 bg-bg-surface border border-border rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:border-primary" />
+            <span class="text-sm text-text-muted">%</span>
+          </div>
+          <div class="text-xs text-text-muted mt-1">80-95% is typical for apps with a fixed large system prompt.</div>
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Monthly requests</label>
+          <div class="flex gap-2 flex-wrap mb-2">
+            <button class="req-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="1000">1K</button>
+            <button class="req-preset text-xs px-2.5 py-1 rounded-full border border-primary text-primary bg-primary/10 transition-all" data-val="10000">10K</button>
+            <button class="req-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="100000">100K</button>
+            <button class="req-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="1000000">1M</button>
+          </div>
+          <input id="monthly-reqs" type="number" min="1" value="10000" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results table -->
+  <h2 class="text-base font-semibold mb-4">Monthly Cost Comparison</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm min-w-[640px]">
+      <thead>
+        <tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-3 pr-4 font-medium">Model</th>
+          <th class="text-right pb-3 pr-4 font-medium">Without cache</th>
+          <th class="text-right pb-3 pr-4 font-medium">With cache</th>
+          <th class="text-right pb-3 pr-4 font-medium">Monthly savings</th>
+          <th class="text-right pb-3 font-medium">Savings %</th>
+        </tr>
+      </thead>
+      <tbody id="cache-table" class="divide-y divide-border">
+        {providers.map(p => (
+          <tr class="prov-row hover:bg-bg-card/50 transition-colors"
+            data-input={p.inputRate}
+            data-output={p.outputRate}
+            data-cache-read={p.cacheReadRate}
+            data-cache-write={p.cacheWriteRate}
+          >
+            <td class="py-3 pr-4">
+              <div class="font-semibold">{p.name}</div>
+              <div class="text-xs text-text-muted">{p.note}</div>
+            </td>
+            <td class="py-3 pr-4 text-right tabular-nums prov-no-cache">—</td>
+            <td class="py-3 pr-4 text-right tabular-nums prov-with-cache">—</td>
+            <td class="py-3 pr-4 text-right tabular-nums font-bold text-green-400 prov-savings">—</td>
+            <td class="py-3 text-right tabular-nums prov-pct">—</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Visual savings bar for selected model -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-8">
+    <h2 class="text-sm font-semibold mb-4">Select Model to Visualize</h2>
+    <div class="flex gap-2 flex-wrap mb-4" id="model-selector">
+      {providers.map((p, i) => (
+        <button
+          class={`model-sel-btn text-xs px-3 py-1.5 rounded-lg border transition-all ${i === 0 ? 'border-primary text-primary bg-primary/10 font-semibold' : 'border-border text-text-muted hover:border-primary'}`}
+          data-idx={i}
+        >
+          {p.name}
+        </button>
+      ))}
+    </div>
+    <div class="space-y-3">
+      <div>
+        <div class="flex justify-between text-xs text-text-muted mb-1">
+          <span>Without cache</span>
+          <span id="vis-no-cache">—</span>
+        </div>
+        <div class="bg-bg-surface border border-border rounded-full h-5 relative">
+          <div id="vis-bar-no" class="h-full rounded-full bg-red-500/60 transition-all" style="width: 100%"></div>
+        </div>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs text-text-muted mb-1">
+          <span>With cache</span>
+          <span id="vis-with-cache">—</span>
+        </div>
+        <div class="bg-bg-surface border border-border rounded-full h-5 relative">
+          <div id="vis-bar-with" class="h-full rounded-full bg-green-500/60 transition-all" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="mt-3 text-center text-sm">
+      Monthly savings: <span id="vis-savings" class="font-bold text-green-400">—</span>
+      <span class="text-text-muted ml-2">(<span id="vis-pct">—</span>% reduction)</span>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Prompt Caching Calculator" relatedTags={['ai', 'llm', 'anthropic', 'openai', 'cost', 'prompt-caching', 'optimization']} />
+</BaseLayout>
+
+<script>
+  interface ProvData { noCache: number; withCache: number; savings: number; pct: number; }
+
+  function fmt(n: number) {
+    if (n >= 1000) return '$' + (n / 1000).toFixed(2) + 'K';
+    return '$' + n.toFixed(2);
+  }
+
+  var provData: ProvData[] = [];
+
+  function calculate() {
+    var cachedTok = parseInt((document.getElementById('cached-tokens') as HTMLInputElement).value) || 4000;
+    var dynamicTok = parseInt((document.getElementById('dynamic-tokens') as HTMLInputElement).value) || 200;
+    var outputTok = parseInt((document.getElementById('output-tokens') as HTMLInputElement).value) || 500;
+    var hitRate = parseInt((document.getElementById('hit-rate-input') as HTMLInputElement).value) || 80;
+    var monthlyReqs = parseInt((document.getElementById('monthly-reqs') as HTMLInputElement).value) || 10000;
+
+    var hitFrac = hitRate / 100;
+    var missFrac = 1 - hitFrac;
+
+    provData = [];
+
+    document.querySelectorAll('.prov-row').forEach(function(row) {
+      var el = row as HTMLElement;
+      var inputRate = parseFloat(el.dataset.input!) / 1000;
+      var outputRate = parseFloat(el.dataset.output!) / 1000;
+      var cacheReadRate = parseFloat(el.dataset.cacheRead!) / 1000;
+      var cacheWriteRate = parseFloat(el.dataset.cacheWrite!) / 1000;
+
+      var totalInputTok = cachedTok + dynamicTok;
+
+      // Without cache: every request pays full input + output
+      var noCachePerReq = totalInputTok * inputRate + outputTok * outputRate;
+      var noCache = noCachePerReq * monthlyReqs;
+
+      // With cache:
+      // Cache miss requests: pay full input (cache write) + dynamic + output
+      // Cache hit requests: pay cache_read for cached prefix + dynamic input + output
+      var missPerReq = cachedTok * cacheWriteRate + dynamicTok * inputRate + outputTok * outputRate;
+      var hitPerReq = cachedTok * cacheReadRate + dynamicTok * inputRate + outputTok * outputRate;
+      var withCache = monthlyReqs * (missFrac * missPerReq + hitFrac * hitPerReq);
+
+      var savings = noCache - withCache;
+      var pct = noCache > 0 ? (savings / noCache) * 100 : 0;
+
+      provData.push({ noCache, withCache, savings, pct });
+
+      el.querySelector('.prov-no-cache')!.textContent = fmt(noCache) + '/mo';
+      el.querySelector('.prov-with-cache')!.textContent = fmt(withCache) + '/mo';
+      el.querySelector('.prov-savings')!.textContent = savings > 0 ? '+' + fmt(savings) : fmt(savings);
+      el.querySelector('.prov-pct')!.textContent = pct.toFixed(1) + '%';
+    });
+
+    updateVis();
+  }
+
+  var selectedIdx = 0;
+
+  function updateVis() {
+    if (!provData[selectedIdx]) return;
+    var d = provData[selectedIdx];
+    var max = Math.max(d.noCache, 0.001);
+    document.getElementById('vis-no-cache')!.textContent = fmt(d.noCache) + '/mo';
+    document.getElementById('vis-with-cache')!.textContent = fmt(d.withCache) + '/mo';
+    document.getElementById('vis-savings')!.textContent = fmt(d.savings);
+    document.getElementById('vis-pct')!.textContent = d.pct.toFixed(1);
+    (document.getElementById('vis-bar-no') as HTMLElement).style.width = '100%';
+    (document.getElementById('vis-bar-with') as HTMLElement).style.width = Math.max(0, (d.withCache / max) * 100) + '%';
+  }
+
+  document.querySelectorAll('.model-sel-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(this: HTMLElement) {
+      selectedIdx = parseInt(this.dataset.idx!);
+      document.querySelectorAll('.model-sel-btn').forEach(function(b) {
+        b.classList.remove('border-primary', 'text-primary', 'bg-primary/10', 'font-semibold');
+        b.classList.add('border-border', 'text-text-muted');
+      });
+      this.classList.add('border-primary', 'text-primary', 'bg-primary/10', 'font-semibold');
+      this.classList.remove('border-border', 'text-text-muted');
+      updateVis();
+    });
+  });
+
+  // Slider sync
+  document.getElementById('hit-rate-slider')!.addEventListener('input', function(this: HTMLInputElement) {
+    (document.getElementById('hit-rate-input') as HTMLInputElement).value = this.value;
+    calculate();
+  });
+  document.getElementById('hit-rate-input')!.addEventListener('input', function(this: HTMLInputElement) {
+    (document.getElementById('hit-rate-slider') as HTMLInputElement).value = this.value;
+    calculate();
+  });
+
+  // Presets
+  document.querySelectorAll('.sys-preset').forEach(function(btn) {
+    btn.addEventListener('click', function(this: HTMLElement) {
+      (document.getElementById('cached-tokens') as HTMLInputElement).value = this.dataset.val!;
+      document.querySelectorAll('.sys-preset').forEach(function(b) { b.classList.remove('border-primary','text-primary','bg-primary/10'); b.classList.add('border-border','text-text-muted'); });
+      this.classList.add('border-primary','text-primary','bg-primary/10'); this.classList.remove('border-border','text-text-muted');
+      calculate();
+    });
+  });
+  document.querySelectorAll('.req-preset').forEach(function(btn) {
+    btn.addEventListener('click', function(this: HTMLElement) {
+      (document.getElementById('monthly-reqs') as HTMLInputElement).value = this.dataset.val!;
+      document.querySelectorAll('.req-preset').forEach(function(b) { b.classList.remove('border-primary','text-primary','bg-primary/10'); b.classList.add('border-border','text-text-muted'); });
+      this.classList.add('border-primary','text-primary','bg-primary/10'); this.classList.remove('border-border','text-text-muted');
+      calculate();
+    });
+  });
+
+  ['cached-tokens', 'dynamic-tokens', 'output-tokens', 'monthly-reqs'].forEach(function(id) {
+    document.getElementById(id)!.addEventListener('input', calculate);
+  });
+
+  calculate();
+</script>
