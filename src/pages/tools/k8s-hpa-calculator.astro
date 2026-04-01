@@ -1,0 +1,166 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the Kubernetes Horizontal Pod Autoscaler (HPA)?", answer: "The Horizontal Pod Autoscaler (HPA) automatically adjusts the number of pod replicas in a Deployment, ReplicaSet, or StatefulSet based on observed metrics. When CPU or memory usage exceeds the target threshold, HPA scales up; when usage drops, it scales down. The HPA controller runs in the Kubernetes control plane and queries the Metrics API every 15 seconds by default. HPA requires the Kubernetes Metrics Server (for CPU/memory) or a custom metrics adapter (for application metrics)." },
+  { question: "How does HPA calculate the desired replica count?", answer: "HPA uses this formula: desiredReplicas = ceil(currentReplicas × (currentMetricValue / desiredMetricValue)). For example, with 5 replicas at 80% CPU and a target of 50% CPU: ceil(5 × (80/50)) = ceil(8) = 8 replicas. For scale-down, a stabilization window (default 5 minutes) prevents rapid flapping — the HPA looks at the maximum recommendation over the window and only scales down to that level." },
+  { question: "What is the difference between HPA and KEDA?", answer: "HPA is Kubernetes-native and supports CPU, memory, and custom metrics via the custom.metrics.k8s.io API. KEDA (Kubernetes Event-driven Autoscaling) extends HPA with 50+ built-in scalers for external event sources: Kafka consumer lag, SQS queue depth, Redis list length, Prometheus queries, Azure Service Bus, Cron schedules, and more. KEDA can also scale to zero (no pods when idle), which standard HPA cannot. Use HPA for compute-based scaling; use KEDA for event-driven or queue-based workloads." },
+  { question: "What is VPA and how does it differ from HPA?", answer: "VPA (Vertical Pod Autoscaler) adjusts CPU and memory requests/limits per pod instead of changing the replica count. HPA adds more pods; VPA makes each pod bigger. They can conflict if both target CPU — for example, VPA might reduce CPU requests while HPA is trying to scale up because CPU% appears high. The recommended approach is to use HPA for scaling and VPA in 'Off' mode for recommendation-only (using its suggestions to set initial requests manually)." },
+  { question: "How do I scale on custom metrics like HTTP requests per second?", answer: "For custom metrics, you need either (1) Prometheus Adapter — exposes Prometheus metrics via the custom.metrics.k8s.io API, or (2) KEDA with the Prometheus scaler. With Prometheus Adapter, you configure a rule that maps a PromQL query to a Kubernetes metric name, then reference it in the HPA spec as a Pods or External metric. With KEDA, you create a ScaledObject that references a Prometheus query directly — simpler to configure." },
+  { question: "What causes HPA to report 'unknown' metrics?", answer: "HPA reports 'unknown' metrics for several reasons: (1) Metrics Server is not installed or not running, (2) Pods don't have resource requests set (HPA needs requests to calculate utilization percentage), (3) Custom metrics adapter is not configured correctly, (4) Pod is not yet sending metrics (new pods take time to appear in metrics). Check with: kubectl describe hpa myapp. Look at 'Conditions' section for the specific error — usually 'AbleToScale' or 'ScalingActive' conditions will explain why." },
+];
+---
+
+<BaseLayout
+  title="Kubernetes HPA: Horizontal Pod Autoscaler Setup & Tuning Guide"
+  description="Master Kubernetes HPA setup and tuning. Configure CPU and memory autoscaling, custom metrics with KEDA, stabilization windows, and compare HPA vs KEDA vs VPA for your workloads."
+  tool="Kubernetes HPA, Horizontal Pod Autoscaler, KEDA autoscaling, custom metrics HPA, HPA vs VPA, stabilization window"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Kubernetes HPA: Horizontal Pod Autoscaler Setup & Tuning Guide","url":"https://devplaybook.cc/tools/k8s-hpa-calculator","description":"Complete guide to Kubernetes HPA — CPU/memory autoscaling, custom metrics via KEDA, stabilization windows, and HPA vs KEDA vs VPA comparison."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Kubernetes HPA: Horizontal Pod Autoscaler Setup &amp; Tuning Guide</h1>
+  <p class="text-text-muted mb-6">The Horizontal Pod Autoscaler scales your workloads automatically based on CPU utilization, memory pressure, or custom application metrics. This guide covers setup, tuning stabilization windows, and when to reach for KEDA or VPA instead.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CPU &amp; memory autoscaling</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Custom metrics (KEDA)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Stabilization window tuning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HPA vs KEDA vs VPA</span>
+  </div>
+
+  <ToolPageCta />
+
+  <div class="space-y-8 mt-8">
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">HPA vs KEDA vs VPA Comparison</h2>
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="bg-surface">
+              <th class="border border-border px-3 py-2 text-left font-semibold">Tool</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Scales</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Metrics</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Scale to zero</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Best for</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="border border-border px-3 py-2 font-semibold text-primary">HPA</td><td class="border border-border px-3 py-2">Replicas (horizontal)</td><td class="border border-border px-3 py-2">CPU, memory, custom</td><td class="border border-border px-3 py-2 text-red-400">No (min 1)</td><td class="border border-border px-3 py-2">Web APIs, microservices</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-semibold text-primary">KEDA</td><td class="border border-border px-3 py-2">Replicas (horizontal)</td><td class="border border-border px-3 py-2">50+ external sources</td><td class="border border-border px-3 py-2 text-green-400">Yes</td><td class="border border-border px-3 py-2">Queue workers, event-driven</td></tr>
+            <tr><td class="border border-border px-3 py-2 font-semibold text-primary">VPA</td><td class="border border-border px-3 py-2">Pod size (vertical)</td><td class="border border-border px-3 py-2">CPU, memory history</td><td class="border border-border px-3 py-2 text-red-400">No</td><td class="border border-border px-3 py-2">Right-sizing requests</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Basic CPU-Based HPA</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: myapp-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70   # Scale when CPU > 70% of requests</code></pre>
+
+      <h3 class="text-lg font-semibold mb-2 mt-4">CPU + Memory Multi-Metric HPA</h3>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>spec:
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: AverageValue
+        averageValue: 512Mi   # Scale when avg memory > 512Mi/pod</code></pre>
+      <p class="text-text-muted text-sm">With multiple metrics, HPA takes the maximum recommendation from all metrics — if CPU wants 8 replicas and memory wants 12, HPA scales to 12.</p>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Stabilization Window &amp; Scale Behavior</h2>
+      <p class="text-text-muted mb-3">The stabilization window prevents flapping during traffic spikes. For scale-down, the default is 300 seconds (5 minutes). For scale-up, the default is 0 (immediate). Customize with the <code class="bg-surface px-1 rounded text-sm">behavior</code> block.</p>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>spec:
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60   # React to sustained load, not spikes
+      policies:
+      - type: Percent
+        value: 50           # Max 50% increase per period
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
+      policies:
+      - type: Pods
+        value: 2            # Remove at most 2 pods per minute
+        periodSeconds: 60</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">KEDA: Event-Driven Autoscaling</h2>
+      <p class="text-text-muted mb-3">KEDA adds a <code class="bg-surface px-1 rounded text-sm">ScaledObject</code> CRD that wraps HPA with external event source scalers. It can scale to zero — perfect for queue workers with no messages.</p>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: queue-worker-scaler
+spec:
+  scaleTargetRef:
+    name: queue-worker
+  minReplicaCount: 0    # Scale to zero when idle
+  maxReplicaCount: 50
+  triggers:
+  - type: aws-sqs-queue
+    metadata:
+      queueURL: https://sqs.us-east-1.amazonaws.com/123/myqueue
+      queueLength: "5"      # Scale up when queue depth > 5
+      awsRegion: us-east-1
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: http_requests_total
+      threshold: "100"      # 100 req/sec per replica</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Debugging HPA</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Check HPA status
+kubectl get hpa -n production
+# NAME         REFERENCE            TARGETS   MINPODS   MAXPODS   REPLICAS
+# myapp-hpa    Deployment/myapp     72%/70%   2         20        8
+
+# Detailed status including conditions
+kubectl describe hpa myapp-hpa -n production
+
+# Common issues:
+# - AbleToScale: False → metrics not available (install metrics-server)
+# - ScalingActive: False → zero pods or paused
+# - DesiredReplicas not changing → stabilization window active
+
+# Install metrics server (if missing)
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml</code></pre>
+    </section>
+
+  </div>
+
+  <FaqSection faqs={faq} />
+</BaseLayout>

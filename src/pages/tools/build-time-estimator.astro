@@ -1,0 +1,195 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is the single biggest win for reducing CI build time?",
+    answer: "Caching dependency installation is almost always the highest-ROI optimization. A cold npm ci typically takes 60–120 seconds; with a warm cache keyed on package-lock.json, it drops to 5–10 seconds. On a team running 50 builds per day, that is 1–2 hours of compute time saved daily. Set up actions/cache or equivalent before optimizing anything else."
+  },
+  {
+    question: "How do I find out which step in my pipeline is slowest?",
+    answer: "GitHub Actions shows per-step timing in the workflow run UI — click any job to see each step's duration. For deeper analysis, use the GitHub Actions API: GET /repos/{owner}/{repo}/actions/runs/{run_id}/timing returns billing minutes per job. Third-party tools like Trunk.io, Depot, and BuildPulse overlay historical timing data and flag regressions automatically. Always profile before optimizing — intuition is wrong 60% of the time."
+  },
+  {
+    question: "How does matrix parallelism differ from test splitting?",
+    answer: "Matrix parallelism (GitHub Actions matrix strategy) spins up completely independent jobs with different configurations — e.g., testing across Node 18, 20, 22 or across ubuntu/windows/macos. Each matrix entry is a separate job. Test splitting divides a single test suite across N identical workers — each worker runs a subset of the same tests. Use matrix for cross-platform/version testing; use test splitting (CircleCI parallelism, pytest-split, Jest --shard) to speed up a large test suite."
+  },
+  {
+    question: "How much does Docker layer caching help?",
+    answer: "A non-cached Docker build of a Node.js app typically takes 3–8 minutes. With layer caching (GitHub Actions mode=max, registry-based cache), subsequent builds that only change application code (not base image or dependencies) typically complete in 30–60 seconds. The key is ordering your Dockerfile to copy package.json and run npm install before copying source code — so the dependency layer is cached unless package.json changes."
+  },
+  {
+    question: "Should I use self-hosted runners to speed up builds?",
+    answer: "Self-hosted runners can help if your bottleneck is network I/O to your private artifact registry, database, or internal services — a self-hosted runner in the same datacenter eliminates that latency. However, for compute-bound builds, larger GitHub-hosted runners (8-core, 16-core) are often more cost-effective than managing your own infrastructure. Try a larger hosted runner before investing in self-hosted runner maintenance."
+  },
+  {
+    question: "What is a reasonable target CI build time?",
+    answer: "The industry benchmark for a healthy developer experience is under 10 minutes for the full CI pipeline (lint + test + build). Under 5 minutes is excellent. Above 15 minutes starts causing context-switching friction — developers stop waiting for CI and move on, increasing the cost of failures. If your pipeline is over 10 minutes, run the profiling steps in this guide before opening a pull request."
+  }
+];
+---
+
+<BaseLayout
+  title="CI Build Time Optimization: Caching, Parallelism & Profiling Guide"
+  description="Cut CI build times with caching, parallelism, and Docker layer optimization. Covers GitHub Actions, npm/pip/Docker caching strategies, test splitting, and build profiling techniques."
+  tool="CI build time, build optimization, caching, parallel jobs, GitHub Actions performance, Docker layer caching, test splitting"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"CI Build Time Optimization: Caching, Parallelism & Profiling Guide","url":"https://devplaybook.cc/tools/build-time-estimator","description":"Practical guide to cutting CI build times through caching strategies, parallelism, Docker layer optimization, and build profiling."})} />
+
+  <h1 class="text-3xl font-bold mb-2">CI Build Time Optimization: Caching, Parallelism & Profiling</h1>
+  <p class="text-text-muted mb-6">A slow CI pipeline kills developer velocity. Every minute over 10 minutes is a minute developers spend context-switching instead of shipping. This guide walks through the four main levers — dependency caching, Docker layer caching, test parallelism, and job structure — with concrete configurations you can apply today to cut your build time in half or more.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dependency caching (npm, pip, Go)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Docker layer caching strategies</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Test splitting &amp; parallelism</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Build profiling &amp; bottleneck detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Benchmark comparison table</span>
+  </div>
+
+  <ToolPageCta />
+
+  <div class="mt-8 space-y-8">
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Dependency Caching with actions/cache</h2>
+      <p class="text-text-muted mb-4">Caching <code class="font-mono text-sm bg-bg-card px-1 rounded">node_modules</code> or the npm cache directory eliminates the most time-consuming step in most Node.js pipelines. Key the cache on your lockfile checksum so it invalidates automatically when dependencies change.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code># GitHub Actions: npm dependency caching
+- name: Cache npm dependencies
+  uses: actions/cache@v4
+  with:
+    path: ~/.npm
+    key: npm-$&#123;&#123; runner.os &#125;&#125;-$&#123;&#123; hashFiles('**/package-lock.json') &#125;&#125;
+    restore-keys: |
+      npm-$&#123;&#123; runner.os &#125;&#125;-
+
+- name: Install dependencies
+  run: npm ci
+
+# Python pip caching
+- name: Cache pip packages
+  uses: actions/cache@v4
+  with:
+    path: ~/.cache/pip
+    key: pip-$&#123;&#123; runner.os &#125;&#125;-$&#123;&#123; hashFiles('**/requirements*.txt') &#125;&#125;
+    restore-keys: pip-$&#123;&#123; runner.os &#125;&#125;-
+
+# Go module caching
+- name: Cache Go modules
+  uses: actions/cache@v4
+  with:
+    path: |
+      ~/go/pkg/mod
+      ~/.cache/go-build
+    key: go-$&#123;&#123; runner.os &#125;&#125;-$&#123;&#123; hashFiles('**/go.sum') &#125;&#125;</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Docker Layer Caching</h2>
+      <p class="text-text-muted mb-4">Order your Dockerfile statements to maximize layer cache hits. Dependency installation layers (slow, rarely change) must come before application code layers (fast, change every commit). With <code class="font-mono text-sm bg-bg-card px-1 rounded">cache-to/cache-from</code>, GitHub Actions can reuse layers from previous runs via the registry.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code># Optimized Dockerfile: COPY package files BEFORE source
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./   # cached unless package.json changes
+RUN npm ci --only=production
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .                                  # source code (cache miss on every commit)
+RUN npm run build
+
+# GitHub Actions: registry-based layer caching
+- name: Build with layer cache
+  uses: docker/build-push-action@v5
+  with:
+    push: true
+    tags: myorg/myapp:$&#123;&#123; github.sha &#125;&#125;
+    cache-from: type=registry,ref=myorg/myapp:buildcache
+    cache-to: type=registry,ref=myorg/myapp:buildcache,mode=max</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Test Splitting with Matrix Strategy</h2>
+      <p class="text-text-muted mb-4">Split your test suite across multiple runners using GitHub Actions matrix. Combined with Jest's <code class="font-mono text-sm bg-bg-card px-1 rounded">--shard</code> flag or pytest-split, you can run 4x test workers in parallel, cutting test time from 12 minutes to 3 minutes with zero code changes.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code>jobs:
+  test:
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]   # 4 parallel test runners
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: &#123; node-version: '20' &#125;
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-$&#123;&#123; hashFiles('package-lock.json') &#125;&#125;
+      - run: npm ci
+      - name: Run shard $&#123;&#123; matrix.shard &#125;&#125; of 4
+        run: npx jest --shard=$&#123;&#123; matrix.shard &#125;&#125;/4 --ci
+
+  # Merge sharded results into one report
+  coverage:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - run: npx jest --coverage --merge-coverage</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Build Time Benchmark: Before vs After Optimization</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-gray-700">
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Step</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Before</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">After Caching</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Technique</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">npm install</td>
+              <td class="py-3 px-4 text-red-400">90s</td>
+              <td class="py-3 px-4 text-green-400">8s</td>
+              <td class="py-3 px-4 text-gray-400">actions/cache on ~/.npm</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Unit tests (sequential)</td>
+              <td class="py-3 px-4 text-red-400">12m</td>
+              <td class="py-3 px-4 text-green-400">3m</td>
+              <td class="py-3 px-4 text-gray-400">Jest --shard, 4x matrix</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Docker build</td>
+              <td class="py-3 px-4 text-red-400">5m</td>
+              <td class="py-3 px-4 text-green-400">45s</td>
+              <td class="py-3 px-4 text-gray-400">Registry layer cache</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">pip install</td>
+              <td class="py-3 px-4 text-red-400">60s</td>
+              <td class="py-3 px-4 text-green-400">5s</td>
+              <td class="py-3 px-4 text-gray-400">actions/cache on ~/.cache/pip</td>
+            </tr>
+            <tr class="hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Total pipeline</td>
+              <td class="py-3 px-4 text-red-400">~20m</td>
+              <td class="py-3 px-4 text-green-400">~5m</td>
+              <td class="py-3 px-4 text-gray-400">All techniques combined</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

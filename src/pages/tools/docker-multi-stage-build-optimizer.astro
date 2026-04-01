@@ -1,0 +1,175 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are Docker multi-stage builds?", answer: "Multi-stage builds use multiple FROM instructions in a single Dockerfile. Each FROM starts a new build stage with its own filesystem. You can COPY files from earlier stages into later stages using COPY --from=stagename. The final image only contains what's in the last stage — all the intermediate build tools, compilers, and dependencies from earlier stages are discarded. This produces dramatically smaller images: a Node.js app might go from 1.2GB (with node_modules and build tools) to 150MB (just the production bundle in an nginx image)." },
+  { question: "How much smaller are multi-stage images?", answer: "Typically 5-20x smaller. A Go binary built in a golang:1.22 image is ~1.2GB. The same binary copied into a scratch or alpine image is 5-20MB. A Node.js React app built with node:20 is 1.5GB+; the built static files served by nginx:alpine is 30-50MB. A Python ML service with build dependencies might be 4GB; the production image with only runtime dependencies might be 500MB. The exact reduction depends on how many dev tools and build artifacts are excluded." },
+  { question: "What is COPY --link and when should I use it?", answer: "COPY --link (added in BuildKit) copies files as a new independent layer that doesn't depend on the previous layer's filesystem. This enables better cache reuse — if the destination layer changes, --link layers above it don't need to be invalidated. It's especially useful when copying files from a builder stage into the final image, because changes to the build output don't invalidate the base image layers. Use --link when you want maximum cache efficiency on COPY operations in your final stage." },
+  { question: "How does --target work for multi-stage builds?", answer: "The --target flag in docker build lets you stop the build at a specific named stage: docker build --target builder . This builds only up to (and including) the 'builder' stage, not the final stage. It's useful for: (1) Local development images that include dev tools but aren't deployed to production, (2) Testing stages that run tests in the build, (3) Debugging — you can enter the builder stage interactively. CI/CD pipelines often build multiple targets: a 'test' target to run tests and a 'production' target for the deployable image." },
+  { question: "Should I use alpine, debian-slim, or distroless for final images?", answer: "Alpine is smallest (5MB base) and most popular for reduced attack surface. However, it uses musl libc instead of glibc — some compiled binaries don't work with musl, and DNS behavior differs. debian:slim (100MB) uses glibc and is more compatible. distroless (Google's minimal images, 20-50MB) contains only the runtime (Java, Node, Python) with no shell, package manager, or extra tools — the most secure option since there's no shell for attackers to use. For Go binaries, scratch (0 bytes) works if you compile with CGO_ENABLED=0." },
+  { question: "How do I optimize Docker build cache for multi-stage builds?", answer: "Order layers from least-changing to most-changing. In the builder stage: (1) Copy dependency files first (package.json, go.mod), (2) Run dependency install (npm ci, go mod download), (3) Then copy source code. This way, if only your source code changes, the dependency install layer is cached. Use BuildKit cache mounts for package manager caches: RUN --mount=type=cache,target=/root/.npm npm ci. This persists the npm cache across builds without adding it to the image." },
+];
+---
+
+<BaseLayout
+  title="Docker Multi-Stage Builds: Optimization Patterns & Size Reduction"
+  description="Learn Docker multi-stage build patterns to reduce image size. Node.js, Go, and Python examples with build cache optimization, COPY --link, distroless base images, and before/after size comparisons."
+  tool="Docker multi-stage build, Docker optimization, image size reduction, build cache, Dockerfile distroless, COPY --link"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Docker Multi-Stage Builds: Optimization Patterns & Size Reduction","url":"https://devplaybook.cc/tools/docker-multi-stage-build-optimizer","description":"Docker multi-stage build patterns for Node.js, Go, and Python with cache optimization, distroless images, and size reduction techniques."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Docker Multi-Stage Builds: Optimization Patterns &amp; Size Reduction</h1>
+  <p class="text-text-muted mb-6">Multi-stage builds are the most effective way to reduce Docker image size and attack surface. By separating build-time dependencies from runtime requirements, images can shrink 5-20x while improving security and deploy speed.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Node.js, Go, Python examples</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Build cache optimization</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> COPY --link &amp; --target</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Size comparison tables</span>
+  </div>
+
+  <ToolPageCta />
+
+  <div class="space-y-8 mt-8">
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Why Multi-Stage Builds Matter</h2>
+      <p class="text-text-muted mb-4">A single-stage Dockerfile for a Node.js app installs all dev dependencies, build tools, and generates artifacts in one layer. The final image contains everything — webpack, TypeScript compiler, test frameworks — that your production server never needs.</p>
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="bg-surface">
+              <th class="border border-border px-3 py-2 text-left font-semibold">Approach</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Node.js App</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Go Binary</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Python Service</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="border border-border px-3 py-2">Single-stage (full image)</td><td class="border border-border px-3 py-2 text-red-400">~1.4 GB</td><td class="border border-border px-3 py-2 text-red-400">~1.2 GB</td><td class="border border-border px-3 py-2 text-red-400">~3.5 GB</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2">Multi-stage (alpine)</td><td class="border border-border px-3 py-2 text-amber-400">~120 MB</td><td class="border border-border px-3 py-2 text-amber-400">~15 MB</td><td class="border border-border px-3 py-2 text-amber-400">~400 MB</td></tr>
+            <tr><td class="border border-border px-3 py-2">Multi-stage (distroless)</td><td class="border border-border px-3 py-2 text-green-400">~100 MB</td><td class="border border-border px-3 py-2 text-green-400">~5 MB</td><td class="border border-border px-3 py-2 text-green-400">~200 MB</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Pattern 1: Node.js Builder + Nginx Runner</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Stage 1: Build
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Cache dependency install separately from source code
+COPY package.json package-lock.json ./
+RUN npm ci --prefer-offline
+
+# Now copy source and build
+COPY . .
+RUN npm run build
+
+# Stage 2: Production (only nginx + built assets)
+FROM nginx:1.27-alpine AS production
+# Copy built artifacts from builder stage — nothing else
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+
+# Result: ~25MB vs ~1.4GB single-stage</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Pattern 2: Go Static Binary</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Stage 1: Build with full Go toolchain
+FROM golang:1.22-alpine AS builder
+WORKDIR /build
+
+# Cache module download
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+# CGO_ENABLED=0 produces a fully static binary (no libc dependency)
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o server .
+
+# Stage 2: Scratch — literally nothing (0 bytes base)
+FROM scratch AS production
+COPY --from=builder /build/server /server
+
+# Copy CA certs for HTTPS requests
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+EXPOSE 8080
+ENTRYPOINT ["/server"]
+
+# Result: ~7MB vs ~1.2GB single-stage</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Pattern 3: Python with BuildKit Cache Mounts</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># syntax=docker/dockerfile:1
+FROM python:3.12-slim AS builder
+WORKDIR /app
+
+# BuildKit cache mount: pip cache persists between builds
+# (not stored in image layers)
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install -r requirements.txt
+
+# Stage 2: Minimal runtime
+FROM python:3.12-slim AS production
+WORKDIR /app
+
+# Copy only installed packages
+COPY --from=builder /install /usr/local
+COPY src/ ./src/
+
+# Non-root user for security
+RUN useradd -m appuser
+USER appuser
+
+CMD ["python", "-m", "src.main"]</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Build Cache Optimization Order</h2>
+      <p class="text-text-muted mb-3">Layer order determines cache effectiveness. Put the slowest, least-changing operations first:</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+          <h3 class="font-semibold mb-2 text-red-400">Bad (cache invalidated on any source change)</h3>
+          <pre class="text-xs font-mono"><code>COPY . .              # All source files
+RUN npm ci            # Reinstalls every time!</code></pre>
+        </div>
+        <div class="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+          <h3 class="font-semibold mb-2 text-green-400">Good (dependencies cached separately)</h3>
+          <pre class="text-xs font-mono"><code>COPY package*.json .  # Only manifest
+RUN npm ci            # Cached until manifest changes
+COPY . .              # Source changes don't bust dep cache</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Using --target for Development Builds</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Build specific stages
+docker build --target builder -t myapp:dev .    # Dev image with all tools
+docker build --target production -t myapp:prod . # Lean production image
+
+# Multi-stage for CI: run tests in builder, build prod separately
+docker build --target test -t myapp:test .
+docker run --rm myapp:test npm test
+
+# Only build prod if tests pass
+docker build --target production -t myapp:latest .</code></pre>
+    </section>
+
+  </div>
+
+  <FaqSection faqs={faq} />
+</BaseLayout>

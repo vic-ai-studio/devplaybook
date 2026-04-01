@@ -1,0 +1,195 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "How does GitHub Actions billing work for private repositories?",
+    answer: "GitHub Actions usage on private repos is billed by minutes per month. Each GitHub plan includes a free minute allowance: Free (2,000 min), Pro (3,000 min), Team (3,000 min), Enterprise (50,000 min). Once you exceed the included minutes, you are billed per-minute: Linux $0.008/min, Windows $0.016/min, macOS $0.08/min. Public repositories get unlimited free minutes on all plans. Minutes are tracked per billing cycle and reset monthly."
+  },
+  {
+    question: "Why do Windows and macOS runners cost more?",
+    answer: "GitHub applies cost multipliers based on operating system. Linux runners (ubuntu-latest) count at 1x. Windows runners count at 2x — a 10-minute Windows job consumes 20 minutes from your allowance. macOS runners count at 10x — a 10-minute macOS job consumes 100 minutes. This reflects the actual infrastructure cost differences. If you are running macOS jobs for tasks that do not require macOS (like unit tests), switching to ubuntu-latest can cut those minutes by 90%."
+  },
+  {
+    question: "What are concurrency groups and how do they save money?",
+    answer: "Concurrency groups cancel in-progress or queued runs when a new run for the same group is triggered. Set concurrency: { group: '${{ github.workflow }}-${{ github.ref }}', cancel-in-progress: true } on your workflow. This prevents wasted minutes on commits that are immediately superseded — if you push 5 commits in quick succession, only the latest run executes. For feature branches this is almost always the right behavior. Avoid it on the main branch where you want all runs to complete."
+  },
+  {
+    question: "Are self-hosted runners free?",
+    answer: "Yes — actions minutes are not charged for jobs running on self-hosted runners. You only pay for the underlying infrastructure (EC2, GCE, Azure VM, etc.). Self-hosted runners are cost-effective when you have predictable, high-volume workloads, need specialized hardware (GPU, ARM, high memory), or require access to private networks. The tradeoff is operational overhead: you manage scaling, security patching, and availability. GitHub's larger hosted runners (8-core, 16-core) are a middle ground — faster than standard runners, no maintenance."
+  },
+  {
+    question: "How do I estimate my monthly GitHub Actions cost?",
+    answer: "Formula: monthly_cost = max(0, total_minutes - included_minutes) * per_minute_rate. Where total_minutes = sum of (job_duration_minutes * os_multiplier) across all workflow runs. Track your current usage at Settings → Billing → GitHub Actions. For a team running 100 PRs/month with a 10-minute Linux pipeline each: 100 * 10 * 1 = 1,000 minutes. On Team plan (3,000 free minutes), this is within the free tier. Add a 15-minute macOS build: 100 * 15 * 10 = 15,000 additional minutes = $96/month extra."
+  },
+  {
+    question: "What is the most effective way to reduce GitHub Actions costs?",
+    answer: "In order of impact: (1) Use Linux runners for any job that doesn't require Windows/macOS — biggest win if you have accidental macOS jobs. (2) Add concurrency groups to cancel superseded runs on feature branches. (3) Add job conditions (if: github.ref == 'refs/heads/main') to skip expensive jobs on draft PRs or docs-only changes. (4) Cache dependencies to reduce job duration. (5) Split workflows — run expensive jobs (full E2E, security scan) only on main merge, not every PR push."
+  }
+];
+---
+
+<BaseLayout
+  title="GitHub Actions Cost Calculator & Minutes Optimization Guide"
+  description="Understand GitHub Actions pricing: free minutes by plan, Linux/Windows/macOS cost multipliers, cost estimation formulas, and top optimization strategies including concurrency groups and self-hosted runners."
+  tool="GitHub Actions cost, GitHub Actions minutes, self-hosted runners, CI/CD cost optimization, concurrency groups"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"GitHub Actions Cost Calculator & Minutes Optimization Guide","url":"https://devplaybook.cc/tools/github-actions-cost-calculator","description":"Complete guide to GitHub Actions pricing, minutes calculation, OS multipliers, and cost optimization strategies."})} />
+
+  <h1 class="text-3xl font-bold mb-2">GitHub Actions Cost Calculator & Minutes Optimization</h1>
+  <p class="text-text-muted mb-6">GitHub Actions is free for public repositories but can become a significant line item for active private repos — especially if macOS runners are involved. This guide breaks down the pricing model, explains the OS multipliers most teams overlook, and walks through the highest-ROI optimizations to keep your CI costs under control.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pricing by plan &amp; OS type</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost multipliers explained</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost estimation formulas</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Concurrency groups &amp; job conditions</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Self-hosted runner decision guide</span>
+  </div>
+
+  <ToolPageCta />
+
+  <div class="mt-8 space-y-8">
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Pricing by Plan &amp; OS Multipliers</h2>
+      <p class="text-text-muted mb-4">Each GitHub plan includes a monthly free minutes allowance. Usage beyond the allowance is billed at per-minute rates that vary by runner OS. macOS runners are 10x the Linux price — the single most common source of surprise costs.</p>
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-gray-700">
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Plan</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Free minutes/mo</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Linux $/min</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Windows $/min</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">macOS $/min</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Free</td>
+              <td class="py-3 px-4 text-gray-400">2,000</td>
+              <td class="py-3 px-4 text-gray-400">$0.008</td>
+              <td class="py-3 px-4 text-gray-400">$0.016</td>
+              <td class="py-3 px-4 text-red-400">$0.080</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Pro</td>
+              <td class="py-3 px-4 text-gray-400">3,000</td>
+              <td class="py-3 px-4 text-gray-400">$0.008</td>
+              <td class="py-3 px-4 text-gray-400">$0.016</td>
+              <td class="py-3 px-4 text-red-400">$0.080</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Team</td>
+              <td class="py-3 px-4 text-gray-400">3,000</td>
+              <td class="py-3 px-4 text-gray-400">$0.008</td>
+              <td class="py-3 px-4 text-gray-400">$0.016</td>
+              <td class="py-3 px-4 text-red-400">$0.080</td>
+            </tr>
+            <tr class="hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Enterprise</td>
+              <td class="py-3 px-4 text-gray-400">50,000</td>
+              <td class="py-3 px-4 text-gray-400">$0.008</td>
+              <td class="py-3 px-4 text-gray-400">$0.016</td>
+              <td class="py-3 px-4 text-red-400">$0.080</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-text-muted text-sm">OS multipliers applied to free minutes: Linux 1x, Windows 2x, macOS 10x. A 10-minute macOS job consumes 100 minutes from your free allowance.</p>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Concurrency Groups — Cancel Superseded Runs</h2>
+      <p class="text-text-muted mb-4">Add a concurrency group to your workflows to automatically cancel in-progress runs when a new commit is pushed to the same branch. This alone can cut wasted minutes by 40–60% on active feature branches.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code>name: CI
+
+# Cancel previous runs on the same branch when new commit is pushed
+concurrency:
+  group: $&#123;&#123; github.workflow &#125;&#125;-$&#123;&#123; github.ref &#125;&#125;
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm test</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Job Conditions — Skip Expensive Jobs Smartly</h2>
+      <p class="text-text-muted mb-4">Use path filters and branch conditions to skip expensive jobs when they are not needed. An E2E test suite that only runs on main saves hundreds of minutes per month on teams with active PR pipelines.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code>jobs:
+  # Cheap: runs on every push
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test:unit
+
+  # Expensive: only runs on main branch or manual trigger
+  e2e-test:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm run test:e2e
+
+  # Skip if only docs changed (use dorny/paths-filter)
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - 'package.json'
+      - if: steps.filter.outputs.src == 'true'
+        run: npm run build</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Cost Estimation Formula</h2>
+      <p class="text-text-muted mb-4">Use this formula to estimate your monthly GitHub Actions spend before you get a surprise invoice.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code># Monthly cost estimation formula
+#
+# total_raw_minutes = sum of (actual_job_duration * os_multiplier)
+#   Linux multiplier   = 1x
+#   Windows multiplier = 2x
+#   macOS multiplier   = 10x
+#
+# billable_minutes = max(0, total_raw_minutes - plan_included_minutes)
+# monthly_cost     = billable_minutes * $0.008
+
+# Example: Team with 5 devs, 80 PRs/month
+# Pipeline per PR: 8min Linux CI + 5min macOS build
+#
+# Linux:  80 * 8  * 1  =   640 raw minutes
+# macOS:  80 * 5  * 10 = 4,000 raw minutes
+# Total raw: 4,640 minutes
+# Plan allowance (Team): 3,000 minutes
+# Billable: 4,640 - 3,000 = 1,640 minutes
+# Cost: 1,640 * $0.008 = $13.12/month
+#
+# FIX: Move macOS build to only run on main (8 merges/month):
+# macOS: 8 * 5 * 10 = 400 raw minutes
+# Total: 640 + 400 = 1,040 minutes → within free allowance → $0/month</code></pre>
+    </section>
+
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

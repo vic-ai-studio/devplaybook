@@ -1,0 +1,150 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the default Docker network driver?", answer: "The default network driver is bridge. When you run a container without specifying a network, it joins the default bridge network (docker0). Containers on the same bridge network can communicate using their IP addresses. However, automatic DNS-based name resolution is only available on user-defined bridge networks (created with docker network create), not the default bridge. Always create named bridge networks for multi-container applications." },
+  { question: "What is the difference between host and bridge networking?", answer: "Bridge networking creates a virtual network interface (docker0) and each container gets its own IP in the bridge subnet. Port mapping (-p 8080:80) creates a NAT rule to forward host port 8080 to container port 80. Host networking bypasses this isolation entirely — the container shares the host's network namespace, so if the container listens on port 80, it's directly accessible on the host's port 80 with zero overhead. Host mode offers lower latency but no isolation and no port remapping." },
+  { question: "When should I use overlay networks?", answer: "Overlay networks are needed when containers run on different Docker hosts (multi-host networking). They use VXLAN tunneling to create a virtual Layer 2 network across multiple physical hosts. Overlay networks are required for Docker Swarm service-to-service communication and can also be used with standalone containers that need to communicate across hosts. For single-host deployments, bridge networks are sufficient and have less overhead." },
+  { question: "How does DNS resolution work between Docker containers?", answer: "On user-defined networks, Docker's embedded DNS server (127.0.0.11) resolves container names to their current IP addresses. If container A is named 'api' and container B is named 'db', then from container A you can connect to 'db:5432' — Docker resolves 'db' to container B's IP automatically. Service names in Docker Compose files also work this way. On the default bridge network, this DNS resolution is NOT available — you must use container IPs, which change on restart." },
+  { question: "How does Docker Compose handle networking?", answer: "Docker Compose automatically creates a default network for each project (named {project}_default). All services defined in the same Compose file join this network and can reach each other by service name. You can define custom networks in Compose to segment traffic — for example, a frontend network (frontend + api) and a backend network (api + db) where the frontend can't directly reach the database. Compose also supports external networks to connect to existing Docker networks." },
+  { question: "What is the macvlan network driver used for?", answer: "Macvlan assigns a real MAC address to each container, making containers appear as physical devices on your network. This allows containers to receive IP addresses from your DHCP server and communicate directly on the physical network without NAT or port mapping. Macvlan is used for legacy applications that need to be on the physical network, network monitoring containers that must capture raw traffic, or scenarios where the host's NAT layer causes issues. It requires network interface configuration on the Docker host." },
+];
+---
+
+<BaseLayout
+  title="Docker Networking Guide: Bridge, Overlay & Host Network Modes"
+  description="Understand Docker network drivers: bridge, host, overlay, macvlan, and none. Learn container DNS resolution, port mapping, Docker Compose networking, and network inspection commands."
+  tool="Docker networking, bridge network, overlay network, Docker Compose networking, container DNS, docker network inspect"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Docker Networking Guide: Bridge, Overlay & Host Network Modes","url":"https://devplaybook.cc/tools/docker-network-visualizer","description":"Learn Docker network drivers — bridge, host, overlay, macvlan — with container DNS resolution, port mapping, and Docker Compose networking."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Docker Networking Guide: Bridge, Overlay &amp; Host Network Modes</h1>
+  <p class="text-text-muted mb-6">Docker networking controls how containers communicate with each other and the outside world. Understanding the five network drivers and how Docker Compose creates networks is essential for designing reliable containerized applications.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 5 network drivers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Container DNS resolution</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Docker Compose networks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Port mapping &amp; inspection</span>
+  </div>
+
+  <ToolPageCta />
+
+  <div class="space-y-8 mt-8">
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Docker Network Drivers Comparison</h2>
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="bg-surface">
+              <th class="border border-border px-3 py-2 text-left font-semibold">Driver</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Scope</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Isolation</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">DNS</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Use case</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="border border-border px-3 py-2 font-mono font-medium">bridge</td><td class="border border-border px-3 py-2">Single host</td><td class="border border-border px-3 py-2">Virtual L2 subnet</td><td class="border border-border px-3 py-2">User-defined only</td><td class="border border-border px-3 py-2">Default for single-host apps</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-mono font-medium">host</td><td class="border border-border px-3 py-2">Single host</td><td class="border border-border px-3 py-2">None (shares host network)</td><td class="border border-border px-3 py-2">Host DNS</td><td class="border border-border px-3 py-2">Max performance, monitoring</td></tr>
+            <tr><td class="border border-border px-3 py-2 font-mono font-medium">overlay</td><td class="border border-border px-3 py-2">Multi-host</td><td class="border border-border px-3 py-2">VXLAN tunnel</td><td class="border border-border px-3 py-2">Yes (Swarm services)</td><td class="border border-border px-3 py-2">Docker Swarm, multi-host</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-mono font-medium">macvlan</td><td class="border border-border px-3 py-2">Single host</td><td class="border border-border px-3 py-2">Physical MAC address</td><td class="border border-border px-3 py-2">DHCP / static</td><td class="border border-border px-3 py-2">Legacy apps, raw network access</td></tr>
+            <tr><td class="border border-border px-3 py-2 font-mono font-medium">none</td><td class="border border-border px-3 py-2">N/A</td><td class="border border-border px-3 py-2">Complete isolation</td><td class="border border-border px-3 py-2">None</td><td class="border border-border px-3 py-2">Batch jobs, security-sensitive</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Bridge Networking (Default)</h2>
+      <p class="text-text-muted mb-3">Bridge is the default driver. Docker creates a virtual bridge interface (<code class="bg-surface px-1 rounded text-sm">docker0</code>) on the host. Each container in the network gets an IP from the bridge subnet (typically 172.17.0.0/16).</p>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Create a user-defined bridge network (enables container DNS)
+docker network create --driver bridge myapp-network
+
+# Run containers on the named network
+docker run -d --name api --network myapp-network myapi:latest
+docker run -d --name db --network myapp-network postgres:16
+
+# From 'api' container, reach 'db' by name:
+# psql -h db -U postgres   ← DNS resolves 'db' to container IP
+
+# Port mapping: host:container
+docker run -d -p 8080:80 --network myapp-network nginx</code></pre>
+      <div class="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 text-sm text-text-muted">
+        <strong>Default bridge limitation:</strong> The default <code class="bg-surface px-1 rounded text-sm">docker0</code> bridge does not support container name DNS resolution. Always create named networks with <code class="bg-surface px-1 rounded text-sm">docker network create</code>.
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Docker Compose Networking</h2>
+      <p class="text-text-muted mb-3">Compose automatically creates a default bridge network for each project. Services communicate using their service names as DNS hostnames.</p>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>services:
+  frontend:
+    image: nginx
+    ports:
+      - "80:80"
+    networks:
+      - frontend-net
+
+  api:
+    image: myapi:latest
+    networks:
+      - frontend-net   # Reachable from frontend as 'api'
+      - backend-net    # Reachable from db layer
+
+  db:
+    image: postgres:16
+    networks:
+      - backend-net    # Only accessible from api, NOT frontend
+
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge</code></pre>
+      <p class="text-text-muted text-sm mt-2">This pattern isolates the database from the frontend — <code class="bg-surface px-1 rounded text-sm">frontend</code> cannot reach <code class="bg-surface px-1 rounded text-sm">db</code> because they share no common network. Defense in depth even within Docker.</p>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Network Inspection Commands</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># List all Docker networks
+docker network ls
+
+# Inspect a network (see containers, subnet, gateway)
+docker network inspect myapp-network
+
+# See which networks a container is connected to
+docker inspect api --format '&#123;&#123;json .NetworkSettings.Networks&#125;&#125;'
+
+# Connect a running container to another network
+docker network connect backend-net api
+
+# Disconnect
+docker network disconnect frontend-net api
+
+# Remove unused networks
+docker network prune</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Host Networking for Performance</h2>
+      <p class="text-text-muted mb-3">Host networking removes Docker's NAT layer. The container uses the host's network stack directly. Zero port-mapping overhead — useful for high-performance services or network monitoring tools.</p>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Run with host networking (Linux only — not supported on Docker Desktop macOS/Windows)
+docker run -d --network host nginx
+
+# Container listens directly on host port 80
+# No -p flag needed (or possible)
+
+# Verify: container's network interfaces = host interfaces
+docker exec -it my-container ip addr</code></pre>
+      <p class="text-text-muted text-sm mt-2"><strong>Note:</strong> Host networking only works on Linux. Docker Desktop on macOS/Windows runs containers inside a Linux VM, so host networking connects to the VM's network, not the macOS/Windows host.</p>
+    </section>
+
+  </div>
+
+  <FaqSection faqs={faq} />
+</BaseLayout>

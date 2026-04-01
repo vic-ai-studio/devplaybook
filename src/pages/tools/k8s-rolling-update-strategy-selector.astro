@@ -1,0 +1,176 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the difference between RollingUpdate and Recreate deployment strategies?", answer: "RollingUpdate gradually replaces old pods with new ones — it brings up a new pod, waits for it to be Ready, then terminates an old one. This maintains availability throughout the update. Recreate terminates ALL old pods first, then creates the new ones — this causes downtime but is simpler and avoids having two versions running simultaneously. Use Recreate when your application cannot run multiple versions at once (e.g., database schema migrations that break older code)." },
+  { question: "What do maxSurge and maxUnavailable control in RollingUpdate?", answer: "maxSurge controls how many extra pods above the desired replica count can exist during the rollout. For example, with 10 replicas and maxSurge: 2, you can have up to 12 pods temporarily. maxUnavailable controls how many pods below the desired count can be unavailable. With maxUnavailable: 0 and maxSurge: 1, you always have full capacity during the rollout (slow but zero downtime). With maxUnavailable: 1 and maxSurge: 0, you save resources but always have one pod fewer during the rollout." },
+  { question: "How does blue-green deployment work in Kubernetes?", answer: "Blue-green in Kubernetes is implemented by maintaining two Deployments (blue=current, green=new) and switching a Service's selector to point from the blue pods to the green pods. This gives instant rollback — just switch the selector back. Unlike RollingUpdate, both versions are fully provisioned simultaneously, doubling resource usage during the cutover window. After validating green, you scale down or delete the blue Deployment." },
+  { question: "What is a canary deployment and how is it different from blue-green?", answer: "Canary sends a small percentage of traffic to the new version while the majority goes to the old version, then gradually increases the percentage. With native Kubernetes (no service mesh), you approximate this with replica ratios — 9 old pods + 1 new pod ≈ 10% canary traffic. With Argo Rollouts or a service mesh (Istio/Linkerd), you get precise percentage-based traffic splitting independent of replica count. Blue-green is instant (0%→100%); canary is gradual." },
+  { question: "When should I use Argo Rollouts?", answer: "Use Argo Rollouts when you need: (1) Precise percentage-based canary traffic splitting (e.g., exactly 5% to canary regardless of replica count), (2) Automatic analysis — pause rollout if error rate exceeds threshold, (3) Header-based routing for internal testing, (4) Blue-green with automated promotion/abort, (5) Progressive delivery with service mesh integration (Istio, Linkerd, AWS ALB). For simple RollingUpdate or basic blue-green, native Kubernetes Deployments are sufficient." },
+  { question: "How do I roll back a bad deployment in Kubernetes?", answer: "Kubernetes keeps a history of ReplicaSets (default 10). Use kubectl rollout undo deployment/myapp to roll back to the previous version. For a specific revision: kubectl rollout undo deployment/myapp --to-revision=3. Check rollout history with kubectl rollout history deployment/myapp. For blue-green, rollback is immediate — switch the Service selector back to the blue Deployment. For Argo Rollouts, kubectl argo rollouts abort rollout/myapp then kubectl argo rollouts undo rollout/myapp." },
+];
+---
+
+<BaseLayout
+  title="Kubernetes Update Strategies: RollingUpdate vs Recreate vs Blue-Green"
+  description="Choose the right Kubernetes deployment strategy: RollingUpdate, Recreate, blue-green, and canary. Configure maxSurge and maxUnavailable, understand Argo Rollouts for advanced progressive delivery."
+  tool="Kubernetes rolling update, maxSurge maxUnavailable, blue-green deployment, canary deployment, Argo Rollouts, deployment strategy"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Kubernetes Update Strategies: RollingUpdate vs Recreate vs Blue-Green","url":"https://devplaybook.cc/tools/k8s-rolling-update-strategy-selector","description":"Compare Kubernetes deployment strategies — RollingUpdate, Recreate, blue-green, canary — with maxSurge/maxUnavailable tuning and Argo Rollouts."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Kubernetes Update Strategies: RollingUpdate vs Recreate vs Blue-Green</h1>
+  <p class="text-text-muted mb-6">The deployment strategy you choose determines how Kubernetes transitions from the old version of your application to the new one. Each strategy has different tradeoffs in availability, resource usage, rollback speed, and complexity.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> RollingUpdate vs Recreate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> maxSurge &amp; maxUnavailable tuning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Blue-green &amp; canary</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Argo Rollouts</span>
+  </div>
+
+  <ToolPageCta />
+
+  <div class="space-y-8 mt-8">
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Strategy Comparison</h2>
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="bg-surface">
+              <th class="border border-border px-3 py-2 text-left font-semibold">Strategy</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Downtime</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Extra Resources</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Rollback Speed</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Dual Version</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Complexity</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="border border-border px-3 py-2 font-medium">Recreate</td><td class="border border-border px-3 py-2 text-red-400">Yes</td><td class="border border-border px-3 py-2 text-green-400">None</td><td class="border border-border px-3 py-2">New deploy</td><td class="border border-border px-3 py-2 text-green-400">No</td><td class="border border-border px-3 py-2 text-green-400">Low</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-medium">RollingUpdate</td><td class="border border-border px-3 py-2 text-green-400">No (configurable)</td><td class="border border-border px-3 py-2">maxSurge pods</td><td class="border border-border px-3 py-2">kubectl rollout undo</td><td class="border border-border px-3 py-2 text-amber-400">Briefly</td><td class="border border-border px-3 py-2 text-green-400">Low</td></tr>
+            <tr><td class="border border-border px-3 py-2 font-medium">Blue-Green</td><td class="border border-border px-3 py-2 text-green-400">No</td><td class="border border-border px-3 py-2 text-amber-400">2x (cutover window)</td><td class="border border-border px-3 py-2 text-green-400">Instant (selector switch)</td><td class="border border-border px-3 py-2 text-green-400">No (one at a time)</td><td class="border border-border px-3 py-2">Medium</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-medium">Canary</td><td class="border border-border px-3 py-2 text-green-400">No</td><td class="border border-border px-3 py-2">Canary pods only</td><td class="border border-border px-3 py-2">Fast (scale down canary)</td><td class="border border-border px-3 py-2 text-amber-400">Yes (controlled %)</td><td class="border border-border px-3 py-2">Medium-High</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">RollingUpdate: maxSurge and maxUnavailable</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>spec:
+  replicas: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Max pods above desired during rollout
+      maxSurge: 2         # Up to 12 pods temporarily
+
+      # Max pods below desired (Unavailable) during rollout
+      maxUnavailable: 0   # Never drop below 10 ready pods</code></pre>
+
+      <div class="overflow-x-auto mt-4">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="bg-surface">
+              <th class="border border-border px-3 py-2 text-left font-semibold">Configuration</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Behavior</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Use case</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="border border-border px-3 py-2 font-mono">maxSurge:1, maxUnavailable:0</td><td class="border border-border px-3 py-2">Zero-downtime, slow (one-at-a-time)</td><td class="border border-border px-3 py-2">Production critical services</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-mono">maxSurge:0, maxUnavailable:1</td><td class="border border-border px-3 py-2">Resource-conservative, brief capacity loss</td><td class="border border-border px-3 py-2">Resource-constrained environments</td></tr>
+            <tr><td class="border border-border px-3 py-2 font-mono">maxSurge:25%, maxUnavailable:25%</td><td class="border border-border px-3 py-2">Fast rollout, some capacity variance</td><td class="border border-border px-3 py-2">Non-critical or batch workloads</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-mono">maxSurge:100%, maxUnavailable:0</td><td class="border border-border px-3 py-2">Blue-green via RollingUpdate</td><td class="border border-border px-3 py-2">Full-capacity validation before cutover</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Blue-Green with Kubernetes Services</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Deploy the green (new) version
+kubectl apply -f deployment-green.yaml
+# deployment-green.yaml has labels: version: green
+
+# Wait for green to be fully ready
+kubectl rollout status deployment/myapp-green
+
+# Switch Service from blue to green (instant)
+kubectl patch service myapp \
+  -p '&#123;"spec":&#123;"selector":&#123;"version":"green"&#125;&#125;&#125;'
+
+# Validate green is serving correctly
+# ...smoke tests...
+
+# Roll back instantly if needed:
+kubectl patch service myapp \
+  -p '&#123;"spec":&#123;"selector":&#123;"version":"blue"&#125;&#125;&#125;'
+
+# Once validated, scale down or delete blue
+kubectl scale deployment myapp-blue --replicas=0</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Canary Deployments</h2>
+      <p class="text-text-muted mb-3">Without a service mesh, approximate canary by replica ratio. 1 canary pod out of 10 total = 10% canary traffic (assuming equal-weight routing).</p>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Both deployments share the same Service selector label: app=myapp
+# Service routes to both via label matching
+
+# Stable: 9 replicas
+apiVersion: apps/v1
+kind: Deployment
+metadata: &#123;name: myapp-stable&#125;
+spec:
+  replicas: 9
+  selector:
+    matchLabels: &#123;app: myapp, version: stable&#125;
+
+---
+# Canary: 1 replica = ~10% traffic
+apiVersion: apps/v1
+kind: Deployment
+metadata: &#123;name: myapp-canary&#125;
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &#123;app: myapp, version: canary&#125;
+
+---
+# Service selects on 'app: myapp' — matches BOTH deployments
+kind: Service
+spec:
+  selector:
+    app: myapp   # Routes to both stable and canary pods</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Advanced: Argo Rollouts</h2>
+      <p class="text-text-muted mb-3">Argo Rollouts replaces the standard Deployment controller with a custom resource that supports precise traffic splitting, automated analysis, and progressive delivery.</p>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: myapp
+spec:
+  replicas: 10
+  strategy:
+    canary:
+      steps:
+      - setWeight: 5      # 5% traffic to canary
+      - pause: &#123;duration: 5m&#125;  # Wait 5 minutes
+      - analysis:         # Run automated analysis
+          templates:
+          - templateName: success-rate
+      - setWeight: 50     # Increase to 50%
+      - pause: &#123;&#125;         # Manual approval gate
+      - setWeight: 100    # Full promotion</code></pre>
+    </section>
+
+  </div>
+
+  <FaqSection faqs={faq} />
+</BaseLayout>

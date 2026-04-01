@@ -1,0 +1,220 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "How do I validate my CircleCI config.yml locally?",
+    answer: "Use the CircleCI CLI: circleci config validate. It parses your config, resolves orbs, and reports syntax errors before you push. Install the CLI with brew install circleci (macOS) or the official Linux installer script. The circleci config process command also expands all orbs and anchors into their full form — useful for debugging what a third-party orb actually runs."
+  },
+  {
+    question: "What are CircleCI orbs and why use them?",
+    answer: "Orbs are reusable, versioned packages of CircleCI configuration — jobs, commands, and executors bundled together. For example, circleci/node@5 provides install-packages, test, and setup commands that handle Node.js best practices automatically. Use orbs when a third party (AWS, Slack, Datadog) has published one for their service — it saves writing 50+ lines of custom steps. Pin orbs to a specific version (e.g., circleci/node@5.1.0) to prevent unexpected breaking changes."
+  },
+  {
+    question: "Docker executor vs machine executor — when to use each?",
+    answer: "The docker executor spins up a fresh container from your chosen image — it is fast, lightweight, and ideal for most CI jobs (building Node apps, running Python tests). The machine executor provisions a full Linux VM (ubuntu-2204:current), giving you access to Docker daemon itself, nested virtualization, and system-level operations. Use machine when you need to build Docker images with layer caching, run Docker Compose services, or require privileged operations. machine is slower to start but more powerful."
+  },
+  {
+    question: "How does CircleCI parallelism and test splitting work?",
+    answer: "Set parallelism: N on a job and CircleCI spins up N identical containers running in parallel. Use the circleci tests split command with --split-by=timings to automatically distribute your test files across containers based on historical run times — balancing load for the shortest possible total duration. The split metadata is uploaded after each run, improving accuracy over time. This is CircleCI's standout feature for large test suites."
+  },
+  {
+    question: "How do I cache dependencies between CircleCI jobs?",
+    answer: "Use save_cache and restore_cache steps. Key your cache on the dependency lockfile checksum: key: node-deps-v1-{{ checksum 'package-lock.json' }}. When the lockfile changes, CircleCI busts the cache and reinstalls. Add a fallback key (node-deps-v1-) to restore the most recent cache on lockfile changes, then update only the changed packages. Caches are immutable once saved — bump the v1 prefix to force a full cache rebuild."
+  },
+  {
+    question: "CircleCI vs GitHub Actions vs Travis CI — which should I pick?",
+    answer: "CircleCI is the best choice when test suite speed is critical — its parallelism and test splitting features are class-leading. GitHub Actions wins for GitHub-native integration, the largest marketplace, and free public repo minutes. Travis CI was the pioneer but has declined since its acquisition; pricing changed dramatically and many teams have migrated away. For new projects on GitHub, GitHub Actions is the pragmatic default. For teams with large, slow test suites, CircleCI's parallelism ROI is often worth the cost."
+  }
+];
+---
+
+<BaseLayout
+  title="CircleCI Config: config.yml, Orbs & Workflow Guide"
+  description="Complete CircleCI reference: config.yml structure, orbs, docker vs machine executor, parallelism and test splitting, caching strategies. Includes CircleCI vs GitHub Actions vs Travis CI comparison."
+  tool="CircleCI, config.yml, orbs, workflows, CircleCI pipeline, parallelism, test splitting"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"CircleCI Config: config.yml, Orbs & Workflow Guide","url":"https://devplaybook.cc/tools/circleci-config-validator","description":"Complete CircleCI reference covering config.yml structure, orbs, executors, parallelism, caching, and comparisons with GitHub Actions and Travis CI."})} />
+
+  <h1 class="text-3xl font-bold mb-2">CircleCI Config: config.yml, Orbs & Workflow Guide</h1>
+  <p class="text-text-muted mb-6">CircleCI is built around speed — its test splitting and parallelism features can cut a 20-minute test suite to under 5 minutes. This guide walks through the complete <code class="font-mono text-sm bg-bg-card px-1 rounded">config.yml</code> structure, orbs for reusable logic, executor choices, and caching patterns — with practical examples you can drop into your project today.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> config.yml version/jobs/workflows</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Orbs (versioned reusable packages)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Docker vs machine executor</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Parallelism &amp; test splitting</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CircleCI vs GitHub Actions vs Travis</span>
+  </div>
+
+  <ToolPageCta />
+
+  <div class="mt-8 space-y-8">
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">config.yml Structure</h2>
+      <p class="text-text-muted mb-4">CircleCI configuration lives at <code class="font-mono text-sm bg-bg-card px-1 rounded">.circleci/config.yml</code>. Use <code class="font-mono text-sm bg-bg-card px-1 rounded">version: 2.1</code> to access orbs, commands, and executors. Jobs define the work; workflows orchestrate job order and conditions.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code>version: 2.1
+
+orbs:
+  node: circleci/node@5.1.0
+  slack: circleci/slack@4.12.5
+
+executors:
+  node-executor:
+    docker:
+      - image: cimg/node:20.0
+    resource_class: medium
+
+jobs:
+  test:
+    executor: node-executor
+    parallelism: 4
+    steps:
+      - checkout
+      - node/install-packages:
+          pkg-manager: npm
+      - run:
+          name: Split and run tests
+          command: |
+            TESTFILES=$(circleci tests glob "src/**/*.test.ts" | \
+              circleci tests split --split-by=timings)
+            npx jest $TESTFILES --ci --runInBand
+      - store_test_results:
+          path: test-results/
+      - slack/notify:
+          event: fail
+          template: basic_fail_1
+
+  build:
+    executor: node-executor
+    steps:
+      - checkout
+      - node/install-packages
+      - run: npm run build
+      - persist_to_workspace:
+          root: .
+          paths: [dist]
+
+workflows:
+  ci-cd:
+    jobs:
+      - test
+      - build:
+          requires: [test]
+          filters:
+            branches:
+              only: main</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Caching Strategies</h2>
+      <p class="text-text-muted mb-4">Proper caching is the single biggest lever for build speed in CircleCI. Cache dependencies on the lockfile checksum and always provide a fallback key to avoid cold-cache runs on every dependency change.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code>steps:
+  - restore_cache:
+      keys:
+        # Exact match on lockfile — fastest cache hit
+        - node-deps-v2-&#123;&#123; checksum "package-lock.json" &#125;&#125;
+        # Fallback: restore most recent cache for this branch
+        - node-deps-v2-&#123;&#123; .Branch &#125;&#125;-
+        # Final fallback: any cache
+        - node-deps-v2-
+
+  - run: npm ci
+
+  - save_cache:
+      key: node-deps-v2-&#123;&#123; checksum "package-lock.json" &#125;&#125;
+      paths:
+        - ~/.npm
+        - node_modules/
+
+  # Workspaces pass artifacts between jobs in the same workflow
+  - persist_to_workspace:
+      root: ~/project
+      paths: [dist/]
+
+# In a downstream job:
+  - attach_workspace:
+      at: ~/project</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Machine Executor for Docker Builds</h2>
+      <p class="text-text-muted mb-4">When you need to build Docker images or run Docker Compose services, switch to the <code class="font-mono text-sm bg-bg-card px-1 rounded">machine</code> executor. It gives you a full Ubuntu VM with Docker pre-installed and support for Docker layer caching — which can reduce image build time by up to 80%.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code>build-image:
+  machine:
+    image: ubuntu-2204:current
+    docker_layer_caching: true   # requires Performance plan
+  steps:
+    - checkout
+    - run:
+        name: Build and push Docker image
+        command: |
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          docker build -t myorg/myapp:$CIRCLE_SHA1 .
+          docker tag myorg/myapp:$CIRCLE_SHA1 myorg/myapp:latest
+          docker push myorg/myapp:$CIRCLE_SHA1
+          docker push myorg/myapp:latest</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">CircleCI vs GitHub Actions vs Travis CI</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-gray-700">
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">CircleCI</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">GitHub Actions</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Travis CI</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Test parallelism</td>
+              <td class="py-3 px-4 text-gray-400">Best-in-class (time-based splitting)</td>
+              <td class="py-3 px-4 text-gray-400">matrix strategy</td>
+              <td class="py-3 px-4 text-gray-400">Limited</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Reusable packages</td>
+              <td class="py-3 px-4 text-gray-400">Orbs (versioned)</td>
+              <td class="py-3 px-4 text-gray-400">Actions Marketplace</td>
+              <td class="py-3 px-4 text-gray-400">None</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Docker layer cache</td>
+              <td class="py-3 px-4 text-gray-400">Yes (Performance plan)</td>
+              <td class="py-3 px-4 text-gray-400">actions/cache (manual setup)</td>
+              <td class="py-3 px-4 text-gray-400">No</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Free tier</td>
+              <td class="py-3 px-4 text-gray-400">6,000 credits/mo</td>
+              <td class="py-3 px-4 text-gray-400">2,000 min/mo (private)</td>
+              <td class="py-3 px-4 text-gray-400">Very limited (post-acquisition)</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">GitHub integration</td>
+              <td class="py-3 px-4 text-gray-400">Via OAuth app</td>
+              <td class="py-3 px-4 text-gray-400">Native, first-class</td>
+              <td class="py-3 px-4 text-gray-400">Via OAuth app</td>
+            </tr>
+            <tr class="hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Best for</td>
+              <td class="py-3 px-4 text-gray-400">Large test suites, speed-critical CI</td>
+              <td class="py-3 px-4 text-gray-400">GitHub-hosted projects</td>
+              <td class="py-3 px-4 text-gray-400">Legacy projects (migrating away)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

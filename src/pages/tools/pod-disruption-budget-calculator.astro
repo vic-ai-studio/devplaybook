@@ -1,0 +1,157 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a Pod Disruption Budget (PDB)?", answer: "A Pod Disruption Budget (PDB) is a Kubernetes policy object that limits how many pods in a deployment or stateful set can be simultaneously unavailable during voluntary disruptions. Voluntary disruptions include node drains (kubectl drain), cluster upgrades, and manual deletions. Without a PDB, a node drain might evict all pods of a deployment at once, causing downtime. A PDB prevents this by telling Kubernetes: 'at most N pods can be down at once' or 'at least M pods must always be available'." },
+  { question: "What is the difference between minAvailable and maxUnavailable?", answer: "minAvailable specifies the minimum number (or percentage) of pods that must remain Available during a disruption. For example, minAvailable: 2 means at least 2 pods must be running — kubectl drain will only proceed if evicting a pod won't drop below 2. maxUnavailable is the inverse: it specifies the maximum number (or percentage) that can be Unavailable at once. Use minAvailable when you know the minimum quorum needed (e.g., 2 replicas of a 3-pod deployment). Use maxUnavailable when you want to express how much disruption is acceptable (e.g., maxUnavailable: 1 = one pod can be down at a time)." },
+  { question: "How does PDB interact with kubectl drain?", answer: "When you run kubectl drain <node>, Kubernetes tries to evict each pod on that node one by one using the Eviction API. Before evicting a pod, it checks if the eviction would violate any PDB. If the eviction would cause the number of Available pods to drop below minAvailable (or exceed maxUnavailable), the eviction is rejected with a 429 error and kubectl drain waits or reports a disruption budget error. This prevents cluster administrators from accidentally evicting too many pods at once." },
+  { question: "Can I use percentages in PDB?", answer: "Yes. Both minAvailable and maxUnavailable accept an integer (absolute count) or a percentage string (e.g., '50%'). Percentages are rounded down for minAvailable and rounded up for maxUnavailable, then applied to the total number of desired pods. For example, with 10 replicas and maxUnavailable: 30%, at most 3 pods (floor of 3.0) can be unavailable. Percentages are useful when the replica count varies (e.g., with HPA) because the PDB constraint scales automatically." },
+  { question: "What is the difference between PDB for Deployments vs StatefulSets?", answer: "PDBs work with both, but StatefulSets have additional constraints. For Deployments, pods are interchangeable so PDB only needs to ensure enough are running. For StatefulSets (databases, Kafka, etc.), pods have identities and specific pods (e.g., the leader) matter. You should set a PDB conservative enough to prevent quorum loss — for a 3-node etcd cluster, set minAvailable: 2 to always maintain quorum. PDBs don't understand leadership election, so you must calculate the quorum requirement yourself." },
+  { question: "Does PDB protect against involuntary disruptions?", answer: "No. PDB only applies to voluntary disruptions — operations that go through the Eviction API (kubectl drain, cluster autoscaler scale-down, node pool upgrades). Involuntary disruptions like hardware failures, OOM kills, or node crashes are not controlled by PDB. For high availability against involuntary disruptions, use anti-affinity rules (podAntiAffinity) to spread pods across nodes/zones, combined with multiple replicas." },
+];
+---
+
+<BaseLayout
+  title="Pod Disruption Budget (PDB): minAvailable & maxUnavailable Guide"
+  description="Learn how Kubernetes Pod Disruption Budgets (PDB) work. Configure minAvailable and maxUnavailable, understand kubectl drain behavior, and protect Deployments and StatefulSets during rolling updates."
+  tool="Pod Disruption Budget, PDB Kubernetes, minAvailable maxUnavailable, kubectl drain PDB, rolling update disruption"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Pod Disruption Budget (PDB): Setup, minAvailable & maxUnavailable Guide","url":"https://devplaybook.cc/tools/pod-disruption-budget-calculator","description":"Configure Kubernetes PDB minAvailable and maxUnavailable, understand kubectl drain behavior, and protect workloads during voluntary disruptions."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Pod Disruption Budget (PDB): Setup, minAvailable &amp; maxUnavailable Guide</h1>
+  <p class="text-text-muted mb-6">Pod Disruption Budgets protect your Kubernetes workloads during voluntary disruptions — node drains, cluster upgrades, and autoscaler scale-downs. Learn how to configure PDBs correctly for Deployments and StatefulSets.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> minAvailable vs maxUnavailable</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> kubectl drain behavior</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Deployments &amp; StatefulSets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Percentage-based PDB</span>
+  </div>
+
+  <ToolPageCta />
+
+  <div class="space-y-8 mt-8">
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Why Pod Disruption Budgets Matter</h2>
+      <p class="text-text-muted mb-4">Without a PDB, running <code class="bg-surface px-1 rounded text-sm">kubectl drain node-1</code> on a node can evict all replicas of your deployment simultaneously — causing a full outage. PDBs give you a declarative way to express availability requirements that the Kubernetes control plane enforces before any eviction.</p>
+      <p class="text-text-muted mb-4">PDBs apply to <strong>voluntary disruptions</strong> — operations that go through the Eviction API:</p>
+      <ul class="list-disc list-inside space-y-1 text-text-muted mb-4">
+        <li>Node drains (<code class="bg-surface px-1 rounded text-sm">kubectl drain</code>)</li>
+        <li>Cluster Autoscaler scale-down events</li>
+        <li>Kubernetes version upgrades (managed clusters)</li>
+        <li>Node pool rotation</li>
+        <li>Preemption of lower-priority pods</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">minAvailable vs maxUnavailable</h2>
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="bg-surface">
+              <th class="border border-border px-3 py-2 text-left font-semibold">Field</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Meaning</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Use case</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Example (5 replicas)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="border border-border px-3 py-2 font-mono">minAvailable: 2</td><td class="border border-border px-3 py-2">At least 2 pods must be Available</td><td class="border border-border px-3 py-2">Quorum-sensitive workloads</td><td class="border border-border px-3 py-2">Max 3 pods can be disrupted</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-mono">minAvailable: "60%"</td><td class="border border-border px-3 py-2">At least 60% of pods must be Available</td><td class="border border-border px-3 py-2">HPA-scaled workloads</td><td class="border border-border px-3 py-2">At least 3 pods Available (floor 3.0)</td></tr>
+            <tr><td class="border border-border px-3 py-2 font-mono">maxUnavailable: 1</td><td class="border border-border px-3 py-2">At most 1 pod can be Unavailable</td><td class="border border-border px-3 py-2">Slow drain, high-availability</td><td class="border border-border px-3 py-2">4 pods must be Available</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-mono">maxUnavailable: "20%"</td><td class="border border-border px-3 py-2">At most 20% can be Unavailable</td><td class="border border-border px-3 py-2">Flexible with replica changes</td><td class="border border-border px-3 py-2">At most 1 pod down (ceil 1.0)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 text-sm text-text-muted">
+        <strong>Important:</strong> You can only specify one of minAvailable or maxUnavailable in a single PDB — not both. Choose based on how you think about availability (minimum quorum vs maximum disruption).
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">PDB Manifest Examples</h2>
+
+      <h3 class="text-lg font-semibold mb-2">Basic PDB for a Deployment</h3>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: myapp-pdb
+  namespace: production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: myapp</code></pre>
+
+      <h3 class="text-lg font-semibold mb-2">PDB for a StatefulSet (etcd / database)</h3>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: etcd-pdb
+  namespace: kube-system
+spec:
+  # etcd requires quorum: majority must be available
+  # For 3 replicas, at least 2 must be available
+  minAvailable: 2
+  selector:
+    matchLabels:
+      component: etcd</code></pre>
+
+      <h3 class="text-lg font-semibold mb-2">Percentage-Based PDB (scales with HPA)</h3>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code>apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-pdb
+spec:
+  # At most 25% of pods can be disrupted at once
+  # Works correctly whether HPA scales to 4 or 40 pods
+  maxUnavailable: "25%"
+  selector:
+    matchLabels:
+      app: api-server</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">PDB and Rolling Updates</h2>
+      <p class="text-text-muted mb-4">PDB is separate from Deployment rolling update strategy (<code class="bg-surface px-1 rounded text-sm">maxUnavailable</code> in the Deployment spec). The Deployment field controls how the Deployment controller replaces pods during an image update. The PDB controls how many pods can be evicted by external operations (drain, autoscaler). Both constraints apply simultaneously.</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="bg-surface">
+              <th class="border border-border px-3 py-2 text-left font-semibold">Setting</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Location</th>
+              <th class="border border-border px-3 py-2 text-left font-semibold">Controls</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="border border-border px-3 py-2 font-mono">strategy.rollingUpdate.maxUnavailable</td><td class="border border-border px-3 py-2">Deployment spec</td><td class="border border-border px-3 py-2">Pods down during image rollout</td></tr>
+            <tr class="bg-surface/30"><td class="border border-border px-3 py-2 font-mono">spec.minAvailable / maxUnavailable</td><td class="border border-border px-3 py-2">PodDisruptionBudget</td><td class="border border-border px-3 py-2">Pods evicted by drain/autoscaler</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Checking PDB Status</h2>
+      <pre class="bg-surface border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># List all PDBs in a namespace
+kubectl get pdb -n production
+
+# Detailed status: ALLOWED DISRUPTIONS column
+kubectl get pdb myapp-pdb -n production
+# NAME        MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
+# myapp-pdb   2               N/A               1                     2d
+
+# Describe for selector and conditions
+kubectl describe pdb myapp-pdb -n production</code></pre>
+      <p class="text-text-muted text-sm">The <strong>ALLOWED DISRUPTIONS</strong> column shows how many pods can currently be evicted. If this is 0, <code class="bg-surface px-1 rounded text-sm">kubectl drain</code> will block until a pod becomes available.</p>
+    </section>
+
+  </div>
+
+  <FaqSection faqs={faq} />
+</BaseLayout>
