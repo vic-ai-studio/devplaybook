@@ -1,0 +1,1196 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is a Web Worker and when should I use one?",
+    answer: "A Web Worker runs JavaScript in a background thread, separate from the main UI thread. Use workers when you have CPU-intensive tasks that would freeze the UI: parsing large JSON files, image processing, cryptographic operations, data compression, complex calculations, or sorting large datasets. The rule of thumb: if a task takes more than 50ms, consider offloading it to a worker. Workers cannot access the DOM but can use fetch, WebSockets, and many other Web APIs."
+  },
+  {
+    question: "What is the difference between postMessage and SharedArrayBuffer communication?",
+    answer: "postMessage copies data between threads (structured clone algorithm). Simple and safe — each thread gets its own copy. Best for most use cases. SharedArrayBuffer allows true shared memory between threads via Atomics — both threads read/write the same memory region. Much faster for large data (no copying), but requires COOP/COEP headers and careful synchronization with Atomics.wait/notify to avoid race conditions. Use SharedArrayBuffer only when you need maximum performance with large binary data."
+  },
+  {
+    question: "What is BroadcastChannel and when should I use it?",
+    answer: "BroadcastChannel allows multiple tabs, windows, and workers on the same origin to communicate. Unlike postMessage (1-to-1), BroadcastChannel is 1-to-many. Use cases: syncing login/logout state across tabs, broadcasting theme changes, real-time notifications across windows, coordinating shared state in multi-tab apps. It's simpler than SharedWorker for broadcast scenarios but messages are not received by the sender."
+  },
+  {
+    question: "Can Web Workers use ES modules (import/export)?",
+    answer: "Yes, with the module type option: new Worker('./worker.js', { type: 'module' }). Module workers support import/export syntax, top-level await, and dynamic imports. They're supported in Chrome 80+, Firefox 114+, and Safari 15+. For older browser support, use a bundler (Vite/webpack) that bundles worker files. Vite has first-class Worker support: import Worker from './worker?worker'."
+  },
+  {
+    question: "What APIs are available inside a Web Worker?",
+    answer: "Workers have access to: fetch, XMLHttpRequest, WebSockets, IndexedDB, Cache API, crypto, performance, setTimeout/setInterval, importScripts (classic workers), FileReader, Canvas (OffscreenCanvas), and many more. Workers cannot access: DOM, window, document, localStorage (can use IndexedDB instead), alert/confirm. Service Workers additionally have access to the Cache API and can intercept network requests. Use typeof window === 'undefined' to detect worker environment in shared code."
+  }
+];
+---
+
+<BaseLayout
+  title="Web Worker Generator — Generate Worker Boilerplate with postMessage / SharedArrayBuffer"
+  description="Generate Web Worker boilerplate code for heavy computation, image processing, and data parsing. Supports postMessage, SharedArrayBuffer, BroadcastChannel. TypeScript toggle. Free browser tool."
+  tool="web worker generator, web worker boilerplate, javascript worker code, postmessage worker, shared array buffer example"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Web Worker Generator",
+    "url": "https://devplaybook.cc/tools/web-worker-generator",
+    "description": "Generate Web Worker boilerplate for heavy computation, image processing, and data parsing with postMessage, SharedArrayBuffer, and BroadcastChannel patterns.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Web Worker Generator</h1>
+  <p class="text-text-muted mb-4">
+    Generate Web Worker boilerplate code. Choose task type and communication pattern
+    to get ready-to-use worker and main thread code side by side.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 4 task types</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 3 communication patterns</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> TypeScript toggle</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Worker + main thread side by side</span>
+  </div>
+
+  <!-- Config -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Task Type</label>
+        <select id="task-type" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="computation">Heavy Computation</option>
+          <option value="image">Image Processing</option>
+          <option value="parsing">Data Parsing (JSON/CSV)</option>
+          <option value="custom">Custom Task</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Communication Pattern</label>
+        <select id="comm-pattern" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="postmessage">postMessage (copy)</option>
+          <option value="sharedbuffer">SharedArrayBuffer</option>
+          <option value="broadcast">BroadcastChannel</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Language</label>
+        <select id="lang-select" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="js">JavaScript</option>
+          <option value="ts">TypeScript</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Code output side by side -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 class="text-sm font-medium" id="worker-file-label">worker.js</h2>
+          <p class="text-xs text-text-muted">Background thread code</p>
+        </div>
+        <button id="copy-worker" class="px-3 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary/90 transition-colors">Copy</button>
+      </div>
+      <pre id="worker-code" class="bg-surface rounded p-3 text-xs font-mono text-foreground/90 overflow-x-auto whitespace-pre max-h-96 overflow-y-auto"></pre>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 class="text-sm font-medium" id="main-file-label">main.js</h2>
+          <p class="text-xs text-text-muted">Main thread code</p>
+        </div>
+        <button id="copy-main" class="px-3 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary/90 transition-colors">Copy</button>
+      </div>
+      <pre id="main-code" class="bg-surface rounded p-3 text-xs font-mono text-foreground/90 overflow-x-auto whitespace-pre max-h-96 overflow-y-auto"></pre>
+    </div>
+  </div>
+
+  <!-- Pattern explanation -->
+  <div id="pattern-notes" class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <h2 class="text-sm font-medium mb-2">Pattern Notes</h2>
+    <div id="notes-content" class="text-sm text-text-muted space-y-1"></div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Web Worker Generator" relatedTags={['javascript', 'performance', 'web-workers', 'multithreading', 'browser']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  var TEMPLATES = {
+    computation: {
+      postmessage: {
+        js: {
+          worker: `// worker.js — Heavy Computation Worker
+self.addEventListener('message', function(e) {
+  var data = e.data;
+
+  // Signal start
+  self.postMessage({ type: 'progress', value: 0 });
+
+  // Example: compute prime numbers up to N
+  var result = computePrimes(data.limit);
+
+  self.postMessage({ type: 'result', result: result });
+});
+
+function computePrimes(limit) {
+  var sieve = new Uint8Array(limit + 1);
+  var primes = [];
+
+  for (var i = 2; i <= limit; i++) {
+    if (!sieve[i]) {
+      primes.push(i);
+      for (var j = i * 2; j <= limit; j += i) {
+        sieve[j] = 1;
+      }
+    }
+  }
+  return primes;
+}`,
+          main: `// main.js — Main Thread
+var worker = new Worker('./worker.js');
+
+worker.addEventListener('message', function(e) {
+  if (e.data.type === 'progress') {
+    console.log('Worker started...');
+  } else if (e.data.type === 'result') {
+    console.log('Primes found:', e.data.result.length);
+    worker.terminate();
+  }
+});
+
+worker.addEventListener('error', function(err) {
+  console.error('Worker error:', err.message);
+});
+
+// Start computation
+worker.postMessage({ limit: 100000 });`
+        },
+        ts: {
+          worker: `// worker.ts — Heavy Computation Worker
+interface WorkerMessage {
+  limit: number;
+}
+
+interface WorkerResult {
+  type: 'progress' | 'result';
+  value?: number;
+  result?: number[];
+}
+
+self.addEventListener('message', (e: MessageEvent<WorkerMessage>) => {
+  const { limit } = e.data;
+
+  self.postMessage({ type: 'progress', value: 0 } satisfies WorkerResult);
+
+  const result = computePrimes(limit);
+
+  self.postMessage({ type: 'result', result } satisfies WorkerResult);
+});
+
+function computePrimes(limit: number): number[] {
+  const sieve = new Uint8Array(limit + 1);
+  const primes: number[] = [];
+
+  for (let i = 2; i <= limit; i++) {
+    if (!sieve[i]) {
+      primes.push(i);
+      for (let j = i * 2; j <= limit; j += i) {
+        sieve[j] = 1;
+      }
+    }
+  }
+  return primes;
+}`,
+          main: `// main.ts — Main Thread
+import type { WorkerResult } from './worker';
+
+const worker = new Worker(new URL('./worker.ts', import.meta.url), {
+  type: 'module'
+});
+
+worker.addEventListener('message', (e: MessageEvent<WorkerResult>) => {
+  if (e.data.type === 'progress') {
+    console.log('Worker started...');
+  } else if (e.data.type === 'result') {
+    console.log('Primes found:', e.data.result?.length);
+    worker.terminate();
+  }
+});
+
+worker.addEventListener('error', (err: ErrorEvent) => {
+  console.error('Worker error:', err.message);
+});
+
+worker.postMessage({ limit: 100000 });`
+        }
+      },
+      sharedbuffer: {
+        js: {
+          worker: `// worker.js — Shared Memory Worker
+self.addEventListener('message', function(e) {
+  var sharedBuffer = e.data.buffer;
+  var sharedArray = new Int32Array(sharedBuffer);
+
+  // Signal ready (index 0 = status)
+  Atomics.store(sharedArray, 0, 1);
+
+  // Do heavy computation, write results to shared buffer
+  for (var i = 1; i < sharedArray.length; i++) {
+    sharedArray[i] = computeValue(i);
+  }
+
+  // Signal done
+  Atomics.store(sharedArray, 0, 2);
+  Atomics.notify(sharedArray, 0, 1);
+});
+
+function computeValue(i) {
+  return i * i; // Example: squares
+}`,
+          main: `// main.js — Main Thread (requires COOP/COEP headers)
+// Server must set:
+// Cross-Origin-Opener-Policy: same-origin
+// Cross-Origin-Embedder-Policy: require-corp
+
+var SIZE = 1024;
+var buffer = new SharedArrayBuffer(SIZE * Int32Array.BYTES_PER_ELEMENT);
+var sharedArray = new Int32Array(buffer);
+
+var worker = new Worker('./worker.js');
+
+worker.postMessage({ buffer: buffer });
+
+// Poll for completion (or use Atomics.waitAsync)
+Atomics.waitAsync(sharedArray, 0, 0).value.then(function() {
+  if (Atomics.load(sharedArray, 0) === 2) {
+    console.log('Worker done. Results:', Array.from(sharedArray.slice(1, 11)));
+  }
+});`
+        },
+        ts: {
+          worker: `// worker.ts — Shared Memory Worker
+self.addEventListener('message', (e: MessageEvent<{ buffer: SharedArrayBuffer }>) => {
+  const sharedArray = new Int32Array(e.data.buffer);
+
+  Atomics.store(sharedArray, 0, 1); // mark running
+
+  for (let i = 1; i < sharedArray.length; i++) {
+    sharedArray[i] = i * i;
+  }
+
+  Atomics.store(sharedArray, 0, 2); // mark done
+  Atomics.notify(sharedArray, 0, 1);
+});`,
+          main: `// main.ts — Main Thread
+const SIZE = 1024;
+const buffer = new SharedArrayBuffer(SIZE * Int32Array.BYTES_PER_ELEMENT);
+const sharedArray = new Int32Array(buffer);
+
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+worker.postMessage({ buffer });
+
+Atomics.waitAsync(sharedArray, 0, 0).value.then(() => {
+  if (Atomics.load(sharedArray, 0) === 2) {
+    console.log('Done:', Array.from(sharedArray.slice(1, 11)));
+  }
+});`
+        }
+      },
+      broadcast: {
+        js: {
+          worker: `// worker.js — BroadcastChannel Worker
+var channel = new BroadcastChannel('computation-results');
+
+self.addEventListener('message', function(e) {
+  var result = performComputation(e.data);
+
+  // Broadcast result to all listeners
+  channel.postMessage({ type: 'computation-done', result: result, taskId: e.data.taskId });
+});
+
+function performComputation(data) {
+  // Example heavy computation
+  var sum = 0;
+  for (var i = 0; i < data.iterations; i++) {
+    sum += Math.sqrt(i);
+  }
+  return { sum: sum, iterations: data.iterations };
+}`,
+          main: `// main.js — Main Thread
+var worker = new Worker('./worker.js');
+
+// Any window/tab on same origin can listen
+var channel = new BroadcastChannel('computation-results');
+
+channel.addEventListener('message', function(e) {
+  if (e.data.type === 'computation-done') {
+    console.log('Result (task ' + e.data.taskId + '):', e.data.result);
+  }
+});
+
+// Send work to worker
+worker.postMessage({ iterations: 1000000, taskId: 'task-1' });`
+        },
+        ts: {
+          worker: `// worker.ts
+interface Task { iterations: number; taskId: string; }
+
+const channel = new BroadcastChannel('computation-results');
+
+self.addEventListener('message', (e: MessageEvent<Task>) => {
+  const { iterations, taskId } = e.data;
+  let sum = 0;
+  for (let i = 0; i < iterations; i++) sum += Math.sqrt(i);
+  channel.postMessage({ type: 'computation-done', result: sum, taskId });
+});`,
+          main: `// main.ts
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+const channel = new BroadcastChannel('computation-results');
+
+channel.addEventListener('message', (e: MessageEvent) => {
+  if (e.data.type === 'computation-done') {
+    console.log('Result:', e.data.result);
+  }
+});
+
+worker.postMessage({ iterations: 1000000, taskId: 'task-1' });`
+        }
+      }
+    },
+    image: {
+      postmessage: {
+        js: {
+          worker: `// worker.js — Image Processing Worker
+self.addEventListener('message', function(e) {
+  var imageData = e.data.imageData;
+  var operation = e.data.operation;
+  var processed;
+
+  if (operation === 'grayscale') {
+    processed = applyGrayscale(imageData);
+  } else if (operation === 'invert') {
+    processed = applyInvert(imageData);
+  } else if (operation === 'blur') {
+    processed = applyBoxBlur(imageData, e.data.radius || 1);
+  } else {
+    processed = imageData;
+  }
+
+  // Transfer back with ownership transfer (no copy!)
+  self.postMessage({ imageData: processed }, [processed.data.buffer]);
+});
+
+function applyGrayscale(imgData) {
+  var data = new Uint8ClampedArray(imgData.data);
+  for (var i = 0; i < data.length; i += 4) {
+    var avg = (data[i] + data[i+1] + data[i+2]) / 3;
+    data[i] = data[i+1] = data[i+2] = avg;
+  }
+  return new ImageData(data, imgData.width, imgData.height);
+}
+
+function applyInvert(imgData) {
+  var data = new Uint8ClampedArray(imgData.data);
+  for (var i = 0; i < data.length; i += 4) {
+    data[i] = 255 - data[i];
+    data[i+1] = 255 - data[i+1];
+    data[i+2] = 255 - data[i+2];
+  }
+  return new ImageData(data, imgData.width, imgData.height);
+}
+
+function applyBoxBlur(imgData, radius) {
+  // Simple box blur implementation
+  var data = new Uint8ClampedArray(imgData.data);
+  var w = imgData.width, h = imgData.height;
+  var output = new Uint8ClampedArray(data.length);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var r=0,g=0,b=0,count=0;
+      for (var dy=-radius; dy<=radius; dy++) {
+        for (var dx=-radius; dx<=radius; dx++) {
+          var nx=x+dx, ny=y+dy;
+          if (nx>=0 && nx<w && ny>=0 && ny<h) {
+            var idx=(ny*w+nx)*4;
+            r+=data[idx]; g+=data[idx+1]; b+=data[idx+2]; count++;
+          }
+        }
+      }
+      var oi=(y*w+x)*4;
+      output[oi]=r/count; output[oi+1]=g/count; output[oi+2]=b/count; output[oi+3]=data[oi+3];
+    }
+  }
+  return new ImageData(output, w, h);
+}`,
+          main: `// main.js — Main Thread
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var worker = new Worker('./worker.js');
+
+worker.addEventListener('message', function(e) {
+  ctx.putImageData(e.data.imageData, 0, 0);
+  console.log('Image processing complete');
+});
+
+function processImage(operation) {
+  var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  // Transfer ownership to worker (zero-copy)
+  worker.postMessage({ imageData: imageData, operation: operation }, [imageData.data.buffer]);
+}
+
+// Usage
+// processImage('grayscale');
+// processImage('invert');
+// processImage('blur');`
+        },
+        ts: {
+          worker: `// worker.ts
+type ImageOp = 'grayscale' | 'invert' | 'blur';
+
+interface ImageTask {
+  imageData: ImageData;
+  operation: ImageOp;
+  radius?: number;
+}
+
+self.addEventListener('message', (e: MessageEvent<ImageTask>) => {
+  const { imageData, operation, radius = 1 } = e.data;
+  let processed: ImageData;
+
+  if (operation === 'grayscale') processed = applyGrayscale(imageData);
+  else if (operation === 'invert') processed = applyInvert(imageData);
+  else processed = imageData;
+
+  self.postMessage({ imageData: processed }, [processed.data.buffer]);
+});
+
+function applyGrayscale(img: ImageData): ImageData {
+  const data = new Uint8ClampedArray(img.data);
+  for (let i = 0; i < data.length; i += 4) {
+    const avg = (data[i] + data[i+1] + data[i+2]) / 3;
+    data[i] = data[i+1] = data[i+2] = avg;
+  }
+  return new ImageData(data, img.width, img.height);
+}
+
+function applyInvert(img: ImageData): ImageData {
+  const data = new Uint8ClampedArray(img.data);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 255 - data[i];
+    data[i+1] = 255 - data[i+1];
+    data[i+2] = 255 - data[i+2];
+  }
+  return new ImageData(data, img.width, img.height);
+}`,
+          main: `// main.ts
+const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+const ctx = canvas.getContext('2d')!;
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+
+worker.addEventListener('message', (e: MessageEvent<{ imageData: ImageData }>) => {
+  ctx.putImageData(e.data.imageData, 0, 0);
+});
+
+function processImage(operation: 'grayscale' | 'invert' | 'blur') {
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  worker.postMessage({ imageData, operation }, [imageData.data.buffer]);
+}
+
+processImage('grayscale');`
+        }
+      },
+      sharedbuffer: {
+        js: {
+          worker: `// worker.js — Image Processing with SharedArrayBuffer
+self.addEventListener('message', function(e) {
+  var buffer = e.data.buffer;
+  var width = e.data.width;
+  var height = e.data.height;
+  var data = new Uint8ClampedArray(buffer);
+
+  // Apply grayscale in-place (shared memory, no copy)
+  for (var i = 0; i < data.length; i += 4) {
+    var avg = (data[i] + data[i+1] + data[i+2]) / 3;
+    data[i] = data[i+1] = data[i+2] = avg;
+  }
+
+  // Signal done via a separate status buffer
+  var statusArray = new Int32Array(e.data.statusBuffer);
+  Atomics.store(statusArray, 0, 1);
+  Atomics.notify(statusArray, 0, 1);
+});`,
+          main: `// main.js
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+// Create shared buffer from canvas data
+var buffer = new SharedArrayBuffer(imageData.data.byteLength);
+var sharedData = new Uint8ClampedArray(buffer);
+sharedData.set(imageData.data);
+
+var statusBuffer = new SharedArrayBuffer(4);
+var statusArray = new Int32Array(statusBuffer);
+
+var worker = new Worker('./worker.js');
+worker.postMessage({ buffer, statusBuffer, width: canvas.width, height: canvas.height });
+
+Atomics.waitAsync(statusArray, 0, 0).value.then(function() {
+  // Read results from shared buffer
+  var result = new ImageData(new Uint8ClampedArray(buffer), canvas.width, canvas.height);
+  ctx.putImageData(result, 0, 0);
+  console.log('Processing complete');
+});`
+        },
+        ts: {
+          worker: `// worker.ts
+interface ImageWorkerMsg {
+  buffer: SharedArrayBuffer;
+  statusBuffer: SharedArrayBuffer;
+  width: number;
+  height: number;
+}
+
+self.addEventListener('message', (e: MessageEvent<ImageWorkerMsg>) => {
+  const data = new Uint8ClampedArray(e.data.buffer);
+  for (let i = 0; i < data.length; i += 4) {
+    const avg = (data[i] + data[i+1] + data[i+2]) / 3;
+    data[i] = data[i+1] = data[i+2] = avg;
+  }
+  const status = new Int32Array(e.data.statusBuffer);
+  Atomics.store(status, 0, 1);
+  Atomics.notify(status, 0, 1);
+});`,
+          main: `// main.ts
+const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+const ctx = canvas.getContext('2d')!;
+const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+const buffer = new SharedArrayBuffer(imageData.data.byteLength);
+new Uint8ClampedArray(buffer).set(imageData.data);
+
+const statusBuffer = new SharedArrayBuffer(4);
+const statusArray = new Int32Array(statusBuffer);
+
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+worker.postMessage({ buffer, statusBuffer, width: canvas.width, height: canvas.height });
+
+Atomics.waitAsync(statusArray, 0, 0).value.then(() => {
+  ctx.putImageData(new ImageData(new Uint8ClampedArray(buffer), canvas.width), 0, 0);
+});`
+        }
+      },
+      broadcast: {
+        js: {
+          worker: `// worker.js — Image Processing + BroadcastChannel
+var channel = new BroadcastChannel('image-processor');
+
+self.addEventListener('message', function(e) {
+  var imageData = e.data.imageData;
+  var processed = applyGrayscale(imageData);
+  channel.postMessage({ type: 'processed', imageData: processed, requestId: e.data.requestId }, [processed.data.buffer]);
+});
+
+function applyGrayscale(img) {
+  var data = new Uint8ClampedArray(img.data);
+  for (var i = 0; i < data.length; i += 4) {
+    var avg = (data[i] + data[i+1] + data[i+2]) / 3;
+    data[i] = data[i+1] = data[i+2] = avg;
+  }
+  return new ImageData(data, img.width, img.height);
+}`,
+          main: `// main.js
+var worker = new Worker('./worker.js');
+var channel = new BroadcastChannel('image-processor');
+
+channel.addEventListener('message', function(e) {
+  if (e.data.type === 'processed') {
+    var ctx = document.getElementById('output-canvas').getContext('2d');
+    ctx.putImageData(e.data.imageData, 0, 0);
+  }
+});
+
+var canvas = document.getElementById('input-canvas');
+var ctx = canvas.getContext('2d');
+var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+worker.postMessage({ imageData: imageData, requestId: Date.now() }, [imageData.data.buffer]);`
+        },
+        ts: {
+          worker: `// worker.ts
+const channel = new BroadcastChannel('image-processor');
+
+self.addEventListener('message', (e: MessageEvent) => {
+  const img = e.data.imageData as ImageData;
+  const data = new Uint8ClampedArray(img.data);
+  for (let i = 0; i < data.length; i += 4) {
+    const avg = (data[i] + data[i+1] + data[i+2]) / 3;
+    data[i] = data[i+1] = data[i+2] = avg;
+  }
+  const result = new ImageData(data, img.width, img.height);
+  channel.postMessage({ type: 'processed', imageData: result }, [result.data.buffer]);
+});`,
+          main: `// main.ts
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+const channel = new BroadcastChannel('image-processor');
+
+channel.addEventListener('message', (e: MessageEvent) => {
+  if (e.data.type === 'processed') {
+    const ctx = (document.getElementById('output-canvas') as HTMLCanvasElement).getContext('2d')!;
+    ctx.putImageData(e.data.imageData, 0, 0);
+  }
+});`
+        }
+      }
+    },
+    parsing: {
+      postmessage: {
+        js: {
+          worker: `// worker.js — Data Parsing Worker (JSON/CSV)
+self.addEventListener('message', function(e) {
+  var type = e.data.type;
+  var raw = e.data.data;
+
+  try {
+    var result;
+    if (type === 'json') {
+      result = parseJSON(raw);
+    } else if (type === 'csv') {
+      result = parseCSV(raw);
+    } else {
+      throw new Error('Unknown parse type: ' + type);
+    }
+    self.postMessage({ success: true, result: result, count: result.length });
+  } catch(err) {
+    self.postMessage({ success: false, error: err.message });
+  }
+});
+
+function parseJSON(raw) {
+  var parsed = JSON.parse(raw);
+  // Ensure it's an array
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
+
+function parseCSV(raw) {
+  var lines = raw.trim().split('\\n');
+  var headers = lines[0].split(',').map(function(h) { return h.trim(); });
+  var result = [];
+  for (var i = 1; i < lines.length; i++) {
+    var values = lines[i].split(',');
+    var row = {};
+    headers.forEach(function(h, idx) {
+      row[h] = values[idx] ? values[idx].trim() : '';
+    });
+    result.push(row);
+  }
+  return result;
+}`,
+          main: `// main.js — Main Thread
+var worker = new Worker('./worker.js');
+
+worker.addEventListener('message', function(e) {
+  if (e.data.success) {
+    console.log('Parsed', e.data.count, 'records');
+    renderData(e.data.result);
+  } else {
+    console.error('Parse error:', e.data.error);
+  }
+  worker.terminate();
+});
+
+function renderData(data) {
+  // Update UI with parsed data
+  console.log('First record:', data[0]);
+}
+
+// Parse a large JSON file
+fetch('/data/large-dataset.json')
+  .then(function(r) { return r.text(); })
+  .then(function(text) {
+    worker.postMessage({ type: 'json', data: text });
+  });
+
+// Or parse CSV
+// worker.postMessage({ type: 'csv', data: csvText });`
+        },
+        ts: {
+          worker: `// worker.ts
+type ParseType = 'json' | 'csv';
+
+interface ParseMessage {
+  type: ParseType;
+  data: string;
+}
+
+interface ParseResult {
+  success: boolean;
+  result?: unknown[];
+  count?: number;
+  error?: string;
+}
+
+self.addEventListener('message', (e: MessageEvent<ParseMessage>) => {
+  const { type, data } = e.data;
+  try {
+    let result: unknown[];
+    if (type === 'json') {
+      const parsed = JSON.parse(data);
+      result = Array.isArray(parsed) ? parsed : [parsed];
+    } else {
+      const [header, ...rows] = data.trim().split('\\n');
+      const keys = header.split(',').map(h => h.trim());
+      result = rows.map(row => {
+        const vals = row.split(',');
+        return Object.fromEntries(keys.map((k, i) => [k, vals[i]?.trim() ?? '']));
+      });
+    }
+    self.postMessage({ success: true, result, count: result.length } satisfies ParseResult);
+  } catch (err) {
+    self.postMessage({ success: false, error: (err as Error).message } satisfies ParseResult);
+  }
+});`,
+          main: `// main.ts
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+
+worker.addEventListener('message', (e: MessageEvent<{ success: boolean; count?: number; result?: unknown[]; error?: string }>) => {
+  if (e.data.success) {
+    console.log('Parsed', e.data.count, 'records:', e.data.result?.[0]);
+  } else {
+    console.error('Error:', e.data.error);
+  }
+  worker.terminate();
+});
+
+fetch('/data/large-dataset.json')
+  .then(r => r.text())
+  .then(text => worker.postMessage({ type: 'json', data: text }));`
+        }
+      },
+      sharedbuffer: {
+        js: {
+          worker: `// worker.js — Parsing with status via SharedArrayBuffer
+self.addEventListener('message', function(e) {
+  var statusBuffer = e.data.statusBuffer;
+  var statusArray = new Int32Array(statusBuffer);
+  var raw = e.data.data;
+
+  // Mark as running
+  Atomics.store(statusArray, 0, 1);
+
+  try {
+    var result = JSON.parse(raw);
+    Atomics.store(statusArray, 0, 2); // done
+    self.postMessage({ success: true, result: result });
+  } catch(err) {
+    Atomics.store(statusArray, 0, -1); // error
+    self.postMessage({ success: false, error: err.message });
+  }
+  Atomics.notify(statusArray, 0, 1);
+});`,
+          main: `// main.js
+var statusBuffer = new SharedArrayBuffer(4);
+var statusArray = new Int32Array(statusBuffer);
+var worker = new Worker('./worker.js');
+
+worker.addEventListener('message', function(e) {
+  console.log(e.data.success ? 'Parsed:' + JSON.stringify(e.data.result).slice(0,100) : 'Error: ' + e.data.error);
+});
+
+var jsonText = JSON.stringify({ items: Array.from({length: 1000}, function(_, i) { return {id: i}; }) });
+worker.postMessage({ statusBuffer: statusBuffer, data: jsonText });
+
+Atomics.waitAsync(statusArray, 0, 0).value.then(function() {
+  console.log('Worker status:', Atomics.load(statusArray, 0)); // 2 = done, -1 = error
+});`
+        },
+        ts: {
+          worker: `// worker.ts
+self.addEventListener('message', (e: MessageEvent) => {
+  const status = new Int32Array(e.data.statusBuffer as SharedArrayBuffer);
+  Atomics.store(status, 0, 1);
+  try {
+    const result = JSON.parse(e.data.data as string);
+    Atomics.store(status, 0, 2);
+    self.postMessage({ success: true, result });
+  } catch (err) {
+    Atomics.store(status, 0, -1);
+    self.postMessage({ success: false, error: (err as Error).message });
+  }
+  Atomics.notify(status, 0, 1);
+});`,
+          main: `// main.ts
+const statusBuffer = new SharedArrayBuffer(4);
+const statusArray = new Int32Array(statusBuffer);
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+
+worker.addEventListener('message', (e: MessageEvent) => {
+  console.log(e.data.success ? 'Done' : 'Error: ' + e.data.error);
+});
+
+const data = JSON.stringify(Array.from({ length: 1000 }, (_, i) => ({ id: i })));
+worker.postMessage({ statusBuffer, data });`
+        }
+      },
+      broadcast: {
+        js: {
+          worker: `// worker.js — Parsing Worker with BroadcastChannel
+var channel = new BroadcastChannel('data-parsing');
+
+self.addEventListener('message', function(e) {
+  try {
+    var result = JSON.parse(e.data.raw);
+    channel.postMessage({ type: 'parsed', result: result, requestId: e.data.requestId });
+  } catch(err) {
+    channel.postMessage({ type: 'error', error: err.message, requestId: e.data.requestId });
+  }
+});`,
+          main: `// main.js
+var worker = new Worker('./worker.js');
+var channel = new BroadcastChannel('data-parsing');
+
+channel.addEventListener('message', function(e) {
+  if (e.data.type === 'parsed') {
+    console.log('Received parsed data, request:', e.data.requestId);
+    renderData(e.data.result);
+  } else {
+    console.error('Parse error:', e.data.error);
+  }
+});
+
+function renderData(data) {
+  console.log('Rendering', Array.isArray(data) ? data.length : 1, 'records');
+}
+
+worker.postMessage({ raw: '{"items":[1,2,3]}', requestId: 'req-001' });`
+        },
+        ts: {
+          worker: `// worker.ts
+const channel = new BroadcastChannel('data-parsing');
+
+self.addEventListener('message', (e: MessageEvent<{ raw: string; requestId: string }>) => {
+  const { raw, requestId } = e.data;
+  try {
+    const result = JSON.parse(raw);
+    channel.postMessage({ type: 'parsed', result, requestId });
+  } catch (err) {
+    channel.postMessage({ type: 'error', error: (err as Error).message, requestId });
+  }
+});`,
+          main: `// main.ts
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+const channel = new BroadcastChannel('data-parsing');
+
+channel.addEventListener('message', (e: MessageEvent) => {
+  if (e.data.type === 'parsed') renderData(e.data.result);
+  else console.error(e.data.error);
+});
+
+function renderData(data: unknown) {
+  console.log('Records:', Array.isArray(data) ? data.length : 1);
+}
+
+worker.postMessage({ raw: '{"items":[1,2,3]}', requestId: 'req-001' });`
+        }
+      }
+    },
+    custom: {
+      postmessage: {
+        js: {
+          worker: `// worker.js — Custom Task Worker
+self.addEventListener('message', function(e) {
+  var task = e.data;
+
+  // Progress updates
+  self.postMessage({ type: 'progress', percent: 0, message: 'Starting...' });
+
+  var result = processTask(task);
+
+  self.postMessage({ type: 'progress', percent: 100, message: 'Complete' });
+  self.postMessage({ type: 'done', result: result });
+});
+
+function processTask(task) {
+  // TODO: implement your task logic here
+  // task.data contains your input
+  return { processed: task.data, timestamp: Date.now() };
+}
+
+// Handle errors
+self.addEventListener('error', function(e) {
+  self.postMessage({ type: 'error', message: e.message });
+});`,
+          main: `// main.js — Main Thread
+var worker = new Worker('./worker.js');
+var statusEl = document.getElementById('status');
+
+worker.addEventListener('message', function(e) {
+  switch(e.data.type) {
+    case 'progress':
+      if (statusEl) statusEl.textContent = e.data.message + ' (' + e.data.percent + '%)';
+      break;
+    case 'done':
+      console.log('Task complete:', e.data.result);
+      worker.terminate();
+      break;
+    case 'error':
+      console.error('Worker error:', e.data.message);
+      worker.terminate();
+      break;
+  }
+});
+
+// Start the task
+worker.postMessage({ data: 'your-input-data', config: {} });`
+        },
+        ts: {
+          worker: `// worker.ts
+interface Task<T = unknown> {
+  data: T;
+  config?: Record<string, unknown>;
+}
+
+interface WorkerEvent {
+  type: 'progress' | 'done' | 'error';
+  percent?: number;
+  message?: string;
+  result?: unknown;
+}
+
+self.addEventListener('message', (e: MessageEvent<Task>) => {
+  const { data, config } = e.data;
+
+  self.postMessage({ type: 'progress', percent: 0, message: 'Starting...' } satisfies WorkerEvent);
+
+  const result = processTask(data, config ?? {});
+
+  self.postMessage({ type: 'progress', percent: 100, message: 'Complete' } satisfies WorkerEvent);
+  self.postMessage({ type: 'done', result } satisfies WorkerEvent);
+});
+
+function processTask(data: unknown, config: Record<string, unknown>): unknown {
+  // TODO: implement your task logic
+  return { processed: data, config, timestamp: Date.now() };
+}`,
+          main: `// main.ts
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+
+worker.addEventListener('message', (e: MessageEvent<{ type: string; percent?: number; message?: string; result?: unknown }>) => {
+  const { type, percent, message, result } = e.data;
+  if (type === 'progress') console.log(message, percent + '%');
+  else if (type === 'done') { console.log('Result:', result); worker.terminate(); }
+  else if (type === 'error') { console.error(message); worker.terminate(); }
+});
+
+worker.postMessage({ data: 'your-input-data', config: {} });`
+        }
+      },
+      sharedbuffer: {
+        js: {
+          worker: `// worker.js — Custom Task with SharedArrayBuffer
+self.addEventListener('message', function(e) {
+  var controlBuffer = e.data.controlBuffer;
+  var dataBuffer = e.data.dataBuffer;
+  var control = new Int32Array(controlBuffer);
+  var data = new Float64Array(dataBuffer);
+
+  // Process data in place
+  for (var i = 0; i < data.length; i++) {
+    data[i] = processItem(data[i]);
+    // Update progress every 10%
+    if (i % Math.floor(data.length / 10) === 0) {
+      Atomics.store(control, 1, Math.round(i / data.length * 100));
+      Atomics.notify(control, 1);
+    }
+  }
+
+  // Signal done (control[0] = status)
+  Atomics.store(control, 0, 1);
+  Atomics.notify(control, 0, 1);
+});
+
+function processItem(value) {
+  // TODO: your per-item processing
+  return value * 2;
+}`,
+          main: `// main.js
+var SIZE = 10000;
+var controlBuffer = new SharedArrayBuffer(8); // [status, progress]
+var dataBuffer = new SharedArrayBuffer(SIZE * 8); // Float64
+var control = new Int32Array(controlBuffer);
+var data = new Float64Array(dataBuffer);
+
+// Populate input data
+for (var i = 0; i < SIZE; i++) data[i] = Math.random();
+
+var worker = new Worker('./worker.js');
+worker.postMessage({ controlBuffer, dataBuffer });
+
+// Poll progress (or use Atomics.waitAsync)
+var interval = setInterval(function() {
+  var progress = Atomics.load(control, 1);
+  console.log('Progress:', progress + '%');
+  if (Atomics.load(control, 0) === 1) {
+    clearInterval(interval);
+    console.log('Done! First 5 results:', Array.from(data.slice(0, 5)));
+  }
+}, 100);`
+        },
+        ts: {
+          worker: `// worker.ts
+self.addEventListener('message', (e: MessageEvent) => {
+  const control = new Int32Array(e.data.controlBuffer as SharedArrayBuffer);
+  const data = new Float64Array(e.data.dataBuffer as SharedArrayBuffer);
+
+  for (let i = 0; i < data.length; i++) {
+    data[i] = data[i] * 2; // TODO: your logic
+    if (i % Math.floor(data.length / 10) === 0) {
+      Atomics.store(control, 1, Math.round(i / data.length * 100));
+    }
+  }
+
+  Atomics.store(control, 0, 1);
+  Atomics.notify(control, 0, 1);
+});`,
+          main: `// main.ts
+const SIZE = 10000;
+const controlBuffer = new SharedArrayBuffer(8);
+const dataBuffer = new SharedArrayBuffer(SIZE * 8);
+const control = new Int32Array(controlBuffer);
+const data = new Float64Array(dataBuffer);
+for (let i = 0; i < SIZE; i++) data[i] = Math.random();
+
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+worker.postMessage({ controlBuffer, dataBuffer });
+
+Atomics.waitAsync(control, 0, 0).value.then(() => {
+  console.log('Done:', Array.from(data.slice(0, 5)));
+});`
+        }
+      },
+      broadcast: {
+        js: {
+          worker: `// worker.js — Custom Task with BroadcastChannel
+var channel = new BroadcastChannel('task-results');
+
+self.addEventListener('message', function(e) {
+  var task = e.data;
+
+  // Progress via BroadcastChannel (all tabs receive updates)
+  channel.postMessage({ type: 'progress', taskId: task.id, percent: 50 });
+
+  var result = processTask(task.data);
+
+  channel.postMessage({ type: 'done', taskId: task.id, result: result });
+});
+
+function processTask(data) {
+  return { processed: data, timestamp: Date.now() };
+}`,
+          main: `// main.js
+var worker = new Worker('./worker.js');
+var channel = new BroadcastChannel('task-results');
+
+// All tabs/windows on same origin receive these
+channel.addEventListener('message', function(e) {
+  if (e.data.type === 'progress') {
+    console.log('[Tab] Task ' + e.data.taskId + ' progress: ' + e.data.percent + '%');
+  } else if (e.data.type === 'done') {
+    console.log('[Tab] Task ' + e.data.taskId + ' done:', e.data.result);
+  }
+});
+
+worker.postMessage({ id: 'task-001', data: { input: 42 } });`
+        },
+        ts: {
+          worker: `// worker.ts
+const channel = new BroadcastChannel('task-results');
+
+self.addEventListener('message', (e: MessageEvent<{ id: string; data: unknown }>) => {
+  const { id, data } = e.data;
+  channel.postMessage({ type: 'progress', taskId: id, percent: 50 });
+  const result = { processed: data, timestamp: Date.now() };
+  channel.postMessage({ type: 'done', taskId: id, result });
+});`,
+          main: `// main.ts
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+const channel = new BroadcastChannel('task-results');
+
+channel.addEventListener('message', (e: MessageEvent) => {
+  const { type, taskId, percent, result } = e.data;
+  if (type === 'progress') console.log('Progress', taskId, percent + '%');
+  else if (type === 'done') console.log('Done', taskId, result);
+});
+
+worker.postMessage({ id: 'task-001', data: { input: 42 } });`
+        }
+      }
+    }
+  };
+
+  var NOTES = {
+    postmessage: [
+      'Data is structured-cloned (deep copied) on each postMessage call.',
+      'For large binary data (ArrayBuffer), pass as transferable to avoid copying.',
+      'Simple and widely supported — use as default choice.',
+    ],
+    sharedbuffer: [
+      'Requires Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp headers.',
+      'True shared memory — both threads read/write the same buffer with zero copy.',
+      'Use Atomics for synchronization to prevent race conditions.',
+      'Best for high-performance scenarios with large binary data.',
+    ],
+    broadcast: [
+      'Broadcasts to all tabs, windows, and workers on the same origin.',
+      'Messages are NOT received by the sender itself.',
+      'Useful for syncing state across multiple tabs (auth, theme, notifications).',
+      'BroadcastChannel is not a substitute for postMessage between a specific worker and main thread.',
+    ],
+  };
+
+  function update() {
+    var task = document.getElementById('task-type').value;
+    var comm = document.getElementById('comm-pattern').value;
+    var lang = document.getElementById('lang-select').value;
+    var tmpl = TEMPLATES[task] && TEMPLATES[task][comm] && TEMPLATES[task][comm][lang];
+
+    if (!tmpl) return;
+
+    var ext = lang === 'ts' ? '.ts' : '.js';
+    document.getElementById('worker-file-label').textContent = 'worker' + ext;
+    document.getElementById('main-file-label').textContent = 'main' + ext;
+    document.getElementById('worker-code').textContent = tmpl.worker;
+    document.getElementById('main-code').textContent = tmpl.main;
+
+    var notes = NOTES[comm] || [];
+    document.getElementById('notes-content').innerHTML = notes.map(function(n) {
+      return '<div class="flex gap-2"><span class="text-accent shrink-0">•</span><span>' + n + '</span></div>';
+    }).join('');
+  }
+
+  function copyEl(btnId, srcId) {
+    navigator.clipboard.writeText(document.getElementById(srcId).textContent).then(function() {
+      var btn = document.getElementById(btnId);
+      var orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = orig; }, 1500);
+    });
+  }
+
+  document.getElementById('task-type').addEventListener('change', update);
+  document.getElementById('comm-pattern').addEventListener('change', update);
+  document.getElementById('lang-select').addEventListener('change', update);
+  document.getElementById('copy-worker').addEventListener('click', function() { copyEl('copy-worker', 'worker-code'); });
+  document.getElementById('copy-main').addEventListener('click', function() { copyEl('copy-main', 'main-code'); });
+
+  update();
+})();
+</script>
