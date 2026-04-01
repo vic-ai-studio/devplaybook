@@ -1,0 +1,628 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a Kubernetes NetworkPolicy and what does it actually do?", answer: "A NetworkPolicy is a Kubernetes resource that defines how pods communicate with each other and with external endpoints. By default, all pods can communicate freely — a NetworkPolicy selects pods via labelSelector and restricts which traffic is allowed. Crucially, NetworkPolicy requires a CNI plugin that enforces it: Calico, Cilium, Weave Net, or Antrea. Flannel does NOT enforce NetworkPolicy. Creating a policy with an empty podSelector {} applies it to all pods in the namespace, immediately defaulting to deny-all." },
+  { question: "What is the difference between ingress and egress in NetworkPolicy?", answer: "Ingress rules control inbound traffic — which sources can send traffic TO the selected pods. Egress rules control outbound traffic — where the selected pods can SEND traffic. If you specify an ingress block, only the listed sources are allowed; all other inbound traffic is denied. Same for egress. If you omit the ingress or egress block entirely, it is not restricted by this policy. To create a default deny-all, create a NetworkPolicy that selects all pods but has empty ingress: [] and egress: [] arrays." },
+  { question: "How do namespaceSelector and podSelector work together in NetworkPolicy rules?", answer: "In a NetworkPolicy from/to rule, namespaceSelector selects entire namespaces (all pods in matching namespaces), podSelector selects pods within the same namespace as the policy, and you can combine them. If you put BOTH in the same rule object (using AND logic): { namespaceSelector: {...}, podSelector: {...} } — it selects pods matching podSelector WITHIN namespaces matching namespaceSelector. If you use separate list items (OR logic), each is an independent source. This AND vs OR distinction is critical and a common source of bugs." },
+  { question: "How do I allow DNS resolution in a deny-all egress policy?", answer: "DNS uses UDP and TCP port 53. If you create a deny-all egress policy, pods lose DNS resolution. Always add an explicit egress rule allowing port 53 to your cluster's DNS service: { ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }], to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } } }] }. Without this, pods cannot resolve service names, breaking all service discovery. This is the most common mistake when implementing egress policies." },
+  { question: "What is an ipBlock and when should I use it?", answer: "ipBlock allows specifying a CIDR range as a traffic source or destination. Use it for: allowing traffic from external load balancers or specific IP ranges (office IPs, VPN CIDRs), allowing egress to external APIs (e.g. 0.0.0.0/0 except internal RFC1918 ranges), or blocking access to cloud metadata endpoints (169.254.0.0/16 via except). The except field within ipBlock lets you exclude sub-ranges from a broader CIDR. ipBlock cannot reference pod or namespace labels — use podSelector/namespaceSelector for internal cluster traffic." },
+];
+---
+
+<BaseLayout
+  title="Kubernetes NetworkPolicy Builder — Visual K8s Network Policy YAML Generator"
+  description="Build Kubernetes NetworkPolicy YAML visually. Add ingress and egress rules with namespace selectors, pod selectors, IP blocks, and port configurations. Generate valid NetworkPolicy YAML with validation."
+  tool="Kubernetes NetworkPolicy builder, K8s network policy generator, NetworkPolicy YAML, pod selector network policy, namespace selector Kubernetes, deny-all network policy"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Kubernetes NetworkPolicy Builder",
+    "url": "https://devplaybook.cc/tools/k8s-network-policy-builder",
+    "description": "Visual builder for Kubernetes NetworkPolicy YAML with pod selectors, namespace selectors, IP blocks, and port rules.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Kubernetes NetworkPolicy Builder</h1>
+  <p class="text-text-muted mb-4">
+    Visually configure <strong>Kubernetes NetworkPolicy</strong> rules. Add ingress and egress rules with pod selectors,
+    namespace selectors, and IP blocks, then get a validated, copy-ready YAML manifest.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pod & namespace selectors</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> IP block (CIDR) rules</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> TCP/UDP port configuration</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Ingress & egress pipelines</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live YAML with validation</span>
+  </div>
+
+  <!-- Quick presets -->
+  <div class="flex flex-wrap gap-2 mb-6">
+    <span class="text-sm text-text-muted self-center">Presets:</span>
+    <button class="preset-btn bg-black/20 border border-border text-text-muted px-3 py-1.5 rounded-lg text-xs hover:border-primary transition-colors" data-preset="deny-all">Deny All</button>
+    <button class="preset-btn bg-black/20 border border-border text-text-muted px-3 py-1.5 rounded-lg text-xs hover:border-primary transition-colors" data-preset="allow-same-ns">Allow Same Namespace</button>
+    <button class="preset-btn bg-black/20 border border-border text-text-muted px-3 py-1.5 rounded-lg text-xs hover:border-primary transition-colors" data-preset="allow-ingress">Frontend → Backend</button>
+    <button class="preset-btn bg-black/20 border border-border text-text-muted px-3 py-1.5 rounded-lg text-xs hover:border-primary transition-colors" data-preset="db-policy">Database Policy</button>
+    <button class="preset-btn bg-black/20 border border-border text-text-muted px-3 py-1.5 rounded-lg text-xs hover:border-primary transition-colors" data-preset="egress-dns">Egress + DNS Allow</button>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Left: Builder -->
+    <div class="space-y-4">
+
+      <!-- Target (policy selector) -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Policy Target</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Policy Name</label>
+            <input id="policy-name" type="text" value="backend-network-policy"
+              class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Namespace</label>
+            <input id="policy-ns" type="text" value="production"
+              class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Pod Selector Labels <span class="text-text-muted font-normal text-xs">(targets these pods; empty = all pods)</span></label>
+            <div id="pod-selector-labels" class="space-y-2">
+              <div class="flex gap-2 label-row">
+                <input type="text" placeholder="key" value="app" class="w-1/2 bg-black/20 border border-border rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-primary label-key" />
+                <input type="text" placeholder="value" value="backend" class="w-1/2 bg-black/20 border border-border rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-primary label-val" />
+                <button class="remove-label text-text-muted hover:text-red-400 text-lg leading-none px-1" title="Remove">×</button>
+              </div>
+            </div>
+            <button id="add-pod-label" class="mt-2 text-xs text-primary hover:underline">+ Add label</button>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Policy Types</label>
+            <div class="flex gap-4">
+              <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <input type="checkbox" id="type-ingress" checked class="accent-primary" /> Ingress
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <input type="checkbox" id="type-egress" class="accent-primary" /> Egress
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ingress Rules -->
+      <div id="ingress-section" class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold">Ingress Rules</h2>
+          <button id="add-ingress-rule" class="bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-xs font-medium">+ Add Rule</button>
+        </div>
+        <div id="ingress-rules-list" class="space-y-4">
+          <!-- populated by JS -->
+        </div>
+        <p id="ingress-empty" class="text-sm text-text-muted italic">No ingress rules — all inbound traffic is denied.</p>
+      </div>
+
+      <!-- Egress Rules -->
+      <div id="egress-section" class="bg-bg-card border border-border rounded-xl p-5 hidden">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold">Egress Rules</h2>
+          <button id="add-egress-rule" class="bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-xs font-medium">+ Add Rule</button>
+        </div>
+        <div id="egress-rules-list" class="space-y-4">
+          <!-- populated by JS -->
+        </div>
+        <p id="egress-empty" class="text-sm text-text-muted italic">No egress rules — all outbound traffic is denied.</p>
+      </div>
+    </div>
+
+    <!-- Right: Output + validation -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">NetworkPolicy YAML</h2>
+          <div class="flex gap-2">
+            <button id="copy-yaml-btn" class="bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-sm font-medium transition-opacity">Copy YAML</button>
+          </div>
+        </div>
+        <pre id="yaml-output" class="bg-black/20 rounded-lg p-4 text-xs font-mono text-green-400 overflow-auto max-h-96 leading-relaxed whitespace-pre"></pre>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Validation</h2>
+        <div id="validation-output" class="space-y-2 text-sm"></div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Apply Commands</h2>
+        <pre id="apply-commands" class="bg-black/20 rounded-lg p-4 text-xs font-mono text-yellow-400 leading-relaxed whitespace-pre overflow-auto"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Kubernetes NetworkPolicy Builder" relatedTags={['kubernetes', 'networking', 'security', 'devops', 'k8s', 'infrastructure']} />
+</BaseLayout>
+
+<script>
+  interface PortRule { protocol: 'TCP' | 'UDP'; port: number }
+  interface PeerRule { type: 'podSelector' | 'namespaceSelector' | 'ipBlock'; key?: string; value?: string; cidr?: string; except?: string }
+  interface NetworkRule { ports: PortRule[]; peers: PeerRule[] }
+
+  let ingressRules: NetworkRule[] = [];
+  let egressRules: NetworkRule[] = [];
+
+  function el(id: string): HTMLElement | null { return document.getElementById(id); }
+  function val(id: string): string { return (el(id) as HTMLInputElement)?.value ?? ''; }
+  function checked(id: string): boolean { return (el(id) as HTMLInputElement)?.checked ?? false; }
+
+  function getPodLabels(): Record<string, string> {
+    const labels: Record<string, string> = {};
+    document.querySelectorAll('#pod-selector-labels .label-row').forEach(row => {
+      const k = (row.querySelector('.label-key') as HTMLInputElement)?.value?.trim();
+      const v = (row.querySelector('.label-val') as HTMLInputElement)?.value?.trim();
+      if (k) labels[k] = v;
+    });
+    return labels;
+  }
+
+  function buildYaml(): string {
+    const name = val('policy-name') || 'my-network-policy';
+    const ns = val('policy-ns') || 'default';
+    const podLabels = getPodLabels();
+    const hasIngress = checked('type-ingress');
+    const hasEgress = checked('type-egress');
+
+    const lines: string[] = [
+      'apiVersion: networking.k8s.io/v1',
+      'kind: NetworkPolicy',
+      'metadata:',
+      `  name: ${name}`,
+      `  namespace: ${ns}`,
+      'spec:',
+      '  podSelector:',
+    ];
+
+    if (Object.keys(podLabels).length > 0) {
+      lines.push('    matchLabels:');
+      for (const [k, v] of Object.entries(podLabels)) {
+        lines.push(`      ${k}: "${v}"`);
+      }
+    } else {
+      lines.push('    matchLabels: {}');
+    }
+
+    const types: string[] = [];
+    if (hasIngress) types.push('Ingress');
+    if (hasEgress) types.push('Egress');
+    lines.push('  policyTypes:');
+    types.forEach(t => lines.push(`    - ${t}`));
+
+    if (hasIngress) {
+      lines.push('  ingress:');
+      if (ingressRules.length === 0) {
+        lines.push('  # Empty ingress: denies all inbound traffic');
+        lines.push('  []');
+      } else {
+        ingressRules.forEach(rule => {
+          lines.push('    - {}');
+          // from
+          if (rule.peers.length > 0) {
+            lines[lines.length - 1] = '    -';
+            lines.push('      from:');
+            rule.peers.forEach(peer => {
+              if (peer.type === 'podSelector') {
+                lines.push('        - podSelector:');
+                lines.push('            matchLabels:');
+                lines.push(`              ${peer.key || 'app'}: "${peer.value || ''}"`);
+              } else if (peer.type === 'namespaceSelector') {
+                lines.push('        - namespaceSelector:');
+                lines.push('            matchLabels:');
+                lines.push(`              ${peer.key || 'kubernetes.io/metadata.name'}: "${peer.value || ''}"`);
+              } else if (peer.type === 'ipBlock') {
+                lines.push('        - ipBlock:');
+                lines.push(`            cidr: ${peer.cidr || '10.0.0.0/8'}`);
+                if (peer.except) {
+                  lines.push('            except:');
+                  peer.except.split(',').map(s => s.trim()).filter(Boolean).forEach(e => {
+                    lines.push(`              - ${e}`);
+                  });
+                }
+              }
+            });
+          }
+          if (rule.ports.length > 0) {
+            if (rule.peers.length === 0) lines[lines.length - 1] = '    -';
+            lines.push('      ports:');
+            rule.ports.forEach(p => {
+              lines.push(`        - protocol: ${p.protocol}`);
+              lines.push(`          port: ${p.port}`);
+            });
+          }
+        });
+      }
+    }
+
+    if (hasEgress) {
+      lines.push('  egress:');
+      if (egressRules.length === 0) {
+        lines.push('  # Empty egress: denies all outbound traffic');
+        lines.push('  []');
+      } else {
+        egressRules.forEach(rule => {
+          if (rule.peers.length > 0) {
+            lines.push('    -');
+            lines.push('      to:');
+            rule.peers.forEach(peer => {
+              if (peer.type === 'podSelector') {
+                lines.push('        - podSelector:');
+                lines.push('            matchLabels:');
+                lines.push(`              ${peer.key || 'app'}: "${peer.value || ''}"`);
+              } else if (peer.type === 'namespaceSelector') {
+                lines.push('        - namespaceSelector:');
+                lines.push('            matchLabels:');
+                lines.push(`              ${peer.key || 'kubernetes.io/metadata.name'}: "${peer.value || ''}"`);
+              } else if (peer.type === 'ipBlock') {
+                lines.push('        - ipBlock:');
+                lines.push(`            cidr: ${peer.cidr || '0.0.0.0/0'}`);
+                if (peer.except) {
+                  lines.push('            except:');
+                  peer.except.split(',').map(s => s.trim()).filter(Boolean).forEach(e => {
+                    lines.push(`              - ${e}`);
+                  });
+                }
+              }
+            });
+          } else {
+            lines.push('    - {}');
+          }
+          if (rule.ports.length > 0) {
+            lines.push('      ports:');
+            rule.ports.forEach(p => {
+              lines.push(`        - protocol: ${p.protocol}`);
+              lines.push(`          port: ${p.port}`);
+            });
+          }
+        });
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  function buildValidation(): { type: 'ok' | 'warn' | 'error'; msg: string }[] {
+    const msgs: { type: 'ok' | 'warn' | 'error'; msg: string }[] = [];
+    const hasIngress = checked('type-ingress');
+    const hasEgress = checked('type-egress');
+    if (!hasIngress && !hasEgress) msgs.push({ type: 'error', msg: 'No policy type selected — policy has no effect.' });
+    if (hasIngress && ingressRules.length === 0) msgs.push({ type: 'warn', msg: 'Ingress selected with no rules: all inbound traffic to selected pods is DENIED.' });
+    if (hasEgress && egressRules.length === 0) msgs.push({ type: 'warn', msg: 'Egress selected with no rules: all outbound traffic from selected pods is DENIED. Remember to allow DNS (port 53)!' });
+    const hasDnsRule = egressRules.some(r => r.ports.some(p => p.port === 53));
+    if (hasEgress && egressRules.length > 0 && !hasDnsRule) msgs.push({ type: 'warn', msg: 'Egress rules present but no port 53 (DNS) rule — pods may lose service discovery.' });
+    const labels = getPodLabels();
+    if (Object.keys(labels).length === 0) msgs.push({ type: 'warn', msg: 'Empty podSelector {} — policy applies to ALL pods in the namespace.' });
+    if (!val('policy-name')) msgs.push({ type: 'error', msg: 'Policy name is required.' });
+    if (!val('policy-ns')) msgs.push({ type: 'error', msg: 'Namespace is required.' });
+    if (msgs.length === 0 || msgs.every(m => m.type !== 'error')) msgs.unshift({ type: 'ok', msg: 'NetworkPolicy YAML is valid and ready to apply.' });
+    return msgs;
+  }
+
+  function renderAll() {
+    const yaml = buildYaml();
+    const out = el('yaml-output');
+    if (out) out.textContent = yaml;
+
+    const msgs = buildValidation();
+    const valOut = el('validation-output');
+    if (valOut) {
+      valOut.innerHTML = msgs.map(m => {
+        const icon = m.type === 'ok' ? '<span class="text-green-500">✓</span>' : m.type === 'warn' ? '<span class="text-yellow-400">⚠</span>' : '<span class="text-red-500">✗</span>';
+        const color = m.type === 'ok' ? 'text-green-400' : m.type === 'warn' ? 'text-yellow-400' : 'text-red-400';
+        return `<div class="flex items-start gap-2 ${color}">${icon}<span>${m.msg}</span></div>`;
+      }).join('');
+    }
+
+    const applyEl = el('apply-commands');
+    const name = val('policy-name') || 'my-network-policy';
+    const ns = val('policy-ns') || 'default';
+    if (applyEl) applyEl.textContent = [
+      `# Apply the NetworkPolicy`,
+      `kubectl apply -f network-policy.yaml`,
+      ``,
+      `# Verify policy was created`,
+      `kubectl get networkpolicy ${name} -n ${ns}`,
+      ``,
+      `# Describe policy details`,
+      `kubectl describe networkpolicy ${name} -n ${ns}`,
+      ``,
+      `# Test connectivity from a debug pod`,
+      `kubectl run debug --image=busybox -n ${ns} --rm -it -- sh`,
+      `# Inside pod: wget -T 2 -q http://backend:8080/health`,
+      ``,
+      `# Check Cilium/Calico policy enforcement (if using Cilium)`,
+      `cilium policy get`,
+    ].join('\n');
+
+    // Show/hide sections
+    const ingressSection = el('ingress-section');
+    const egressSection = el('egress-section');
+    if (ingressSection) ingressSection.style.display = checked('type-ingress') ? '' : 'none';
+    if (egressSection) egressSection.style.display = checked('type-egress') ? '' : 'none';
+
+    // Empty messages
+    const ingressEmpty = el('ingress-empty');
+    const egressEmpty = el('egress-empty');
+    if (ingressEmpty) ingressEmpty.style.display = ingressRules.length === 0 ? '' : 'none';
+    if (egressEmpty) egressEmpty.style.display = egressRules.length === 0 ? '' : 'none';
+  }
+
+  function createRuleUI(rule: NetworkRule, index: number, direction: 'ingress' | 'egress'): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'border border-border rounded-lg p-3 space-y-3 bg-black/10';
+    container.dataset.index = String(index);
+
+    container.innerHTML = `
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-medium">${direction === 'ingress' ? 'From' : 'To'} Rule ${index + 1}</span>
+        <button class="remove-rule text-text-muted hover:text-red-400 text-xs border border-border rounded px-2 py-0.5 hover:border-red-400 transition-colors">Remove</button>
+      </div>
+
+      <div>
+        <label class="text-xs font-medium text-text-muted uppercase tracking-wide mb-2 block">Ports</label>
+        <div class="ports-list space-y-1.5"></div>
+        <button class="add-port mt-1.5 text-xs text-primary hover:underline">+ Add Port</button>
+      </div>
+
+      <div>
+        <label class="text-xs font-medium text-text-muted uppercase tracking-wide mb-2 block">Peers (${direction === 'ingress' ? 'from' : 'to'})</label>
+        <div class="peers-list space-y-1.5"></div>
+        <div class="flex gap-2 mt-1.5">
+          <button class="add-pod-peer text-xs text-primary hover:underline">+ Pod</button>
+          <button class="add-ns-peer text-xs text-primary hover:underline">+ Namespace</button>
+          <button class="add-ip-peer text-xs text-primary hover:underline">+ IP Block</button>
+        </div>
+      </div>
+    `;
+
+    // Render existing ports
+    const portsList = container.querySelector('.ports-list')!;
+    function renderPorts() {
+      portsList.innerHTML = '';
+      rule.ports.forEach((p, pi) => {
+        const row = document.createElement('div');
+        row.className = 'flex gap-2 items-center';
+        row.innerHTML = `
+          <select class="port-proto bg-black/20 border border-border rounded px-1.5 py-1 text-xs focus:outline-none focus:border-primary">
+            <option value="TCP" ${p.protocol === 'TCP' ? 'selected' : ''}>TCP</option>
+            <option value="UDP" ${p.protocol === 'UDP' ? 'selected' : ''}>UDP</option>
+          </select>
+          <input type="number" value="${p.port}" min="1" max="65535" class="port-num w-20 bg-black/20 border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-primary" />
+          <button class="remove-port text-text-muted hover:text-red-400 text-sm leading-none" data-pi="${pi}">×</button>
+        `;
+        row.querySelector('.port-proto')!.addEventListener('change', (e) => {
+          rule.ports[pi].protocol = (e.target as HTMLSelectElement).value as 'TCP' | 'UDP';
+          renderAll();
+        });
+        row.querySelector('.port-num')!.addEventListener('input', (e) => {
+          rule.ports[pi].port = parseInt((e.target as HTMLInputElement).value) || 80;
+          renderAll();
+        });
+        row.querySelector('.remove-port')!.addEventListener('click', () => {
+          rule.ports.splice(pi, 1);
+          renderPorts();
+          renderAll();
+        });
+        portsList.appendChild(row);
+      });
+    }
+    renderPorts();
+
+    container.querySelector('.add-port')!.addEventListener('click', () => {
+      rule.ports.push({ protocol: 'TCP', port: 80 });
+      renderPorts();
+      renderAll();
+    });
+
+    // Render existing peers
+    const peersList = container.querySelector('.peers-list')!;
+    function renderPeers() {
+      peersList.innerHTML = '';
+      rule.peers.forEach((peer, pi) => {
+        const row = document.createElement('div');
+        row.className = 'flex gap-2 items-center flex-wrap text-xs';
+
+        if (peer.type === 'podSelector' || peer.type === 'namespaceSelector') {
+          const label = peer.type === 'podSelector' ? 'Pod:' : 'NS:';
+          const defaultKey = peer.type === 'namespaceSelector' ? 'kubernetes.io/metadata.name' : 'app';
+          row.innerHTML = `
+            <span class="text-text-muted bg-black/20 rounded px-1.5 py-0.5">${label}</span>
+            <input type="text" placeholder="key" value="${peer.key || defaultKey}" class="peer-key w-32 bg-black/20 border border-border rounded px-2 py-1 font-mono focus:outline-none focus:border-primary" />
+            <span class="text-text-muted">=</span>
+            <input type="text" placeholder="value" value="${peer.value || ''}" class="peer-val w-28 bg-black/20 border border-border rounded px-2 py-1 font-mono focus:outline-none focus:border-primary" />
+            <button class="remove-peer text-text-muted hover:text-red-400 text-sm leading-none" data-pi="${pi}">×</button>
+          `;
+          row.querySelector('.peer-key')!.addEventListener('input', (e) => { peer.key = (e.target as HTMLInputElement).value; renderAll(); });
+          row.querySelector('.peer-val')!.addEventListener('input', (e) => { peer.value = (e.target as HTMLInputElement).value; renderAll(); });
+        } else {
+          row.innerHTML = `
+            <span class="text-text-muted bg-black/20 rounded px-1.5 py-0.5">IP:</span>
+            <input type="text" placeholder="CIDR" value="${peer.cidr || '10.0.0.0/8'}" class="peer-cidr w-32 bg-black/20 border border-border rounded px-2 py-1 font-mono focus:outline-none focus:border-primary" />
+            <input type="text" placeholder="except (comma sep)" value="${peer.except || ''}" class="peer-except w-36 bg-black/20 border border-border rounded px-2 py-1 font-mono focus:outline-none focus:border-primary" />
+            <button class="remove-peer text-text-muted hover:text-red-400 text-sm leading-none" data-pi="${pi}">×</button>
+          `;
+          row.querySelector('.peer-cidr')!.addEventListener('input', (e) => { peer.cidr = (e.target as HTMLInputElement).value; renderAll(); });
+          row.querySelector('.peer-except')!.addEventListener('input', (e) => { peer.except = (e.target as HTMLInputElement).value; renderAll(); });
+        }
+
+        row.querySelector('.remove-peer')!.addEventListener('click', () => {
+          rule.peers.splice(pi, 1);
+          renderPeers();
+          renderAll();
+        });
+
+        peersList.appendChild(row);
+      });
+    }
+    renderPeers();
+
+    container.querySelector('.add-pod-peer')!.addEventListener('click', () => {
+      rule.peers.push({ type: 'podSelector', key: 'app', value: '' });
+      renderPeers();
+      renderAll();
+    });
+    container.querySelector('.add-ns-peer')!.addEventListener('click', () => {
+      rule.peers.push({ type: 'namespaceSelector', key: 'kubernetes.io/metadata.name', value: '' });
+      renderPeers();
+      renderAll();
+    });
+    container.querySelector('.add-ip-peer')!.addEventListener('click', () => {
+      rule.peers.push({ type: 'ipBlock', cidr: '10.0.0.0/8' });
+      renderPeers();
+      renderAll();
+    });
+
+    container.querySelector('.remove-rule')!.addEventListener('click', () => {
+      if (direction === 'ingress') {
+        ingressRules.splice(index, 1);
+        rerenderRules('ingress');
+      } else {
+        egressRules.splice(index, 1);
+        rerenderRules('egress');
+      }
+      renderAll();
+    });
+
+    return container;
+  }
+
+  function rerenderRules(direction: 'ingress' | 'egress') {
+    const listEl = el(`${direction}-rules-list`);
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    const rules = direction === 'ingress' ? ingressRules : egressRules;
+    rules.forEach((rule, i) => {
+      listEl.appendChild(createRuleUI(rule, i, direction));
+    });
+  }
+
+  function addRule(direction: 'ingress' | 'egress') {
+    const newRule: NetworkRule = { ports: [{ protocol: 'TCP', port: 80 }], peers: [] };
+    if (direction === 'ingress') ingressRules.push(newRule);
+    else egressRules.push(newRule);
+    rerenderRules(direction);
+    renderAll();
+  }
+
+  // Presets
+  const PRESETS: Record<string, () => void> = {
+    'deny-all': () => {
+      (el('policy-name') as HTMLInputElement).value = 'default-deny-all';
+      (el('type-ingress') as HTMLInputElement).checked = true;
+      (el('type-egress') as HTMLInputElement).checked = true;
+      ingressRules = [];
+      egressRules = [];
+      document.querySelector('#pod-selector-labels .label-key')!.setAttribute('value', '');
+      (document.querySelector('#pod-selector-labels .label-key') as HTMLInputElement).value = '';
+      (document.querySelector('#pod-selector-labels .label-val') as HTMLInputElement).value = '';
+    },
+    'allow-same-ns': () => {
+      (el('policy-name') as HTMLInputElement).value = 'allow-same-namespace';
+      (el('type-ingress') as HTMLInputElement).checked = true;
+      (el('type-egress') as HTMLInputElement).checked = false;
+      ingressRules = [{ ports: [], peers: [{ type: 'namespaceSelector', key: 'kubernetes.io/metadata.name', value: val('policy-ns') || 'production' }] }];
+      egressRules = [];
+    },
+    'allow-ingress': () => {
+      (el('policy-name') as HTMLInputElement).value = 'frontend-to-backend';
+      (el('policy-ns') as HTMLInputElement).value = 'production';
+      (document.querySelector('#pod-selector-labels .label-key') as HTMLInputElement).value = 'app';
+      (document.querySelector('#pod-selector-labels .label-val') as HTMLInputElement).value = 'backend';
+      (el('type-ingress') as HTMLInputElement).checked = true;
+      (el('type-egress') as HTMLInputElement).checked = false;
+      ingressRules = [{ ports: [{ protocol: 'TCP', port: 8080 }], peers: [{ type: 'podSelector', key: 'app', value: 'frontend' }] }];
+      egressRules = [];
+    },
+    'db-policy': () => {
+      (el('policy-name') as HTMLInputElement).value = 'postgres-network-policy';
+      (document.querySelector('#pod-selector-labels .label-key') as HTMLInputElement).value = 'app';
+      (document.querySelector('#pod-selector-labels .label-val') as HTMLInputElement).value = 'postgres';
+      (el('type-ingress') as HTMLInputElement).checked = true;
+      (el('type-egress') as HTMLInputElement).checked = false;
+      ingressRules = [{ ports: [{ protocol: 'TCP', port: 5432 }], peers: [{ type: 'podSelector', key: 'app', value: 'backend' }] }];
+      egressRules = [];
+    },
+    'egress-dns': () => {
+      (el('policy-name') as HTMLInputElement).value = 'allow-egress-dns';
+      (el('type-ingress') as HTMLInputElement).checked = false;
+      (el('type-egress') as HTMLInputElement).checked = true;
+      ingressRules = [];
+      egressRules = [
+        { ports: [{ protocol: 'UDP', port: 53 }, { protocol: 'TCP', port: 53 }], peers: [{ type: 'namespaceSelector', key: 'kubernetes.io/metadata.name', value: 'kube-system' }] },
+        { ports: [{ protocol: 'TCP', port: 443 }], peers: [{ type: 'ipBlock', cidr: '0.0.0.0/0', except: '10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16' }] },
+      ];
+    },
+  };
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const preset = (btn as HTMLElement).dataset.preset!;
+      if (PRESETS[preset]) {
+        PRESETS[preset]();
+        rerenderRules('ingress');
+        rerenderRules('egress');
+        renderAll();
+      }
+    });
+  });
+
+  // Add rule buttons
+  el('add-ingress-rule')?.addEventListener('click', () => addRule('ingress'));
+  el('add-egress-rule')?.addEventListener('click', () => addRule('egress'));
+
+  // Policy type toggles
+  el('type-ingress')?.addEventListener('change', renderAll);
+  el('type-egress')?.addEventListener('change', renderAll);
+
+  // Pod selector labels
+  el('add-pod-label')?.addEventListener('click', () => {
+    const container = el('pod-selector-labels')!;
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 label-row';
+    row.innerHTML = `
+      <input type="text" placeholder="key" class="w-1/2 bg-black/20 border border-border rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-primary label-key" />
+      <input type="text" placeholder="value" class="w-1/2 bg-black/20 border border-border rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-primary label-val" />
+      <button class="remove-label text-text-muted hover:text-red-400 text-lg leading-none px-1">×</button>
+    `;
+    row.querySelector('.remove-label')!.addEventListener('click', () => { row.remove(); renderAll(); });
+    row.querySelectorAll('input').forEach(i => i.addEventListener('input', renderAll));
+    container.appendChild(row);
+  });
+
+  document.querySelectorAll('#pod-selector-labels .remove-label').forEach(btn => {
+    btn.addEventListener('click', (e) => { (e.target as HTMLElement).closest('.label-row')?.remove(); renderAll(); });
+  });
+  document.querySelectorAll('#pod-selector-labels input').forEach(i => i.addEventListener('input', renderAll));
+
+  // Global inputs
+  document.querySelectorAll('#policy-name, #policy-ns').forEach(i => i.addEventListener('input', renderAll));
+
+  // Copy button
+  el('copy-yaml-btn')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(el('yaml-output')?.textContent ?? '').then(() => {
+      const btn = el('copy-yaml-btn') as HTMLButtonElement;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy YAML'; }, 2000);
+    });
+  });
+
+  // Initial state: load "Frontend → Backend" preset
+  PRESETS['allow-ingress']();
+  rerenderRules('ingress');
+  rerenderRules('egress');
+  renderAll();
+</script>

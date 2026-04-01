@@ -1,0 +1,552 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "Why should containers run as non-root users?", answer: "Running as root inside a container is dangerous because if an attacker escapes the container (via a kernel vulnerability or misconfiguration), they gain root on the host. The principle of least privilege requires containers run as an unprivileged user. Use USER directive in Dockerfile: 'RUN addgroup -S appgroup && adduser -S appuser -G appgroup' then 'USER appuser'. Kubernetes SecurityContext can also enforce non-root at the pod level with runAsNonRoot: true." },
+  { question: "What are the most secure base images to use?", answer: "Minimal base images reduce attack surface by containing fewer packages that could have vulnerabilities. Best options: scratch (empty, for statically compiled Go/Rust binaries), distroless (Google's minimal images without shell or package manager), Alpine (musl libc + BusyBox, ~5MB), Chainguard images (hardened, continuously patched). Avoid full debian/ubuntu/centos for production — they include compilers, package managers, and hundreds of packages you don't need." },
+  { question: "Why are multi-stage builds important for security?", answer: "Multi-stage builds separate the build environment (with compilers, dev dependencies, secrets needed for fetching packages) from the final runtime image. Build secrets, SSH keys, and dev tools never appear in the final image layers. The final image only contains compiled artifacts. This dramatically reduces image size and attack surface — a typical Go app goes from 800MB to 10MB, and a Node.js app from 400MB to 50MB with multi-stage builds." },
+  { question: "What secrets should never appear in ENV or ARG instructions?", answer: "API keys, database passwords, private keys, tokens, and any credentials should never be in ENV (they're visible in docker inspect and image metadata) or ARG (visible in build history). Use Docker secrets (--secret flag) for build-time secrets, or runtime secrets injection via environment from your orchestration layer (Kubernetes Secrets, AWS Secrets Manager, Vault). Scan images with tools like Trivy, docker scan, or Hadolint to detect hardcoded secrets." },
+  { question: "What is a HEALTHCHECK and why does it matter?", answer: "The HEALTHCHECK instruction tells Docker how to test if a container is still working correctly. Without it, Docker only tracks if the process is running — not if it's actually healthy (e.g., the app might be deadlocked or returning errors). A health check enables orchestrators (Kubernetes, Swarm) to restart unhealthy containers and route traffic away from them. Example: 'HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD wget -qO- http://localhost:8080/health || exit 1'" },
+];
+---
+
+<BaseLayout
+  title="Container Security Scanner — Dockerfile Security Checker & Hardened Template Generator"
+  description="Analyze your Dockerfile for security issues. Check for non-root user, minimal base images, secrets in ENV, COPY vs ADD, HEALTHCHECK, multi-stage builds, and pinned versions. Get a hardened Dockerfile template."
+  tool="Container security scanner, Dockerfile security checker, Docker hardening, container security best practices, Dockerfile linter security, container image security"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Container Security Scanner",
+    "url": "https://devplaybook.cc/tools/container-security-scanner",
+    "description": "Scan Dockerfile for security issues and generate a hardened Dockerfile template. Checks non-root user, minimal base image, secrets in ENV, and more.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Container Security Scanner</h1>
+  <p class="text-text-muted mb-4">
+    Paste your <strong>Dockerfile</strong> to get an instant security audit. Each rule is checked with a
+    pass/fail/warning result and an explanation. Also generates a <strong>hardened Dockerfile template</strong>
+    based on your base image.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 10 security rules</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Scored security report</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Hardened Dockerfile template</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CIS Docker Benchmark aligned</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Left: Input -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Dockerfile Input</h2>
+          <div class="flex gap-2">
+            <button id="load-node-sample" class="bg-black/20 border border-border text-text-muted px-2 py-1 rounded text-xs hover:border-primary transition-colors">Node.js</button>
+            <button id="load-python-sample" class="bg-black/20 border border-border text-text-muted px-2 py-1 rounded text-xs hover:border-primary transition-colors">Python</button>
+            <button id="load-go-sample" class="bg-black/20 border border-border text-text-muted px-2 py-1 rounded text-xs hover:border-primary transition-colors">Go</button>
+          </div>
+        </div>
+        <textarea id="dockerfile-input" rows="20"
+          class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-none leading-relaxed"
+          placeholder="Paste your Dockerfile here..."
+        ></textarea>
+        <button id="scan-btn" class="mt-3 w-full bg-primary text-white px-4 py-2.5 rounded-lg hover:opacity-90 font-medium transition-opacity">
+          Scan Dockerfile
+        </button>
+      </div>
+
+      <!-- Hardened template -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Generate Hardened Template</h2>
+          <button id="copy-template-btn" class="bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-sm font-medium transition-opacity">Copy</button>
+        </div>
+        <div class="mb-3 flex gap-2 flex-wrap">
+          <label class="text-sm font-medium">Stack:</label>
+          <select id="template-stack" class="bg-black/20 border border-border rounded px-2 py-1 text-sm focus:outline-none focus:border-primary">
+            <option value="node">Node.js</option>
+            <option value="python">Python</option>
+            <option value="go">Go</option>
+            <option value="java">Java (JRE)</option>
+            <option value="nginx">Nginx Static</option>
+          </select>
+          <select id="template-base" class="bg-black/20 border border-border rounded px-2 py-1 text-sm focus:outline-none focus:border-primary">
+            <option value="alpine">Alpine</option>
+            <option value="distroless">Distroless</option>
+            <option value="scratch">Scratch</option>
+          </select>
+        </div>
+        <pre id="template-output" class="bg-black/20 rounded-lg p-4 text-xs font-mono text-green-400 overflow-auto max-h-80 leading-relaxed whitespace-pre"></pre>
+      </div>
+    </div>
+
+    <!-- Right: Results -->
+    <div class="space-y-4">
+      <!-- Score card -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Security Score</h2>
+        <div class="flex items-center gap-4 mb-4">
+          <div id="score-circle" class="w-20 h-20 rounded-full border-4 border-border flex items-center justify-center text-2xl font-bold">
+            --
+          </div>
+          <div>
+            <div id="score-label" class="text-lg font-semibold text-text-muted">Paste a Dockerfile to scan</div>
+            <div id="score-summary" class="text-sm text-text-muted mt-1"></div>
+          </div>
+        </div>
+        <div class="w-full bg-black/20 rounded-full h-2 mb-1">
+          <div id="score-bar" class="h-2 rounded-full bg-gray-600 transition-all duration-500" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Rule results -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Security Checklist</h2>
+        <div id="rules-list" class="space-y-3">
+          <!-- populated by JS -->
+          <p class="text-sm text-text-muted">Scan a Dockerfile to see results.</p>
+        </div>
+      </div>
+
+      <!-- Findings detail -->
+      <div id="findings-panel" class="bg-bg-card border border-border rounded-xl p-5 hidden">
+        <h2 class="text-base font-semibold mb-3">Findings & Fixes</h2>
+        <div id="findings-list" class="space-y-3 text-sm"></div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Container Security Scanner" relatedTags={['docker', 'security', 'containers', 'devops', 'kubernetes', 'infrastructure']} />
+</BaseLayout>
+
+<script>
+  function el(id: string): HTMLElement | null { return document.getElementById(id); }
+  function val(id: string): string { return (el(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)?.value ?? ''; }
+
+  const SAMPLES: Record<string, string> = {
+    node: `FROM node:18
+WORKDIR /app
+COPY . .
+RUN npm install
+ENV SECRET_KEY=abc123xyz
+ADD https://example.com/config.json /app/config.json
+EXPOSE 3000
+CMD ["node", "index.js"]`,
+    python: `FROM python:3.11
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+ENV DATABASE_PASSWORD=hunter2
+CMD ["python", "app.py"]`,
+    go: `FROM golang:1.21
+WORKDIR /app
+COPY . .
+RUN go build -o server .
+EXPOSE 8080
+CMD ["./server"]`,
+  };
+
+  interface RuleResult {
+    id: string;
+    label: string;
+    status: 'pass' | 'fail' | 'warn' | 'skip';
+    message: string;
+    fix?: string;
+    weight: number;
+  }
+
+  function analyzeDockerfile(content: string): RuleResult[] {
+    const lines = content.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    const upper = content.toUpperCase();
+
+    const results: RuleResult[] = [];
+
+    // Rule 1: Non-root user
+    const hasUser = lines.some(l => l.startsWith('USER ') && !l.includes('root') && !l.includes('0'));
+    const hasRootUser = lines.some(l => l.startsWith('USER root') || l.startsWith('USER 0'));
+    results.push({
+      id: 'non-root', label: 'Non-root USER instruction', weight: 20,
+      status: hasUser ? 'pass' : hasRootUser ? 'fail' : 'fail',
+      message: hasUser ? 'Container runs as non-root user.' : 'No non-root USER found — container runs as root.',
+      fix: hasUser ? undefined : 'Add: RUN addgroup -S app && adduser -S app -G app\nUSER app',
+    });
+
+    // Rule 2: Minimal base image
+    const fromLines = lines.filter(l => l.startsWith('FROM '));
+    const finalFrom = fromLines[fromLines.length - 1] ?? '';
+    const isMinimal = /alpine|distroless|scratch|slim|chainguard/i.test(finalFrom);
+    const isHeavy = /ubuntu|debian|centos|fedora|amazon|oraclelinux/i.test(finalFrom) && !/slim/i.test(finalFrom);
+    results.push({
+      id: 'minimal-base', label: 'Minimal base image', weight: 15,
+      status: isMinimal ? 'pass' : isHeavy ? 'fail' : 'warn',
+      message: isMinimal ? 'Final image uses a minimal base.' : isHeavy ? 'Heavy base image detected — large attack surface.' : 'Base image may not be minimal.',
+      fix: isMinimal ? undefined : 'Use alpine, distroless, or -slim variants. E.g.: FROM node:18-alpine',
+    });
+
+    // Rule 3: No secrets in ENV
+    const envLines = lines.filter(l => l.startsWith('ENV ') || l.startsWith('ARG '));
+    const secretPatterns = /password|secret|key|token|api_key|private|passwd|credential|auth/i;
+    const hasSecretEnv = envLines.some(l => secretPatterns.test(l));
+    results.push({
+      id: 'no-secrets-env', label: 'No secrets in ENV/ARG', weight: 25,
+      status: hasSecretEnv ? 'fail' : 'pass',
+      message: hasSecretEnv ? 'Potential secret found in ENV/ARG — visible in image metadata!' : 'No obvious secrets detected in ENV/ARG.',
+      fix: hasSecretEnv ? 'Use --secret mount at build time or inject at runtime via orchestration.' : undefined,
+    });
+
+    // Rule 4: COPY vs ADD
+    const addLines = lines.filter(l => l.startsWith('ADD '));
+    const addFromUrl = addLines.some(l => /ADD https?:\/\//i.test(l));
+    const addFromTar = addLines.some(l => /\.tar|\.gz|\.bz2|\.xz/i.test(l) && !addFromUrl);
+    const hasPlainAdd = addLines.some(l => !addFromUrl && !addFromTar);
+    results.push({
+      id: 'copy-not-add', label: 'COPY preferred over ADD', weight: 10,
+      status: hasPlainAdd ? 'warn' : addFromUrl ? 'warn' : 'pass',
+      message: addLines.length === 0 ? 'Uses COPY correctly (no ADD instructions).' : addFromUrl ? 'ADD with URL found — use curl + COPY instead for clarity and security.' : 'ADD used for local files — prefer COPY for explicit behavior.',
+      fix: addLines.length > 0 ? 'Replace ADD with COPY for local files. For URLs use: RUN curl -fsSL URL -o file' : undefined,
+    });
+
+    // Rule 5: HEALTHCHECK present
+    const hasHealthcheck = upper.includes('HEALTHCHECK ');
+    results.push({
+      id: 'healthcheck', label: 'HEALTHCHECK instruction', weight: 10,
+      status: hasHealthcheck ? 'pass' : 'warn',
+      message: hasHealthcheck ? 'HEALTHCHECK is defined.' : 'No HEALTHCHECK — orchestrators cannot detect unhealthy containers.',
+      fix: hasHealthcheck ? undefined : 'Add: HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8080/health || exit 1',
+    });
+
+    // Rule 6: Multi-stage build
+    const fromCount = fromLines.length;
+    const isMultiStage = fromCount > 1;
+    results.push({
+      id: 'multi-stage', label: 'Multi-stage build', weight: 15,
+      status: isMultiStage ? 'pass' : 'warn',
+      message: isMultiStage ? `Multi-stage build detected (${fromCount} stages) — build tools excluded from final image.` : 'Single-stage build — build tools and deps are in the final image.',
+      fix: isMultiStage ? undefined : 'Use multi-stage: FROM node:18 AS builder / RUN npm build / FROM node:18-alpine / COPY --from=builder /app/dist ./dist',
+    });
+
+    // Rule 7: Pinned base image version
+    const latestBase = fromLines.some(l => /:latest\b/i.test(l) || (l.includes('FROM ') && !l.includes(':')));
+    results.push({
+      id: 'pinned-version', label: 'Pinned base image version', weight: 10,
+      status: latestBase ? 'fail' : 'pass',
+      message: latestBase ? 'Base image uses :latest or no tag — builds are not reproducible.' : 'Base image version is pinned.',
+      fix: latestBase ? 'Pin the version: FROM node:18.19.0-alpine3.19 (or use digest: @sha256:...)' : undefined,
+    });
+
+    // Rule 8: No wget/curl install without cleanup
+    const hasInstall = /RUN.*apt-get install|RUN.*apk add|RUN.*yum install/i.test(content);
+    const hasCleanup = /apt-get clean|apt-get autoremove|rm -rf \/var\/lib\/apt|apk del|--no-cache/i.test(content);
+    if (hasInstall) {
+      results.push({
+        id: 'package-cleanup', label: 'Package cache cleanup', weight: 10,
+        status: hasCleanup ? 'pass' : 'warn',
+        message: hasCleanup ? 'Package cache cleanup detected after install.' : 'Packages installed without cleanup — increases image size.',
+        fix: hasCleanup ? undefined : 'Chain cleanup: RUN apk add --no-cache curl \\ OR RUN apt-get install -y curl && rm -rf /var/lib/apt/lists/*',
+      });
+    } else {
+      results.push({
+        id: 'package-cleanup', label: 'Package cache cleanup', weight: 10,
+        status: 'pass',
+        message: 'No package manager install commands detected.',
+      });
+    }
+
+    // Rule 9: No COPY . . before dependency install
+    const copyAll = lines.findIndex(l => l.startsWith('COPY . .') || l.startsWith('COPY ./ ./'));
+    const runInstall = lines.findIndex(l => /RUN (npm|pip|yarn|go mod|mvn|gradle)/i.test(l));
+    const copyBeforeInstall = copyAll !== -1 && runInstall !== -1 && copyAll < runInstall;
+    results.push({
+      id: 'layer-cache', label: 'Dependency cache layering', weight: 5,
+      status: copyBeforeInstall ? 'warn' : 'pass',
+      message: copyBeforeInstall ? 'COPY . . before dependency install breaks layer caching.' : 'Dependency install order looks correct.',
+      fix: copyBeforeInstall ? 'COPY package.json first → RUN npm install → then COPY . . to leverage Docker cache.' : undefined,
+    });
+
+    // Rule 10: No .ssh or credential files
+    const hasSshCopy = /COPY.*\.ssh|COPY.*id_rsa|COPY.*\.pem|COPY.*\.key/i.test(content);
+    results.push({
+      id: 'no-credentials', label: 'No credential files copied', weight: 10,
+      status: hasSshCopy ? 'fail' : 'pass',
+      message: hasSshCopy ? 'SSH keys or credential files are being COPY-d into the image!' : 'No credential files detected in COPY instructions.',
+      fix: hasSshCopy ? 'Use --secret flag for build-time credentials: RUN --mount=type=secret,id=ssh ...' : undefined,
+    });
+
+    return results;
+  }
+
+  function renderResults(results: RuleResult[]) {
+    const passing = results.filter(r => r.status === 'pass');
+    const failing = results.filter(r => r.status === 'fail');
+    const warnings = results.filter(r => r.status === 'warn');
+
+    const totalWeight = results.reduce((s, r) => s + r.weight, 0);
+    const earnedWeight = results.filter(r => r.status === 'pass').reduce((s, r) => s + r.weight, 0);
+    const score = Math.round((earnedWeight / totalWeight) * 100);
+
+    // Score circle
+    const circle = el('score-circle');
+    const label = el('score-label');
+    const summary = el('score-summary');
+    const bar = el('score-bar');
+
+    if (circle) {
+      circle.textContent = score.toString();
+      circle.className = `w-20 h-20 rounded-full border-4 flex items-center justify-center text-2xl font-bold ${
+        score >= 80 ? 'border-green-500 text-green-400' :
+        score >= 60 ? 'border-yellow-400 text-yellow-400' : 'border-red-500 text-red-400'
+      }`;
+    }
+    if (label) {
+      label.textContent = score >= 80 ? 'Good Security Posture' : score >= 60 ? 'Needs Improvement' : 'Critical Issues Found';
+      label.className = `text-lg font-semibold ${score >= 80 ? 'text-green-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400'}`;
+    }
+    if (summary) summary.textContent = `${passing.length} passed · ${failing.length} failed · ${warnings.length} warnings`;
+    if (bar) {
+      bar.style.width = score + '%';
+      bar.className = `h-2 rounded-full transition-all duration-500 ${score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-400' : 'bg-red-500'}`;
+    }
+
+    // Rules list
+    const list = el('rules-list');
+    if (list) {
+      list.innerHTML = results.map(r => {
+        const icon = r.status === 'pass' ? '<span class="text-green-500 text-base">✓</span>' :
+                     r.status === 'fail' ? '<span class="text-red-500 text-base">✗</span>' :
+                     r.status === 'warn' ? '<span class="text-yellow-400 text-base">⚠</span>' :
+                     '<span class="text-text-muted text-base">○</span>';
+        const badgeColor = r.status === 'pass' ? 'bg-green-500/10 text-green-400 border-green-500/30' :
+                           r.status === 'fail' ? 'bg-red-500/10 text-red-400 border-red-500/30' :
+                           'bg-yellow-400/10 text-yellow-400 border-yellow-400/30';
+        return `<div class="flex items-start gap-3 p-3 rounded-lg border ${badgeColor}">
+          <div class="mt-0.5">${icon}</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-sm font-medium">${r.label}</span>
+              <span class="text-xs opacity-70 shrink-0">weight: ${r.weight}</span>
+            </div>
+            <p class="text-xs mt-0.5 opacity-80">${r.message}</p>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // Findings panel
+    const findingsPanel = el('findings-panel');
+    const findingsList = el('findings-list');
+    const issues = results.filter(r => r.status !== 'pass' && r.fix);
+    if (issues.length > 0 && findingsPanel && findingsList) {
+      findingsPanel.classList.remove('hidden');
+      findingsList.innerHTML = issues.map(r => `
+        <div class="border border-border rounded-lg p-3">
+          <div class="flex items-center gap-2 mb-2">
+            ${r.status === 'fail' ? '<span class="text-red-500">✗</span>' : '<span class="text-yellow-400">⚠</span>'}
+            <span class="font-medium">${r.label}</span>
+          </div>
+          <p class="text-text-muted text-xs mb-2">${r.message}</p>
+          <pre class="bg-black/30 rounded p-2 text-xs font-mono text-green-400 whitespace-pre-wrap">${r.fix}</pre>
+        </div>
+      `).join('');
+    } else if (findingsPanel) {
+      findingsPanel.classList.add('hidden');
+    }
+  }
+
+  function generateTemplate(stack: string, base: string): string {
+    const templates: Record<string, string> = {
+      node_alpine: `# syntax=docker/dockerfile:1
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine AS runner
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY package.json ./
+RUN chown -R appuser:appgroup /app
+USER appuser
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
+  CMD wget -qO- http://localhost:3000/health || exit 1
+CMD ["node", "dist/index.js"]`,
+      node_distroless: `# syntax=docker/dockerfile:1
+FROM node:20-slim AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build && npm prune --production
+
+FROM gcr.io/distroless/nodejs20-debian12
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+EXPOSE 3000
+CMD ["dist/index.js"]`,
+      python_alpine: `# syntax=docker/dockerfile:1
+FROM python:3.12-alpine AS builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+FROM python:3.12-alpine AS runner
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+WORKDIR /app
+COPY --from=builder /install /usr/local
+COPY --chown=appuser:appgroup . .
+USER appuser
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \\
+  CMD wget -qO- http://localhost:8000/health || exit 1
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]`,
+      python_distroless: `# syntax=docker/dockerfile:1
+FROM python:3.12-slim AS builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --target=/app/deps -r requirements.txt
+COPY . .
+
+FROM gcr.io/distroless/python3-debian12
+WORKDIR /app
+COPY --from=builder /app /app
+ENV PYTHONPATH=/app/deps
+EXPOSE 8000
+CMD ["main.py"]`,
+      go_alpine: `# syntax=docker/dockerfile:1
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o server .
+
+FROM alpine:3.19
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup \\
+    && apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY --from=builder --chown=appuser:appgroup /app/server .
+USER appuser
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8080/health || exit 1
+CMD ["./server"]`,
+      go_scratch: `# syntax=docker/dockerfile:1
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags="-w -s" -o server .
+
+FROM scratch
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /app/server /server
+EXPOSE 8080
+ENTRYPOINT ["/server"]`,
+      java_alpine: `# syntax=docker/dockerfile:1
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /app
+COPY pom.xml ./
+COPY src ./src
+RUN ./mvnw package -DskipTests --no-transfer-progress
+
+FROM eclipse-temurin:21-jre-alpine
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+WORKDIR /app
+COPY --from=builder --chown=appuser:appgroup /app/target/*.jar app.jar
+USER appuser
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://localhost:8080/actuator/health || exit 1
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]`,
+      nginx_alpine: `# syntax=docker/dockerfile:1
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:1.25-alpine
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup \\
+    && chown -R appuser:appgroup /var/cache/nginx /var/run /var/log/nginx
+COPY --from=builder --chown=appuser:appgroup /app/dist /usr/share/nginx/html
+COPY --chown=appuser:appgroup nginx.conf /etc/nginx/conf.d/default.conf
+USER appuser
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8080/ || exit 1
+CMD ["nginx", "-g", "daemon off;"]`,
+    };
+
+    const key = `${stack}_${base}`;
+    return templates[key] ?? templates[`${stack}_alpine`] ?? `# No template available for ${stack}/${base}`;
+  }
+
+  // Scan button
+  el('scan-btn')?.addEventListener('click', () => {
+    const content = val('dockerfile-input');
+    if (!content.trim()) return;
+    const results = analyzeDockerfile(content);
+    renderResults(results);
+  });
+
+  // Sample loaders
+  el('load-node-sample')?.addEventListener('click', () => {
+    (el('dockerfile-input') as HTMLTextAreaElement).value = SAMPLES.node;
+    const results = analyzeDockerfile(SAMPLES.node);
+    renderResults(results);
+  });
+  el('load-python-sample')?.addEventListener('click', () => {
+    (el('dockerfile-input') as HTMLTextAreaElement).value = SAMPLES.python;
+    const results = analyzeDockerfile(SAMPLES.python);
+    renderResults(results);
+  });
+  el('load-go-sample')?.addEventListener('click', () => {
+    (el('dockerfile-input') as HTMLTextAreaElement).value = SAMPLES.go;
+    const results = analyzeDockerfile(SAMPLES.go);
+    renderResults(results);
+  });
+
+  // Template generator
+  function renderTemplate() {
+    const stack = val('template-stack');
+    const base = val('template-base');
+    const out = el('template-output');
+    if (out) out.textContent = generateTemplate(stack, base);
+  }
+
+  el('template-stack')?.addEventListener('change', renderTemplate);
+  el('template-base')?.addEventListener('change', renderTemplate);
+
+  el('copy-template-btn')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(el('template-output')?.textContent ?? '').then(() => {
+      const btn = el('copy-template-btn') as HTMLButtonElement;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  // Initial template render + auto-scan sample
+  renderTemplate();
+  (el('dockerfile-input') as HTMLTextAreaElement).value = SAMPLES.node;
+  renderResults(analyzeDockerfile(SAMPLES.node));
+</script>

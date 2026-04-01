@@ -1,0 +1,499 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is an AWS CloudWatch alarm?",
+    answer: "A CloudWatch alarm watches a single CloudWatch metric over a specified time period and performs one or more actions based on the metric value relative to a threshold. Actions can include sending an SNS notification, triggering an Auto Scaling policy, or stopping/rebooting an EC2 instance. Alarms have three states: OK, ALARM, and INSUFFICIENT_DATA."
+  },
+  {
+    question: "What is the difference between evaluation periods and the period?",
+    answer: "The 'period' is the granularity at which the metric is evaluated (e.g., 300 seconds = 5 minutes). 'Evaluation periods' is how many consecutive periods must breach the threshold before the alarm fires. For example: period=300 and evaluationPeriods=3 means the metric must breach the threshold for 15 consecutive minutes before the alarm triggers. Higher evaluation periods reduce false positives but increase alert latency."
+  },
+  {
+    question: "What does 'treat missing data' mean in CloudWatch alarms?",
+    answer: "When CloudWatch cannot find data for a metric during an evaluation period, the 'treat missing data' setting determines behavior: 'missing' leaves the alarm state unchanged (default), 'breaching' treats the missing period as if it breached the threshold, 'notBreaching' treats it as within threshold, and 'ignore' excludes that period from evaluation. Use 'breaching' for metrics that should always report (e.g., heartbeat checks) and 'notBreaching' for optional or sparse metrics."
+  },
+  {
+    question: "What are CloudWatch metric dimensions?",
+    answer: "Dimensions are key-value pairs that uniquely identify a CloudWatch metric. For EC2, the InstanceId dimension specifies which instance to monitor. For RDS, it's DBInstanceIdentifier. Lambda uses FunctionName. Dimensions filter a metric to a specific resource — without them, you'd get aggregated metrics across all resources of that type. You can add up to 30 dimensions per metric."
+  },
+  {
+    question: "How do I use the CloudFormation YAML output?",
+    answer: "Copy the generated CloudFormation YAML into a .yaml file and deploy it using: aws cloudformation deploy --template-file alarm.yaml --stack-name my-alarms. Or add the AWS::CloudWatch::Alarm resource block into an existing CloudFormation stack. The AlarmActions, OKActions, and InsufficientDataActions fields accept SNS topic ARNs — replace the placeholder ARN with your actual SNS topic ARN for notifications."
+  }
+];
+---
+
+<BaseLayout
+  title="AWS CloudWatch Alarm Builder — CLI & CloudFormation Generator"
+  description="Generate AWS CloudWatch alarm configurations instantly. Outputs both AWS CLI commands and CloudFormation YAML. Configure metric namespaces, thresholds, dimensions, and missing data treatment with built-in presets for common alarms."
+  tool="AWS CloudWatch Alarm Builder, CloudWatch Alarm Generator, CloudFormation Alarm Template, AWS CLI Alarm Command, CloudWatch Metric Alarm"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AWS CloudWatch Alarm Builder</h1>
+  <p class="text-text-muted mb-4">Generate CloudWatch alarm configurations with AWS CLI commands and CloudFormation YAML. Select a preset or build a custom alarm with full dimension support.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> AWS CLI command output</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CloudFormation YAML</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Common alarm presets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Custom dimensions</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Missing data treatment</span>
+  </div>
+
+  <!-- Presets -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-3">Quick Presets</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+      <button class="preset-btn text-xs bg-black/20 border border-border rounded-lg px-3 py-2 hover:border-primary hover:text-primary text-left transition-colors"
+        data-preset="ec2-cpu">EC2 CPU &gt; 80%</button>
+      <button class="preset-btn text-xs bg-black/20 border border-border rounded-lg px-3 py-2 hover:border-primary hover:text-primary text-left transition-colors"
+        data-preset="ec2-status">EC2 Status Check Failed</button>
+      <button class="preset-btn text-xs bg-black/20 border border-border rounded-lg px-3 py-2 hover:border-primary hover:text-primary text-left transition-colors"
+        data-preset="rds-cpu">RDS CPU &gt; 70%</button>
+      <button class="preset-btn text-xs bg-black/20 border border-border rounded-lg px-3 py-2 hover:border-primary hover:text-primary text-left transition-colors"
+        data-preset="rds-connections">RDS Connections &gt; 100</button>
+      <button class="preset-btn text-xs bg-black/20 border border-border rounded-lg px-3 py-2 hover:border-primary hover:text-primary text-left transition-colors"
+        data-preset="lambda-errors">Lambda Error Rate &gt; 1%</button>
+      <button class="preset-btn text-xs bg-black/20 border border-border rounded-lg px-3 py-2 hover:border-primary hover:text-primary text-left transition-colors"
+        data-preset="lambda-duration">Lambda Duration &gt; 10s</button>
+      <button class="preset-btn text-xs bg-black/20 border border-border rounded-lg px-3 py-2 hover:border-primary hover:text-primary text-left transition-colors"
+        data-preset="ecs-cpu">ECS Service CPU &gt; 75%</button>
+      <button class="preset-btn text-xs bg-black/20 border border-border rounded-lg px-3 py-2 hover:border-primary hover:text-primary text-left transition-colors"
+        data-preset="alb-5xx">ALB 5xx Errors &gt; 10</button>
+    </div>
+  </div>
+
+  <!-- Alarm Configuration -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Alarm Configuration</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Alarm Name</label>
+        <input id="alarm-name" type="text" value="MyEC2CPUAlarm"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Alarm Description</label>
+        <input id="alarm-desc" type="text" value="Fires when EC2 CPU exceeds 80%"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Metric Namespace</label>
+        <select id="namespace" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="AWS/EC2">AWS/EC2</option>
+          <option value="AWS/RDS">AWS/RDS</option>
+          <option value="AWS/Lambda">AWS/Lambda</option>
+          <option value="AWS/ECS">AWS/ECS</option>
+          <option value="AWS/ApplicationELB">AWS/ApplicationELB</option>
+          <option value="AWS/S3">AWS/S3</option>
+          <option value="AWS/DynamoDB">AWS/DynamoDB</option>
+          <option value="AWS/SQS">AWS/SQS</option>
+          <option value="CWAgent">CWAgent (CloudWatch Agent)</option>
+          <option value="Custom">Custom Namespace</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Metric Name</label>
+        <input id="metric-name" type="text" value="CPUUtilization"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Statistic</label>
+        <select id="statistic" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="Average" selected>Average</option>
+          <option value="Sum">Sum</option>
+          <option value="Maximum">Maximum</option>
+          <option value="Minimum">Minimum</option>
+          <option value="SampleCount">SampleCount</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Period (seconds)</label>
+        <select id="period" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="60">60s (1 minute)</option>
+          <option value="300" selected>300s (5 minutes)</option>
+          <option value="900">900s (15 minutes)</option>
+          <option value="3600">3600s (1 hour)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Evaluation Periods</label>
+        <input id="eval-periods" type="number" value="2" min="1" max="100"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Threshold</label>
+        <input id="threshold" type="number" value="80" step="any"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Comparison Operator</label>
+        <select id="comparison-op" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="GreaterThanOrEqualToThreshold" selected>≥ GreaterThanOrEqualToThreshold</option>
+          <option value="GreaterThanThreshold">&gt; GreaterThanThreshold</option>
+          <option value="LessThanOrEqualToThreshold">≤ LessThanOrEqualToThreshold</option>
+          <option value="LessThanThreshold">&lt; LessThanThreshold</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Treat Missing Data</label>
+        <select id="missing-data" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="missing" selected>missing (keep current state)</option>
+          <option value="breaching">breaching (treat as alarm)</option>
+          <option value="notBreaching">notBreaching (treat as OK)</option>
+          <option value="ignore">ignore (exclude period)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">SNS Topic ARN (optional)</label>
+        <input id="sns-arn" type="text" placeholder="arn:aws:sns:us-east-1:123456789:my-topic"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">AWS Region</label>
+        <select id="aws-region" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="us-east-1" selected>us-east-1 (N. Virginia)</option>
+          <option value="us-east-2">us-east-2 (Ohio)</option>
+          <option value="us-west-1">us-west-1 (N. California)</option>
+          <option value="us-west-2">us-west-2 (Oregon)</option>
+          <option value="eu-west-1">eu-west-1 (Ireland)</option>
+          <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
+          <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
+          <option value="ap-northeast-1">ap-northeast-1 (Tokyo)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dimensions -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">Dimensions</h2>
+      <button id="add-dimension" class="bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 text-xs font-medium">+ Add Dimension</button>
+    </div>
+    <div id="dimensions-container" class="space-y-2">
+      <div class="dimension-row flex gap-2 items-center">
+        <input type="text" placeholder="Name (e.g. InstanceId)" value="InstanceId"
+          class="dim-key flex-1 bg-black/20 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <input type="text" placeholder="Value (e.g. i-1234567890abcdef0)" value="i-1234567890abcdef0"
+          class="dim-val flex-1 bg-black/20 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <button class="remove-dim text-red-400 hover:text-red-300 px-2 py-1 text-sm">✕</button>
+      </div>
+    </div>
+    <p class="text-xs text-text-muted mt-2">Add key-value pairs to target a specific resource (e.g. InstanceId = i-xxx for EC2).</p>
+  </div>
+
+  <!-- Output Tabs -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex gap-2 mb-4">
+      <button id="tab-cli" class="tab-btn bg-primary text-white px-4 py-1.5 rounded-lg text-sm font-medium">AWS CLI</button>
+      <button id="tab-cfn" class="tab-btn bg-black/20 border border-border px-4 py-1.5 rounded-lg text-sm font-medium hover:border-primary transition-colors">CloudFormation YAML</button>
+    </div>
+
+    <div id="panel-cli">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs text-text-muted font-mono">bash</span>
+        <button id="copy-cli" class="bg-primary text-white px-3 py-1 rounded-lg text-xs hover:opacity-90">Copy</button>
+      </div>
+      <pre id="output-cli" class="bg-black/30 rounded-lg p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap text-green-300 min-h-32"></pre>
+    </div>
+
+    <div id="panel-cfn" class="hidden">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs text-text-muted font-mono">yaml</span>
+        <button id="copy-cfn" class="bg-primary text-white px-3 py-1 rounded-lg text-xs hover:opacity-90">Copy</button>
+      </div>
+      <pre id="output-cfn" class="bg-black/30 rounded-lg p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap text-yellow-200 min-h-32"></pre>
+    </div>
+
+    <button id="generate-btn" class="mt-4 bg-primary text-white px-5 py-2 rounded-lg hover:opacity-90 font-medium text-sm">Generate Configuration</button>
+  </div>
+
+  <!-- Summary Card -->
+  <div id="alarm-summary" class="bg-bg-card border border-border rounded-xl p-5 mb-5 hidden">
+    <h2 class="text-base font-semibold mb-3">Alarm Summary</h2>
+    <div id="summary-content" class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm"></div>
+  </div>
+
+  <ToolPageCta />
+</BaseLayout>
+
+<script>
+  const presets: Record<string, Record<string, string>> = {
+    'ec2-cpu': {
+      name: 'EC2-HighCPUUtilization', desc: 'Alert when EC2 CPU exceeds 80% for 10 minutes',
+      namespace: 'AWS/EC2', metric: 'CPUUtilization', statistic: 'Average',
+      period: '300', evalPeriods: '2', threshold: '80', op: 'GreaterThanOrEqualToThreshold',
+      missing: 'missing', dimKey: 'InstanceId', dimVal: 'i-1234567890abcdef0'
+    },
+    'ec2-status': {
+      name: 'EC2-StatusCheckFailed', desc: 'Alert when EC2 status check fails',
+      namespace: 'AWS/EC2', metric: 'StatusCheckFailed', statistic: 'Maximum',
+      period: '60', evalPeriods: '2', threshold: '1', op: 'GreaterThanOrEqualToThreshold',
+      missing: 'breaching', dimKey: 'InstanceId', dimVal: 'i-1234567890abcdef0'
+    },
+    'rds-cpu': {
+      name: 'RDS-HighCPUUtilization', desc: 'Alert when RDS CPU exceeds 70%',
+      namespace: 'AWS/RDS', metric: 'CPUUtilization', statistic: 'Average',
+      period: '300', evalPeriods: '3', threshold: '70', op: 'GreaterThanOrEqualToThreshold',
+      missing: 'missing', dimKey: 'DBInstanceIdentifier', dimVal: 'my-db-instance'
+    },
+    'rds-connections': {
+      name: 'RDS-HighConnectionCount', desc: 'Alert when RDS connections exceed 100',
+      namespace: 'AWS/RDS', metric: 'DatabaseConnections', statistic: 'Average',
+      period: '300', evalPeriods: '2', threshold: '100', op: 'GreaterThanOrEqualToThreshold',
+      missing: 'notBreaching', dimKey: 'DBInstanceIdentifier', dimVal: 'my-db-instance'
+    },
+    'lambda-errors': {
+      name: 'Lambda-HighErrorRate', desc: 'Alert when Lambda error rate exceeds 1%',
+      namespace: 'AWS/Lambda', metric: 'Errors', statistic: 'Sum',
+      period: '300', evalPeriods: '1', threshold: '1', op: 'GreaterThanOrEqualToThreshold',
+      missing: 'notBreaching', dimKey: 'FunctionName', dimVal: 'my-lambda-function'
+    },
+    'lambda-duration': {
+      name: 'Lambda-HighDuration', desc: 'Alert when Lambda duration exceeds 10 seconds',
+      namespace: 'AWS/Lambda', metric: 'Duration', statistic: 'Maximum',
+      period: '60', evalPeriods: '3', threshold: '10000', op: 'GreaterThanOrEqualToThreshold',
+      missing: 'missing', dimKey: 'FunctionName', dimVal: 'my-lambda-function'
+    },
+    'ecs-cpu': {
+      name: 'ECS-HighCPUUtilization', desc: 'Alert when ECS service CPU exceeds 75%',
+      namespace: 'AWS/ECS', metric: 'CPUUtilization', statistic: 'Average',
+      period: '300', evalPeriods: '2', threshold: '75', op: 'GreaterThanOrEqualToThreshold',
+      missing: 'missing', dimKey: 'ServiceName', dimVal: 'my-ecs-service'
+    },
+    'alb-5xx': {
+      name: 'ALB-High5xxErrorCount', desc: 'Alert when ALB 5xx errors exceed 10 in 5 minutes',
+      namespace: 'AWS/ApplicationELB', metric: 'HTTPCode_Target_5XX_Count', statistic: 'Sum',
+      period: '300', evalPeriods: '1', threshold: '10', op: 'GreaterThanOrEqualToThreshold',
+      missing: 'notBreaching', dimKey: 'LoadBalancer', dimVal: 'app/my-alb/1234567890abcdef'
+    }
+  };
+
+  function getInputVal(id: string): string {
+    return (document.getElementById(id) as HTMLInputElement)?.value || '';
+  }
+
+  function getDimensions(): Array<{Name: string; Value: string}> {
+    const rows = document.querySelectorAll('.dimension-row');
+    const dims: Array<{Name: string; Value: string}> = [];
+    rows.forEach(row => {
+      const k = (row.querySelector('.dim-key') as HTMLInputElement)?.value.trim();
+      const v = (row.querySelector('.dim-val') as HTMLInputElement)?.value.trim();
+      if (k && v) dims.push({ Name: k, Value: v });
+    });
+    return dims;
+  }
+
+  function generateCLI(): string {
+    const alarmName = getInputVal('alarm-name');
+    const alarmDesc = getInputVal('alarm-desc');
+    const namespace = getInputVal('namespace');
+    const metricName = getInputVal('metric-name');
+    const statistic = getInputVal('statistic');
+    const period = getInputVal('period');
+    const evalPeriods = getInputVal('eval-periods');
+    const threshold = getInputVal('threshold');
+    const op = getInputVal('comparison-op');
+    const missing = getInputVal('missing-data');
+    const snsArn = getInputVal('sns-arn');
+    const region = getInputVal('aws-region');
+    const dims = getDimensions();
+
+    let cmd = `aws cloudwatch put-metric-alarm \\\n`;
+    cmd += `  --alarm-name "${alarmName}" \\\n`;
+    cmd += `  --alarm-description "${alarmDesc}" \\\n`;
+    cmd += `  --namespace "${namespace}" \\\n`;
+    cmd += `  --metric-name "${metricName}" \\\n`;
+    cmd += `  --statistic "${statistic}" \\\n`;
+    cmd += `  --period ${period} \\\n`;
+    cmd += `  --evaluation-periods ${evalPeriods} \\\n`;
+    cmd += `  --threshold ${threshold} \\\n`;
+    cmd += `  --comparison-operator "${op}" \\\n`;
+    cmd += `  --treat-missing-data "${missing}"`;
+
+    if (dims.length > 0) {
+      const dimStr = dims.map(d => `Name=${d.Name},Value=${d.Value}`).join(' ');
+      cmd += ` \\\n  --dimensions ${dimStr}`;
+    }
+
+    if (snsArn) {
+      cmd += ` \\\n  --alarm-actions "${snsArn}" \\\n  --ok-actions "${snsArn}"`;
+    }
+
+    cmd += ` \\\n  --region ${region}`;
+    return cmd;
+  }
+
+  function generateCFN(): string {
+    const alarmName = getInputVal('alarm-name');
+    const alarmDesc = getInputVal('alarm-desc');
+    const namespace = getInputVal('namespace');
+    const metricName = getInputVal('metric-name');
+    const statistic = getInputVal('statistic');
+    const period = getInputVal('period');
+    const evalPeriods = getInputVal('eval-periods');
+    const threshold = getInputVal('threshold');
+    const op = getInputVal('comparison-op');
+    const missing = getInputVal('missing-data');
+    const snsArn = getInputVal('sns-arn');
+    const dims = getDimensions();
+
+    const logicalId = alarmName.replace(/[^a-zA-Z0-9]/g, '');
+
+    let yaml = `AWSTemplateFormatVersion: '2010-09-09'\nDescription: CloudWatch Alarm - ${alarmName}\n\nResources:\n`;
+    yaml += `  ${logicalId}:\n    Type: AWS::CloudWatch::Alarm\n    Properties:\n`;
+    yaml += `      AlarmName: "${alarmName}"\n`;
+    yaml += `      AlarmDescription: "${alarmDesc}"\n`;
+    yaml += `      Namespace: "${namespace}"\n`;
+    yaml += `      MetricName: "${metricName}"\n`;
+    yaml += `      Statistic: "${statistic}"\n`;
+    yaml += `      Period: ${period}\n`;
+    yaml += `      EvaluationPeriods: ${evalPeriods}\n`;
+    yaml += `      Threshold: ${threshold}\n`;
+    yaml += `      ComparisonOperator: "${op}"\n`;
+    yaml += `      TreatMissingData: "${missing}"\n`;
+
+    if (dims.length > 0) {
+      yaml += `      Dimensions:\n`;
+      dims.forEach(d => {
+        yaml += `        - Name: "${d.Name}"\n          Value: "${d.Value}"\n`;
+      });
+    }
+
+    if (snsArn) {
+      yaml += `      AlarmActions:\n        - "${snsArn}"\n`;
+      yaml += `      OKActions:\n        - "${snsArn}"\n`;
+    } else {
+      yaml += `      # AlarmActions:\n      #   - !Ref MySnsTopic  # Replace with your SNS topic\n`;
+    }
+
+    return yaml;
+  }
+
+  function renderSummary() {
+    const period = parseInt(getInputVal('period'));
+    const evalPeriods = parseInt(getInputVal('eval-periods'));
+    const totalTime = (period * evalPeriods) / 60;
+    const threshold = getInputVal('threshold');
+    const op = getInputVal('comparison-op');
+    const opSymbol: Record<string, string> = {
+      'GreaterThanOrEqualToThreshold': '≥',
+      'GreaterThanThreshold': '>',
+      'LessThanOrEqualToThreshold': '≤',
+      'LessThanThreshold': '<'
+    };
+
+    const summary = document.getElementById('alarm-summary')!;
+    const content = document.getElementById('summary-content')!;
+    summary.classList.remove('hidden');
+    content.innerHTML = `
+      <div class="bg-black/20 rounded-lg p-3"><div class="text-text-muted text-xs mb-1">Trigger Condition</div><div class="font-mono text-sm">${opSymbol[op] || op} ${threshold}</div></div>
+      <div class="bg-black/20 rounded-lg p-3"><div class="text-text-muted text-xs mb-1">Alert Latency</div><div class="font-mono text-sm">${totalTime} minutes</div></div>
+      <div class="bg-black/20 rounded-lg p-3"><div class="text-text-muted text-xs mb-1">Period</div><div class="font-mono text-sm">${period}s × ${evalPeriods} periods</div></div>
+      <div class="bg-black/20 rounded-lg p-3"><div class="text-text-muted text-xs mb-1">Namespace</div><div class="font-mono text-sm text-xs">${getInputVal('namespace')}</div></div>
+      <div class="bg-black/20 rounded-lg p-3"><div class="text-text-muted text-xs mb-1">Metric</div><div class="font-mono text-sm">${getInputVal('metric-name')}</div></div>
+      <div class="bg-black/20 rounded-lg p-3"><div class="text-text-muted text-xs mb-1">Missing Data</div><div class="font-mono text-sm">${getInputVal('missing-data')}</div></div>
+    `;
+  }
+
+  function generate() {
+    (document.getElementById('output-cli') as HTMLElement).textContent = generateCLI();
+    (document.getElementById('output-cfn') as HTMLElement).textContent = generateCFN();
+    renderSummary();
+  }
+
+  // Tab switching
+  document.getElementById('tab-cli')!.addEventListener('click', () => {
+    document.getElementById('panel-cli')!.classList.remove('hidden');
+    document.getElementById('panel-cfn')!.classList.add('hidden');
+    document.getElementById('tab-cli')!.className = 'tab-btn bg-primary text-white px-4 py-1.5 rounded-lg text-sm font-medium';
+    document.getElementById('tab-cfn')!.className = 'tab-btn bg-black/20 border border-border px-4 py-1.5 rounded-lg text-sm font-medium hover:border-primary transition-colors';
+  });
+
+  document.getElementById('tab-cfn')!.addEventListener('click', () => {
+    document.getElementById('panel-cli')!.classList.add('hidden');
+    document.getElementById('panel-cfn')!.classList.remove('hidden');
+    document.getElementById('tab-cfn')!.className = 'tab-btn bg-primary text-white px-4 py-1.5 rounded-lg text-sm font-medium';
+    document.getElementById('tab-cli')!.className = 'tab-btn bg-black/20 border border-border px-4 py-1.5 rounded-lg text-sm font-medium hover:border-primary transition-colors';
+  });
+
+  // Copy buttons
+  document.getElementById('copy-cli')!.addEventListener('click', () => {
+    const text = (document.getElementById('output-cli') as HTMLElement).textContent || '';
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('copy-cli')!;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  document.getElementById('copy-cfn')!.addEventListener('click', () => {
+    const text = (document.getElementById('output-cfn') as HTMLElement).textContent || '';
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('copy-cfn')!;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  // Add dimension
+  document.getElementById('add-dimension')!.addEventListener('click', () => {
+    const container = document.getElementById('dimensions-container')!;
+    const row = document.createElement('div');
+    row.className = 'dimension-row flex gap-2 items-center';
+    row.innerHTML = `
+      <input type="text" placeholder="Name" class="dim-key flex-1 bg-black/20 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      <input type="text" placeholder="Value" class="dim-val flex-1 bg-black/20 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      <button class="remove-dim text-red-400 hover:text-red-300 px-2 py-1 text-sm">✕</button>
+    `;
+    container.appendChild(row);
+    row.querySelector('.remove-dim')!.addEventListener('click', () => row.remove());
+  });
+
+  // Remove existing dimension buttons
+  document.querySelectorAll('.remove-dim').forEach(btn => {
+    btn.addEventListener('click', () => (btn.closest('.dimension-row') as HTMLElement)?.remove());
+  });
+
+  // Preset buttons
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = (btn as HTMLElement).dataset.preset!;
+      const p = presets[key];
+      if (!p) return;
+      (document.getElementById('alarm-name') as HTMLInputElement).value = p.name;
+      (document.getElementById('alarm-desc') as HTMLInputElement).value = p.desc;
+      (document.getElementById('namespace') as HTMLSelectElement).value = p.namespace;
+      (document.getElementById('metric-name') as HTMLInputElement).value = p.metric;
+      (document.getElementById('statistic') as HTMLSelectElement).value = p.statistic;
+      (document.getElementById('period') as HTMLSelectElement).value = p.period;
+      (document.getElementById('eval-periods') as HTMLInputElement).value = p.evalPeriods;
+      (document.getElementById('threshold') as HTMLInputElement).value = p.threshold;
+      (document.getElementById('comparison-op') as HTMLSelectElement).value = p.op;
+      (document.getElementById('missing-data') as HTMLSelectElement).value = p.missing;
+
+      const container = document.getElementById('dimensions-container')!;
+      container.innerHTML = `
+        <div class="dimension-row flex gap-2 items-center">
+          <input type="text" value="${p.dimKey}" class="dim-key flex-1 bg-black/20 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <input type="text" value="${p.dimVal}" class="dim-val flex-1 bg-black/20 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <button class="remove-dim text-red-400 hover:text-red-300 px-2 py-1 text-sm">✕</button>
+        </div>
+      `;
+      container.querySelector('.remove-dim')!.addEventListener('click', (e) => {
+        (e.target as HTMLElement).closest('.dimension-row')?.remove();
+      });
+      generate();
+    });
+  });
+
+  document.getElementById('generate-btn')!.addEventListener('click', generate);
+
+  // Auto-generate on load
+  generate();
+</script>
