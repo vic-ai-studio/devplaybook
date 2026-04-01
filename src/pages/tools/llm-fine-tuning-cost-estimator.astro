@@ -1,0 +1,270 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How is fine-tuning cost calculated?", answer: "Fine-tuning cost = (total training tokens) × (price per 1K tokens). Total training tokens = examples × avg tokens per example × epochs. For example, 1,000 examples × 500 tokens × 3 epochs = 1.5M tokens. At OpenAI GPT-3.5 Turbo fine-tuning rate of $0.008/1K tokens, that's $12 for training. Add inference costs separately at the fine-tuned model rate." },
+  { question: "How many epochs should I use?", answer: "The default of 3 epochs works well for most datasets. More epochs improve fit on small datasets but risk overfitting. If your dataset is large (>10K examples), 1–2 epochs often suffice. OpenAI recommends starting with 3 epochs and adjusting based on validation loss. Each epoch multiplies your training cost linearly." },
+  { question: "What is the minimum dataset size for fine-tuning?", answer: "OpenAI requires at least 10 examples but recommends 50–100+ for meaningful improvements. For specialized domains, 200–1,000 high-quality examples typically outperform thousands of mediocre ones. Anthropic and Together AI have similar minimums. Quality matters far more than quantity — curate carefully rather than scale blindly." },
+  { question: "When is fine-tuning worth the cost vs prompt engineering?", answer: "Fine-tuning makes sense when: (1) few-shot prompting still produces inconsistent output, (2) you need a specific format or tone that's hard to describe in a system prompt, (3) you're making 100K+ inferences/month and the cost of a smaller fine-tuned model beats repeated few-shot prompting, or (4) you need to compress a complex 4K-token prompt into the model's weights. Don't fine-tune to add new knowledge — use RAG for that." },
+  { question: "Does fine-tuning improve model knowledge?", answer: "No. Fine-tuning teaches format, style, and behavior — not new factual knowledge. The model's training cutoff doesn't change. For updating knowledge, use RAG (Retrieval-Augmented Generation) to inject context at inference time. Fine-tuning is for teaching *how* to respond, not *what* to know." },
+];
+
+const providers = [
+  {
+    id: 'openai-gpt35',
+    name: 'OpenAI GPT-3.5 Turbo',
+    trainPer1K: 0.008,
+    inferencePer1K: 0.012,
+    contextWindow: 16385,
+    minExamples: 10,
+    notes: 'Most cost-effective OpenAI option. Fine-tuned model persists, inference at 12x base rate.',
+  },
+  {
+    id: 'openai-gpt4o-mini',
+    name: 'OpenAI GPT-4o Mini',
+    trainPer1K: 0.003,
+    inferencePer1K: 0.0024,
+    contextWindow: 128000,
+    minExamples: 10,
+    notes: 'Cheapest OpenAI fine-tune. Excellent for structured outputs and classification tasks.',
+  },
+  {
+    id: 'openai-gpt4o',
+    name: 'OpenAI GPT-4o',
+    trainPer1K: 0.025,
+    inferencePer1K: 0.015,
+    contextWindow: 128000,
+    minExamples: 10,
+    notes: 'Highest-quality OpenAI fine-tune. Use only when GPT-3.5/4o-mini fine-tunes fall short.',
+  },
+  {
+    id: 'anthropic-haiku',
+    name: 'Anthropic Claude Haiku 3.5',
+    trainPer1K: 0.008,
+    inferencePer1K: 0.0012,
+    contextWindow: 200000,
+    minExamples: 100,
+    notes: 'Anthropic fine-tuning via API (limited access). Haiku offers low inference cost post-training.',
+  },
+  {
+    id: 'together-llama3',
+    name: 'Together AI — Llama 3.1 8B',
+    trainPer1K: 0.0003,
+    inferencePer1K: 0.0002,
+    contextWindow: 128000,
+    minExamples: 50,
+    notes: 'Best cost/performance for open weights. You own the fine-tuned weights, can self-host.',
+  },
+  {
+    id: 'together-mistral',
+    name: 'Together AI — Mistral 7B',
+    trainPer1K: 0.0003,
+    inferencePer1K: 0.0002,
+    contextWindow: 32768,
+    minExamples: 50,
+    notes: 'Excellent for European language tasks. Self-hostable weights post-training.',
+  },
+];
+---
+
+<BaseLayout
+  title="LLM Fine-Tuning Cost Estimator — OpenAI, Anthropic, Together AI"
+  description="Estimate the training and inference cost of fine-tuning LLMs with OpenAI, Anthropic, and Together AI. Input your dataset size, tokens per example, epochs, and monthly inference volume to get a full cost breakdown."
+  tool="LLM fine-tuning cost, OpenAI fine-tuning calculator, Anthropic fine-tuning, Together AI cost, GPT-3.5 fine-tune, training cost estimator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">LLM Fine-Tuning Cost Estimator</h1>
+  <p class="text-text-muted mb-4">Calculate training and inference costs before committing to a fine-tuning run. Compare OpenAI, Anthropic, and Together AI pricing side-by-side.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Training + inference costs</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 6 providers & models</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Monthly inference projection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Break-even vs few-shot</span>
+  </div>
+
+  <!-- Inputs -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-sm font-semibold mb-4">Training Dataset</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Number of training examples</label>
+          <div class="flex gap-2 flex-wrap mb-2">
+            <button class="ex-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="100">100</button>
+            <button class="ex-preset text-xs px-2.5 py-1 rounded-full border border-primary text-primary bg-primary/10 transition-all" data-val="500">500</button>
+            <button class="ex-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="1000">1K</button>
+            <button class="ex-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="10000">10K</button>
+          </div>
+          <input id="num-examples" type="number" min="10" value="500" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Avg tokens per example (input + output)</label>
+          <div class="flex gap-2 flex-wrap mb-2">
+            <button class="tok-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="250">250 (short)</button>
+            <button class="tok-preset text-xs px-2.5 py-1 rounded-full border border-primary text-primary bg-primary/10 transition-all" data-val="500">500 (medium)</button>
+            <button class="tok-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="1000">1K (long)</button>
+            <button class="tok-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="2000">2K (xl)</button>
+          </div>
+          <input id="tokens-per-example" type="number" min="10" value="500" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Training epochs</label>
+          <input id="epochs" type="number" min="1" max="10" value="3" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <div class="text-xs text-text-muted mt-1">Default: 3. More epochs = higher cost, risk of overfitting.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-sm font-semibold mb-4">Inference Volume</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Requests per month</label>
+          <div class="flex gap-2 flex-wrap mb-2">
+            <button class="req-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="1000">1K</button>
+            <button class="req-preset text-xs px-2.5 py-1 rounded-full border border-primary text-primary bg-primary/10 transition-all" data-val="10000">10K</button>
+            <button class="req-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="100000">100K</button>
+            <button class="req-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-val="1000000">1M</button>
+          </div>
+          <input id="monthly-requests" type="number" min="0" value="10000" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Avg tokens per inference request</label>
+          <input id="inference-tokens" type="number" min="1" value="500" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Few-shot prompt size (tokens, for break-even)</label>
+          <input id="fewshot-tokens" type="number" min="0" value="2000" class="w-full bg-bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <div class="text-xs text-text-muted mt-1">How many tokens your current few-shot system prompt uses (for break-even calc).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary stats -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <div class="text-xs text-text-muted mb-1">Total training tokens</div>
+      <div id="total-train-tokens" class="text-2xl font-black tabular-nums text-primary">—</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <div class="text-xs text-text-muted mb-1">Monthly inference tokens</div>
+      <div id="total-inf-tokens" class="text-2xl font-black tabular-nums text-primary">—</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-xl p-4">
+      <div class="text-xs text-text-muted mb-1">Break-even (months)</div>
+      <div id="breakeven-months" class="text-2xl font-black tabular-nums" style="color: #f59e0b">—</div>
+      <div class="text-xs text-text-muted mt-1">vs. few-shot on base model</div>
+    </div>
+  </div>
+
+  <!-- Provider comparison table -->
+  <h2 class="text-base font-semibold mb-4">Cost Comparison by Provider</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm min-w-[640px]">
+      <thead>
+        <tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-3 pr-4 font-medium">Model</th>
+          <th class="text-right pb-3 pr-4 font-medium">Train cost</th>
+          <th class="text-right pb-3 pr-4 font-medium">Monthly inference</th>
+          <th class="text-right pb-3 pr-4 font-medium">Year 1 total</th>
+          <th class="text-right pb-3 font-medium">Notes</th>
+        </tr>
+      </thead>
+      <tbody id="cost-table" class="divide-y divide-border">
+        {providers.map(p => (
+          <tr class="provider-row hover:bg-bg-card/50 transition-colors" data-train={p.trainPer1K} data-inf={p.inferencePer1K}>
+            <td class="py-3 pr-4">
+              <div class="font-semibold">{p.name}</div>
+              <div class="text-xs text-text-muted">{p.notes}</div>
+            </td>
+            <td class="py-3 pr-4 text-right tabular-nums font-medium prov-train-cost">—</td>
+            <td class="py-3 pr-4 text-right tabular-nums prov-inf-cost">—</td>
+            <td class="py-3 pr-4 text-right tabular-nums font-bold prov-year1">—</td>
+            <td class="py-3 text-right text-xs text-text-muted">${p.trainPer1K}/1K train<br />${p.inferencePer1K}/1K inf</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="LLM Fine-Tuning Cost Estimator" relatedTags={['ai', 'llm', 'openai', 'fine-tuning', 'cost', 'calculator']} />
+</BaseLayout>
+
+<script>
+  function fmt(n: number) {
+    if (n >= 1000000) return '$' + (n / 1000000).toFixed(2) + 'M';
+    if (n >= 1000) return '$' + (n / 1000).toFixed(2) + 'K';
+    return '$' + n.toFixed(2);
+  }
+  function fmtTok(n: number) {
+    if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  function calculate() {
+    var examples = parseInt((document.getElementById('num-examples') as HTMLInputElement).value) || 500;
+    var tokPerEx = parseInt((document.getElementById('tokens-per-example') as HTMLInputElement).value) || 500;
+    var epochs = parseInt((document.getElementById('epochs') as HTMLInputElement).value) || 3;
+    var monthlyReqs = parseInt((document.getElementById('monthly-requests') as HTMLInputElement).value) || 10000;
+    var infTok = parseInt((document.getElementById('inference-tokens') as HTMLInputElement).value) || 500;
+    var fewshotTok = parseInt((document.getElementById('fewshot-tokens') as HTMLInputElement).value) || 2000;
+
+    var totalTrainTok = examples * tokPerEx * epochs;
+    var monthlyInfTok = monthlyReqs * infTok;
+
+    document.getElementById('total-train-tokens')!.textContent = fmtTok(totalTrainTok);
+    document.getElementById('total-inf-tokens')!.textContent = fmtTok(monthlyInfTok);
+
+    // Calculate break-even: compare fine-tuned model inference vs base GPT-3.5 with few-shot
+    // Base cost per request: (fewshotTok + infTok) * 0.0015/1K (GPT-3.5 input) + infTok * 0.002/1K (output)
+    var baseMonthly = monthlyReqs * ((fewshotTok + infTok) * 0.0015 / 1000 + infTok * 0.002 / 1000);
+    // Fine-tuned GPT-3.5 inference: infTok * 0.012/1K
+    var ftMonthly = monthlyReqs * infTok * 0.012 / 1000;
+    var trainCostBase = totalTrainTok * 0.008 / 1000;
+    var monthlySaving = baseMonthly - ftMonthly;
+    var breakEven = monthlySaving > 0 ? (trainCostBase / monthlySaving).toFixed(1) : '∞';
+    document.getElementById('breakeven-months')!.textContent = monthlySaving > 0 ? breakEven + ' mo' : 'N/A';
+
+    // Provider table
+    document.querySelectorAll('.provider-row').forEach(function(row) {
+      var el = row as HTMLElement;
+      var trainRate = parseFloat(el.dataset.train!);
+      var infRate = parseFloat(el.dataset.inf!);
+      var trainCost = totalTrainTok * trainRate / 1000;
+      var monthly = monthlyInfTok * infRate / 1000;
+      var year1 = trainCost + monthly * 12;
+      el.querySelector('.prov-train-cost')!.textContent = fmt(trainCost);
+      el.querySelector('.prov-inf-cost')!.textContent = fmt(monthly) + '/mo';
+      el.querySelector('.prov-year1')!.textContent = fmt(year1);
+    });
+  }
+
+  // Presets
+  ['ex-preset', 'tok-preset', 'req-preset'].forEach(function(cls) {
+    var inputId = cls === 'ex-preset' ? 'num-examples' : cls === 'tok-preset' ? 'tokens-per-example' : 'monthly-requests';
+    document.querySelectorAll('.' + cls).forEach(function(btn) {
+      btn.addEventListener('click', function(this: HTMLElement) {
+        (document.getElementById(inputId) as HTMLInputElement).value = this.getAttribute('data-val')!;
+        document.querySelectorAll('.' + cls).forEach(function(b) {
+          b.classList.remove('border-primary', 'text-primary', 'bg-primary/10');
+          b.classList.add('border-border', 'text-text-muted');
+        });
+        this.classList.add('border-primary', 'text-primary', 'bg-primary/10');
+        this.classList.remove('border-border', 'text-text-muted');
+        calculate();
+      });
+    });
+  });
+
+  ['num-examples', 'tokens-per-example', 'epochs', 'monthly-requests', 'inference-tokens', 'fewshot-tokens'].forEach(function(id) {
+    document.getElementById(id)!.addEventListener('input', calculate);
+  });
+
+  calculate();
+</script>
