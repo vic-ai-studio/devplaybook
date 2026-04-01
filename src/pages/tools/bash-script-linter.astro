@@ -1,0 +1,289 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "Why should I use 'set -euo pipefail'?", answer: "'set -e' exits on error, 'set -u' treats unset variables as errors, 'set -o pipefail' makes pipelines fail if any command fails (not just the last). Together they prevent scripts from silently continuing after errors. Without these, a script can appear to succeed while producing incorrect results." },
+  { question: "Why does this linter warn about unquoted variables?", answer: "An unquoted variable like $var is subject to word splitting and glob expansion. If the variable contains spaces or special characters, it splits into multiple arguments unexpectedly. Always quote variables: \"$var\". Use \"${var}\" inside strings. Exception: inside [[ ]] bash conditionals, quotes are less critical but still a good habit." },
+  { question: "What is POSIX compatibility and why does it matter?", answer: "Bash-specific features like [[ ]], arrays, and process substitution don't work in /bin/sh on systems where sh is dash or another POSIX shell. If your shebang is #!/bin/sh, avoid bashisms. If you need bash features, use #!/bin/bash explicitly." },
+  { question: "Why avoid 'ls | grep' to find files?", answer: "Parsing ls output is fragile — filenames can contain spaces, newlines, and other characters that break text parsing. Use glob patterns (for f in *.log) or find with -exec or -print0/xargs -0 instead." },
+  { question: "What is a common mistake with [ ] vs [[ ]]?", answer: "The single bracket [ ] is a POSIX command that requires quoting. The double bracket [[ ]] is a bash keyword with better handling of empty strings and special characters. Use [[ ]] in bash scripts for string comparisons to avoid unexpected behavior with empty variables." },
+];
+---
+
+<BaseLayout
+  title="Bash Script Linter — Detect Common Shell Script Issues Online"
+  description="Paste a bash script to detect common issues: missing set -euo pipefail, unquoted variables, deprecated patterns, and best practice violations. Free browser tool."
+  tool="Bash Script Linter, Shell Script Checker, bash best practices, set -euo pipefail, shell script static analysis"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Bash Script Linter</h1>
+  <p class="text-text-muted mb-4">Paste a bash script to check for common issues: missing safety flags, unquoted variables, deprecated patterns, and best practice violations. Runs entirely in your browser.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> set -euo pipefail checks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Variable quoting</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Deprecated patterns</span>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-2">
+      <label class="text-sm font-medium">Bash Script</label>
+      <button id="bsl-sample" class="text-xs text-primary hover:underline">Load Sample</button>
+    </div>
+    <textarea id="bsl-input" rows="14"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono resize-y mb-3"
+      placeholder="#!/bin/bash&#10;..."></textarea>
+    <div class="flex gap-2 flex-wrap">
+      <button id="bsl-lint" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity">Lint Script</button>
+      <button id="bsl-clear" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Clear</button>
+    </div>
+  </div>
+
+  <div id="bsl-results" class="hidden">
+    <div class="grid grid-cols-3 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="bsl-errors" class="text-2xl font-bold text-red-500 mb-1">—</div>
+        <div class="text-xs text-text-muted">Errors</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="bsl-warnings" class="text-2xl font-bold text-yellow-500 mb-1">—</div>
+        <div class="text-xs text-text-muted">Warnings</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="bsl-info" class="text-2xl font-bold text-blue-400 mb-1">—</div>
+        <div class="text-xs text-text-muted">Info</div>
+      </div>
+    </div>
+
+    <div id="bsl-clean-msg" class="hidden bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-5 text-green-400 text-sm font-semibold text-center">
+      ✓ No issues found — script looks clean!
+    </div>
+
+    <div id="bsl-issues-container" class="space-y-3 mb-5"></div>
+
+    <div class="flex justify-end">
+      <button id="bsl-copy" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Copy Report</button>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('bsl-input') as HTMLTextAreaElement;
+    const lintBtn = document.getElementById('bsl-lint') as HTMLButtonElement;
+    const clearBtn = document.getElementById('bsl-clear') as HTMLButtonElement;
+    const sampleBtn = document.getElementById('bsl-sample') as HTMLButtonElement;
+    const copyBtn = document.getElementById('bsl-copy') as HTMLButtonElement;
+    const results = document.getElementById('bsl-results') as HTMLDivElement;
+
+    const SAMPLE = `#!/bin/bash
+# Deploy script
+DEPLOY_DIR=/var/www/app
+VERSION=$1
+
+cd $DEPLOY_DIR
+if [ $VERSION == "" ]; then
+  echo "No version specified"
+  exit 1
+fi
+
+FILES=\`ls *.tar.gz\`
+for f in $FILES; do
+  tar -xzf $f
+done
+
+function cleanup() {
+  rm -rf /tmp/deploy-*
+}
+
+source ./config.sh
+. ./helpers.sh
+`;
+
+    sampleBtn.addEventListener('click', () => { input.value = SAMPLE; });
+    clearBtn.addEventListener('click', () => { input.value = ''; results.classList.add('hidden'); });
+
+    interface Issue {
+      level: 'error' | 'warning' | 'info';
+      line?: number;
+      rule: string;
+      message: string;
+      fix?: string;
+    }
+
+    const RULES: Array<{
+      id: string;
+      level: 'error' | 'warning' | 'info';
+      check: (lines: string[], content: string) => Issue[];
+    }> = [
+      {
+        id: 'no-set-e',
+        level: 'error',
+        check: (lines, content) => {
+          if (!/set\s+-[a-zA-Z]*e/.test(content) && !/set\s+-e/.test(content)) {
+            return [{ level: 'error', rule: 'no-set-e', message: 'Missing `set -e`: script does not exit on error.', fix: 'Add `set -euo pipefail` near the top of your script.' }];
+          }
+          return [];
+        }
+      },
+      {
+        id: 'no-pipefail',
+        level: 'warning',
+        check: (lines, content) => {
+          if (!/pipefail/.test(content)) {
+            return [{ level: 'warning', rule: 'no-pipefail', message: 'Missing `pipefail`: pipeline errors are silently ignored.', fix: 'Add `set -o pipefail` or use `set -euo pipefail`.' }];
+          }
+          return [];
+        }
+      },
+      {
+        id: 'no-set-u',
+        level: 'warning',
+        check: (lines, content) => {
+          if (!/set\s+-[a-zA-Z]*u/.test(content) && !/nounset/.test(content)) {
+            return [{ level: 'warning', rule: 'no-set-u', message: 'Missing `set -u`: unset variables are silently expanded to empty string.', fix: 'Add `set -u` or `set -euo pipefail`.' }];
+          }
+          return [];
+        }
+      },
+      {
+        id: 'unquoted-var',
+        level: 'warning',
+        check: (lines) => {
+          const issues: Issue[] = [];
+          lines.forEach((line, i) => {
+            const stripped = line.replace(/#.*$/, '').replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
+            const m = stripped.match(/(?<!["\w])\$\{?[A-Za-z_][A-Za-z0-9_]*\}?(?!["\w{])/g);
+            if (m) {
+              issues.push({ level: 'warning', line: i + 1, rule: 'unquoted-var', message: `Line ${i+1}: Potentially unquoted variable (${m[0]}). May cause word splitting or glob issues.`, fix: `Quote variable: "${m[0]}"` });
+            }
+          });
+          return issues.slice(0, 5);
+        }
+      },
+      {
+        id: 'backtick',
+        level: 'warning',
+        check: (lines) => {
+          const issues: Issue[] = [];
+          lines.forEach((line, i) => {
+            if (/`[^`]+`/.test(line) && !line.trim().startsWith('#')) {
+              issues.push({ level: 'warning', line: i + 1, rule: 'backtick', message: `Line ${i+1}: Backtick command substitution is deprecated.`, fix: `Replace \`cmd\` with $(cmd)` });
+            }
+          });
+          return issues;
+        }
+      },
+      {
+        id: 'function-keyword',
+        level: 'info',
+        check: (lines) => {
+          const issues: Issue[] = [];
+          lines.forEach((line, i) => {
+            if (/^\s*function\s+\w+\s*\(\s*\)/.test(line)) {
+              issues.push({ level: 'info', line: i + 1, rule: 'function-keyword', message: `Line ${i+1}: Using \`function\` keyword is a bashism. Not POSIX-compatible.`, fix: `Use POSIX style: name() { ... }` });
+            }
+          });
+          return issues;
+        }
+      },
+      {
+        id: 'ls-parse',
+        level: 'warning',
+        check: (lines) => {
+          const issues: Issue[] = [];
+          lines.forEach((line, i) => {
+            if (/\bls\b.*\|/.test(line) && !line.trim().startsWith('#')) {
+              issues.push({ level: 'warning', line: i + 1, rule: 'ls-parse', message: `Line ${i+1}: Parsing ls output is fragile (spaces, special chars in filenames).`, fix: `Use glob patterns or find with -print0 | xargs -0 instead.` });
+            }
+          });
+          return issues;
+        }
+      },
+      {
+        id: 'single-bracket-empty',
+        level: 'warning',
+        check: (lines) => {
+          const issues: Issue[] = [];
+          lines.forEach((line, i) => {
+            if (/\[\s+\$\w+\s+[!=]=\s+"?"?\s*"?"?\s*\]/.test(line)) {
+              issues.push({ level: 'warning', line: i + 1, rule: 'single-bracket-empty', message: `Line ${i+1}: String comparison with [ ] — risky with empty variables.`, fix: `Use [[ $var == "" ]] or [[ -z $var ]] in bash scripts.` });
+            }
+          });
+          return issues;
+        }
+      },
+      {
+        id: 'cd-without-check',
+        level: 'warning',
+        check: (lines) => {
+          const issues: Issue[] = [];
+          lines.forEach((line, i) => {
+            if (/^\s*cd\s+/.test(line) && !/\|\|/.test(line) && !lines[i-1]?.includes('pushd')) {
+              issues.push({ level: 'warning', line: i + 1, rule: 'cd-without-check', message: `Line ${i+1}: cd without error check — if it fails, subsequent commands run in wrong directory.`, fix: `Use: cd /path || exit 1` });
+            }
+          });
+          return issues.slice(0, 3);
+        }
+      },
+    ];
+
+    lintBtn.addEventListener('click', () => {
+      const content = input.value;
+      const lines = content.split('\n');
+      const allIssues: Issue[] = [];
+
+      for (const rule of RULES) {
+        allIssues.push(...rule.check(lines, content));
+      }
+
+      const errors = allIssues.filter(i => i.level === 'error').length;
+      const warnings = allIssues.filter(i => i.level === 'warning').length;
+      const info = allIssues.filter(i => i.level === 'info').length;
+
+      (document.getElementById('bsl-errors') as HTMLElement).textContent = errors.toString();
+      (document.getElementById('bsl-warnings') as HTMLElement).textContent = warnings.toString();
+      (document.getElementById('bsl-info') as HTMLElement).textContent = info.toString();
+
+      const container = document.getElementById('bsl-issues-container') as HTMLElement;
+      const cleanMsg = document.getElementById('bsl-clean-msg') as HTMLElement;
+      container.innerHTML = '';
+
+      if (allIssues.length === 0) {
+        cleanMsg.classList.remove('hidden');
+      } else {
+        cleanMsg.classList.add('hidden');
+        for (const issue of allIssues) {
+          const colors: Record<string, string> = { error: 'red', warning: 'yellow', info: 'blue' };
+          const c = colors[issue.level];
+          const div = document.createElement('div');
+          div.className = `bg-bg-card border border-border rounded-xl p-4`;
+          div.innerHTML = `<div class="flex items-start gap-3">
+            <span class="text-${c}-500 text-xs font-bold uppercase mt-0.5 shrink-0">${issue.level}</span>
+            <div class="flex-1">
+              <div class="text-sm font-medium">${issue.message}</div>
+              ${issue.fix ? `<div class="text-xs text-text-muted mt-1">💡 ${issue.fix}</div>` : ''}
+              <div class="text-xs text-text-muted mt-1 font-mono">rule: ${issue.rule}</div>
+            </div>
+          </div>`;
+          container.appendChild(div);
+        }
+      }
+
+      results.classList.remove('hidden');
+    });
+
+    copyBtn.addEventListener('click', () => {
+      const items = document.querySelectorAll('#bsl-issues-container > div');
+      const lines: string[] = [];
+      items.forEach(el => {
+        const text = (el as HTMLElement).innerText.replace(/\n+/g, ' | ');
+        lines.push(text);
+      });
+      navigator.clipboard.writeText(lines.join('\n')).then(() => { copyBtn.textContent = 'Copied!'; setTimeout(() => copyBtn.textContent = 'Copy Report', 2000); });
+    });
+  </script>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Bash Script Linter" relatedTags={['bash', 'shell', 'linting', 'devops', 'developer-tools']} />
+</BaseLayout>

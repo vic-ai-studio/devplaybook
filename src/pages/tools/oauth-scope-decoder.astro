@@ -1,0 +1,233 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are OAuth scopes?", answer: "OAuth scopes define the permissions an application is requesting when a user authorizes it. Scopes like 'read:user', 'repo', 'email' tell the user and authorization server exactly what access the app will have. The principle of least privilege says apps should request only the minimum scopes they need." },
+  { question: "What is a JWT and how does it contain scopes?", answer: "A JWT (JSON Web Token) is a base64-encoded token with three parts: header.payload.signature. The payload often contains a 'scope' or 'scp' claim listing granted permissions. This tool decodes the payload to show you what scopes are embedded in the token." },
+  { question: "Are scopes standardized across OAuth providers?", answer: "No — each provider defines their own scopes. GitHub uses 'repo', 'user', 'admin:org'. Google uses 'https://www.googleapis.com/auth/gmail.readonly'. Auth0 uses custom scopes. OIDC defines standard scopes: 'openid', 'profile', 'email', 'address', 'phone', 'offline_access'." },
+  { question: "What is the difference between 'scope' and 'scp' in a JWT?", answer: "'scope' (string, space-separated) is common in OAuth 2.0 access tokens. 'scp' (array of strings) is used by some providers like Microsoft Azure AD and Auth0. Both represent granted permissions. This tool handles both formats." },
+  { question: "Can this tool validate JWT signatures?", answer: "No — signature validation requires the server's public key or secret. This tool only decodes the payload to show claims and scopes. Never use client-side JWT decoding as a security check. Always validate signatures on your server using a proper JWT library." },
+];
+---
+
+<BaseLayout
+  title="OAuth Scope Decoder — Decode JWT and OAuth Scope Strings"
+  description="Decode OAuth access tokens and JWT scope claims. Paste a JWT or space-separated scope string to see all permissions with descriptions. Supports GitHub, Google, Auth0, and common OAuth providers."
+  tool="OAuth Scope Decoder, JWT Scope Decoder, OAuth permissions decoder, JWT claims viewer, access token decoder"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">OAuth Scope Decoder</h1>
+  <p class="text-text-muted mb-4">Decode OAuth access tokens and JWT scope claims. Paste a JWT (to extract scopes from the payload) or a raw space-separated scope string. Shows permissions with human-readable descriptions. Runs entirely in your browser — tokens are never sent anywhere.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JWT payload decoding</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Scope descriptions (GitHub, Google, OIDC)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 100% client-side — token never leaves browser</span>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-2">
+      <label class="text-sm font-medium">JWT Token or Scope String</label>
+      <div class="flex gap-2">
+        <button id="osd-sample-jwt" class="text-xs text-primary hover:underline">Sample JWT</button>
+        <button id="osd-sample-scope" class="text-xs text-primary hover:underline">Sample Scopes</button>
+      </div>
+    </div>
+    <textarea id="osd-input" rows="5"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono resize-y mb-3"
+      placeholder="Paste a JWT token (eyJ...) or scope string (repo user:email read:org)"></textarea>
+    <div class="flex gap-2 flex-wrap">
+      <button id="osd-decode" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity">Decode</button>
+      <button id="osd-clear" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Clear</button>
+      <span id="osd-error" class="text-red-500 text-sm self-center hidden"></span>
+    </div>
+  </div>
+
+  <div id="osd-results" class="hidden">
+    <div id="osd-jwt-section" class="hidden bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <h2 class="text-sm font-semibold mb-3">JWT Claims</h2>
+      <div id="osd-claims" class="font-mono text-xs space-y-1"></div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-semibold">Decoded Scopes <span id="osd-scope-count" class="text-text-muted font-normal text-xs"></span></h2>
+        <button id="osd-copy" class="text-xs border border-border rounded px-3 py-1 hover:bg-surface transition-colors">Copy Scopes</button>
+      </div>
+      <div id="osd-scopes" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('osd-input') as HTMLTextAreaElement;
+    const decodeBtn = document.getElementById('osd-decode') as HTMLButtonElement;
+    const clearBtn = document.getElementById('osd-clear') as HTMLButtonElement;
+    const sampleJwtBtn = document.getElementById('osd-sample-jwt') as HTMLButtonElement;
+    const sampleScopeBtn = document.getElementById('osd-sample-scope') as HTMLButtonElement;
+    const copyBtn = document.getElementById('osd-copy') as HTMLButtonElement;
+    const results = document.getElementById('osd-results') as HTMLDivElement;
+    const errorEl = document.getElementById('osd-error') as HTMLSpanElement;
+    const jwtSection = document.getElementById('osd-jwt-section') as HTMLDivElement;
+
+    // Sample JWT (non-sensitive, decoded from a public example)
+    const SAMPLE_JWT = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQ1IiwiaXNzIjoiaHR0cHM6Ly9leGFtcGxlLmF1dGgwLmNvbS8iLCJhdWQiOiJteS1hcGkiLCJpYXQiOjE3MDUzMjQ2MDAsImV4cCI6MTcwNTQxMTAwMCwic2NvcGUiOiJvcGVuaWQgcHJvZmlsZSBlbWFpbCByZWFkOm9yZyByZXBvIHVzZXI6ZW1haWwiLCJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJuYW1lIjoiSmFuZSBEb2UifQ.signature';
+    const SAMPLE_SCOPE = 'repo user:email read:org admin:repo_hook gist notifications';
+
+    sampleJwtBtn.addEventListener('click', () => { input.value = SAMPLE_JWT; });
+    sampleScopeBtn.addEventListener('click', () => { input.value = SAMPLE_SCOPE; });
+    clearBtn.addEventListener('click', () => { input.value = ''; results.classList.add('hidden'); errorEl.classList.add('hidden'); });
+
+    // Scope knowledge base
+    const SCOPE_DB: Record<string, { provider: string; description: string; risk: 'low' | 'medium' | 'high' }> = {
+      // OIDC standard
+      openid: { provider: 'OIDC', description: 'Authenticate the user; receive an ID token', risk: 'low' },
+      profile: { provider: 'OIDC', description: 'Read basic profile info: name, picture, locale', risk: 'low' },
+      email: { provider: 'OIDC', description: 'Read the user\'s email address and verification status', risk: 'low' },
+      address: { provider: 'OIDC', description: 'Read the user\'s postal address', risk: 'medium' },
+      phone: { provider: 'OIDC', description: 'Read the user\'s phone number', risk: 'medium' },
+      offline_access: { provider: 'OIDC', description: 'Issue refresh tokens for long-lived access', risk: 'medium' },
+      // GitHub
+      repo: { provider: 'GitHub', description: 'Full read/write access to public and private repos', risk: 'high' },
+      'repo:status': { provider: 'GitHub', description: 'Read/write commit statuses', risk: 'low' },
+      'repo:deployment': { provider: 'GitHub', description: 'Read/write deployment statuses', risk: 'medium' },
+      'repo:invite': { provider: 'GitHub', description: 'Accept/decline repo invitations', risk: 'low' },
+      'repo:hooks': { provider: 'GitHub', description: 'Read/write repo hooks', risk: 'medium' },
+      public_repo: { provider: 'GitHub', description: 'Read/write access to public repos only', risk: 'medium' },
+      'user': { provider: 'GitHub', description: 'Read/write all user profile data (including private email)', risk: 'high' },
+      'user:email': { provider: 'GitHub', description: 'Read the user\'s email addresses', risk: 'low' },
+      'user:follow': { provider: 'GitHub', description: 'Follow/unfollow other users', risk: 'low' },
+      'read:user': { provider: 'GitHub', description: 'Read-only access to user profile data', risk: 'low' },
+      'read:org': { provider: 'GitHub', description: 'Read-only access to org membership and teams', risk: 'medium' },
+      'write:org': { provider: 'GitHub', description: 'Read/write org membership and teams', risk: 'high' },
+      'admin:org': { provider: 'GitHub', description: 'Full management of org membership, teams, and settings', risk: 'high' },
+      'admin:repo_hook': { provider: 'GitHub', description: 'Create, read, delete repo webhooks', risk: 'medium' },
+      'admin:org_hook': { provider: 'GitHub', description: 'Create, read, delete org webhooks', risk: 'high' },
+      gist: { provider: 'GitHub', description: 'Create and edit GitHub gists', risk: 'medium' },
+      notifications: { provider: 'GitHub', description: 'Read notifications and mark as read', risk: 'low' },
+      delete_repo: { provider: 'GitHub', description: 'Delete repositories you own', risk: 'high' },
+      workflow: { provider: 'GitHub', description: 'Add/update GitHub Actions workflows', risk: 'high' },
+      // Google
+      'https://www.googleapis.com/auth/gmail.readonly': { provider: 'Google', description: 'Read all Gmail messages and settings', risk: 'high' },
+      'https://www.googleapis.com/auth/gmail.send': { provider: 'Google', description: 'Send email on behalf of the user', risk: 'high' },
+      'https://www.googleapis.com/auth/calendar': { provider: 'Google', description: 'Full read/write access to Google Calendar', risk: 'high' },
+      'https://www.googleapis.com/auth/calendar.readonly': { provider: 'Google', description: 'Read-only access to Google Calendar', risk: 'medium' },
+      'https://www.googleapis.com/auth/drive': { provider: 'Google', description: 'Full access to Google Drive files', risk: 'high' },
+      'https://www.googleapis.com/auth/drive.readonly': { provider: 'Google', description: 'Read-only access to Google Drive files', risk: 'medium' },
+      'https://www.googleapis.com/auth/userinfo.email': { provider: 'Google', description: 'View user\'s email address', risk: 'low' },
+      'https://www.googleapis.com/auth/userinfo.profile': { provider: 'Google', description: 'View user\'s basic profile info', risk: 'low' },
+    };
+
+    const RISK_STYLES: Record<string, string> = {
+      low: 'bg-green-500/10 border-green-500/30 text-green-400',
+      medium: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
+      high: 'bg-red-500/10 border-red-500/30 text-red-400',
+    };
+
+    function base64urlDecode(str: string): string {
+      const padded = str.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = padded.length % 4;
+      const padded2 = pad ? padded + '='.repeat(4 - pad) : padded;
+      return atob(padded2);
+    }
+
+    decodeBtn.addEventListener('click', () => {
+      errorEl.classList.add('hidden');
+      const val = input.value.trim();
+      if (!val) { errorEl.textContent = 'Enter a JWT or scope string.'; errorEl.classList.remove('hidden'); return; }
+
+      let scopes: string[] = [];
+      let claims: Record<string, unknown> | null = null;
+
+      // Try JWT
+      if (val.split('.').length === 3) {
+        try {
+          const payloadStr = base64urlDecode(val.split('.')[1]);
+          claims = JSON.parse(payloadStr) as Record<string, unknown>;
+          jwtSection.classList.remove('hidden');
+
+          // Extract scopes
+          const scopeClaim = claims.scope || claims.scp || claims.permissions || claims.roles;
+          if (typeof scopeClaim === 'string') {
+            scopes = scopeClaim.split(/[\s,]+/).filter(Boolean);
+          } else if (Array.isArray(scopeClaim)) {
+            scopes = scopeClaim.map(String);
+          }
+        } catch {
+          errorEl.textContent = 'Could not decode JWT payload. Is it a valid JWT?';
+          errorEl.classList.remove('hidden');
+          return;
+        }
+      } else {
+        jwtSection.classList.add('hidden');
+        // Plain scope string
+        scopes = val.split(/[\s,]+/).filter(Boolean);
+      }
+
+      // Render JWT claims
+      if (claims) {
+        const claimsEl = document.getElementById('osd-claims') as HTMLElement;
+        claimsEl.innerHTML = '';
+        for (const [k, v] of Object.entries(claims)) {
+          const val2 = typeof v === 'object' ? JSON.stringify(v) : String(v);
+          // Format timestamps
+          let display = escHtml(val2);
+          if ((k === 'iat' || k === 'exp' || k === 'nbf') && typeof v === 'number') {
+            const d = new Date(v * 1000);
+            display += ` <span class="text-text-muted">(${d.toISOString()})</span>`;
+            if (k === 'exp' && v * 1000 < Date.now()) {
+              display += ' <span class="text-red-400">⚠ EXPIRED</span>';
+            }
+          }
+          const div = document.createElement('div');
+          div.className = 'flex gap-2';
+          div.innerHTML = `<span class="text-yellow-400 w-24 shrink-0">${escHtml(k)}</span><span>${display}</span>`;
+          claimsEl.appendChild(div);
+        }
+      }
+
+      // Render scopes
+      const scopeCountEl = document.getElementById('osd-scope-count') as HTMLElement;
+      scopeCountEl.textContent = `(${scopes.length})`;
+      const scopesEl = document.getElementById('osd-scopes') as HTMLElement;
+      scopesEl.innerHTML = '';
+
+      for (const scope of scopes) {
+        const info = SCOPE_DB[scope];
+        const div = document.createElement('div');
+        div.className = 'bg-surface border border-border rounded-lg p-3 flex items-start gap-3';
+        const riskBadge = info
+          ? `<span class="text-xs border px-2 py-0.5 rounded shrink-0 ${RISK_STYLES[info.risk]}">${info.risk}</span>`
+          : '';
+        const providerBadge = info
+          ? `<span class="text-xs text-text-muted shrink-0">${info.provider}</span>`
+          : '<span class="text-xs text-text-muted shrink-0">unknown</span>';
+        const desc = info ? `<div class="text-xs text-text-muted mt-1">${info.description}</div>` : '<div class="text-xs text-text-muted mt-1">No description available for this scope</div>';
+        div.innerHTML = `<div class="flex-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <code class="font-mono text-sm text-primary">${escHtml(scope)}</code>
+            ${providerBadge}
+            ${riskBadge}
+          </div>
+          ${desc}
+        </div>`;
+        scopesEl.appendChild(div);
+      }
+
+      results.classList.remove('hidden');
+    });
+
+    function escHtml(s: string): string {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    copyBtn.addEventListener('click', () => {
+      const scopes = Array.from(document.querySelectorAll('#osd-scopes code')).map(el => (el as HTMLElement).textContent || '').join(' ');
+      navigator.clipboard.writeText(scopes).then(() => { copyBtn.textContent = 'Copied!'; setTimeout(() => copyBtn.textContent = 'Copy Scopes', 2000); });
+    });
+  </script>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="OAuth Scope Decoder" relatedTags={['security', 'oauth', 'jwt', 'authentication', 'developer-tools']} />
+</BaseLayout>

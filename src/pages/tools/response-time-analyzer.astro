@@ -1,0 +1,174 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are p50, p95, and p99 latency percentiles?", answer: "Percentile latencies describe the distribution of response times. p50 (median) means half of requests are at or below that time. p95 means 95% of requests are that fast — 5% are slower. p99 captures your worst-case 'tail latency': 99% complete in that time, only 1% are slower. p99 is critical for user experience." },
+  { question: "Why is mean latency misleading?", answer: "The mean is easily skewed by outliers. If 99 requests take 10ms and one takes 10,000ms, the mean appears to be ~110ms — but p99 is 10,000ms. Users experience individual requests, not averages. Always monitor p95 or p99 alongside the mean for a realistic picture of performance." },
+  { question: "How do I format the input?", answer: "Enter one response time (in milliseconds) per line. You can paste raw numbers like 45, 120, 300. The tool accepts integers and decimals." },
+  { question: "What is standard deviation in latency?", answer: "Standard deviation measures how spread out your response times are around the mean. A low std dev means consistent latency; a high std dev indicates unpredictable, spiky performance. High variability is often worse for user experience than a slightly higher but consistent latency." },
+  { question: "What are good response time targets?", answer: "General guidelines: under 100ms feels instant, 100–300ms is acceptable for most API calls, 300ms–1s starts to feel slow, over 1s significantly impacts user experience. Real-time features should target under 50ms." },
+];
+---
+
+<BaseLayout
+  title="Response Time Analyzer — p50/p95/p99 Latency Percentiles"
+  description="Analyze response time distributions. Paste latency measurements to calculate p50, p95, p99 percentiles, mean, standard deviation, and visualize the histogram. Free browser tool."
+  tool="Response Time Analyzer, Latency Percentile Calculator, p99 latency, p95 percentile, response time distribution histogram"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Response Time Analyzer</h1>
+  <p class="text-text-muted mb-4">Paste response times (one per line, in milliseconds) to calculate p50, p95, p99 percentiles, mean, standard deviation, and visualize the distribution. Runs entirely in your browser.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> p50 / p95 / p99 percentiles</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Mean & std deviation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Distribution histogram</span>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-2">
+      <label class="text-sm font-medium">Response Times <span class="text-text-muted font-normal">(ms, one per line)</span></label>
+      <button id="rta-sample" class="text-xs text-primary hover:underline">Load Sample</button>
+    </div>
+    <textarea id="rta-input" rows="10"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono resize-y mb-3"
+      placeholder="45&#10;120&#10;89&#10;230&#10;55&#10;..."></textarea>
+    <div class="flex gap-2 flex-wrap">
+      <button id="rta-analyze" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity">Analyze</button>
+      <button id="rta-clear" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Clear</button>
+      <span id="rta-error" class="text-red-500 text-sm self-center hidden"></span>
+    </div>
+  </div>
+
+  <div id="rta-results" class="hidden">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="rta-p50" class="text-2xl font-bold text-green-500 mb-1">—</div>
+        <div class="text-xs text-text-muted">p50 (median)</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="rta-p95" class="text-2xl font-bold text-yellow-500 mb-1">—</div>
+        <div class="text-xs text-text-muted">p95</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="rta-p99" class="text-2xl font-bold text-red-500 mb-1">—</div>
+        <div class="text-xs text-text-muted">p99</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="rta-mean" class="text-2xl font-bold text-primary mb-1">—</div>
+        <div class="text-xs text-text-muted">Mean</div>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="rta-min" class="text-xl font-bold text-text-muted mb-1">—</div>
+        <div class="text-xs text-text-muted">Min</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="rta-max" class="text-xl font-bold text-text-muted mb-1">—</div>
+        <div class="text-xs text-text-muted">Max</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="rta-stddev" class="text-xl font-bold text-text-muted mb-1">—</div>
+        <div class="text-xs text-text-muted">Std Dev</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="rta-count" class="text-xl font-bold text-text-muted mb-1">—</div>
+        <div class="text-xs text-text-muted">Count</div>
+      </div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <h2 class="text-sm font-semibold mb-3">Distribution Histogram</h2>
+      <div id="rta-histogram" class="font-mono text-xs text-text-muted"></div>
+    </div>
+
+    <div class="flex justify-end">
+      <button id="rta-copy" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Copy Report</button>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('rta-input') as HTMLTextAreaElement;
+    const analyzeBtn = document.getElementById('rta-analyze') as HTMLButtonElement;
+    const clearBtn = document.getElementById('rta-clear') as HTMLButtonElement;
+    const sampleBtn = document.getElementById('rta-sample') as HTMLButtonElement;
+    const copyBtn = document.getElementById('rta-copy') as HTMLButtonElement;
+    const results = document.getElementById('rta-results') as HTMLDivElement;
+    const errorEl = document.getElementById('rta-error') as HTMLSpanElement;
+
+    const SAMPLE = [12,15,18,22,25,28,30,32,35,38,40,42,45,48,50,55,60,65,70,75,80,90,100,110,120,140,160,200,250,350,500,800,1200].join('\n');
+
+    sampleBtn.addEventListener('click', () => { input.value = SAMPLE; });
+    clearBtn.addEventListener('click', () => { input.value = ''; results.classList.add('hidden'); errorEl.classList.add('hidden'); });
+
+    function percentile(sorted: number[], p: number): number {
+      const idx = (p / 100) * (sorted.length - 1);
+      const lo = Math.floor(idx), hi = Math.ceil(idx);
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+    }
+
+    function fmt(v: number): string {
+      return v >= 1000 ? (v / 1000).toFixed(2) + 's' : v.toFixed(1) + 'ms';
+    }
+
+    analyzeBtn.addEventListener('click', () => {
+      errorEl.classList.add('hidden');
+      const lines = input.value.trim().split(/[\n,\s]+/).map(l => l.trim()).filter(Boolean);
+      const nums = lines.map(Number).filter(n => !isNaN(n) && n >= 0);
+      if (nums.length === 0) {
+        errorEl.textContent = 'No valid numbers found. Enter one value per line.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      const sorted = [...nums].sort((a, b) => a - b);
+      const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+      const variance = nums.reduce((a, b) => a + (b - mean) ** 2, 0) / nums.length;
+      const stddev = Math.sqrt(variance);
+
+      (document.getElementById('rta-p50') as HTMLElement).textContent = fmt(percentile(sorted, 50));
+      (document.getElementById('rta-p95') as HTMLElement).textContent = fmt(percentile(sorted, 95));
+      (document.getElementById('rta-p99') as HTMLElement).textContent = fmt(percentile(sorted, 99));
+      (document.getElementById('rta-mean') as HTMLElement).textContent = fmt(mean);
+      (document.getElementById('rta-min') as HTMLElement).textContent = fmt(sorted[0]);
+      (document.getElementById('rta-max') as HTMLElement).textContent = fmt(sorted[sorted.length - 1]);
+      (document.getElementById('rta-stddev') as HTMLElement).textContent = fmt(stddev);
+      (document.getElementById('rta-count') as HTMLElement).textContent = nums.length.toString();
+
+      // Build histogram
+      const buckets = 10;
+      const minV = sorted[0], maxV = sorted[sorted.length - 1];
+      const step = (maxV - minV) / buckets || 1;
+      const counts = Array(buckets).fill(0);
+      for (const n of nums) {
+        const i = Math.min(Math.floor((n - minV) / step), buckets - 1);
+        counts[i]++;
+      }
+      const maxCount = Math.max(...counts);
+      const barWidth = 30;
+      let hist = '';
+      for (let i = 0; i < buckets; i++) {
+        const lo = minV + i * step, hi = lo + step;
+        const bar = '█'.repeat(Math.round((counts[i] / maxCount) * barWidth));
+        const label = `${fmt(lo).padEnd(8)} - ${fmt(hi).padEnd(8)}`;
+        hist += `${label} | ${bar.padEnd(barWidth)} ${counts[i]}\n`;
+      }
+      (document.getElementById('rta-histogram') as HTMLElement).textContent = hist;
+      results.classList.remove('hidden');
+    });
+
+    copyBtn.addEventListener('click', () => {
+      const p50 = (document.getElementById('rta-p50') as HTMLElement).textContent;
+      const p95 = (document.getElementById('rta-p95') as HTMLElement).textContent;
+      const p99 = (document.getElementById('rta-p99') as HTMLElement).textContent;
+      const mean = (document.getElementById('rta-mean') as HTMLElement).textContent;
+      const report = `Response Time Report\np50: ${p50}  p95: ${p95}  p99: ${p99}  Mean: ${mean}`;
+      navigator.clipboard.writeText(report).then(() => { copyBtn.textContent = 'Copied!'; setTimeout(() => copyBtn.textContent = 'Copy Report', 2000); });
+    });
+  </script>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Response Time Analyzer" relatedTags={['performance', 'api', 'latency', 'developer-tools', 'monitoring']} />
+</BaseLayout>

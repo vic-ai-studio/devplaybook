@@ -1,0 +1,223 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is structured logging?", answer: "Structured logging means writing log entries as machine-readable JSON objects instead of plain strings. Each field (timestamp, level, message, requestId, userId) is a separate key, making it easy to query, filter, and alert on specific values in tools like Elasticsearch, Datadog, or CloudWatch." },
+  { question: "What are the standard log levels?", answer: "Most logging frameworks use: TRACE (most verbose, diagnostic), DEBUG (development detail), INFO (normal operation), WARN (unexpected but recoverable), ERROR (failure requiring attention), FATAL/CRITICAL (system-level failure). Higher severity levels should be sparse in production logs." },
+  { question: "Why are timestamps important in logs?", answer: "Timestamps let you correlate events across services and understand the sequence of operations. Always log in UTC ISO 8601 format (2024-01-15T10:30:45.123Z). Local timestamps cause timezone confusion when debugging across teams or regions." },
+  { question: "What is a trace ID or correlation ID?", answer: "A trace ID (or requestId, correlationId) is a unique identifier generated at the start of a request and propagated through all services and functions that handle that request. It lets you find all log entries for a specific user action across distributed systems." },
+  { question: "How do I configure Node.js pino or Winston to output JSON?", answer: "Pino outputs JSON by default. For Winston: use format.json() as the format option. For pino with pretty printing in dev, use pino-pretty as a transport. In production, always output raw JSON and let your log aggregation platform handle formatting and filtering." },
+];
+---
+
+<BaseLayout
+  title="Log Level Formatter — Format & Colorize JSON Logs Online"
+  description="Paste JSON structured logs to format them as human-readable colorized output. Filter by log level, highlight errors, and copy formatted results. Free browser tool."
+  tool="Log Formatter, JSON Log Viewer, Structured Log Parser, log level colorizer, pino log formatter, winston log reader"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Log Level Formatter</h1>
+  <p class="text-text-muted mb-4">Paste JSON structured logs to format them as human-readable, colorized output. Filter by level, highlight errors, and explore your log data. Runs entirely in your browser.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JSON → Human-readable</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Color-coded by level</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Filter by severity</span>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-2">
+      <label class="text-sm font-medium">JSON Logs <span class="text-text-muted font-normal">(one JSON object per line)</span></label>
+      <button id="llf-sample" class="text-xs text-primary hover:underline">Load Sample</button>
+    </div>
+    <textarea id="llf-input" rows="10"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono resize-y mb-3"
+      placeholder='{"level":"info","msg":"Server started","port":3000,"time":"2024-01-15T10:30:45.123Z"}'></textarea>
+    <div class="flex gap-2 flex-wrap items-center">
+      <button id="llf-format" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity">Format</button>
+      <button id="llf-clear" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Clear</button>
+      <span class="text-text-muted text-xs ml-2">Filter:</span>
+      <select id="llf-filter" class="bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+        <option value="">All levels</option>
+        <option value="trace">TRACE+</option>
+        <option value="debug">DEBUG+</option>
+        <option value="info">INFO+</option>
+        <option value="warn">WARN+</option>
+        <option value="error">ERROR+</option>
+        <option value="fatal">FATAL only</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="llf-results" class="hidden">
+    <div class="grid grid-cols-3 md:grid-cols-6 gap-2 mb-5 text-center">
+      <div class="bg-bg-card border border-border rounded-lg p-3"><div id="llf-cnt-debug" class="font-bold text-gray-400">0</div><div class="text-xs text-text-muted">DEBUG</div></div>
+      <div class="bg-bg-card border border-border rounded-lg p-3"><div id="llf-cnt-info" class="font-bold text-blue-400">0</div><div class="text-xs text-text-muted">INFO</div></div>
+      <div class="bg-bg-card border border-border rounded-lg p-3"><div id="llf-cnt-warn" class="font-bold text-yellow-400">0</div><div class="text-xs text-text-muted">WARN</div></div>
+      <div class="bg-bg-card border border-border rounded-lg p-3"><div id="llf-cnt-error" class="font-bold text-red-400">0</div><div class="text-xs text-text-muted">ERROR</div></div>
+      <div class="bg-bg-card border border-border rounded-lg p-3"><div id="llf-cnt-fatal" class="font-bold text-red-600">0</div><div class="text-xs text-text-muted">FATAL</div></div>
+      <div class="bg-bg-card border border-border rounded-lg p-3"><div id="llf-cnt-other" class="font-bold text-text-muted">0</div><div class="text-xs text-text-muted">OTHER</div></div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-semibold">Formatted Output</h2>
+        <button id="llf-copy" class="text-xs border border-border rounded px-3 py-1 hover:bg-surface transition-colors">Copy</button>
+      </div>
+      <div id="llf-output" class="font-mono text-xs space-y-1 max-h-[500px] overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('llf-input') as HTMLTextAreaElement;
+    const formatBtn = document.getElementById('llf-format') as HTMLButtonElement;
+    const clearBtn = document.getElementById('llf-clear') as HTMLButtonElement;
+    const sampleBtn = document.getElementById('llf-sample') as HTMLButtonElement;
+    const copyBtn = document.getElementById('llf-copy') as HTMLButtonElement;
+    const filterEl = document.getElementById('llf-filter') as HTMLSelectElement;
+    const results = document.getElementById('llf-results') as HTMLDivElement;
+
+    const SAMPLE = `{"level":"info","msg":"Server started","port":3000,"time":"2024-01-15T10:30:45.123Z"}
+{"level":"debug","msg":"DB connection pool initialized","pool":10,"time":"2024-01-15T10:30:45.200Z"}
+{"level":"info","msg":"Handling request","method":"GET","url":"/api/users","reqId":"abc123","time":"2024-01-15T10:30:46.001Z"}
+{"level":"warn","msg":"Rate limit approaching","current":95,"max":100,"reqId":"abc123","time":"2024-01-15T10:30:46.050Z"}
+{"level":"error","msg":"Database query failed","err":{"message":"Connection timeout","stack":"Error: Connection timeout\\n    at Pool.query"},"reqId":"abc123","time":"2024-01-15T10:30:46.300Z"}
+{"level":"info","msg":"Request completed","statusCode":500,"duration":300,"reqId":"abc123","time":"2024-01-15T10:30:46.302Z"}
+{"level":"fatal","msg":"Out of memory","heap":{"used":2048,"total":2048},"time":"2024-01-15T10:30:47.000Z"}`;
+
+    sampleBtn.addEventListener('click', () => { input.value = SAMPLE; });
+    clearBtn.addEventListener('click', () => { input.value = ''; results.classList.add('hidden'); });
+
+    const LEVEL_ORDER: Record<string, number> = { trace: 0, debug: 1, info: 2, warn: 3, warning: 3, error: 4, fatal: 5, critical: 5 };
+    const LEVEL_STYLES: Record<string, string> = {
+      trace: 'text-gray-500',
+      debug: 'text-gray-400',
+      info: 'text-blue-400',
+      warn: 'text-yellow-400',
+      warning: 'text-yellow-400',
+      error: 'text-red-400',
+      fatal: 'text-red-600 font-bold',
+      critical: 'text-red-600 font-bold',
+    };
+
+    function getLevelKey(obj: Record<string, unknown>): string {
+      const raw = (obj.level || obj.severity || obj.lvl || '').toString().toLowerCase();
+      // pino numeric levels
+      if (typeof obj.level === 'number') {
+        if (obj.level <= 10) return 'trace';
+        if (obj.level <= 20) return 'debug';
+        if (obj.level <= 30) return 'info';
+        if (obj.level <= 40) return 'warn';
+        if (obj.level <= 50) return 'error';
+        return 'fatal';
+      }
+      return raw || 'info';
+    }
+
+    function formatTime(obj: Record<string, unknown>): string {
+      const t = obj.time || obj.timestamp || obj['@timestamp'] || obj.ts;
+      if (!t) return '';
+      try {
+        const d = typeof t === 'number' ? new Date(t) : new Date(t as string);
+        return d.toISOString().replace('T', ' ').replace('Z', '');
+      } catch { return String(t); }
+    }
+
+    function getMsg(obj: Record<string, unknown>): string {
+      return (obj.msg || obj.message || obj.Message || '').toString();
+    }
+
+    function formatExtra(obj: Record<string, unknown>): string {
+      const skip = new Set(['level', 'severity', 'lvl', 'msg', 'message', 'Message', 'time', 'timestamp', '@timestamp', 'ts']);
+      const extra: string[] = [];
+      for (const [k, v] of Object.entries(obj)) {
+        if (skip.has(k)) continue;
+        const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        extra.push(`${k}=${val}`);
+      }
+      return extra.join(' ');
+    }
+
+    let allEntries: { level: string; html: string; text: string }[] = [];
+
+    function renderFiltered() {
+      const filterVal = filterEl.value;
+      const filterOrder = LEVEL_ORDER[filterVal] ?? -1;
+      const container = document.getElementById('llf-output') as HTMLElement;
+      container.innerHTML = '';
+      for (const e of allEntries) {
+        const eOrder = LEVEL_ORDER[e.level] ?? 2;
+        if (filterVal === 'fatal' && e.level !== 'fatal' && e.level !== 'critical') continue;
+        if (filterVal && filterVal !== 'fatal' && eOrder < filterOrder) continue;
+        const div = document.createElement('div');
+        div.innerHTML = e.html;
+        container.appendChild(div);
+      }
+    }
+
+    filterEl.addEventListener('change', renderFiltered);
+
+    formatBtn.addEventListener('click', () => {
+      const lines = input.value.trim().split('\n').filter(Boolean);
+      allEntries = [];
+      const counts: Record<string, number> = { debug: 0, info: 0, warn: 0, error: 0, fatal: 0, other: 0 };
+
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line.trim()) as Record<string, unknown>;
+          const level = getLevelKey(obj);
+          const time = formatTime(obj);
+          const msg = getMsg(obj);
+          const extra = formatExtra(obj);
+          const style = LEVEL_STYLES[level] || 'text-text-muted';
+          const lvlLabel = level.toUpperCase().padEnd(5);
+
+          const html = `<div class="flex gap-2 flex-wrap items-baseline">
+            <span class="text-text-muted shrink-0">${escHtml(time)}</span>
+            <span class="${style} font-bold shrink-0">[${lvlLabel}]</span>
+            <span class="text-text-primary">${escHtml(msg)}</span>
+            ${extra ? `<span class="text-text-muted">${escHtml(extra)}</span>` : ''}
+          </div>`;
+          const text = `${time} [${lvlLabel}] ${msg}${extra ? ' ' + extra : ''}`;
+
+          allEntries.push({ level, html, text });
+
+          if (level === 'fatal' || level === 'critical') counts.fatal++;
+          else if (level === 'error') counts.error++;
+          else if (level === 'warn' || level === 'warning') counts.warn++;
+          else if (level === 'info') counts.info++;
+          else if (level === 'debug') counts.debug++;
+          else counts.other++;
+        } catch {
+          // Non-JSON line — show as plain
+          allEntries.push({ level: 'other', html: `<div class="text-text-muted">${escHtml(line)}</div>`, text: line });
+          counts.other++;
+        }
+      }
+
+      (document.getElementById('llf-cnt-debug') as HTMLElement).textContent = counts.debug.toString();
+      (document.getElementById('llf-cnt-info') as HTMLElement).textContent = counts.info.toString();
+      (document.getElementById('llf-cnt-warn') as HTMLElement).textContent = counts.warn.toString();
+      (document.getElementById('llf-cnt-error') as HTMLElement).textContent = counts.error.toString();
+      (document.getElementById('llf-cnt-fatal') as HTMLElement).textContent = counts.fatal.toString();
+      (document.getElementById('llf-cnt-other') as HTMLElement).textContent = counts.other.toString();
+
+      renderFiltered();
+      results.classList.remove('hidden');
+    });
+
+    function escHtml(s: string): string {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    copyBtn.addEventListener('click', () => {
+      const text = allEntries.map(e => e.text).join('\n');
+      navigator.clipboard.writeText(text).then(() => { copyBtn.textContent = 'Copied!'; setTimeout(() => copyBtn.textContent = 'Copy', 2000); });
+    });
+  </script>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Log Level Formatter" relatedTags={['logging', 'debugging', 'monitoring', 'json', 'developer-tools']} />
+</BaseLayout>

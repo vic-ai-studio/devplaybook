@@ -1,0 +1,212 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What stack trace formats does this tool support?", answer: "This tool parses Node.js/V8 stack traces, Python tracebacks, Java/JVM stack traces, and generic error.stack formats. It extracts file paths, line numbers, function names, and highlights the most relevant frames." },
+  { question: "What is an anonymous function frame?", answer: "When JavaScript code runs inside an anonymous function (like an arrow function or IIFE without a name), the stack trace shows '<anonymous>' or similar. This is common with callbacks and closures. Naming your functions helps produce more readable stack traces." },
+  { question: "Why does the stack trace show internal Node.js frames?", answer: "Node.js internal frames come from the Node.js runtime itself (e.g., internal/modules/cjs/loader.js). These are usually not the source of your bug. This tool marks them as 'internal' so you can focus on your application code." },
+  { question: "What does 'at Object.<anonymous>' mean?", answer: "This means code is executing at the top level of a module (not inside a named function). It's the module's main script body. The file path next to it points to the exact module file." },
+  { question: "How do I get a stack trace in Node.js?", answer: "Use new Error().stack to capture the current stack trace as a string, or console.trace() to print it. In try/catch blocks, err.stack contains the full trace from where the error was thrown." },
+];
+---
+
+<BaseLayout
+  title="Stack Trace Parser — Parse and Highlight Error Stack Traces"
+  description="Paste any Node.js, Python, or Java stack trace and parse it into structured frames. Highlights file paths, line numbers, and function names. Free browser tool."
+  tool="Stack Trace Parser, Error Stack Trace Analyzer, Node.js stack trace, Python traceback parser, Java stack trace"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Stack Trace Parser</h1>
+  <p class="text-text-muted mb-4">Paste an error stack trace to parse it into structured frames with file paths, line numbers, and function names highlighted. Supports Node.js/V8, Python, Java, and generic formats.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Node.js / V8 / Python / Java</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Highlights file & line info</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Filters internal frames</span>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-2">
+      <label class="text-sm font-medium">Stack Trace</label>
+      <button id="stp-sample" class="text-xs text-primary hover:underline">Load Sample</button>
+    </div>
+    <textarea id="stp-input" rows="12"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono resize-y mb-3"
+      placeholder="Paste your stack trace here..."></textarea>
+    <div class="flex gap-2 flex-wrap">
+      <button id="stp-parse" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity">Parse</button>
+      <button id="stp-clear" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Clear</button>
+    </div>
+  </div>
+
+  <div id="stp-results" class="hidden">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stp-total-frames" class="text-2xl font-bold text-primary mb-1">—</div>
+        <div class="text-xs text-text-muted">Total Frames</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stp-app-frames" class="text-2xl font-bold text-green-500 mb-1">—</div>
+        <div class="text-xs text-text-muted">App Frames</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stp-internal-frames" class="text-2xl font-bold text-text-muted mb-1">—</div>
+        <div class="text-xs text-text-muted">Internal Frames</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stp-error-type" class="text-xl font-bold text-red-500 mb-1 truncate">—</div>
+        <div class="text-xs text-text-muted">Error Type</div>
+      </div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-semibold">Error Message</h2>
+      </div>
+      <div id="stp-error-msg" class="text-sm font-mono text-red-400 bg-surface rounded p-3 break-all"></div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-semibold">Parsed Frames</h2>
+        <label class="flex items-center gap-2 text-xs text-text-muted cursor-pointer">
+          <input type="checkbox" id="stp-hide-internal" class="rounded" checked />
+          Hide internal frames
+        </label>
+      </div>
+      <div id="stp-frames" class="space-y-2 font-mono text-xs"></div>
+    </div>
+
+    <div class="flex justify-end">
+      <button id="stp-copy" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Copy Parsed</button>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('stp-input') as HTMLTextAreaElement;
+    const parseBtn = document.getElementById('stp-parse') as HTMLButtonElement;
+    const clearBtn = document.getElementById('stp-clear') as HTMLButtonElement;
+    const sampleBtn = document.getElementById('stp-sample') as HTMLButtonElement;
+    const copyBtn = document.getElementById('stp-copy') as HTMLButtonElement;
+    const results = document.getElementById('stp-results') as HTMLDivElement;
+    const hideInternalCb = document.getElementById('stp-hide-internal') as HTMLInputElement;
+
+    const SAMPLE = `TypeError: Cannot read properties of undefined (reading 'map')
+    at processItems (/app/src/utils/processor.js:42:18)
+    at async handleRequest (/app/src/handlers/request.js:15:22)
+    at async Object.<anonymous> (/app/src/server.js:87:5)
+    at internal/modules/cjs/loader.js:936:12
+    at Function.Module._load (internal/modules/cjs/loader.js:776:27)
+    at Object.<anonymous> (node:internal/main/run_main_module:17:47)`;
+
+    sampleBtn.addEventListener('click', () => { input.value = SAMPLE; });
+    clearBtn.addEventListener('click', () => { input.value = ''; results.classList.add('hidden'); });
+
+    interface Frame {
+      raw: string;
+      fn: string;
+      file: string;
+      line: string;
+      col: string;
+      isInternal: boolean;
+    }
+
+    let parsedFrames: Frame[] = [];
+
+    function parseNodeFrame(line: string): Frame | null {
+      // Node.js/V8: "    at fnName (file:line:col)" or "    at file:line:col"
+      const m1 = line.match(/^\s+at\s+(.*?)\s+\((.+):(\d+):(\d+)\)\s*$/);
+      if (m1) {
+        return { raw: line.trim(), fn: m1[1], file: m1[2], line: m1[3], col: m1[4], isInternal: isInternalPath(m1[2]) };
+      }
+      const m2 = line.match(/^\s+at\s+(.+):(\d+):(\d+)\s*$/);
+      if (m2) {
+        return { raw: line.trim(), fn: '<anonymous>', file: m2[1], line: m2[2], col: m2[3], isInternal: isInternalPath(m2[1]) };
+      }
+      // Python: "  File \"path\", line N, in fn"
+      const m3 = line.match(/^\s+File "(.+)", line (\d+), in (.+)\s*$/);
+      if (m3) {
+        return { raw: line.trim(), fn: m3[3], file: m3[1], line: m3[2], col: '', isInternal: isInternalPath(m3[1]) };
+      }
+      // Java: "\tat package.Class.method(File.java:line)"
+      const m4 = line.match(/^\s+at\s+([\w.$]+)\.([\w<>$]+)\((.+):(\d+)\)\s*$/);
+      if (m4) {
+        return { raw: line.trim(), fn: `${m4[1]}.${m4[2]}`, file: m4[3], line: m4[4], col: '', isInternal: isInternalPath(m4[1]) };
+      }
+      return null;
+    }
+
+    function isInternalPath(p: string): boolean {
+      return /^(node:|internal\/|<node_internals>|.*node_modules.*|java\.|sun\.|com\.sun\.|javax\.|jdk\.)/.test(p);
+    }
+
+    function renderFrames() {
+      const hide = hideInternalCb.checked;
+      const container = document.getElementById('stp-frames') as HTMLElement;
+      container.innerHTML = '';
+      parsedFrames.forEach((f, i) => {
+        if (hide && f.isInternal) return;
+        const div = document.createElement('div');
+        div.className = `p-3 rounded-lg border ${f.isInternal ? 'border-border opacity-50 bg-surface' : 'border-border bg-surface'}`;
+        const badge = f.isInternal
+          ? '<span class="text-xs bg-surface border border-border px-1.5 py-0.5 rounded text-text-muted mr-2">internal</span>'
+          : `<span class="text-xs bg-green-500/10 border border-green-500/30 px-1.5 py-0.5 rounded text-green-400 mr-2">#${i + 1}</span>`;
+        div.innerHTML = `<div class="flex items-start gap-2 flex-wrap">
+          ${badge}
+          <span class="text-yellow-400 font-semibold">${escHtml(f.fn)}</span>
+        </div>
+        <div class="mt-1 text-text-muted flex gap-3 flex-wrap">
+          <span>📄 ${escHtml(f.file)}</span>
+          ${f.line ? `<span>:${escHtml(f.line)}${f.col ? ':' + escHtml(f.col) : ''}</span>` : ''}
+        </div>`;
+        container.appendChild(div);
+      });
+    }
+
+    function escHtml(s: string): string {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    hideInternalCb.addEventListener('change', renderFrames);
+
+    parseBtn.addEventListener('click', () => {
+      const lines = input.value.split('\n');
+      let errorMsg = '';
+      let errorType = '';
+      parsedFrames = [];
+
+      for (const line of lines) {
+        const frame = parseNodeFrame(line);
+        if (frame) {
+          parsedFrames.push(frame);
+        } else if (!errorMsg && line.trim() && !line.trim().startsWith('at ')) {
+          errorMsg = line.trim();
+          const m = errorMsg.match(/^(\w+(?:Error|Exception|Warning|TypeError|SyntaxError|ReferenceError)?)/);
+          if (m) errorType = m[1];
+        }
+      }
+
+      const appFrames = parsedFrames.filter(f => !f.isInternal).length;
+      const internalFrames = parsedFrames.filter(f => f.isInternal).length;
+
+      (document.getElementById('stp-total-frames') as HTMLElement).textContent = parsedFrames.length.toString();
+      (document.getElementById('stp-app-frames') as HTMLElement).textContent = appFrames.toString();
+      (document.getElementById('stp-internal-frames') as HTMLElement).textContent = internalFrames.toString();
+      (document.getElementById('stp-error-type') as HTMLElement).textContent = errorType || '—';
+      (document.getElementById('stp-error-msg') as HTMLElement).textContent = errorMsg || '(no error message detected)';
+
+      renderFrames();
+      results.classList.remove('hidden');
+    });
+
+    copyBtn.addEventListener('click', () => {
+      const out = parsedFrames.map((f, i) => `#${i+1} ${f.fn} @ ${f.file}:${f.line}`).join('\n');
+      navigator.clipboard.writeText(out).then(() => { copyBtn.textContent = 'Copied!'; setTimeout(() => copyBtn.textContent = 'Copy Parsed', 2000); });
+    });
+  </script>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Stack Trace Parser" relatedTags={['debugging', 'nodejs', 'errors', 'developer-tools', 'python']} />
+</BaseLayout>
