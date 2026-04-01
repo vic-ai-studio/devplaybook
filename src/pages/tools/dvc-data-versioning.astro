@@ -1,0 +1,171 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is DVC and why is Git not enough for ML data?", answer: "DVC (Data Version Control) extends Git to handle large data files, models, and ML pipelines. Git is not designed for binary files — committing a 10 GB dataset to Git makes the repo huge and slow. DVC stores large files in a remote storage (S3, GCS, Azure Blob, SSH) and commits only lightweight .dvc pointer files to Git. This gives you the full Git workflow (branches, commits, diffs) for data and models without the size penalty." },
+  { question: "How does DVC track data files?", answer: "When you run dvc add data/train.csv, DVC computes the file's MD5 hash, copies it to the local cache (.dvc/cache/), creates a data/train.csv.dvc pointer file containing the hash, and adds data/train.csv to .gitignore. You commit the .dvc file to Git. Later, dvc pull reconstructs the exact file from the cache or remote storage using the hash pointer." },
+  { question: "What is a DVC Pipeline and how is it different from Airflow?", answer: "A DVC Pipeline (defined in dvc.yaml) is a DAG of data transformation stages with declared inputs (deps) and outputs (outs). DVC tracks which stages need re-running based on file hash changes — only stages with changed inputs are re-executed. Unlike Airflow (orchestration for production workflows), DVC pipelines are for local and CI/CD ML experiment reproducibility. Airflow schedules jobs; DVC ensures they use the right data versions." },
+  { question: "How do DVC remotes work?", answer: "A DVC remote is a storage backend for cached files. Configure with: dvc remote add myremote s3://my-bucket/dvc-store. Then dvc push uploads changed files to S3, and dvc pull downloads them. DVC supports S3, GCS, Azure Blob, SSH, HTTP, and local paths as remotes. You can have multiple remotes and designate a default. Authentication follows boto3/gcloud credentials, so existing cloud auth works automatically." },
+  { question: "Can DVC track model metrics and plots?", answer: "Yes. Use dvc metrics add to track metric files (JSON, CSV, YAML), then dvc metrics show and dvc metrics diff to compare across Git commits and branches. For plots, dvc plots show renders training curves from logged metrics. This gives you experiment comparison with full data lineage: you can see that branch A used dataset v3 and achieved 92% accuracy while branch B used v4 and achieved 94%." },
+  { question: "How does DVC integrate with CI/CD pipelines?", answer: "In CI/CD (GitHub Actions, GitLab CI), use dvc pull to restore the exact dataset version referenced by the current commit, then dvc repro to run only changed pipeline stages. This ensures reproducibility: every commit re-runs with the exact data it was developed with. Use CML (Continuous Machine Learning) alongside DVC for automated model evaluation and PR comments with metrics and plots." },
+];
+---
+
+<BaseLayout
+  title="DVC: Data Version Control for ML Projects & Pipelines"
+  description="Complete DVC guide: dvc init/add/push/pull, remote storage (S3/GCS/Azure), DVC Pipelines with dvc.yaml, metrics and plots tracking, and DVC vs Git LFS vs LakeFS comparison."
+  tool="DVC, data version control, ML pipelines, data versioning, Git ML, dvc remote, DVC pipeline, dvc.yaml"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"DVC: Data Version Control for ML Projects & Pipelines","url":"https://devplaybook.cc/tools/dvc-data-versioning","description":"Complete guide to DVC for versioning ML datasets, models, and pipelines alongside Git code with remote storage backends."})} />
+
+  <h1 class="text-3xl font-bold mb-2">DVC: Data Version Control for ML Projects &amp; Pipelines</h1>
+  <p class="text-text-muted mb-6">DVC is Git for data and ML pipelines. Track large datasets, models, and experiments with the same Git workflow you already know — store the files in S3/GCS while committing lightweight pointers to your repo.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Git-compatible data versioning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> S3/GCS/Azure remote storage</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Reproducible ML pipelines</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Metrics &amp; plots across branches</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- Init and track -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Initialize DVC &amp; Track Data Files</h2>
+    <p class="text-sm text-text-muted mb-3">Install with <code class="bg-bg border border-border rounded px-1 text-xs">pip install dvc[s3]</code>, then add DVC to an existing Git repo:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code># Initialize DVC (creates .dvc/ directory alongside .git/)
+git init my-ml-project && cd my-ml-project
+dvc init
+git commit -m "Initialize DVC"
+
+# Track a large dataset — DVC moves it to cache, creates a pointer file
+dvc add data/train.csv         # creates data/train.csv.dvc
+dvc add models/model.pkl       # works for model files too
+
+# Commit the pointer files to Git (not the data itself)
+git add data/train.csv.dvc data/.gitignore models/.gitignore
+git commit -m "Add training data and model v1"
+
+# Configure S3 remote storage
+dvc remote add -d myremote s3://my-ml-bucket/dvc-store
+dvc remote modify myremote region us-east-1
+git add .dvc/config && git commit -m "Configure S3 remote"
+
+# Push data to S3
+dvc push             # uploads data/.dvc/cache to S3
+
+# On another machine: restore exact data version
+git clone https://github.com/org/my-ml-project
+dvc pull             # downloads from S3 using .dvc pointers</code></pre>
+  </div>
+
+  <!-- Pipelines -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">DVC Pipelines: Reproducible ML Stages</h2>
+    <p class="text-sm text-text-muted mb-3">Define a pipeline in <code class="bg-bg border border-border rounded px-1 text-xs">dvc.yaml</code> — DVC only re-runs stages whose inputs changed:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code># dvc.yaml
+stages:
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+      - src/preprocess.py
+      - data/raw/train.csv            # if this changes, stage re-runs
+    outs:
+      - data/processed/train_clean.csv
+    params:
+      - params.yaml:
+          - preprocess.test_size
+          - preprocess.random_state
+
+  train:
+    cmd: python src/train.py
+    deps:
+      - src/train.py
+      - data/processed/train_clean.csv
+    outs:
+      - models/classifier.pkl
+    metrics:
+      - reports/metrics.json:         # tracked as metrics, not just artifact
+          cache: false
+    plots:
+      - reports/feature_importance.csv:
+          cache: false
+
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - src/evaluate.py
+      - models/classifier.pkl
+      - data/processed/test_clean.csv
+    metrics:
+      - reports/eval_metrics.json:
+          cache: false</code></pre>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto"><code># Run the pipeline (only changed stages execute)
+dvc repro
+
+# Compare metrics across Git commits/branches
+dvc metrics diff main feature/new-model
+# Path                    Metric    HEAD      main      Change
+# reports/metrics.json    accuracy  0.9421    0.9187    0.0234
+
+# Visualize training plots
+dvc plots show reports/feature_importance.csv</code></pre>
+  </div>
+
+  <!-- Branch-based experiments -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">DVC Experiments: Branch-Free Experiment Tracking</h2>
+    <p class="text-sm text-text-muted mb-3">DVC Experiments let you run and compare multiple experiment variants without creating Git branches:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code># Run an experiment (creates a temporary Git stash under the hood)
+dvc exp run --set-param train.learning_rate=0.01
+
+# Run multiple experiments with parameter grid
+dvc exp run --set-param train.lr=0.001,0.01,0.1 --queue
+dvc queue start --jobs 3    # run 3 in parallel
+
+# Compare all experiments
+dvc exp show
+# ┏━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━┓
+# ┃ Experiment   ┃ accuracy┃ learning_rate  ┃ f1_score ┃
+# ┡━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━┩
+# │ main         │ 0.9187  │ 0.001          │ 0.9102   │
+# │ exp-abc12    │ 0.9421  │ 0.01           │ 0.9380   │ ← best
+# │ exp-def34    │ 0.9301  │ 0.1            │ 0.9244   │
+
+# Promote best experiment to a Git branch
+dvc exp branch exp-abc12 feature/best-lr</code></pre>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-4">DVC vs Git LFS vs LakeFS vs Pachyderm</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[620px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Feature</th>
+            <th class="text-left pb-2 pr-4">DVC</th>
+            <th class="text-left pb-2 pr-4">Git LFS</th>
+            <th class="text-left pb-2 pr-4">LakeFS</th>
+            <th class="text-left pb-2">Pachyderm</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted">
+          <tr><td class="py-2 pr-4 font-medium text-text">ML pipeline support</td><td class="py-2 pr-4 text-green-500">Yes (dvc.yaml)</td><td class="py-2 pr-4">No</td><td class="py-2 pr-4">No</td><td class="py-2 text-green-500">Yes (pipeline DAG)</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Git integration</td><td class="py-2 pr-4 text-green-500">Full (pointer files)</td><td class="py-2 pr-4 text-green-500">Full (built-in)</td><td class="py-2 pr-4">S3-compatible branches</td><td class="py-2">Separate from Git</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Storage backends</td><td class="py-2 pr-4 text-green-500">S3/GCS/Azure/SSH/local</td><td class="py-2 pr-4">LFS server / GitHub LFS</td><td class="py-2 pr-4">S3/GCS/Azure</td><td class="py-2">S3-compatible</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Experiment tracking</td><td class="py-2 pr-4 text-green-500">dvc exp built-in</td><td class="py-2 pr-4">No</td><td class="py-2 pr-4">No</td><td class="py-2">No</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Data lake versioning</td><td class="py-2 pr-4">File-level</td><td class="py-2 pr-4">File-level</td><td class="py-2 pr-4 text-green-500">Object-store level</td><td class="py-2">Commit-based</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Self-hostable</td><td class="py-2 pr-4 text-green-500">Yes (remote = your S3)</td><td class="py-2 pr-4 text-green-500">Yes</td><td class="py-2 pr-4 text-green-500">Yes (open-source)</td><td class="py-2 text-green-500">Yes (open-source)</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Best for</td><td class="py-2 pr-4">ML teams, Git-native</td><td class="py-2 pr-4">Simple large files</td><td class="py-2 pr-4">Data lake governance</td><td class="py-2">Data-driven pipelines</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

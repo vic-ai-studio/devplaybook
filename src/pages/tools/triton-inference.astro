@@ -1,0 +1,186 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is NVIDIA Triton Inference Server?", answer: "NVIDIA Triton Inference Server is an open-source, production-grade inference serving platform optimized for NVIDIA GPUs. It supports multiple ML frameworks (TensorRT, ONNX Runtime, PyTorch TorchScript, TensorFlow SavedModel, OpenVINO) from a single server. Triton's key strength is maximizing GPU utilization through dynamic batching, concurrent model execution, and TensorRT optimization." },
+  { question: "What is TensorRT and how does it work with Triton?", answer: "TensorRT is NVIDIA's inference optimization library that compiles models into GPU-optimized execution engines. It performs layer fusion, precision calibration (FP32 → FP16 → INT8), and kernel auto-tuning for specific GPU architectures. When you deploy a TensorRT engine via Triton, inference latency drops 2-5x compared to the raw framework. The tradeoff: TensorRT engines are GPU-arch-specific and must be rebuilt for each GPU type." },
+  { question: "How does Triton's dynamic batching work?", answer: "Triton's dynamic batcher collects incoming inference requests over a configurable window (max_queue_delay_microseconds) and forms batches automatically. Unlike static batching where the client sends a pre-formed batch, dynamic batching is transparent to the client — each client sends one sample and Triton decides the batch size at runtime. This is critical for latency-sensitive workloads where clients cannot wait to form batches themselves." },
+  { question: "What is concurrent model execution in Triton?", answer: "Triton can load multiple instances of a model simultaneously on the same GPU (instance_group count). If one model instance is waiting for memory transfers, another instance can be executing computation, keeping the GPU fully utilized. For small models on large GPUs, running 4-8 concurrent instances dramatically improves throughput without increasing per-request latency." },
+  { question: "How do I use perf_analyzer to benchmark Triton?", answer: "perf_analyzer is the official Triton benchmarking tool. Run: perf_analyzer -m model_name -u localhost:8000 --concurrency-range 1:16 --measurement-interval 5000. This sweeps concurrency from 1 to 16 clients, measuring throughput (inferences/sec) and latency (p50/p95/p99) at each level. Use the output to find the concurrency sweet spot before moving to production." },
+  { question: "What is the Triton model repository layout?", answer: "Triton uses a filesystem-based model repository. Each model has a directory with a config.pbtxt (defines input/output tensors, backends, batching settings) and versioned subdirectories (1/, 2/, ...) containing the model files. Triton polls the repository for changes, allowing hot-swapping model versions without restart. The repository can be on local disk, S3, GCS, or Azure Blob." },
+];
+---
+
+<BaseLayout
+  title="NVIDIA Triton Inference Server: High-Performance ML Serving"
+  description="Complete NVIDIA Triton guide: model repository layout, TensorRT/ONNX/PyTorch backends, dynamic batching, concurrent model execution, perf_analyzer benchmarking, and Kubernetes deployment."
+  tool="Triton inference server, NVIDIA Triton, GPU inference, TensorRT, ONNX runtime, dynamic batching, model serving"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"NVIDIA Triton Inference Server: High-Performance ML Serving","url":"https://devplaybook.cc/tools/triton-inference","description":"Complete guide to NVIDIA Triton Inference Server for GPU-optimized ML serving with TensorRT, dynamic batching, and concurrent model execution."})} />
+
+  <h1 class="text-3xl font-bold mb-2">NVIDIA Triton Inference Server: High-Performance ML Serving</h1>
+  <p class="text-text-muted mb-6">Triton is NVIDIA's production inference server for maximizing GPU throughput. Serve TensorRT, ONNX, PyTorch, and TensorFlow models from a single server with dynamic batching, concurrent execution, and enterprise-grade monitoring.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-framework (TensorRT/ONNX/PT/TF)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dynamic batching for GPU efficiency</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Concurrent model execution</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> gRPC + HTTP/REST endpoints</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- Model repository -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Model Repository Layout</h2>
+    <p class="text-sm text-text-muted mb-3">Triton uses a directory-based model repository. Each model needs a <code class="bg-bg border border-border rounded px-1 text-xs">config.pbtxt</code> and versioned model files:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>model_repository/
+├── bert-onnx/
+│   ├── config.pbtxt              # Model configuration
+│   └── 1/
+│       └── model.onnx            # Model file (version 1)
+├── resnet50-tensorrt/
+│   ├── config.pbtxt
+│   └── 1/
+│       └── model.plan            # TensorRT engine
+└── gpt2-pytorch/
+    ├── config.pbtxt
+    └── 1/
+        └── model.pt              # TorchScript model
+
+# config.pbtxt for ONNX model
+name: "bert-onnx"
+backend: "onnxruntime"
+max_batch_size: 64
+input [
+  &#123;
+    name: "input_ids"
+    data_type: TYPE_INT64
+    dims: [ -1 ]                  # -1 = dynamic sequence length
+  &#125;,
+  &#123;
+    name: "attention_mask"
+    data_type: TYPE_INT64
+    dims: [ -1 ]
+  &#125;
+]
+output [
+  &#123;
+    name: "logits"
+    data_type: TYPE_FP32
+    dims: [ 2 ]
+  &#125;
+]
+dynamic_batching &#123;
+  preferred_batch_size: [ 16, 32, 64 ]
+  max_queue_delay_microseconds: 5000
+&#125;
+instance_group [
+  &#123; count: 2 kind: KIND_GPU gpus: [ 0 ] &#125;
+]</code></pre>
+  </div>
+
+  <!-- Dynamic batching + concurrent execution -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Dynamic Batching &amp; Concurrent Execution</h2>
+    <p class="text-sm text-text-muted mb-3">Start Triton and send inference requests via Python client:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code># Start Triton (using NVIDIA Docker image)
+# docker run --gpus all --rm -p 8000:8000 -p 8001:8001 -p 8002:8002 \
+#   -v $(pwd)/model_repository:/models \
+#   nvcr.io/nvidia/tritonserver:24.01-py3 \
+#   tritonserver --model-repository=/models
+
+import tritonclient.http as httpclient
+import numpy as np
+
+# Create client
+client = httpclient.InferenceServerClient(url="localhost:8000")
+print("Server ready:", client.is_server_ready())
+print("Model ready:", client.is_model_ready("bert-onnx"))
+
+# Prepare inputs
+input_ids = np.array([[101, 2023, 2003, 1037, 3231, 102]], dtype=np.int64)
+attention_mask = np.ones_like(input_ids, dtype=np.int64)
+
+inputs = [
+    httpclient.InferInput("input_ids", input_ids.shape, "INT64"),
+    httpclient.InferInput("attention_mask", attention_mask.shape, "INT64"),
+]
+inputs[0].set_data_from_numpy(input_ids)
+inputs[1].set_data_from_numpy(attention_mask)
+
+outputs = [httpclient.InferRequestedOutput("logits")]
+
+# Send request — Triton dynamically batches with other concurrent requests
+result = client.infer("bert-onnx", inputs, outputs=outputs)
+logits = result.as_numpy("logits")
+print(f"Predicted class: &#123;logits.argmax()&#125;")</code></pre>
+  </div>
+
+  <!-- perf_analyzer -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Benchmarking with perf_analyzer</h2>
+    <p class="text-sm text-text-muted mb-3">Find the optimal concurrency and batch size before production traffic hits:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code># Install perf_analyzer (inside Triton container or via SDK)
+# pip install tritonclient[all]
+
+# Sweep concurrency from 1 to 16, measure for 5 seconds each
+perf_analyzer \
+  -m bert-onnx \
+  -u localhost:8000 \
+  --concurrency-range 1:16:2 \
+  --measurement-interval 5000 \
+  --input-data zero \
+  --shape input_ids:1,128 \
+  --shape attention_mask:1,128 \
+  -f perf_results.csv
+
+# Example output:
+# Concurrency: 1, Throughput: 245 infer/sec, p95 latency: 12.3 ms
+# Concurrency: 4, Throughput: 820 infer/sec, p95 latency: 14.1 ms
+# Concurrency: 8, Throughput: 1240 infer/sec, p95 latency: 19.8 ms
+# Concurrency: 16, Throughput: 1380 infer/sec, p95 latency: 35.6 ms
+# → Sweet spot: concurrency=8 (1240 infer/sec, p95 &lt; 20ms)
+
+# Build TensorRT engine for 2-5x speedup
+trtexec \
+  --onnx=model.onnx \
+  --saveEngine=model.plan \
+  --fp16 \
+  --minShapes=input_ids:1x64 \
+  --optShapes=input_ids:16x128 \
+  --maxShapes=input_ids:64x512</code></pre>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-4">Triton vs TorchServe vs BentoML vs Ray Serve</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[600px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Feature</th>
+            <th class="text-left pb-2 pr-4">Triton</th>
+            <th class="text-left pb-2 pr-4">TorchServe</th>
+            <th class="text-left pb-2 pr-4">BentoML</th>
+            <th class="text-left pb-2">Ray Serve</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted">
+          <tr><td class="py-2 pr-4 font-medium text-text">Raw GPU throughput</td><td class="py-2 pr-4 text-green-500">Best (TensorRT)</td><td class="py-2 pr-4">Good</td><td class="py-2 pr-4">Good</td><td class="py-2">Good</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Framework support</td><td class="py-2 pr-4 text-green-500">TRT/ONNX/PT/TF/OV</td><td class="py-2 pr-4">PyTorch only</td><td class="py-2 pr-4 text-green-500">All (agnostic)</td><td class="py-2 text-green-500">All (agnostic)</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Dynamic batching</td><td class="py-2 pr-4 text-green-500">Built-in (server-side)</td><td class="py-2 pr-4">Partial</td><td class="py-2 pr-4 text-green-500">Adaptive batching</td><td class="py-2">Manual</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Concurrent instances</td><td class="py-2 pr-4 text-green-500">instance_group count</td><td class="py-2 pr-4">worker threads</td><td class="py-2 pr-4">Runner replicas</td><td class="py-2">Deployment replicas</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Kubernetes native</td><td class="py-2 pr-4 text-green-500">Helm + operator</td><td class="py-2 pr-4">Manual YAML</td><td class="py-2 pr-4">Helm chart</td><td class="py-2">KubeRay operator</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Learning curve</td><td class="py-2 pr-4">High (protobuf config)</td><td class="py-2 pr-4">Medium</td><td class="py-2 pr-4 text-green-500">Low</td><td class="py-2">Medium</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Best for</td><td class="py-2 pr-4">Max throughput, NVIDIA</td><td class="py-2 pr-4">Simple PyTorch</td><td class="py-2 pr-4">Multi-framework APIs</td><td class="py-2">Distributed + LLM</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

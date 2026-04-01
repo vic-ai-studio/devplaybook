@@ -1,0 +1,182 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a feature store and why do ML teams need one?", answer: "A feature store is a centralized system for storing, serving, and reusing ML features. Without it, different teams independently compute the same features (e.g., 'user's 7-day purchase total') in inconsistent ways, causing train-serve skew — the model sees different feature values during training vs production. A feature store ensures features are computed once, stored consistently, and served identically to both the training pipeline and the production inference service." },
+  { question: "What is the difference between Feast's offline and online stores?", answer: "The offline store (BigQuery, Redshift, Parquet files, Hive) stores historical feature values for training data generation. It supports point-in-time correct joins: for each training example at time T, retrieve feature values as they existed at time T, preventing future data leakage. The online store (Redis, DynamoDB, Bigtable, Cassandra) stores only the latest feature values for low-latency inference — typically sub-millisecond lookups. Materialization copies data from offline to online." },
+  { question: "What is a point-in-time join and why is it critical?", answer: "A point-in-time join retrieves historical feature values as they existed at a specific timestamp, preventing data leakage in training datasets. If you're training a fraud model and join today's 'account_age_days' feature to a 2023 transaction, you'd get the wrong value (the account is older now than it was in 2023). Feast's get_historical_features() automatically performs these point-in-time joins using the event_timestamp in your entity DataFrame." },
+  { question: "What is feature materialization in Feast?", answer: "Materialization is the process of copying feature values from the offline store to the online store so they are available for low-latency serving. Run feast materialize-incremental $(date -u +%Y-%m-%dT%H:%M:%S) to copy features updated since the last materialization. This is typically scheduled as a cron job. After materialization, feast.get_online_features() retrieves values from Redis/DynamoDB in microseconds instead of querying BigQuery." },
+  { question: "How does Feast handle feature freshness?", answer: "Feast tracks max_age at the FeatureView level — if a feature value is older than max_age, it returns null instead of a stale value. This prevents serving severely outdated features. For real-time features (e.g., current cart value), use Stream FeatureViews backed by Kafka/Kinesis that continuously update the online store. For batch features (e.g., weekly user segment), daily materialization is typically sufficient." },
+  { question: "When should I use Feast vs Tecton vs Hopsworks?", answer: "Use Feast when you want an open-source, cloud-agnostic feature store that you fully control — it integrates with your existing data warehouse and Redis. Use Tecton if you're on AWS and need a fully managed solution with real-time feature pipelines and SLA guarantees. Use Hopsworks if you need the full feature platform including built-in feature monitoring, feature store UI, and integration with Python/Spark pipelines in one managed system. Feast is the most flexible but requires more operational work." },
+];
+---
+
+<BaseLayout
+  title="Feast Feature Store: Offline/Online Feature Management Guide"
+  description="Complete Feast guide: feature store architecture, FeatureView definitions, materializing features to online store, point-in-time joins for training data, and Feast vs Tecton vs Hopsworks comparison."
+  tool="Feast, feature store, feature engineering, offline online store, ML features, point-in-time join, feature materialization"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Feast Feature Store: Offline/Online Feature Management Guide","url":"https://devplaybook.cc/tools/feast-feature-store","description":"Complete guide to Feast feature store for offline training data generation, online serving, and point-in-time correct feature joins."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Feast Feature Store: Offline/Online Feature Management</h1>
+  <p class="text-text-muted mb-6">Feast is the open-source feature store that eliminates train-serve skew. Define features once, use them consistently in both training pipelines and low-latency production serving — with point-in-time correct historical retrieval built in.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Point-in-time correct training data</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Sub-ms online feature serving (Redis)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cloud-agnostic (BigQuery/Redshift/Parquet)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Eliminates train-serve skew</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- Feature definitions -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Defining Features &amp; the Feature Registry</h2>
+    <p class="text-sm text-text-muted mb-3">Install with <code class="bg-bg border border-border rounded px-1 text-xs">pip install feast[redis,gcp]</code>, initialize a repo, then define features in Python:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code># feast init my_feature_repo && cd my_feature_repo
+# feature_repo/features.py
+
+from datetime import timedelta
+from feast import Entity, FeatureView, Field, FileSource, FeatureStore
+from feast.types import Float32, Int64, String
+
+# Entities are the primary keys of your data (user_id, item_id, etc.)
+user = Entity(name="user_id", description="User entity")
+item = Entity(name="item_id", description="Item entity")
+
+# Data source — Parquet for local, BigQuery/Redshift for cloud
+user_stats_source = FileSource(
+    path="data/user_stats.parquet",
+    timestamp_field="event_timestamp",    # required for point-in-time joins
+)
+
+# FeatureView — defines a group of features from a single source
+user_stats_view = FeatureView(
+    name="user_statistics",
+    entities=[user],
+    ttl=timedelta(days=7),                # max feature age
+    schema=[
+        Field(name="purchase_count_7d", dtype=Int64),
+        Field(name="avg_order_value_30d", dtype=Float32),
+        Field(name="days_since_last_purchase", dtype=Int64),
+        Field(name="preferred_category", dtype=String),
+    ],
+    source=user_stats_source,
+    tags=&#123;"team": "recommendations", "version": "v2"&#125;,
+)
+
+# Apply to registry: feast apply</code></pre>
+  </div>
+
+  <!-- Offline training data -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Offline Store: Point-in-Time Training Data</h2>
+    <p class="text-sm text-text-muted mb-3">Generate training datasets with correct historical feature values at each event's timestamp:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>import pandas as pd
+from feast import FeatureStore
+from datetime import datetime
+
+store = FeatureStore(repo_path=".")
+
+# Entity DataFrame: for each (user_id, event_timestamp), retrieve features
+# as they existed AT that timestamp (no future leakage)
+entity_df = pd.DataFrame(&#123;
+    "user_id": [1001, 1002, 1003, 1004],
+    "event_timestamp": [
+        datetime(2024, 1, 15, 10, 0),
+        datetime(2024, 2, 3, 14, 30),
+        datetime(2024, 3, 22, 9, 15),
+        datetime(2024, 4, 1, 11, 45),
+    ],
+    "label": [1, 0, 1, 0],    # your target variable
+&#125;)
+
+# Point-in-time join — retrieves historical feature values for each row
+training_data = store.get_historical_features(
+    entity_df=entity_df,
+    features=[
+        "user_statistics:purchase_count_7d",
+        "user_statistics:avg_order_value_30d",
+        "user_statistics:days_since_last_purchase",
+        "user_statistics:preferred_category",
+    ],
+).to_df()
+
+print(training_data.head())
+# user_id | event_timestamp | purchase_count_7d | avg_order_value_30d | label
+# 1001    | 2024-01-15      | 3                 | 45.20               | 1</code></pre>
+  </div>
+
+  <!-- Online serving -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Online Store: Low-Latency Feature Serving</h2>
+    <p class="text-sm text-text-muted mb-3">Materialize features to Redis, then serve at sub-millisecond latency in production:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>from feast import FeatureStore
+import subprocess
+from datetime import datetime
+
+store = FeatureStore(repo_path=".")
+
+# Materialize features to online store (schedule as cron job)
+# CLI: feast materialize-incremental $(date -u +%Y-%m-%dT%H:%M:%S)
+store.materialize_incremental(end_date=datetime.utcnow())
+
+# --- In your serving code (FastAPI, gRPC, etc.) ---
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.post("/predict")
+async def predict(user_id: int):
+    # Retrieve latest features from Redis — ~0.5ms latency
+    feature_vector = store.get_online_features(
+        features=[
+            "user_statistics:purchase_count_7d",
+            "user_statistics:avg_order_value_30d",
+            "user_statistics:days_since_last_purchase",
+        ],
+        entity_rows=[&#123;"user_id": user_id&#125;],
+    ).to_dict()
+
+    # Identical features to what the model saw during training
+    X = [[
+        feature_vector["purchase_count_7d"][0],
+        feature_vector["avg_order_value_30d"][0],
+        feature_vector["days_since_last_purchase"][0],
+    ]]
+    prediction = model.predict(X)[0]
+    return &#123;"user_id": user_id, "prediction": float(prediction)&#125;</code></pre>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-4">Feast vs Tecton vs Hopsworks vs Vertex Feature Store</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[620px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Feature</th>
+            <th class="text-left pb-2 pr-4">Feast</th>
+            <th class="text-left pb-2 pr-4">Tecton</th>
+            <th class="text-left pb-2 pr-4">Hopsworks</th>
+            <th class="text-left pb-2">Vertex FS</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted">
+          <tr><td class="py-2 pr-4 font-medium text-text">Open-source</td><td class="py-2 pr-4 text-green-500">Yes (Apache 2.0)</td><td class="py-2 pr-4">No (SaaS)</td><td class="py-2 pr-4 text-green-500">Yes (AGPL)</td><td class="py-2">No (GCP-managed)</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Real-time features</td><td class="py-2 pr-4">Stream FeatureView</td><td class="py-2 pr-4 text-green-500">Native streaming</td><td class="py-2 pr-4 text-green-500">Spark Streaming</td><td class="py-2">Dataflow-based</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Point-in-time joins</td><td class="py-2 pr-4 text-green-500">Built-in</td><td class="py-2 pr-4 text-green-500">Built-in</td><td class="py-2 pr-4 text-green-500">Built-in</td><td class="py-2 text-green-500">Built-in</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Cloud agnostic</td><td class="py-2 pr-4 text-green-500">Yes (any cloud)</td><td class="py-2 pr-4">AWS-focused</td><td class="py-2 pr-4 text-green-500">Any cloud / on-prem</td><td class="py-2">GCP only</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Managed service</td><td class="py-2 pr-4">Self-managed</td><td class="py-2 pr-4 text-green-500">Fully managed</td><td class="py-2 pr-4">Self / managed</td><td class="py-2 text-green-500">Fully managed</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Best for</td><td class="py-2 pr-4">Self-hosted, flexible</td><td class="py-2 pr-4">Enterprise AWS</td><td class="py-2 pr-4">Full platform</td><td class="py-2">GCP users</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

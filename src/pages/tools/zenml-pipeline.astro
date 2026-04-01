@@ -1,0 +1,186 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is ZenML and what problem does it solve?", answer: "ZenML is a stack-agnostic MLOps framework that standardizes how ML pipelines are defined and deployed. The problem it solves: ML code written for local development (Jupyter notebooks, local scripts) is not portable to production infrastructure. ZenML separates the pipeline logic (@step, @pipeline decorators) from the infrastructure (called a Stack). The same pipeline code runs locally, on Airflow, Kubeflow, Vertex AI, or Sagemaker — just by switching the Stack." },
+  { question: "What is a ZenML Stack?", answer: "A Stack is a collection of infrastructure components that ZenML uses to run pipelines: an Orchestrator (local/Airflow/Kubeflow/Vertex/Sagemaker), an Artifact Store (local filesystem/S3/GCS/Azure Blob), and optionally a Container Registry, Experiment Tracker (MLflow/W&B), Model Registry, and Step Operator. You register Stack components once and activate a Stack with zenml stack set my-cloud-stack. Pipelines automatically use the active Stack's infrastructure." },
+  { question: "How do ZenML Artifacts work?", answer: "Every step output in ZenML is automatically saved as an immutable Artifact in the Artifact Store with a unique version. ZenML serializes and deserializes artifacts using Materializers — Python classes that define how to save/load a specific type (Pandas DataFrame, Keras model, HuggingFace tokenizer, etc.). Artifacts enable: (1) pipeline caching (unchanged steps re-use existing artifacts), (2) lineage tracking (trace any model back to its training data), (3) artifact sharing between pipelines." },
+  { question: "How does ZenML pipeline caching work?", answer: "ZenML caches step outputs based on input fingerprints. If a step's inputs (data artifacts + code + parameters) are identical to a previous run, ZenML skips re-execution and loads cached outputs. This is critical during development: you can iterate on later steps (e.g., model training) without re-running expensive preprocessing steps. Caching is on by default and can be disabled per-step with @step(enable_cache=False)." },
+  { question: "What is the difference between ZenML and Metaflow?", answer: "Both ZenML and Metaflow provide @step/@flow decorators for defining ML pipelines. Key differences: ZenML is stack-agnostic and supports Kubeflow, Vertex, Sagemaker, and Airflow as orchestrators, while Metaflow is tightly integrated with AWS (Batch, Step Functions, Sagemaker). ZenML has a stronger focus on MLOps tooling (model registries, experiment trackers, drift monitoring) as first-class Stack components. Metaflow has a simpler API and better notebook-to-production story for AWS teams." },
+  { question: "How do I integrate ZenML with Airflow?", answer: "Register an Airflow Orchestrator component: zenml orchestrator register airflow_orch --flavor=airflow --local=True (for local Airflow) or configure it to point to a remote Airflow cluster. Add it to a Stack and activate the Stack. When you run the pipeline, ZenML generates an Airflow DAG automatically — each @step becomes an Airflow task with proper dependencies. You don't write any DAG code; ZenML translates your Python pipeline definition." },
+];
+---
+
+<BaseLayout
+  title="ZenML: ML Pipeline Orchestration & MLOps Framework Guide"
+  description="Complete ZenML guide: @step and @pipeline decorators, Stacks (local/cloud), Artifacts and materializers, integration with Airflow/Kubeflow/Vertex AI, and ZenML vs Metaflow vs Kubeflow comparison."
+  tool="ZenML, ML pipeline, MLOps, Kubeflow, pipeline orchestration, Python ML, ZenML Stack, ZenML steps"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"ZenML: ML Pipeline Orchestration & MLOps Framework Guide","url":"https://devplaybook.cc/tools/zenml-pipeline","description":"Complete guide to ZenML for stack-agnostic ML pipeline orchestration, artifact management, and MLOps framework integration."})} />
+
+  <h1 class="text-3xl font-bold mb-2">ZenML: ML Pipeline Orchestration &amp; MLOps Framework</h1>
+  <p class="text-text-muted mb-6">ZenML is the stack-agnostic MLOps framework that makes ML pipelines portable. Write pipeline logic once with @step and @pipeline, then switch between local, Airflow, Kubeflow, Vertex AI, or Sagemaker by changing the active Stack — zero code changes.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Stack-agnostic orchestration</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Automatic artifact versioning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Step-level caching</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> MLflow/W&B experiment tracking integration</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- Steps and pipeline -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Defining Steps &amp; Pipelines</h2>
+    <p class="text-sm text-text-muted mb-3">Install with <code class="bg-bg border border-border rounded px-1 text-xs">pip install zenml</code> and <code class="bg-bg border border-border rounded px-1 text-xs">zenml init</code>. Define steps with type annotations — ZenML uses them for artifact serialization:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+from zenml import step, pipeline
+from zenml.integrations.mlflow.experiment_trackers import MLFlowExperimentTracker
+
+# Each @step is an isolated, cacheable unit with typed inputs/outputs
+@step
+def load_data() -> pd.DataFrame:
+    """Load and return raw training data."""
+    return pd.read_csv("data/train.csv")
+
+@step
+def preprocess(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
+    """Clean and split features/labels."""
+    X = df.drop("target", axis=1).fillna(0)
+    y = df["target"]
+    return X, y
+
+@step(experiment_tracker="mlflow_tracker")  # attach experiment tracker
+def train_model(
+    X: pd.DataFrame, y: pd.Series
+) -> RandomForestClassifier:
+    """Train and return a RandomForest model."""
+    from zenml.integrations.mlflow.flavors.mlflow_experiment_tracker_flavor import MLFlowExperimentTrackerSettings
+    import mlflow
+
+    clf = RandomForestClassifier(n_estimators=100, max_depth=8)
+    clf.fit(X, y)
+    mlflow.log_metric("train_accuracy", clf.score(X, y))
+    return clf
+
+@step
+def evaluate(model: RandomForestClassifier, X: pd.DataFrame, y: pd.Series) -> float:
+    """Evaluate model and return accuracy."""
+    acc = accuracy_score(y, model.predict(X))
+    print(f"Accuracy: &#123;acc:.4f&#125;")
+    return acc
+
+# Pipeline wires steps together
+@pipeline
+def training_pipeline():
+    df = load_data()
+    X, y = preprocess(df)
+    model = train_model(X, y)
+    evaluate(model, X, y)
+
+# Run locally
+training_pipeline()</code></pre>
+  </div>
+
+  <!-- Stacks -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Stacks: Switch Infrastructure Without Code Changes</h2>
+    <p class="text-sm text-text-muted mb-3">Register Stack components once via CLI, then activate the Stack you need:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code># Register individual components
+zenml artifact-store register s3_store \
+  --flavor=s3 \
+  --path=s3://my-ml-bucket/artifacts
+
+zenml orchestrator register kubeflow_orch \
+  --flavor=kubeflow \
+  --kubeflow_pipelines_ui_port=8080
+
+zenml experiment-tracker register mlflow_tracker \
+  --flavor=mlflow \
+  --tracking_uri=http://mlflow.internal:5000
+
+zenml container-registry register ecr \
+  --flavor=aws \
+  --uri=123456789.dkr.ecr.us-east-1.amazonaws.com
+
+# Build a production Stack from components
+zenml stack register prod_stack \
+  --artifact-store=s3_store \
+  --orchestrator=kubeflow_orch \
+  --experiment-tracker=mlflow_tracker \
+  --container-registry=ecr
+
+# Activate the Stack (same pipeline code, different infrastructure)
+zenml stack set prod_stack
+python run_pipeline.py    # now runs on Kubeflow, artifacts in S3
+
+# Switch back to local for debugging
+zenml stack set default
+python run_pipeline.py    # runs locally</code></pre>
+  </div>
+
+  <!-- Artifact inspection -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Artifact Versioning &amp; Pipeline Lineage</h2>
+    <p class="text-sm text-text-muted mb-3">Every step output is versioned — inspect and reuse artifacts programmatically:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code">from zenml.client import Client
+
+client = Client()
+
+# List all pipeline runs
+runs = client.list_pipeline_runs(pipeline_name="training_pipeline")
+for run in runs:
+    print(f"Run: &#123;run.name&#125; | Status: &#123;run.status&#125; | Created: &#123;run.created&#125;")
+
+# Get a specific artifact from a run
+run = client.get_pipeline_run("training_pipeline-2024_04_01")
+model_artifact = run.steps["train_model"].output
+
+# Load the artifact (ZenML deserializes it using the appropriate Materializer)
+model = model_artifact.load()
+print(type(model))  # RandomForestClassifier
+
+# Get artifact metadata and lineage
+print(model_artifact.version)
+print(model_artifact.producer_step_run_id)
+
+# Compare artifacts across runs (for model promotion decisions)
+for run in runs[:5]:
+    acc_artifact = run.steps["evaluate"].output
+    print(f"&#123;run.name&#125;: accuracy = &#123;acc_artifact.load():.4f&#125;")</code></pre>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-4">ZenML vs Metaflow vs Kubeflow Pipelines vs Prefect</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[620px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Feature</th>
+            <th class="text-left pb-2 pr-4">ZenML</th>
+            <th class="text-left pb-2 pr-4">Metaflow</th>
+            <th class="text-left pb-2 pr-4">Kubeflow Pipelines</th>
+            <th class="text-left pb-2">Prefect</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted">
+          <tr><td class="py-2 pr-4 font-medium text-text">Stack-agnostic</td><td class="py-2 pr-4 text-green-500">Yes (core feature)</td><td class="py-2 pr-4">AWS-focused</td><td class="py-2 pr-4">K8s only</td><td class="py-2 text-green-500">Yes (workers)</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Python decorator API</td><td class="py-2 pr-4 text-green-500">@step, @pipeline</td><td class="py-2 pr-4 text-green-500">@step, @FlowSpec</td><td class="py-2 pr-4">@component, @dsl.pipeline</td><td class="py-2 text-green-500">@task, @flow</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Artifact versioning</td><td class="py-2 pr-4 text-green-500">Automatic per-step</td><td class="py-2 pr-4">S3-backed datastore</td><td class="py-2 pr-4">ML Metadata store</td><td class="py-2">Results API</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Step caching</td><td class="py-2 pr-4 text-green-500">Input fingerprint cache</td><td class="py-2 pr-4 text-green-500">@retry, resume</td><td class="py-2 pr-4">Partial (outputs)</td><td class="py-2">Task result caching</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">MLOps integrations</td><td class="py-2 pr-4 text-green-500">MLflow/W&B/Feast/Evidently</td><td class="py-2 pr-4">Limited</td><td class="py-2 pr-4">Limited</td><td class="py-2">General purpose</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Best for</td><td class="py-2 pr-4">MLOps, multi-cloud</td><td class="py-2 pr-4">AWS ML teams</td><td class="py-2 pr-4">K8s shops</td><td class="py-2">General data pipelines</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>
