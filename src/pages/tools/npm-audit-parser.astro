@@ -1,0 +1,250 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How do I get npm audit JSON output?", answer: "Run `npm audit --json` in your project directory. This outputs a machine-readable JSON object with all vulnerabilities. Pipe it to a file with `npm audit --json > audit.json` or paste the output directly into this tool." },
+  { question: "What do the severity levels mean?", answer: "npm audit uses four severity levels: critical (CVSS 9.0-10.0, immediate action required), high (7.0-8.9, fix soon), moderate (4.0-6.9, fix when able), low (0.1-3.9, fix at convenience). Critical and high severities are generally the most urgent to address." },
+  { question: "What is a direct vs transitive dependency?", answer: "A direct dependency is a package you explicitly listed in package.json. A transitive (indirect) dependency is a package that one of your dependencies depends on. Many vulnerabilities are in transitive dependencies, which require upgrading the parent package or using npm audit fix --force." },
+  { question: "What does 'npm audit fix' do?", answer: "It automatically updates packages to the minimum version that fixes the vulnerability, as long as the update is semver-compatible (not a major version bump). For fixes requiring major version bumps, you need `npm audit fix --force` — but this may introduce breaking changes." },
+  { question: "What is a GHSA advisory number?", answer: "GHSA stands for GitHub Security Advisory. Each vulnerability gets a GHSA-xxxx-xxxx-xxxx identifier that you can look up at github.com/advisories for full details, affected versions, and patches. npm audit output includes these identifiers for easy cross-referencing." },
+];
+---
+
+<BaseLayout
+  title="npm Audit Parser — Parse npm audit JSON and Summarize Vulnerabilities"
+  description="Paste npm audit --json output to get a vulnerability summary by severity. See critical, high, moderate, and low counts with affected packages listed. Free browser tool."
+  tool="npm audit parser, npm vulnerability summary, npm audit JSON viewer, package security scanner, dependency vulnerability checker"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">npm Audit Parser</h1>
+  <p class="text-text-muted mb-4">Paste the output of <code class="font-mono bg-surface px-1 rounded text-sm">npm audit --json</code> to get a vulnerability summary grouped by severity, with affected packages and fix commands. Runs entirely in your browser.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Severity breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Affected packages listed</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Fix commands generated</span>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-2">
+      <label class="text-sm font-medium">npm audit --json output</label>
+      <button id="nap-sample" class="text-xs text-primary hover:underline">Load Sample</button>
+    </div>
+    <textarea id="nap-input" rows="12"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono resize-y mb-3"
+      placeholder="Paste JSON from: npm audit --json"></textarea>
+    <div class="flex gap-2 flex-wrap">
+      <button id="nap-parse" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity">Parse</button>
+      <button id="nap-clear" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Clear</button>
+      <span id="nap-error" class="text-red-500 text-sm self-center hidden"></span>
+    </div>
+  </div>
+
+  <div id="nap-results" class="hidden">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="nap-cnt-critical" class="text-2xl font-bold text-red-600 mb-1">0</div>
+        <div class="text-xs text-text-muted">Critical</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="nap-cnt-high" class="text-2xl font-bold text-red-400 mb-1">0</div>
+        <div class="text-xs text-text-muted">High</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="nap-cnt-moderate" class="text-2xl font-bold text-yellow-400 mb-1">0</div>
+        <div class="text-xs text-text-muted">Moderate</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="nap-cnt-low" class="text-2xl font-bold text-blue-400 mb-1">0</div>
+        <div class="text-xs text-text-muted">Low</div>
+      </div>
+    </div>
+
+    <div id="nap-clean" class="hidden bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-5 text-green-400 text-sm font-semibold text-center">
+      ✓ No vulnerabilities found!
+    </div>
+
+    <div id="nap-vuln-list" class="space-y-3 mb-5"></div>
+
+    <div id="nap-fix-section" class="hidden bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <h2 class="text-sm font-semibold mb-3">Suggested Fix Commands</h2>
+      <div id="nap-fix-cmds" class="font-mono text-xs space-y-2"></div>
+    </div>
+
+    <div class="flex justify-end">
+      <button id="nap-copy" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Copy Summary</button>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('nap-input') as HTMLTextAreaElement;
+    const parseBtn = document.getElementById('nap-parse') as HTMLButtonElement;
+    const clearBtn = document.getElementById('nap-clear') as HTMLButtonElement;
+    const sampleBtn = document.getElementById('nap-sample') as HTMLButtonElement;
+    const copyBtn = document.getElementById('nap-copy') as HTMLButtonElement;
+    const results = document.getElementById('nap-results') as HTMLDivElement;
+    const errorEl = document.getElementById('nap-error') as HTMLSpanElement;
+
+    const SAMPLE = JSON.stringify({
+      auditReportVersion: 2,
+      vulnerabilities: {
+        "lodash": {
+          name: "lodash", severity: "critical",
+          via: [{ name: "lodash", severity: "critical", title: "Prototype Pollution", url: "https://github.com/advisories/GHSA-p6mc-m468-83gw", range: "<4.17.21" }],
+          effects: [], range: "<4.17.21", fixAvailable: { name: "lodash", version: "4.17.21", isSemVerMajor: false }
+        },
+        "axios": {
+          name: "axios", severity: "high",
+          via: [{ name: "axios", severity: "high", title: "Server-Side Request Forgery", url: "https://github.com/advisories/GHSA-4w2v-q235-vp99", range: "<1.6.0" }],
+          effects: [], range: "<1.6.0", fixAvailable: { name: "axios", version: "1.6.0", isSemVerMajor: false }
+        },
+        "minimist": {
+          name: "minimist", severity: "moderate",
+          via: [{ name: "minimist", severity: "moderate", title: "Prototype Pollution", url: "https://github.com/advisories/GHSA-vh95-rmgr-6w4m", range: "<1.2.6" }],
+          effects: ["mkdirp"], range: "<1.2.6", fixAvailable: true
+        },
+        "mkdirp": {
+          name: "mkdirp", severity: "moderate",
+          via: ["minimist"], effects: [], range: "0.5.0 - 0.5.1", fixAvailable: true
+        }
+      },
+      metadata: { vulnerabilities: { critical: 1, high: 1, moderate: 2, low: 0, info: 0, total: 4 } }
+    }, null, 2);
+
+    sampleBtn.addEventListener('click', () => { input.value = SAMPLE; });
+    clearBtn.addEventListener('click', () => { input.value = ''; results.classList.add('hidden'); errorEl.classList.add('hidden'); });
+
+    const SEVERITY_STYLES: Record<string, string> = {
+      critical: 'bg-red-600/10 border-red-600/30 text-red-500',
+      high: 'bg-red-400/10 border-red-400/30 text-red-400',
+      moderate: 'bg-yellow-400/10 border-yellow-400/30 text-yellow-400',
+      low: 'bg-blue-400/10 border-blue-400/30 text-blue-400',
+      info: 'bg-gray-400/10 border-gray-400/30 text-gray-400',
+    };
+
+    parseBtn.addEventListener('click', () => {
+      errorEl.classList.add('hidden');
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(input.value.trim()) as Record<string, unknown>;
+      } catch {
+        errorEl.textContent = 'Invalid JSON. Run: npm audit --json';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      // Support both npm audit v1 and v2 formats
+      const meta = (data.metadata as Record<string, unknown> | undefined);
+      const vulnMeta = (meta?.vulnerabilities as Record<string, number> | undefined) || {};
+      const vulns = (data.vulnerabilities as Record<string, Record<string, unknown>> | undefined) || (data.advisories as Record<string, Record<string, unknown>> | undefined) || {};
+
+      const counts = { critical: 0, high: 0, moderate: 0, low: 0 };
+      const byLevel: Record<string, Array<{name: string; title: string; range: string; url: string; fix: string}>> = { critical: [], high: [], moderate: [], low: [] };
+
+      for (const [pkgName, vuln] of Object.entries(vulns)) {
+        const severity = (vuln.severity as string || '').toLowerCase();
+        const vias = Array.isArray(vuln.via) ? vuln.via : [];
+        const directVias = vias.filter(v => typeof v === 'object') as Array<Record<string, unknown>>;
+
+        if (severity in counts) {
+          counts[severity as keyof typeof counts]++;
+        }
+
+        const title = directVias.length > 0 ? (directVias[0].title as string || vuln.name as string || pkgName) : String(vuln.name || pkgName);
+        const url = directVias.length > 0 ? (directVias[0].url as string || '') : '';
+        const range = (vuln.range as string) || (directVias[0]?.range as string) || '';
+        const fix = vuln.fixAvailable === true ? 'npm audit fix' : typeof vuln.fixAvailable === 'object' ? `npm install ${(vuln.fixAvailable as Record<string,unknown>).name}@${(vuln.fixAvailable as Record<string,unknown>).version}` : 'manual fix required';
+
+        if (severity in byLevel) {
+          byLevel[severity].push({ name: pkgName, title, range, url, fix });
+        }
+      }
+
+      // Use metadata counts if available (more accurate for totals)
+      if (vulnMeta.critical !== undefined) counts.critical = vulnMeta.critical;
+      if (vulnMeta.high !== undefined) counts.high = vulnMeta.high;
+      if (vulnMeta.moderate !== undefined) counts.moderate = vulnMeta.moderate;
+      if (vulnMeta.low !== undefined) counts.low = vulnMeta.low;
+
+      (document.getElementById('nap-cnt-critical') as HTMLElement).textContent = counts.critical.toString();
+      (document.getElementById('nap-cnt-high') as HTMLElement).textContent = counts.high.toString();
+      (document.getElementById('nap-cnt-moderate') as HTMLElement).textContent = counts.moderate.toString();
+      (document.getElementById('nap-cnt-low') as HTMLElement).textContent = counts.low.toString();
+
+      const total = counts.critical + counts.high + counts.moderate + counts.low;
+      const cleanEl = document.getElementById('nap-clean') as HTMLElement;
+      const vulnList = document.getElementById('nap-vuln-list') as HTMLElement;
+      vulnList.innerHTML = '';
+
+      if (total === 0) {
+        cleanEl.classList.remove('hidden');
+      } else {
+        cleanEl.classList.add('hidden');
+        for (const level of ['critical', 'high', 'moderate', 'low']) {
+          if (byLevel[level].length === 0) continue;
+          const section = document.createElement('div');
+          section.className = 'bg-bg-card border border-border rounded-xl p-5';
+          const style = SEVERITY_STYLES[level] || '';
+          let html = `<div class="flex items-center gap-2 mb-3"><span class="text-xs border px-2 py-0.5 rounded uppercase font-bold ${style}">${level}</span><span class="text-sm text-text-muted">${byLevel[level].length} package(s)</span></div><div class="space-y-2">`;
+          for (const v of byLevel[level]) {
+            html += `<div class="bg-surface rounded-lg p-3">
+              <div class="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <code class="font-mono text-sm text-primary">${escHtml(v.name)}</code>
+                  <span class="text-text-muted text-xs ml-2">${escHtml(v.title)}</span>
+                </div>
+                ${v.url ? `<a href="${escHtml(v.url)}" target="_blank" rel="noopener" class="text-xs text-primary hover:underline shrink-0">Advisory ↗</a>` : ''}
+              </div>
+              ${v.range ? `<div class="text-xs text-text-muted mt-1">Affected: <code class="font-mono">${escHtml(v.range)}</code></div>` : ''}
+              <div class="text-xs text-text-muted mt-1">Fix: <code class="font-mono text-green-400">${escHtml(v.fix)}</code></div>
+            </div>`;
+          }
+          html += '</div>';
+          section.innerHTML = html;
+          vulnList.appendChild(section);
+        }
+      }
+
+      // Fix commands
+      const fixCmds = new Set<string>();
+      for (const items of Object.values(byLevel)) {
+        for (const v of items) if (v.fix) fixCmds.add(v.fix);
+      }
+      const fixSection = document.getElementById('nap-fix-section') as HTMLElement;
+      const fixCmdsEl = document.getElementById('nap-fix-cmds') as HTMLElement;
+      if (fixCmds.size > 0) {
+        fixCmdsEl.innerHTML = '';
+        for (const cmd of fixCmds) {
+          const div = document.createElement('div');
+          div.className = 'flex items-center justify-between bg-surface rounded p-2';
+          div.innerHTML = `<code class="text-green-400">${escHtml(cmd)}</code>
+            <button class="text-xs text-text-muted hover:text-primary ml-3 shrink-0" onclick="navigator.clipboard.writeText('${cmd.replace(/'/g, "\\'")}')">Copy</button>`;
+          fixCmdsEl.appendChild(div);
+        }
+        fixSection.classList.remove('hidden');
+      } else {
+        fixSection.classList.add('hidden');
+      }
+
+      results.classList.remove('hidden');
+    });
+
+    function escHtml(s: string): string {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    copyBtn.addEventListener('click', () => {
+      const c = (document.getElementById('nap-cnt-critical') as HTMLElement).textContent;
+      const h = (document.getElementById('nap-cnt-high') as HTMLElement).textContent;
+      const m = (document.getElementById('nap-cnt-moderate') as HTMLElement).textContent;
+      const l = (document.getElementById('nap-cnt-low') as HTMLElement).textContent;
+      const summary = `npm Audit Summary\nCritical: ${c}  High: ${h}  Moderate: ${m}  Low: ${l}`;
+      navigator.clipboard.writeText(summary).then(() => { copyBtn.textContent = 'Copied!'; setTimeout(() => copyBtn.textContent = 'Copy Summary', 2000); });
+    });
+  </script>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="npm Audit Parser" relatedTags={['security', 'npm', 'dependencies', 'vulnerabilities', 'developer-tools']} />
+</BaseLayout>
