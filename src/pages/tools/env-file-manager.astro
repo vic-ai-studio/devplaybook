@@ -1,0 +1,354 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What formats does the .env file manager support?",
+    answer: "The tool parses standard .env format: KEY=value, KEY='value', KEY=\"value\", and KEY=value with inline comments (# comment). It handles multiline values in double quotes, ignores blank lines and comment-only lines, and detects duplicate keys."
+  },
+  {
+    question: "How do I convert .env to JSON or Docker format?",
+    answer: "Paste your .env content, then use the Export buttons: JSON outputs a key-value object, Docker outputs --env KEY=VALUE flags for docker run, and Docker Compose outputs the 'environment:' section for docker-compose.yml."
+  },
+  {
+    question: "What are common .env security mistakes?",
+    answer: "Committing .env to Git (use .gitignore), using the same .env in development and production, storing secrets in .env.example files, using weak or default secrets, and sharing .env files via email or chat. Always use environment variables or a secrets manager in production — never deploy a .env file."
+  },
+  {
+    question: "Should I commit .env files to Git?",
+    answer: "No. .env files typically contain secrets (database passwords, API keys, JWT secrets). Add .env to .gitignore immediately. Commit .env.example with placeholder values to document required variables. Use your deployment platform's environment variable configuration (Vercel, Railway, Fly.io, etc.) for production secrets."
+  },
+  {
+    question: "What is the difference between .env, .env.local, and .env.production?",
+    answer: ".env is the base file loaded in all environments. .env.local overrides for local development (never committed). .env.production is loaded in production. .env.test is for test environments. Next.js, Vite, and Create React App all support this precedence chain. .env.local always takes priority over .env."
+  },
+];
+---
+
+<BaseLayout
+  title=".env File Manager — Parse, Validate & Convert Environment Variables"
+  description="Parse .env files, detect duplicate keys, find missing values, convert to JSON or Docker format, and sort variables. Runs entirely in your browser — no secrets uploaded."
+  tool=".env file manager, env file parser, environment variables manager, dotenv parser, .env to JSON converter, env validator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": ".env File Manager",
+    "url": "https://devplaybook.cc/tools/env-file-manager",
+    "description": "Parse, validate, and convert .env files. Detect duplicates, empty values, security patterns. Convert to JSON, Docker, or docker-compose format. Browser-based.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">.env File Manager</h1>
+  <p class="text-text-muted mb-4">
+    Parse and validate <code class="font-mono bg-surface px-1 rounded text-sm">.env</code> files, detect duplicate keys
+    and empty values, sort variables, and convert to JSON, Docker <code class="font-mono bg-surface px-1 rounded text-sm">--env</code> flags,
+    or docker-compose format. Your environment variables never leave your browser.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Duplicate key detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Export to JSON / Docker</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Security pattern checks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 100% browser-based</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+
+    <!-- Input -->
+    <div class="bg-bg-card border border-border rounded-lg overflow-hidden flex flex-col">
+      <div class="px-4 py-2.5 border-b border-border flex items-center justify-between">
+        <span class="text-sm font-medium">.env input</span>
+        <div class="flex gap-2">
+          <button id="load-example" class="text-xs text-text-muted hover:text-foreground transition-colors">Example</button>
+          <button id="clear-input" class="text-xs text-text-muted hover:text-foreground transition-colors">Clear</button>
+        </div>
+      </div>
+      <textarea id="env-input" rows="18" spellcheck="false" placeholder="Paste your .env file content here:
+
+DATABASE_URL=postgresql://user:pass@localhost/mydb
+API_KEY=sk-abc123
+DEBUG=true
+PORT=3000
+# This is a comment"
+        class="flex-1 bg-surface p-4 text-sm font-mono resize-none focus:outline-none"></textarea>
+      <div class="px-4 py-2.5 border-t border-border">
+        <button id="parse-btn" class="w-full px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+          Parse & Analyze
+        </button>
+      </div>
+    </div>
+
+    <!-- Analysis -->
+    <div class="space-y-3">
+      <!-- Stats -->
+      <div id="stats-panel" class="bg-bg-card border border-border rounded-lg p-4 hidden">
+        <div class="grid grid-cols-3 gap-3 mb-3">
+          <div class="text-center">
+            <div id="stat-total" class="text-2xl font-bold text-foreground">0</div>
+            <div class="text-xs text-text-muted">Variables</div>
+          </div>
+          <div class="text-center">
+            <div id="stat-empty" class="text-2xl font-bold text-yellow-400">0</div>
+            <div class="text-xs text-text-muted">Empty</div>
+          </div>
+          <div class="text-center">
+            <div id="stat-dupe" class="text-2xl font-bold text-red-400">0</div>
+            <div class="text-xs text-text-muted">Duplicates</div>
+          </div>
+        </div>
+        <div id="issues-list" class="space-y-1.5"></div>
+      </div>
+
+      <!-- Variables table -->
+      <div id="vars-panel" class="bg-bg-card border border-border rounded-lg overflow-hidden hidden">
+        <div class="px-4 py-2.5 border-b border-border flex items-center justify-between">
+          <span class="text-sm font-medium">Variables</span>
+          <div class="flex gap-2">
+            <button id="sort-az" class="text-xs px-2 py-0.5 bg-surface border border-border rounded hover:border-primary transition-colors">A→Z</button>
+            <button id="sort-za" class="text-xs px-2 py-0.5 bg-surface border border-border rounded hover:border-primary transition-colors">Z→A</button>
+            <button id="sort-orig" class="text-xs px-2 py-0.5 bg-surface border border-border rounded hover:border-primary transition-colors">Original</button>
+          </div>
+        </div>
+        <div id="vars-table" class="divide-y divide-border overflow-y-auto max-h-64"></div>
+      </div>
+
+      <!-- Export -->
+      <div id="export-panel" class="bg-bg-card border border-border rounded-lg overflow-hidden hidden">
+        <div class="px-4 py-2.5 border-b border-border">
+          <span class="text-sm font-medium">Export</span>
+        </div>
+        <div class="p-3 flex flex-wrap gap-2">
+          <button id="export-json" class="px-3 py-1.5 bg-surface border border-border rounded text-xs hover:border-primary transition-colors">JSON object</button>
+          <button id="export-docker" class="px-3 py-1.5 bg-surface border border-border rounded text-xs hover:border-primary transition-colors">docker run --env</button>
+          <button id="export-compose" class="px-3 py-1.5 bg-surface border border-border rounded text-xs hover:border-primary transition-colors">docker-compose</button>
+          <button id="export-sorted" class="px-3 py-1.5 bg-surface border border-border rounded text-xs hover:border-primary transition-colors">Sorted .env</button>
+          <button id="export-template" class="px-3 py-1.5 bg-surface border border-border rounded text-xs hover:border-primary transition-colors">.env.example</button>
+        </div>
+        <pre id="export-output" class="hidden px-4 pb-4 text-xs font-mono text-text-muted overflow-x-auto whitespace-pre-wrap break-all"></pre>
+        <div id="export-copied" class="hidden px-4 pb-3 text-xs text-green-400">Copied to clipboard!</div>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool=".env File Manager" relatedTags={['devops', 'environment', 'config', 'security', 'docker']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  const EXAMPLE = `# Application
+APP_NAME=MyApp
+APP_ENV=development
+APP_DEBUG=true
+APP_PORT=3000
+APP_SECRET=change-me-in-production
+
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/mydb
+DATABASE_POOL_SIZE=10
+DATABASE_SSL=false
+
+# Redis
+REDIS_URL=redis://localhost:6379
+REDIS_TTL=3600
+
+# External APIs
+STRIPE_SECRET_KEY=sk_test_abc123
+SENDGRID_API_KEY=SG.xxxxxxxxxxxx
+S3_BUCKET=my-app-uploads
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+AWS_REGION=us-east-1
+
+# JWT
+JWT_SECRET=super-secret-jwt-key
+JWT_EXPIRES_IN=7d
+
+# Empty (template placeholders)
+OPTIONAL_WEBHOOK_URL=
+FEATURE_FLAG_BETA=`;
+
+  // Security pattern checks
+  const SECURITY_PATTERNS = [
+    { re: /password\s*=\s*[^${\s"']{3,}/i, msg: 'Hardcoded password detected', sev: 'warn' },
+    { re: /secret\s*=\s*(change-me|secret|default|test|example)/i, msg: 'Default/placeholder secret value', sev: 'warn' },
+    { re: /key\s*=\s*EXAMPLE/i, msg: 'Example AWS key detected', sev: 'warn' },
+  ];
+
+  let parsed = [];
+
+  function parseEnv(text) {
+    const lines = text.split('\n');
+    const vars = [];
+    const seen = {};
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line || line.startsWith('#')) continue;
+
+      const eqIdx = line.indexOf('=');
+      if (eqIdx === -1) continue;
+
+      const key = line.slice(0, eqIdx).trim();
+      let val = line.slice(eqIdx + 1);
+
+      // Strip inline comments (not inside quotes)
+      if (!val.startsWith('"') && !val.startsWith("'")) {
+        const hashIdx = val.indexOf(' #');
+        if (hashIdx !== -1) val = val.slice(0, hashIdx);
+      }
+
+      // Strip surrounding quotes
+      val = val.trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+
+      const isDupe = !!seen[key];
+      seen[key] = true;
+
+      vars.push({ key, val, line: i + 1, isDupe, isEmpty: val === '' });
+    }
+
+    return vars;
+  }
+
+  function getSecurityIssues(vars) {
+    const issues = [];
+    for (const v of vars) {
+      for (const p of SECURITY_PATTERNS) {
+        if (p.re.test(`${v.key}=${v.val}`)) {
+          issues.push({ key: v.key, msg: p.msg, sev: p.sev });
+        }
+      }
+    }
+    return issues;
+  }
+
+  function renderVars(vars, sortMode) {
+    let sorted = [...vars];
+    if (sortMode === 'az') sorted.sort((a, b) => a.key.localeCompare(b.key));
+    if (sortMode === 'za') sorted.sort((a, b) => b.key.localeCompare(a.key));
+
+    const container = document.getElementById('vars-table');
+    container.innerHTML = sorted.map(v => {
+      const keyClass = v.isDupe ? 'text-red-400' : 'text-accent';
+      const valDisplay = v.isEmpty ? '<span class="text-text-muted italic">empty</span>' : `<span class="truncate max-w-xs">${escH(v.val)}</span>`;
+      const badges = [];
+      if (v.isDupe) badges.push('<span class="text-xs bg-red-500/10 text-red-400 px-1 py-0.5 rounded">dup</span>');
+      if (v.isEmpty) badges.push('<span class="text-xs bg-yellow-500/10 text-yellow-400 px-1 py-0.5 rounded">empty</span>');
+
+      return `
+        <div class="flex items-center gap-3 px-4 py-2 hover:bg-surface/50">
+          <code class="text-xs font-mono ${keyClass} shrink-0 w-40 truncate">${escH(v.key)}</code>
+          <div class="flex-1 text-xs font-mono text-text-muted overflow-hidden">${valDisplay}</div>
+          <div class="flex gap-1 shrink-0">${badges.join('')}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function escH(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function analyze() {
+    const text = document.getElementById('env-input').value;
+    parsed = parseEnv(text);
+
+    if (parsed.length === 0) return;
+
+    const dupes = parsed.filter(v => v.isDupe);
+    const empties = parsed.filter(v => v.isEmpty);
+    const secIssues = getSecurityIssues(parsed);
+
+    // Stats
+    document.getElementById('stat-total').textContent = parsed.length;
+    document.getElementById('stat-empty').textContent = empties.length;
+    document.getElementById('stat-dupe').textContent = dupes.length;
+
+    // Issues
+    const issuesList = document.getElementById('issues-list');
+    const allIssues = [
+      ...dupes.map(v => ({ msg: `Duplicate key: "${v.key}"`, sev: 'error' })),
+      ...secIssues,
+    ];
+    issuesList.innerHTML = allIssues.map(i => {
+      const color = i.sev === 'error' ? 'text-red-400 bg-red-500/5' : 'text-yellow-400 bg-yellow-500/5';
+      return `<div class="text-xs ${color} px-3 py-1.5 rounded">${escH(i.msg)}</div>`;
+    }).join('') || '<div class="text-xs text-green-400">No issues found ✓</div>';
+
+    document.getElementById('stats-panel').classList.remove('hidden');
+
+    // Vars table
+    renderVars(parsed, 'orig');
+    document.getElementById('vars-panel').classList.remove('hidden');
+    document.getElementById('export-panel').classList.remove('hidden');
+  }
+
+  let currentSort = 'orig';
+
+  document.getElementById('sort-az').addEventListener('click', () => { currentSort = 'az'; renderVars(parsed, 'az'); });
+  document.getElementById('sort-za').addEventListener('click', () => { currentSort = 'za'; renderVars(parsed, 'za'); });
+  document.getElementById('sort-orig').addEventListener('click', () => { currentSort = 'orig'; renderVars(parsed, 'orig'); });
+
+  function showExport(content) {
+    const pre = document.getElementById('export-output');
+    const copied = document.getElementById('export-copied');
+    pre.textContent = content;
+    pre.classList.remove('hidden');
+    copied.classList.add('hidden');
+    navigator.clipboard.writeText(content).then(() => {
+      copied.classList.remove('hidden');
+      setTimeout(() => copied.classList.add('hidden'), 2000);
+    });
+  }
+
+  document.getElementById('export-json').addEventListener('click', () => {
+    const obj = {};
+    parsed.forEach(v => { if (!v.isDupe) obj[v.key] = v.val; });
+    showExport(JSON.stringify(obj, null, 2));
+  });
+
+  document.getElementById('export-docker').addEventListener('click', () => {
+    showExport(parsed.filter(v => !v.isDupe).map(v => `--env ${v.key}="${v.val}"`).join(' \\\n  '));
+  });
+
+  document.getElementById('export-compose').addEventListener('click', () => {
+    const lines = ['environment:'];
+    parsed.filter(v => !v.isDupe).forEach(v => {
+      lines.push(`  - ${v.key}=${v.val}`);
+    });
+    showExport(lines.join('\n'));
+  });
+
+  document.getElementById('export-sorted').addEventListener('click', () => {
+    const sorted = [...parsed].sort((a, b) => a.key.localeCompare(b.key));
+    showExport(sorted.map(v => `${v.key}=${v.val}`).join('\n'));
+  });
+
+  document.getElementById('export-template').addEventListener('click', () => {
+    showExport(parsed.filter(v => !v.isDupe).map(v => `${v.key}=`).join('\n'));
+  });
+
+  document.getElementById('parse-btn').addEventListener('click', analyze);
+  document.getElementById('load-example').addEventListener('click', () => {
+    document.getElementById('env-input').value = EXAMPLE;
+    analyze();
+  });
+  document.getElementById('clear-input').addEventListener('click', () => {
+    document.getElementById('env-input').value = '';
+    document.getElementById('stats-panel').classList.add('hidden');
+    document.getElementById('vars-panel').classList.add('hidden');
+    document.getElementById('export-panel').classList.add('hidden');
+    parsed = [];
+  });
+})();
+</script>
