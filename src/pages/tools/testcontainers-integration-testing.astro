@@ -1,0 +1,169 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the difference between unit tests with mocks and integration tests with Testcontainers?", answer: "Unit tests with mocks replace real dependencies (databases, caches, queues) with fake objects that return predefined responses. This makes them fast and isolated, but they can pass even when the real integration is broken. Testcontainers runs a real Docker container — a real PostgreSQL, a real Redis — so your integration test exercises the actual SQL queries, real connection pooling, real Redis serialization. If something breaks in production, a Testcontainers test will catch it; a mock often will not." },
+  { question: "How do I use Testcontainers with Jest?", answer: "Install testcontainers and the relevant module: npm install --save-dev testcontainers. In your Jest test file, use beforeAll to start the container and store the connection URL, then pass that URL to your database client. Use afterAll to call container.stop(). Set testTimeout in jest.config to at least 30000ms because container startup takes time. Using --runInBand prevents parallel containers from conflicting on the same host port." },
+  { question: "How does Testcontainers handle container cleanup?", answer: "By default, Testcontainers registers a JVM (or Node process) shutdown hook that stops containers when the test process exits. If you call container.stop() in afterAll, cleanup is explicit and reliable. Testcontainers also supports a Ryuk sidecar container (enabled by default) that automatically removes any containers that were not explicitly stopped — useful if a test process crashes mid-run. To disable Ryuk, set TESTCONTAINERS_RYUK_DISABLED=true." },
+  { question: "How do I run Testcontainers in GitHub Actions CI?", answer: "GitHub Actions runners include Docker by default on ubuntu-latest. No extra setup is needed — just include Testcontainers in your test suite and run npm test in the workflow. The Docker daemon is already running. For self-hosted runners, ensure the runner user has Docker socket access. If you see socket permission errors, add the runner user to the docker group. Testcontainers Cloud is an alternative that offloads container orchestration to a remote daemon." },
+  { question: "Can Testcontainers run multiple containers per test suite?", answer: "Yes. You can start multiple containers independently in separate beforeAll blocks or use the Network API to create containers that communicate with each other on a shared Docker network. A common pattern is a PostgreSQL container + a Redis container started in parallel with Promise.all([pgContainer.start(), redisContainer.start()]) to minimise startup time. Each container gets its own dynamically assigned host port to avoid conflicts." },
+  { question: "How does Testcontainers Cloud differ from local Docker?", answer: "Local Docker runs containers on your machine or CI runner. Testcontainers Cloud (by AtomicJar, now part of Docker) offloads container execution to a remote cloud daemon. This is useful for teams with slow local machines, strict CI environments where Docker is unavailable, or when you want to avoid Docker-in-Docker complexity in Kubernetes-based CI. The API is identical — you change only an environment variable, not your test code." },
+];
+---
+
+<BaseLayout
+  title="Testcontainers: Real Database Integration Testing for Node.js"
+  description="Testcontainers guide for Node.js: spin up real PostgreSQL, Redis, MongoDB in Docker for integration tests, configure with Jest/Vitest, and avoid mock-based test failures."
+  tool="Testcontainers, integration testing, Docker, PostgreSQL, Redis, Jest, Node.js, test database"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Testcontainers: Real Database Integration Testing for Node.js",
+    "url": "https://devplaybook.cc/tools/testcontainers-integration-testing",
+    "description": "Testcontainers guide for Node.js: spin up real PostgreSQL, Redis, MongoDB in Docker for integration tests, configure with Jest/Vitest, and avoid mock-based test failures.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Testcontainers: Real Database Integration Testing for Node.js</h1>
+  <p class="text-text-muted mb-6">Testcontainers is a Node.js library that spins up real Docker containers — PostgreSQL, Redis, MongoDB, Kafka, and more — for use inside your test suite. It solves the fundamental problem with mocked databases: the mock passes, but the real query fails in production. With Testcontainers, each test run uses a fresh, real container that starts before tests and stops when they finish.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real PostgreSQL, Redis, MongoDB in tests</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Automatic container cleanup via Ryuk</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Works with Jest and Vitest</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> No docker-compose files to manage</span>
+  </div>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Why Real Containers Beat Mocks</h2>
+  <p class="text-text-muted mb-4">Mocks simulate a database by returning hardcoded values. They cannot catch: SQL syntax errors, constraint violations, index performance, serialization differences between pg-node and raw Postgres, or Redis EXPIRE behaviour. A mock-based test that passes can coexist with a production bug for months.</p>
+  <p class="text-text-muted mb-6">Testcontainers runs the same Docker image you use in production. Your queries, migrations, and ORM code run against the real engine. If the test passes, it works. If it fails, it fails now — not in production at 3am.</p>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Installation</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400">npm install --save-dev testcontainers
+
+# Requires Docker to be running locally or in CI
+docker --version  # verify Docker is available</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">PostgreSQL Container with Jest</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400">// tests/user.integration.test.ts
+import &#123; PostgreSqlContainer &#125; from 'testcontainers';
+import &#123; Pool &#125; from 'pg';
+
+let container: PostgreSqlContainer;
+let pool: Pool;
+
+beforeAll(async () =&gt; &#123;
+  container = await new PostgreSqlContainer('postgres:16')
+    .withDatabase('testdb')
+    .withUsername('testuser')
+    .withPassword('testpass')
+    .start();
+
+  pool = new Pool(&#123; connectionString: container.getConnectionUri() &#125;);
+  await pool.query('CREATE TABLE users (id SERIAL, name TEXT)');
+&#125;, 60_000);  // allow 60s for image pull
+
+afterAll(async () =&gt; &#123;
+  await pool.end();
+  await container.stop();
+&#125;);
+
+it('inserts and retrieves a user', async () =&gt; &#123;
+  await pool.query("INSERT INTO users (name) VALUES ('Alice')");
+  const result = await pool.query('SELECT name FROM users');
+  expect(result.rows[0].name).toBe('Alice');
+&#125;);</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Redis Container for Cache Tests</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400">import &#123; RedisContainer &#125; from 'testcontainers';
+import &#123; createClient &#125; from 'redis';
+
+let container: RedisContainer;
+let client: ReturnType&lt;typeof createClient&gt;;
+
+beforeAll(async () =&gt; &#123;
+  container = await new RedisContainer('redis:7').start();
+  client = createClient(&#123; url: container.getConnectionUrl() &#125;);
+  await client.connect();
+&#125;, 30_000);
+
+afterAll(async () =&gt; &#123;
+  await client.quit();
+  await container.stop();
+&#125;);
+
+it('sets and gets a key with TTL', async () =&gt; &#123;
+  await client.set('session:abc', 'user123', &#123; EX: 300 &#125;);
+  const val = await client.get('session:abc');
+  expect(val).toBe('user123');
+  const ttl = await client.ttl('session:abc');
+  expect(ttl).toBeGreaterThan(0);
+&#125;);</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Container Lifecycle and Parallel Isolation</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400">// Start multiple containers in parallel:
+const [pg, redis] = await Promise.all([
+  new PostgreSqlContainer().start(),
+  new RedisContainer().start(),
+]);
+
+// Each container gets a random host port — no conflicts
+console.log(pg.getMappedPort(5432));   // e.g., 54321
+console.log(redis.getMappedPort(6379)); // e.g., 63791</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Using with Vitest</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400">// vitest.config.ts
+export default defineConfig(&#123;
+  test: &#123;
+    testTimeout: 60_000,  // containers need startup time
+    hookTimeout: 60_000,
+    pool: 'forks',        // required for Docker socket access in Vitest
+  &#125;
+&#125;);</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Testcontainers vs docker-compose for Tests</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-gray-800 text-white">
+          <th class="border border-gray-700 px-4 py-2 text-left">Aspect</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">Testcontainers</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">docker-compose</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">Setup</td>
+          <td class="border border-gray-700 px-4 py-2">In test code (TypeScript)</td>
+          <td class="border border-gray-700 px-4 py-2">Separate YAML file</td>
+        </tr>
+        <tr class="bg-gray-800/30">
+          <td class="border border-gray-700 px-4 py-2">Lifecycle</td>
+          <td class="border border-gray-700 px-4 py-2">Auto start/stop per suite</td>
+          <td class="border border-gray-700 px-4 py-2">Manual up/down commands</td>
+        </tr>
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">Isolation</td>
+          <td class="border border-gray-700 px-4 py-2">Per-test or per-suite</td>
+          <td class="border border-gray-700 px-4 py-2">Shared across all tests</td>
+        </tr>
+        <tr class="bg-gray-800/30">
+          <td class="border border-gray-700 px-4 py-2">Port conflicts</td>
+          <td class="border border-gray-700 px-4 py-2">No — random ports</td>
+          <td class="border border-gray-700 px-4 py-2">Yes — fixed ports</td>
+        </tr>
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">CI complexity</td>
+          <td class="border border-gray-700 px-4 py-2">Just run npm test</td>
+          <td class="border border-gray-700 px-4 py-2">Requires compose pre-step</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
