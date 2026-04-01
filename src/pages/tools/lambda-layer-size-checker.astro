@@ -1,0 +1,130 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are AWS Lambda Layers?", answer: "Lambda Layers are a way to share code and dependencies across multiple Lambda functions without including them in each function's deployment package. A layer is a ZIP archive containing libraries, runtime code, or binaries. You can attach up to 5 layers per function, and each layer is extracted to the /opt directory in the Lambda execution environment. Layers reduce deployment package sizes and enable sharing common code across functions." },
+  { question: "What are the size limits for Lambda Layers?", answer: "The unzipped size of a layer cannot exceed 250MB (the combined total of the function deployment package plus all attached layers must not exceed 250MB unzipped). Each layer ZIP file can be up to 50MB when uploaded directly, or up to 250MB when uploaded via S3. You can attach up to 5 layers per function. The 250MB unzipped limit is shared between your function code and all attached layers." },
+  { question: "When should I use Lambda Layers vs Container Images?", answer: "Use Lambda Layers for sharing libraries across many small functions (node_modules, Python packages, shared utilities), binary dependencies (ffmpeg, chromium), and when you need fast deployments for application code changes. Use Container Images when your dependencies exceed 250MB, you need custom runtimes, or you want to use Docker-based CI/CD workflows. Container images support up to 10GB but have longer cold starts." },
+  { question: "How do Lambda Layers interact with deployment packages?", answer: "Lambda extracts all layers to /opt/ in the execution environment before your function runs. For Node.js, add /opt/nodejs/node_modules to NODE_PATH. For Python, Lambda automatically includes /opt/python and /opt/python/lib/python3.x/site-packages in PYTHONPATH. Your function code can import from layers as if the libraries were installed locally. Layer code is available at runtime, not at build time." },
+  { question: "Can I share Lambda Layers across AWS accounts?", answer: "Yes, Lambda Layers support resource-based policies that allow sharing across AWS accounts or making a layer publicly available. Use the add-layer-version-permission command to grant specific account IDs or all accounts (* for public) the lambda:GetLayerVersion permission. AWS also publishes managed layers for runtimes and popular libraries. Shared layers are useful in multi-account organizations to maintain a single source of truth for common dependencies." },
+  { question: "What is the difference between Lambda Layers and Lambda Extensions?", answer: "Lambda Layers provide shared code and libraries extracted to /opt/. Lambda Extensions are a special type of layer that integrates with the Lambda lifecycle — they can intercept initialization, invocation, and shutdown events. Extensions run in the same execution environment as the function and are used for monitoring agents, secret managers, and configuration providers. Both use the layer mechanism but serve different purposes." },
+];
+---
+
+<BaseLayout
+  title="AWS Lambda Layers: Size Limits, Best Practices & Setup Guide"
+  description="Learn AWS Lambda Layers: size limits (250MB unzipped, 5 layers max), creating and publishing layers, sharing across functions, and when to use Layers vs Container Images."
+  tool="Lambda Layers, Lambda Size Limit, Shared Dependencies, AWS Lambda Deployment, Lambda Layer"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"AWS Lambda Layers: Size Limits, Best Practices & Setup Guide","url":"https://devplaybook.cc/tools/lambda-layer-size-checker","description":"Complete guide to AWS Lambda Layers: size limits, creating layers, sharing across accounts, and Lambda Layers vs Container Images comparison."})} />
+
+  <h1 class="text-3xl font-bold mb-2">AWS Lambda Layers: Size Limits, Best Practices & Setup Guide</h1>
+  <p class="text-text-muted mb-6">Lambda Layers let you share libraries, binaries, and utilities across functions without bloating every deployment package. This guide covers size limits, creating layers, sharing them across functions and accounts, and when Container Images are the better choice.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 250MB unzipped / 5 layer limits</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Creating and publishing layers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Sharing across accounts</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Layers vs Container Images</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Lambda Size Limits Summary</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Limit Type</th>
+          <th class="text-left py-2 pr-4">Limit</th>
+          <th class="text-left py-2">Notes</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Deployment package (unzipped)</td><td class="py-2 pr-4">250MB</td><td class="py-2">Includes function code + all layers combined</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Deployment package (zipped, direct)</td><td class="py-2 pr-4">50MB</td><td class="py-2">For direct upload via CLI/console</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Deployment package (via S3)</td><td class="py-2 pr-4">250MB zipped</td><td class="py-2">Use S3 for large packages</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Layers per function</td><td class="py-2 pr-4">5</td><td class="py-2">All layers share the 250MB unzipped budget</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Layer ZIP (direct upload)</td><td class="py-2 pr-4">50MB</td><td class="py-2">Upload larger layers via S3</td></tr>
+        <tr><td class="py-2 pr-4">Container image</td><td class="py-2 pr-4">10GB</td><td class="py-2">Bypasses all ZIP limits</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Creating a Lambda Layer</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># Python layer: package dependencies correctly
+# Layer structure: python/lib/python3.12/site-packages/
+mkdir -p layer/python/lib/python3.12/site-packages
+pip install requests boto3 pydantic \
+  --target layer/python/lib/python3.12/site-packages \
+  --platform manylinux2014_x86_64 \
+  --only-binary=:all:
+
+# Create ZIP
+cd layer && zip -r ../my-deps-layer.zip python/
+cd ..
+
+# Check size
+ls -lh my-deps-layer.zip  # Must be under 50MB for direct upload
+
+# Publish layer
+aws lambda publish-layer-version \
+  --layer-name my-python-deps \
+  --zip-file fileb://my-deps-layer.zip \
+  --compatible-runtimes python3.12 python3.11 \
+  --description "Common Python dependencies"
+
+# Get layer ARN from output:
+# "LayerVersionArn": "arn:aws:lambda:us-east-1:123456789:layer:my-python-deps:1"</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Attaching Layers to Functions</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># Serverless Framework — attach layers
+functions:
+  api:
+    handler: src/handler.handler
+    layers:
+      - arn:aws:lambda:us-east-1:123456789:layer:my-python-deps:1
+      - arn:aws:lambda:us-east-1:123456789:layer:chromium:14
+
+# AWS CDK — attach layers
+const depsLayer = lambda.LayerVersion.fromLayerVersionArn(
+  this,
+  'DepsLayer',
+  'arn:aws:lambda:us-east-1:123456789:layer:my-python-deps:1'
+);
+
+const fn = new lambda.Function(this, 'ApiFunction', &#123;
+  runtime: lambda.Runtime.PYTHON_3_12,
+  handler: 'handler.lambda_handler',
+  code: lambda.Code.fromAsset('src'),
+  layers: [depsLayer],
+&#125;);
+
+# Node.js layer structure (for NODE_PATH resolution):
+# nodejs/node_modules/
+# nodejs/node20/node_modules/  (version-specific)</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Lambda Layers vs Container Images</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Factor</th>
+          <th class="text-left py-2 pr-4">Lambda Layers</th>
+          <th class="text-left py-2">Container Images</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Max size</td><td class="py-2 pr-4">250MB unzipped</td><td class="py-2">10GB</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Cold start</td><td class="py-2 pr-4">Faster (no image pull)</td><td class="py-2">Slower (image pull on first cold start)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Build workflow</td><td class="py-2 pr-4">ZIP-based</td><td class="py-2">Docker-based CI/CD</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Custom runtime</td><td class="py-2 pr-4">Limited (provided.al2)</td><td class="py-2">Any runtime</td></tr>
+        <tr><td class="py-2 pr-4">Best for</td><td class="py-2 pr-4">Shared libs, small binaries</td><td class="py-2">Large deps, custom runtimes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="Lambda Layer Size Checker" relatedTags={['aws', 'lambda', 'layers', 'deployment', 'serverless']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

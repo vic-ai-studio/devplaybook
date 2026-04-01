@@ -1,0 +1,148 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Vercel Edge Config?", answer: "Vercel Edge Config is an ultra-low-latency key-value data store that is read at the edge, without requiring a round-trip to your origin server or database. It is designed for configuration data that must be read on every request — feature flags, killswitches, A/B test assignments, allow/denylists — where even 10ms of latency matters. Reads are served from memory at the nearest Vercel edge PoP." },
+  { question: "How fast is Vercel Edge Config compared to a database?", answer: "Vercel Edge Config reads typically complete in under 1ms because the data is pre-loaded into memory at every edge PoP globally. In contrast, a database query — even a fast one — requires a network round-trip: 20-100ms for a regional database, and 100-500ms if the database is in a different region than the edge function. Edge Config eliminates this latency for configuration reads." },
+  { question: "What are the size limits for Edge Config?", answer: "Each Edge Config store can hold up to 512KB of total data on the Hobby plan and 512KB on Pro (extendable). Individual item values are limited to 64KB. The store is read-only at runtime — you write to it via the Vercel API or dashboard, and reads are served from the edge. It is not suitable for frequently changing data or user-generated content." },
+  { question: "What is the difference between Edge Config, Vercel KV, and environment variables?", answer: "Environment variables are baked into your deployment and require a redeploy to change. Vercel KV (Redis) is a persistent key-value store with read latency of 5-50ms — good for session data and caching. Edge Config is the fastest option (sub-1ms reads) but is limited to small configuration data. Use Edge Config for feature flags and killswitches, KV for session/cache data, and environment variables for static configuration." },
+  { question: "Can I use Edge Config outside of Vercel?", answer: "Edge Config is a Vercel-specific service and requires the @vercel/edge-config SDK. It works in Vercel Edge Functions, Vercel Serverless Functions, and Vercel Edge Middleware. It does not work outside Vercel deployments. If you need similar functionality across platforms, consider Cloudflare Workers KV (for CF deployments) or a managed Redis service with geographic distribution." },
+  { question: "How do I set up feature flags with Edge Config?", answer: "Store feature flag data as a JSON object in Edge Config with flag names as keys and objects containing enabled boolean and optional rollout percentage as values. Read flags in Edge Middleware to make routing decisions before the request reaches your application. This pattern allows you to enable or disable features globally within seconds, without redeployment, and with zero added latency." },
+];
+---
+
+<BaseLayout
+  title="Vercel Edge Config: Setup, SDK & Feature Flags Guide"
+  description="Learn how to set up Vercel Edge Config for ultra-low-latency feature flags, A/B testing, and edge configuration. SDK usage, patterns, and comparison with Vercel KV."
+  tool="Vercel Edge Config, Feature Flags, Edge KV, Vercel SDK, Low-latency Config, A/B Testing"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Vercel Edge Config: Setup, SDK & Feature Flags Guide","url":"https://devplaybook.cc/tools/vercel-edge-config-builder","description":"Set up Vercel Edge Config for ultra-low-latency feature flags, A/B testing, and configuration. Includes SDK examples and comparison with Vercel KV."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Vercel Edge Config: Setup, SDK & Feature Flags Guide</h1>
+  <p class="text-text-muted mb-6">Vercel Edge Config delivers configuration data to your edge functions in under 1ms — no database round-trip, no origin latency. This guide covers setup, the @vercel/edge-config SDK, feature flag patterns, and when to use Edge Config vs Vercel KV.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Sub-1ms edge reads</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Feature flags & killswitches</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> A/B testing at the edge</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Edge Config vs KV vs env vars</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Setting Up Edge Config</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># 1. Create Edge Config via Vercel CLI
+vercel edge-config create my-feature-flags
+
+# 2. Install SDK
+npm install @vercel/edge-config
+
+# 3. Add connection string to .env.local
+# EDGE_CONFIG=https://edge-config.vercel.com/ecfg_xxxxx?token=xxxxx
+
+# 4. Populate via Vercel API
+curl -X PATCH \
+  "https://api.vercel.com/v1/edge-config/$&#123;EDGE_CONFIG_ID&#125;/items" \
+  -H "Authorization: Bearer $&#123;VERCEL_TOKEN&#125;" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "items": [
+      &#123; "operation": "upsert", "key": "new-checkout", "value": &#123; "enabled": true, "rollout": 50 &#125; &#125;,
+      &#123; "operation": "upsert", "key": "dark-mode", "value": &#123; "enabled": false &#125; &#125;,
+      &#123; "operation": "upsert", "key": "maintenance", "value": false &#125;
+    ]
+  &#125;'</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Reading Edge Config with the SDK</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code>// middleware.ts — feature flag routing at edge
+import &#123; NextResponse &#125; from 'next/server';
+import type &#123; NextRequest &#125; from 'next/server';
+import &#123; get, has &#125; from '@vercel/edge-config';
+
+export async function middleware(request: NextRequest) &#123;
+  // Check maintenance mode killswitch (~0.5ms)
+  const inMaintenance = await get('maintenance');
+  if (inMaintenance) &#123;
+    return NextResponse.rewrite(new URL('/maintenance', request.url));
+  &#125;
+
+  // Feature flag: new checkout flow
+  const checkoutFlag = await get&#60;&#123; enabled: boolean; rollout: number &#125;&#62;('new-checkout');
+  if (checkoutFlag?.enabled && request.nextUrl.pathname === '/checkout') &#123;
+    const userId = request.cookies.get('userId')?.value ?? '';
+    // Simple hash-based rollout
+    const hash = userId.split('').reduce((a, c) =&#62; a + c.charCodeAt(0), 0);
+    if (hash % 100 &#60; (checkoutFlag.rollout ?? 0)) &#123;
+      return NextResponse.rewrite(new URL('/checkout-v2', request.url));
+    &#125;
+  &#125;
+
+  return NextResponse.next();
+&#125;
+
+export const config = &#123;
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+&#125;;</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">A/B Testing Pattern with Edge Config</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code>// A/B test assignment at the edge
+import &#123; get &#125; from '@vercel/edge-config';
+import &#123; NextResponse &#125; from 'next/server';
+
+interface ABTest &#123;
+  variants: Array&#60;&#123; id: string; weight: number; path: string &#125;&#62;;
+&#125;
+
+export async function middleware(request: NextRequest) &#123;
+  const homeTest = await get&#60;ABTest&#62;('homepage-ab-test');
+
+  if (!homeTest || request.nextUrl.pathname !== '/') &#123;
+    return NextResponse.next();
+  &#125;
+
+  // Check if user already assigned
+  const existing = request.cookies.get('ab-homepage');
+  if (existing) &#123;
+    const variant = homeTest.variants.find(v =&#62; v.id === existing.value);
+    if (variant) return NextResponse.rewrite(new URL(variant.path, request.url));
+  &#125;
+
+  // Assign new variant
+  const rand = Math.random();
+  let cumWeight = 0;
+  for (const variant of homeTest.variants) &#123;
+    cumWeight += variant.weight;
+    if (rand &#60; cumWeight) &#123;
+      const response = NextResponse.rewrite(new URL(variant.path, request.url));
+      response.cookies.set('ab-homepage', variant.id, &#123; maxAge: 86400 * 30 &#125;);
+      return response;
+    &#125;
+  &#125;
+
+  return NextResponse.next();
+&#125;</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Storage Options Comparison</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Option</th>
+          <th class="text-left py-2 pr-4">Read Latency</th>
+          <th class="text-left py-2 pr-4">Write Latency</th>
+          <th class="text-left py-2 pr-4">Max Size</th>
+          <th class="text-left py-2">Best For</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Edge Config</td><td class="py-2 pr-4">&lt;1ms</td><td class="py-2 pr-4">Via API (async)</td><td class="py-2 pr-4">512KB</td><td class="py-2">Feature flags, config</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Vercel KV (Redis)</td><td class="py-2 pr-4">5-50ms</td><td class="py-2 pr-4">5-50ms</td><td class="py-2 pr-4">256MB+</td><td class="py-2">Sessions, cache</td></tr>
+        <tr><td class="py-2 pr-4">Environment Variables</td><td class="py-2 pr-4">0ms (in-process)</td><td class="py-2 pr-4">Requires redeploy</td><td class="py-2 pr-4">4KB</td><td class="py-2">Static config, secrets</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="Vercel Edge Config Builder" relatedTags={['vercel', 'edge', 'feature-flags', 'nextjs', 'performance']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

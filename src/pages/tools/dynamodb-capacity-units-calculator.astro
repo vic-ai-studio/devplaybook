@@ -1,0 +1,149 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a Read Capacity Unit (RCU)?", answer: "One Read Capacity Unit (RCU) represents the throughput for one strongly consistent read per second for items up to 4KB. Eventually consistent reads use half an RCU. For items larger than 4KB, AWS rounds up to the next 4KB boundary — a 5KB item costs 2 RCUs for a strongly consistent read, or 1 RCU eventually consistent. For transactional reads (TransactGetItems), each read consumes 2 RCUs." },
+  { question: "What is a Write Capacity Unit (WCU)?", answer: "One Write Capacity Unit (WCU) represents one write per second for items up to 1KB. Larger items require proportionally more WCUs — a 3.5KB item rounded up to 4KB costs 4 WCUs. Transactional writes (TransactWriteItems) consume 2 WCUs per item. Conditional writes that fail still consume WCUs. Batch writes (BatchWriteItem) are not transactional but each item still consumes 1 WCU per KB." },
+  { question: "When should I use On-Demand vs Provisioned capacity?", answer: "On-Demand capacity is ideal for unpredictable traffic, new tables without traffic baselines, spiky workloads, and development/test environments. It costs roughly $1.25 per million read requests and $1.25 per million write requests. Provisioned capacity with Auto Scaling is better for predictable sustained traffic — it can be 5-10x cheaper at steady load. On-Demand can be up to 7x more expensive per operation than well-provisioned Provisioned mode." },
+  { question: "How do Global Secondary Indexes affect capacity?", answer: "GSI reads are billed from the GSI's own capacity pool, not the table's. If you provision 100 WCUs on a table and add a GSI that updates on every write, those GSI writes also consume capacity — from the GSI's provisioned capacity. In On-Demand mode, GSI operations are charged at the same per-request rates. Over-projecting attributes to GSIs wastes write capacity since every projected attribute is replicated on writes." },
+  { question: "How does DynamoDB TTL affect capacity?", answer: "DynamoDB TTL deletions are performed in the background and do not consume Write Capacity Units. DynamoDB deletes expired items within 48 hours of expiration. TTL is one of the most effective cost optimization strategies — use it to automatically expire session data, temporary tokens, rate limit counters, and any time-bound records rather than deleting them manually with WCUs." },
+  { question: "What is the DynamoDB pricing for storage?", answer: "DynamoDB storage costs $0.25 per GB/month. The first 25GB is free under the AWS Free Tier. For large tables, storage can exceed the per-request cost. Optimize storage by: keeping item sizes small (avoid storing large blobs — use S3 instead), using sparse indexes (only index items that need the GSI), compressing large attributes, and using TTL to expire obsolete data." },
+];
+---
+
+<BaseLayout
+  title="DynamoDB Capacity Units Calculator: RCU, WCU & Cost Guide"
+  description="Calculate DynamoDB RCU and WCU requirements, compare on-demand vs provisioned capacity pricing, configure auto-scaling, and optimize DynamoDB costs with proven strategies."
+  tool="DynamoDB, RCU, WCU, Capacity Units, DynamoDB Pricing, Provisioned vs On-Demand"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"DynamoDB Capacity Units Calculator: RCU, WCU & Cost Guide","url":"https://devplaybook.cc/tools/dynamodb-capacity-units-calculator","description":"Calculate DynamoDB RCU and WCU requirements, compare on-demand vs provisioned capacity pricing, and optimize DynamoDB costs."})} />
+
+  <h1 class="text-3xl font-bold mb-2">DynamoDB Capacity Units Calculator: RCU, WCU & Cost Guide</h1>
+  <p class="text-text-muted mb-6">DynamoDB's capacity model — Read Capacity Units and Write Capacity Units — determines both performance and cost. Understanding how item sizes map to capacity consumption is essential to avoid throttling and bill surprises.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> RCU & WCU calculation formulas</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> On-Demand vs Provisioned pricing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auto-scaling configuration</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost optimization with TTL & sparse indexes</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">RCU and WCU Calculation Rules</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Operation</th>
+          <th class="text-left py-2 pr-4">Capacity Rule</th>
+          <th class="text-left py-2 pr-4">Example: 3KB item</th>
+          <th class="text-left py-2">Example: 7KB item</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Strongly consistent read</td><td class="py-2 pr-4">1 RCU per 4KB</td><td class="py-2 pr-4">1 RCU</td><td class="py-2">2 RCUs</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Eventually consistent read</td><td class="py-2 pr-4">0.5 RCU per 4KB</td><td class="py-2 pr-4">0.5 RCU</td><td class="py-2">1 RCU</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Transactional read</td><td class="py-2 pr-4">2 RCUs per 4KB</td><td class="py-2 pr-4">2 RCUs</td><td class="py-2">4 RCUs</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Write (PutItem/UpdateItem)</td><td class="py-2 pr-4">1 WCU per 1KB</td><td class="py-2 pr-4">3 WCUs</td><td class="py-2">7 WCUs</td></tr>
+        <tr><td class="py-2 pr-4">Transactional write</td><td class="py-2 pr-4">2 WCUs per 1KB</td><td class="py-2 pr-4">6 WCUs</td><td class="py-2">14 WCUs</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">On-Demand vs Provisioned Pricing</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Mode</th>
+          <th class="text-left py-2 pr-4">Read Cost</th>
+          <th class="text-left py-2 pr-4">Write Cost</th>
+          <th class="text-left py-2 pr-4">Best For</th>
+          <th class="text-left py-2">Risk</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">On-Demand</td><td class="py-2 pr-4">$0.25/M RRUs</td><td class="py-2 pr-4">$1.25/M WRUs</td><td class="py-2 pr-4">Spiky / unpredictable</td><td class="py-2">5-10x higher at sustained load</td></tr>
+        <tr><td class="py-2 pr-4">Provisioned</td><td class="py-2 pr-4">$0.00013/RCU-hr</td><td class="py-2 pr-4">$0.00065/WCU-hr</td><td class="py-2 pr-4">Predictable traffic</td><td class="py-2">Over/under-provision risk</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Provisioned Capacity with Auto Scaling</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># Terraform: DynamoDB with auto-scaling
+resource "aws_dynamodb_table" "users" &#123;
+  name           = "users"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 5     # Minimum provisioned
+  write_capacity = 5
+
+  hash_key  = "id"
+
+  attribute &#123;
+    name = "id"
+    type = "S"
+  &#125;
+
+  ttl &#123;
+    attribute_name = "expiresAt"  # TTL = free deletes
+    enabled        = true
+  &#125;
+&#125;
+
+# Auto-scaling policy (scales between 5-100 WCU)
+resource "aws_appautoscaling_target" "dynamodb_write" &#123;
+  max_capacity       = 100
+  min_capacity       = 5
+  resource_id        = "table/$&#123;aws_dynamodb_table.users.name&#125;"
+  scalable_dimension = "dynamodb:table:WriteCapacityUnits"
+  service_namespace  = "dynamodb"
+&#125;
+
+resource "aws_appautoscaling_policy" "dynamodb_write_policy" &#123;
+  name               = "DynamoDBWriteCapacityUtilization"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.dynamodb_write.resource_id
+  scalable_dimension = aws_appautoscaling_target.dynamodb_write.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.dynamodb_write.service_namespace
+
+  target_tracking_scaling_policy_configuration &#123;
+    predefined_metric_specification &#123;
+      predefined_metric_type = "DynamoDBWriteCapacityUtilization"
+    &#125;
+    target_value = 70.0  # Scale when 70% utilized
+  &#125;
+&#125;</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Cost Optimization Strategies</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code>// 1. Use eventually consistent reads (half the RCU cost)
+const result = await dynamoDB.get(&#123;
+  TableName: 'users',
+  Key: &#123; id: &#123; S: userId &#125; &#125;,
+  ConsistentRead: false  // Eventually consistent = 0.5 RCU (default)
+  // ConsistentRead: true = 1 RCU (use only when freshness required)
+&#125;).promise();
+
+// 2. Project only needed attributes
+const result = await dynamoDB.query(&#123;
+  TableName: 'orders',
+  KeyConditionExpression: 'userId = :uid',
+  ExpressionAttributeValues: &#123; ':uid': &#123; S: userId &#125; &#125;,
+  // Only fetch what you need — reduces data transfer and effective RCU
+  ProjectionExpression: 'orderId, #s, amount',
+  ExpressionAttributeNames: &#123; '#s': 'status' &#125;,
+&#125;).promise();
+
+// 3. Use TTL for auto-cleanup (0 WCU for deletes)
+const item = &#123;
+  id: &#123; S: sessionId &#125;,
+  userId: &#123; S: userId &#125;,
+  data: &#123; S: JSON.stringify(sessionData) &#125;,
+  // TTL: Unix timestamp — DynamoDB deletes automatically (free!)
+  expiresAt: &#123; N: String(Math.floor(Date.now() / 1000) + 86400) &#125;
+&#125;;</code></pre>
+
+  <ToolPageCta currentTool="DynamoDB Capacity Units Calculator" relatedTags={['aws', 'dynamodb', 'database', 'serverless', 'cost']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

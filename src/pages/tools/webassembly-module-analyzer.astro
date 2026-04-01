@@ -1,0 +1,154 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is WebAssembly (WASM)?", answer: "WebAssembly is a binary instruction format that serves as a portable compilation target for languages like C, C++, Rust, and Go. It runs at near-native speed in browsers via a sandboxed VM, and in server-side environments like Cloudflare Workers, Fastly Compute, Node.js, and Deno. WASM provides a deterministic, sandboxed execution environment with predictable performance characteristics regardless of the host platform." },
+  { question: "Why use WASM in edge functions instead of JavaScript?", answer: "JavaScript is fast for general web workloads, but WASM excels at CPU-intensive operations: image processing, cryptographic operations, data parsing, compression/decompression, and numerical computation. In benchmarks, WASM typically outperforms equivalent JavaScript by 2-5x for CPU-bound tasks. WASM also enables using Rust, Go, or C libraries in edge environments that otherwise only support JavaScript." },
+  { question: "How do I compile Rust to WASM for Cloudflare Workers?", answer: "Use wasm-pack to compile Rust to WASM with JavaScript bindings. Install wasm-pack, add wasm-bindgen to your Cargo.toml, annotate public functions with #[wasm_bindgen], then run wasm-pack build --target bundler. The output includes a .wasm file and JavaScript glue code. For Cloudflare Workers specifically, use the workers-rs crate for a more integrated experience." },
+  { question: "What are the size limits for WASM modules in edge functions?", answer: "Cloudflare Workers: WASM modules count against the 1MB script size limit on Free plan, 10MB on Paid plan. The WASM module itself must be under 2MB per module in Workers. Fastly Compute: WASM binary can be up to 100MB. For size optimization, use wasm-opt (part of binaryen toolchain) with -O3 or -Os flags to strip unused code and minimize the binary. Typical Rust WASM modules compile to 100KB-2MB." },
+  { question: "What are the limitations of WASM in edge environments?", answer: "WASM in edge functions cannot: access the DOM (server-side), make TCP connections (edge restrictions), use threads (Workers are single-threaded), access the file system, or use WASI system calls that require OS interaction. WASM can use: fetch API (HTTP), Web Crypto API, Workers KV/R2/D1 bindings (via JavaScript imports), and synchronous computation. The Component Model (WASI 0.2) is improving cross-language interoperability." },
+  { question: "What is the WASM Component Model and why does it matter?", answer: "The WASM Component Model (WASI 0.2) is a standard for composing WASM modules from different languages. It defines Interface Types (WIT) that let a Rust WASM module expose typed interfaces consumable from JavaScript or Go without manual binding code. This is significant for edge function ecosystems because it allows polyglot composition — a Python-compiled WASM module can call a Rust-compiled WASM module without JavaScript glue code." },
+];
+---
+
+<BaseLayout
+  title="WebAssembly (WASM) in Production: Edge Functions & Performance Guide"
+  description="Run WebAssembly in Cloudflare Workers and Fastly Compute. Learn wasm-pack for Rust, WASM vs JS performance benchmarks, use cases for edge WASM, and WASM Component Model."
+  tool="WebAssembly, WASM, Edge Functions, Rust WASM, wasm-pack, Cloudflare Workers WASM"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"WebAssembly (WASM) in Production: Edge Functions & Performance Guide","url":"https://devplaybook.cc/tools/webassembly-module-analyzer","description":"Production guide to WebAssembly at the edge: Cloudflare Workers, Fastly Compute, wasm-pack for Rust, performance benchmarks, and WASM Component Model."})} />
+
+  <h1 class="text-3xl font-bold mb-2">WebAssembly (WASM) in Production: Edge Functions & Performance Guide</h1>
+  <p class="text-text-muted mb-6">WebAssembly brings near-native performance to edge functions, enabling CPU-intensive operations — image processing, cryptography, data parsing — that would be too slow in JavaScript. This guide covers WASM runtimes at the edge, building with Rust, performance benchmarks, and production patterns.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> WASM in Cloudflare Workers & Fastly</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Rust → WASM with wasm-pack</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> WASM vs JS performance benchmarks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> WASM Component Model</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Edge WASM Runtimes Comparison</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Platform</th>
+          <th class="text-left py-2 pr-4">WASM Support</th>
+          <th class="text-left py-2 pr-4">Max Module Size</th>
+          <th class="text-left py-2 pr-4">Languages</th>
+          <th class="text-left py-2">WASI Support</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Cloudflare Workers</td><td class="py-2 pr-4">Native (WebAssembly.instantiate)</td><td class="py-2 pr-4">2MB per module</td><td class="py-2 pr-4">Rust, C/C++, Go, AssemblyScript</td><td class="py-2">Partial (WASI preview 1)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Fastly Compute</td><td class="py-2 pr-4">Primary runtime</td><td class="py-2 pr-4">100MB</td><td class="py-2 pr-4">Rust, Go, JavaScript, C, Python</td><td class="py-2">Full WASI 0.2</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Node.js (v8+)</td><td class="py-2 pr-4">WebAssembly API</td><td class="py-2 pr-4">No hard limit</td><td class="py-2 pr-4">Any WASM-compilable language</td><td class="py-2">Via @wasmer/wasi</td></tr>
+        <tr><td class="py-2 pr-4">WasmEdge</td><td class="py-2 pr-4">Dedicated runtime</td><td class="py-2 pr-4">No hard limit</td><td class="py-2 pr-4">Rust, C, JavaScript, Python</td><td class="py-2">Full WASI support</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Building WASM from Rust with wasm-pack</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># 1. Install wasm-pack
+cargo install wasm-pack
+
+# 2. Create Rust library (Cargo.toml)
+[package]
+name = "edge-crypto"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+sha2 = "0.10"
+hex = "0.4"
+
+# 3. Rust WASM code (src/lib.rs)
+use wasm_bindgen::prelude::*;
+use sha2::<br/>&#123;Sha256, Digest&#125;;
+
+#[wasm_bindgen]
+pub fn hash_sha256(input: &str) -&#62; String &#123;
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    hex::encode(hasher.finalize())
+&#125;
+
+#[wasm_bindgen]
+pub fn count_tokens_approx(text: &str) -&#62; u32 &#123;
+    // Approximate: 1 token ≈ 4 chars
+    (text.len() as u32 + 3) / 4
+&#125;
+
+# 4. Build for Cloudflare Workers
+wasm-pack build --target bundler --release
+
+# 5. Optimize with wasm-opt (binaryen)
+wasm-opt -O3 -o pkg/edge_crypto_bg_opt.wasm pkg/edge_crypto_bg.wasm
+# Typically reduces size by 15-30%</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Using WASM in a Cloudflare Worker</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code>// worker.ts — import and use WASM module
+import init, &#123; hash_sha256, count_tokens_approx &#125; from './pkg/edge_crypto.js';
+import wasmModule from './pkg/edge_crypto_bg.wasm';
+
+// Initialize WASM once at module scope (not inside handler)
+// This runs during Worker initialization, not per-request
+const wasmReady = init(wasmModule);
+
+export default &#123;
+  async fetch(request: Request): Promise&#60;Response&#62; &#123;
+    await wasmReady;  // Ensure WASM is initialized
+
+    const url = new URL(request.url);
+    const text = url.searchParams.get('text') ?? '';
+
+    // Call WASM function (near-native speed)
+    const hash = hash_sha256(text);
+    const tokenCount = count_tokens_approx(text);
+
+    return Response.json(&#123;
+      hash,
+      tokenCount,
+      textLength: text.length,
+    &#125;);
+  &#125;
+&#125;;
+
+// wrangler.toml — enable WASM
+// [build]
+// command = "npm run build"
+// [build.upload]
+// format = "modules"</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">WASM vs JavaScript Performance Benchmarks</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Task</th>
+          <th class="text-left py-2 pr-4">JavaScript</th>
+          <th class="text-left py-2 pr-4">Rust WASM</th>
+          <th class="text-left py-2">WASM Speedup</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">SHA-256 hash (1MB)</td><td class="py-2 pr-4">~8ms</td><td class="py-2 pr-4">~1.5ms</td><td class="py-2">5.3x faster</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">JSON parse + transform</td><td class="py-2 pr-4">~2ms</td><td class="py-2 pr-4">~0.8ms</td><td class="py-2">2.5x faster</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Image resize (100KB)</td><td class="py-2 pr-4">~45ms</td><td class="py-2 pr-4">~9ms</td><td class="py-2">5x faster</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Markdown parse</td><td class="py-2 pr-4">~3ms</td><td class="py-2 pr-4">~0.9ms</td><td class="py-2">3.3x faster</td></tr>
+        <tr><td class="py-2 pr-4">HTTP request (I/O bound)</td><td class="py-2 pr-4">~50ms</td><td class="py-2 pr-4">~50ms</td><td class="py-2">No difference</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="WebAssembly Module Analyzer" relatedTags={['wasm', 'webassembly', 'cloudflare', 'rust', 'edge', 'performance']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

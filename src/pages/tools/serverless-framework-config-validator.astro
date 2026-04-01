@@ -1,0 +1,173 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the Serverless Framework?", answer: "The Serverless Framework is an open-source CLI and deployment tool that simplifies deploying functions-as-a-service across AWS Lambda, Azure Functions, Google Cloud Functions, and other providers. You define your entire serverless application in a serverless.yml file — functions, events, resources, and permissions — and the framework handles packaging, deployment, and IAM role creation." },
+  { question: "What is the difference between Serverless Framework v3 and v4?", answer: "Serverless Framework v4 introduced a paid license for production use (free for dev/test and open-source projects). Architecturally, v4 improves performance monitoring, CI/CD integrations, and dashboard features. v3 remains widely used and fully functional. For new projects in 2026, evaluate whether v4's managed features justify the cost vs using AWS SAM or CDK directly." },
+  { question: "How do I use environment variables and secrets in serverless.yml?", answer: "Use the ${env:VAR_NAME} syntax for environment variables and ${ssm:/path/to/param} for AWS SSM Parameter Store values. For secrets, prefer SSM SecureString or AWS Secrets Manager references over hardcoded values. The framework resolves these at deploy time, and you can use ${param:VAR} for Serverless Dashboard parameters." },
+  { question: "What is the difference between stages in the Serverless Framework?", answer: "Stages are deployment environments (dev, staging, production). You specify the stage with --stage production during deploy. Use stage-specific configuration with provider.stage: ${opt:stage, 'dev'} and condition resources or settings per stage using the ${self:custom.settings.${self:provider.stage}} pattern." },
+  { question: "How do Serverless Framework plugins work?", answer: "Plugins extend the framework's functionality. Install them via npm and list them in your serverless.yml plugins section. Popular plugins include serverless-webpack (bundling), serverless-offline (local emulation), serverless-prune-plugin (cleanup old versions), and serverless-dotenv-plugin (load .env files). Plugins can add new commands and hook into existing lifecycle events." },
+  { question: "Should I use Serverless Framework, AWS SAM, or AWS CDK?", answer: "Serverless Framework excels for multi-cloud deployments and teams familiar with its workflow. AWS SAM is ideal for AWS-only projects using CloudFormation — it is free, AWS-native, and integrates with SAM CLI for local testing. AWS CDK is best for complex infrastructure with full programming language support (TypeScript, Python). For Lambda-only projects on AWS, SAM or CDK are generally preferred in 2026." },
+];
+---
+
+<BaseLayout
+  title="Serverless Framework: serverless.yml Config & Validation Guide"
+  description="Learn the Serverless Framework serverless.yml structure, plugins, stages, variables, and compare Serverless Framework vs AWS SAM vs CDK for deploying Lambda functions."
+  tool="Serverless Framework, serverless.yml, AWS Lambda Deploy, IaC Serverless, SLS Deploy"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Serverless Framework: serverless.yml Config & Validation Guide","url":"https://devplaybook.cc/tools/serverless-framework-config-validator","description":"Learn the Serverless Framework serverless.yml structure, plugins, stages, variables, and compare Serverless Framework vs AWS SAM vs CDK for deploying Lambda functions."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Serverless Framework: serverless.yml Config & Validation Guide</h1>
+  <p class="text-text-muted mb-6">The Serverless Framework turns AWS Lambda deployment into a single YAML file and one CLI command. This reference covers every section of serverless.yml, common patterns, plugin setup, and how to choose between Serverless Framework, SAM, and CDK.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Complete serverless.yml reference</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Plugins & custom variables</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SLS vs SAM vs CDK comparison</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-stage deployments</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">The serverless.yml Structure</h2>
+  <p class="text-text-muted mb-4">A complete serverless.yml has six top-level sections:</p>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># serverless.yml — complete reference
+service: my-api-service
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  stage: $&#123;opt:stage, 'dev'&#125;
+  memorySize: 512
+  timeout: 30
+  environment:
+    NODE_ENV: $&#123;self:provider.stage&#125;
+    DB_URL: $&#123;ssm:/myapp/$&#123;self:provider.stage&#125;/db-url&#125;
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:PutItem
+          Resource: !GetAtt UsersTable.Arn
+
+plugins:
+  - serverless-webpack
+  - serverless-offline
+  - serverless-prune-plugin
+
+custom:
+  webpack:
+    webpackConfig: webpack.config.js
+    includeModules: false
+  prune:
+    automatic: true
+    number: 3
+
+functions:
+  api:
+    handler: src/api.handler
+    events:
+      - httpApi:
+          path: /users
+          method: GET
+      - httpApi:
+          path: /users/&#123;id&#125;
+          method: GET
+  processor:
+    handler: src/processor.handler
+    events:
+      - sqs:
+          arn: !GetAtt ProcessingQueue.Arn
+          batchSize: 10
+
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: users-$&#123;self:provider.stage&#125;
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Custom Variables and Stage Configuration</h2>
+  <p class="text-text-muted mb-4">Use the custom section to define stage-specific settings that functions and resources reference:</p>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code>custom:
+  settings:
+    dev:
+      domainName: dev-api.example.com
+      logLevel: DEBUG
+      reservedConcurrency: 5
+    production:
+      domainName: api.example.com
+      logLevel: WARN
+      reservedConcurrency: 100
+
+  # Reference: $&#123;self:custom.settings.$&#123;self:provider.stage&#125;.logLevel&#125;
+
+functions:
+  api:
+    handler: src/handler.ts
+    reservedConcurrency: $&#123;self:custom.settings.$&#123;self:provider.stage&#125;.reservedConcurrency&#125;
+    environment:
+      LOG_LEVEL: $&#123;self:custom.settings.$&#123;self:provider.stage&#125;.logLevel&#125;</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Deploying with the Serverless Framework CLI</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code># Install
+npm install -g serverless
+
+# Deploy to dev (default stage)
+serverless deploy
+
+# Deploy to production
+serverless deploy --stage production --region us-east-1
+
+# Deploy a single function only (faster)
+serverless deploy function --function api --stage production
+
+# Remove all resources
+serverless remove --stage production
+
+# Invoke a function directly
+serverless invoke --function api --stage dev --data '&#123;"httpMethod":"GET"&#125;'
+
+# View logs
+serverless logs --function api --stage production --tail</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Serverless Framework vs SAM vs CDK Comparison</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Feature</th>
+          <th class="text-left py-2 pr-4">Serverless Framework</th>
+          <th class="text-left py-2 pr-4">AWS SAM</th>
+          <th class="text-left py-2">AWS CDK</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Config format</td><td class="py-2 pr-4">YAML / JS</td><td class="py-2 pr-4">YAML / JSON</td><td class="py-2">TypeScript / Python / Java</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Multi-cloud</td><td class="py-2 pr-4">Yes (AWS/GCP/Azure)</td><td class="py-2 pr-4">AWS only</td><td class="py-2">AWS only</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Local testing</td><td class="py-2 pr-4">serverless-offline</td><td class="py-2 pr-4">sam local (built-in)</td><td class="py-2">Via SAM CLI integration</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Cost</td><td class="py-2 pr-4">Free (v3) / Paid (v4 prod)</td><td class="py-2 pr-4">Free</td><td class="py-2">Free</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Learning curve</td><td class="py-2 pr-4">Low</td><td class="py-2 pr-4">Low-Medium</td><td class="py-2">Medium-High</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Complex infra</td><td class="py-2 pr-4">Limited</td><td class="py-2 pr-4">Good</td><td class="py-2">Excellent</td></tr>
+        <tr><td class="py-2 pr-4">Best for</td><td class="py-2 pr-4">Quick deploys, multi-cloud</td><td class="py-2 pr-4">AWS Lambda + API GW</td><td class="py-2">Complex AWS architecture</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta currentTool="Serverless Framework Config Validator" relatedTags={['aws', 'serverless', 'lambda', 'iac', 'deployment']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

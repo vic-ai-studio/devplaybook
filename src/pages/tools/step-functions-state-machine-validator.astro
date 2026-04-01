@@ -1,0 +1,172 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is AWS Step Functions?", answer: "AWS Step Functions is a serverless orchestration service that coordinates multiple AWS services (Lambda, DynamoDB, SQS, ECS, etc.) into a workflow defined in Amazon States Language (ASL). Instead of writing complex coordination logic inside Lambda functions, Step Functions manages state, retries, error handling, and parallel execution through a visual state machine. It is ideal for multi-step workflows, long-running processes, and distributed transactions." },
+  { question: "What is the difference between Standard and Express workflows?", answer: "Standard workflows support execution durations up to 1 year, have exactly-once execution semantics, and store full execution history in the console. They cost $0.025 per 1,000 state transitions. Express workflows support durations up to 5 minutes, have at-least-once semantics, stream logs to CloudWatch, and cost $1.00 per million workflow requests plus duration. Use Standard for human-approval workflows and long processes; use Express for high-volume, short-duration event processing." },
+  { question: "What are the main state types in ASL?", answer: "ASL has 8 state types: Task (call a service or Lambda), Choice (conditional branching, like if/else), Parallel (run branches concurrently), Map (iterate over array items), Wait (pause for a time or timestamp), Pass (transform input/output), Succeed (end execution successfully), and Fail (end with error). Combining these states covers virtually all workflow patterns." },
+  { question: "How does error handling work in Step Functions?", answer: "Each Task state can have Retry and Catch blocks. Retry specifies retry intervals and backoff rates for specific error types (Lambda.ServiceException, States.Timeout, etc.). Catch routes execution to a fallback state when retries are exhausted. This declarative error handling means you do not need to write retry logic in Lambda code — the state machine handles it, making workflows more resilient and easier to debug." },
+  { question: "What is the Step Functions SDK integration and why use it?", answer: "SDK integrations (also called optimized integrations or direct integrations) allow Step Functions to call AWS services like DynamoDB, SQS, SNS, or EventBridge directly — without needing a Lambda function as a wrapper. This reduces Lambda invocations, lowers cost, and improves reliability. For example, writing to DynamoDB from a workflow step is cheaper and simpler via SDK integration than via a Lambda function that calls DynamoDB." },
+  { question: "When should I use Step Functions vs SQS vs EventBridge?", answer: "Step Functions is best when you need explicit workflow visualization, complex branching logic, error handling across multiple steps, or human approval steps. SQS is best for simple message queuing between decoupled services with a Lambda consumer. EventBridge is best for event-driven architectures where multiple services react to events independently. For orchestration (one service directs others), use Step Functions. For choreography (services independently react), use EventBridge or SQS." },
+];
+---
+
+<BaseLayout
+  title="AWS Step Functions: State Machine Design & ASL Guide"
+  description="Master AWS Step Functions: ASL state machine syntax, Task/Choice/Parallel/Map states, error handling with Retry/Catch, Express vs Standard workflows, and SDK integrations."
+  tool="AWS Step Functions, State Machine, ASL, Workflow Orchestration, Lambda Orchestration"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"AWS Step Functions: State Machine Design & ASL Guide","url":"https://devplaybook.cc/tools/step-functions-state-machine-validator","description":"Complete guide to AWS Step Functions ASL syntax, state types, error handling, Express vs Standard workflows, and when to use Step Functions vs SQS vs EventBridge."})} />
+
+  <h1 class="text-3xl font-bold mb-2">AWS Step Functions: State Machine Design & ASL Guide</h1>
+  <p class="text-text-muted mb-6">Step Functions orchestrates complex workflows across AWS services with built-in error handling, retries, and visual debugging — no coordination code in Lambda. This guide covers ASL syntax, all state types, error handling patterns, and workflow design best practices.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Complete ASL state reference</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Error handling with Retry/Catch</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Express vs Standard workflows</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SDK direct integrations</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">ASL State Machine: Complete Example</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code>&#123;
+  "Comment": "Order processing workflow",
+  "StartAt": "ValidateOrder",
+  "States": &#123;
+    "ValidateOrder": &#123;
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-1:123456789:function:ValidateOrder",
+      "Retry": [
+        &#123;
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        &#125;
+      ],
+      "Catch": [
+        &#123;
+          "ErrorEquals": ["ValidationError"],
+          "Next": "SendRejectionEmail",
+          "ResultPath": "$.error"
+        &#125;
+      ],
+      "Next": "ProcessPayment"
+    &#125;,
+    "ProcessPayment": &#123;
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-1:123456789:function:ProcessPayment",
+      "TimeoutSeconds": 30,
+      "Next": "CheckPaymentStatus"
+    &#125;,
+    "CheckPaymentStatus": &#123;
+      "Type": "Choice",
+      "Choices": [
+        &#123; "Variable": "$.paymentStatus", "StringEquals": "SUCCESS", "Next": "FulfillOrder" &#125;,
+        &#123; "Variable": "$.paymentStatus", "StringEquals": "PENDING", "Next": "WaitForPayment" &#125;
+      ],
+      "Default": "SendFailureNotification"
+    &#125;,
+    "WaitForPayment": &#123;
+      "Type": "Wait",
+      "Seconds": 300,
+      "Next": "CheckPaymentStatus"
+    &#125;,
+    "FulfillOrder": &#123;
+      "Type": "Parallel",
+      "Branches": [
+        &#123;
+          "StartAt": "UpdateInventory",
+          "States": &#123;
+            "UpdateInventory": &#123;
+              "Type": "Task",
+              "Resource": "arn:aws:states:::dynamodb:updateItem",
+              "Parameters": &#123;
+                "TableName": "Inventory",
+                "Key": &#123; "productId": &#123; "S.$": "$.productId" &#125; &#125;,
+                "UpdateExpression": "SET quantity = quantity - :qty",
+                "ExpressionAttributeValues": &#123; ":qty": &#123; "N.$": "$.quantity" &#125; &#125;
+              &#125;,
+              "End": true
+            &#125;
+          &#125;
+        &#125;,
+        &#123;
+          "StartAt": "SendConfirmationEmail",
+          "States": &#123;
+            "SendConfirmationEmail": &#123;
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": &#123;
+                "TopicArn": "arn:aws:sns:us-east-1:123456789:OrderConfirmations",
+                "Message.$": "States.Format('Order &#123;&#125; confirmed!', $.orderId)"
+              &#125;,
+              "End": true
+            &#125;
+          &#125;
+        &#125;
+      ],
+      "End": true
+    &#125;,
+    "SendRejectionEmail": &#123; "Type": "Succeed" &#125;,
+    "SendFailureNotification": &#123; "Type": "Fail", "Error": "PaymentFailed" &#125;
+  &#125;
+&#125;</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Standard vs Express Workflow Comparison</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Feature</th>
+          <th class="text-left py-2 pr-4">Standard Workflow</th>
+          <th class="text-left py-2">Express Workflow</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Max duration</td><td class="py-2 pr-4">1 year</td><td class="py-2">5 minutes</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Execution semantics</td><td class="py-2 pr-4">Exactly-once</td><td class="py-2">At-least-once</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Pricing</td><td class="py-2 pr-4">$0.025/1K transitions</td><td class="py-2">$1.00/M executions + duration</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Execution history</td><td class="py-2 pr-4">90 days in console</td><td class="py-2">CloudWatch Logs only</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Throughput</td><td class="py-2 pr-4">2,000 executions/sec</td><td class="py-2">100,000 executions/sec</td></tr>
+        <tr><td class="py-2 pr-4">Best for</td><td class="py-2 pr-4">Orders, approvals, long processes</td><td class="py-2">High-volume event processing</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Map State: Process Arrays in Parallel</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code>// Map state processes each item in an array concurrently
+&#123;
+  "ProcessOrders": &#123;
+    "Type": "Map",
+    "ItemsPath": "$.orders",        // Array to iterate
+    "MaxConcurrency": 10,           // Max parallel branches
+    "Parameters": &#123;
+      "orderId.$": "$$.Map.Item.Value.id",
+      "amount.$": "$$.Map.Item.Value.amount"
+    &#125;,
+    "Iterator": &#123;
+      "StartAt": "ProcessSingleOrder",
+      "States": &#123;
+        "ProcessSingleOrder": &#123;
+          "Type": "Task",
+          "Resource": "arn:aws:lambda:us-east-1:123456789:function:ProcessOrder",
+          "End": true
+        &#125;
+      &#125;
+    &#125;,
+    "ResultPath": "$.processedOrders",
+    "Next": "SendSummary"
+  &#125;
+&#125;
+
+// Use case: process 100 orders in batches of 10 concurrently
+// Much faster than sequential processing
+// MaxConcurrency: 0 = unbounded parallelism</code></pre>
+
+  <ToolPageCta currentTool="Step Functions State Machine Validator" relatedTags={['aws', 'step-functions', 'serverless', 'workflow', 'lambda']} />
+  <FaqSection faq={faq} />
+</BaseLayout>

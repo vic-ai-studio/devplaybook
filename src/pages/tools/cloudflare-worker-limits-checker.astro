@@ -1,0 +1,154 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the CPU time limit for Cloudflare Workers?", answer: "On the Free plan, Workers have a 10ms CPU time limit per request. On the Paid plan ($5/month), the limit increases to 50ms CPU time. Note that CPU time is wall-clock time minus I/O wait time — if your Worker spends most of its time waiting for fetch() calls, that does not count against your CPU budget. Workers that exceed their CPU limit receive an error response." },
+  { question: "What is the difference between Workers, Pages Functions, and Durable Objects?", answer: "Cloudflare Workers are standalone serverless functions deployed to the edge. Pages Functions are Workers deployed alongside a Cloudflare Pages site (same runtime, co-located). Durable Objects provide stateful Workers with consistent identity — each Durable Object instance has a single-threaded execution guarantee and persistent storage, making them suitable for real-time collaboration, game servers, and coordination tasks." },
+  { question: "What are the storage limits for Workers KV?", answer: "Workers KV has a 25MB value size limit per key and 512-byte key size limit. KV is eventually consistent (reads may lag writes by seconds across PoPs). For the Free plan, you get 100,000 KV reads/day and 1,000 writes/day. The Paid plan includes 10M reads/month and 1M writes/month. KV is optimized for read-heavy workloads — for write-heavy use cases, consider Workers D1 or R2." },
+  { question: "What is the request size limit for Cloudflare Workers?", answer: "Workers can receive request bodies up to 100MB in size. Response bodies have no explicit size limit but are streamed. For the subrequest limit (fetch() calls from within a Worker), you can make up to 50 subrequests per Worker invocation on the Free plan and 1,000 on the Paid plan. Recursive Workers (Workers calling Workers) count toward this limit." },
+  { question: "How does Workers Paid plan pricing work?", answer: "The Workers Paid plan costs $5/month and includes 10 million requests/month. Beyond that, additional requests cost $0.30 per million. CPU time beyond 30ms per request is charged at $0.02 per million CPU-ms. Compared to AWS Lambda, Workers pricing is often lower for high-throughput, short-duration workloads because there is no per-GB-second memory charge." },
+  { question: "Can Cloudflare Workers connect to external databases?", answer: "Workers cannot make TCP connections (no traditional database drivers). For databases, use HTTP-compatible options: Cloudflare D1 (SQLite via Workers binding), Neon PostgreSQL (HTTP driver), PlanetScale (HTTP driver), Upstash Redis (HTTP), or Turso (libSQL over HTTP). For workers that must access a private database, use Cloudflare Tunnel with a Hyperdrive binding to proxy TCP connections." },
+];
+---
+
+<BaseLayout
+  title="Cloudflare Workers: Limits, Pricing & Optimization Guide"
+  description="Complete guide to Cloudflare Workers limits including CPU time, memory, request size, KV/R2/D1/Queue limits. Free vs Paid plan comparison and optimization strategies."
+  tool="Cloudflare Workers, CPU Limit, Workers KV, Durable Objects, Cloudflare Pricing, Workers Limits"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Cloudflare Workers: Limits, Pricing & Optimization Guide","url":"https://devplaybook.cc/tools/cloudflare-worker-limits-checker","description":"Complete guide to Cloudflare Workers limits, pricing, KV/R2/D1 storage options, and optimization strategies for production deployments."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Cloudflare Workers: Limits, Pricing & Optimization Guide</h1>
+  <p class="text-text-muted mb-6">Cloudflare Workers run JavaScript and WebAssembly at 300+ global edge locations with near-zero cold starts. Understanding the limits — CPU time, memory, storage quotas, and subrequest counts — is essential for production deployments.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Free vs Paid plan comparison</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> KV / R2 / D1 / Queue limits</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CPU optimization techniques</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Workers vs Durable Objects</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Workers Plans: Free vs Paid Limits</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Limit</th>
+          <th class="text-left py-2 pr-4">Free Plan</th>
+          <th class="text-left py-2">Paid Plan ($5/mo)</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Requests/day</td><td class="py-2 pr-4">100,000</td><td class="py-2">10M/month included</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">CPU time/request</td><td class="py-2 pr-4">10ms</td><td class="py-2">50ms (30ms free, then $0.02/M CPU-ms)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Memory/Worker</td><td class="py-2 pr-4">128MB</td><td class="py-2">128MB</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Script size</td><td class="py-2 pr-4">1MB compressed</td><td class="py-2">10MB compressed</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Subrequests/request</td><td class="py-2 pr-4">50</td><td class="py-2">1,000</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">KV reads/day</td><td class="py-2 pr-4">100,000</td><td class="py-2">10M/month</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">KV writes/day</td><td class="py-2 pr-4">1,000</td><td class="py-2">1M/month</td></tr>
+        <tr><td class="py-2 pr-4">Cron triggers</td><td class="py-2 pr-4">Not available</td><td class="py-2">Included</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Storage Options: KV vs R2 vs D1 vs Queue</h2>
+  <div class="overflow-x-auto mb-8">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4">Service</th>
+          <th class="text-left py-2 pr-4">Type</th>
+          <th class="text-left py-2 pr-4">Max Value Size</th>
+          <th class="text-left py-2 pr-4">Consistency</th>
+          <th class="text-left py-2">Best For</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Workers KV</td><td class="py-2 pr-4">Key-Value</td><td class="py-2 pr-4">25MB</td><td class="py-2 pr-4">Eventual</td><td class="py-2">Config, feature flags</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">R2</td><td class="py-2 pr-4">Object Storage</td><td class="py-2 pr-4">5TB</td><td class="py-2 pr-4">Strong</td><td class="py-2">Files, images, data</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">D1</td><td class="py-2 pr-4">SQLite DB</td><td class="py-2 pr-4">2GB/DB</td><td class="py-2 pr-4">Strong</td><td class="py-2">Relational data</td></tr>
+        <tr><td class="py-2 pr-4">Queues</td><td class="py-2 pr-4">Message Queue</td><td class="py-2 pr-4">128KB/msg</td><td class="py-2 pr-4">At-least-once</td><td class="py-2">Background jobs</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">A Basic Cloudflare Worker with KV and D1</h2>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code>// Worker with KV and D1 bindings (wrangler.toml)
+// [[kv_namespaces]]
+// binding = "CACHE"
+// id = "abc123"
+// [[d1_databases]]
+// binding = "DB"
+// database_id = "def456"
+
+export interface Env &#123;
+  CACHE: KVNamespace;
+  DB: D1Database;
+&#125;
+
+export default &#123;
+  async fetch(request: Request, env: Env): Promise&#60;Response&#62; &#123;
+    const url = new URL(request.url);
+    const userId = url.searchParams.get('id');
+
+    // Check KV cache first (fast edge read)
+    const cached = await env.CACHE.get(`user:$&#123;userId&#125;`);
+    if (cached) &#123;
+      return Response.json(JSON.parse(cached), &#123;
+        headers: &#123; 'X-Cache': 'HIT' &#125;
+      &#125;);
+    &#125;
+
+    // Fall through to D1 (SQLite at edge)
+    const &#123; results &#125; = await env.DB.prepare(
+      'SELECT * FROM users WHERE id = ?'
+    ).bind(userId).all();
+
+    if (results.length === 0) &#123;
+      return new Response('Not found', &#123; status: 404 &#125;);
+    &#125;
+
+    // Cache result for 60 seconds
+    await env.CACHE.put(
+      `user:$&#123;userId&#125;`,
+      JSON.stringify(results[0]),
+      &#123; expirationTtl: 60 &#125;
+    );
+
+    return Response.json(results[0], &#123;
+      headers: &#123; 'X-Cache': 'MISS' &#125;
+    &#125;);
+  &#125;
+&#125;;</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-4">Handling CPU-Intensive Work</h2>
+  <p class="text-text-muted mb-4">If your workload exceeds the 50ms CPU limit, use these strategies:</p>
+  <pre class="bg-surface border border-border rounded-lg p-4 mb-6 overflow-x-auto text-sm"><code>// Strategy 1: Use waitUntil() for non-blocking background work
+export default &#123;
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) &#123;
+    // Return response immediately
+    const response = new Response('Accepted', &#123; status: 202 &#125;);
+
+    // Process asynchronously (does not block response)
+    ctx.waitUntil(processInBackground(request, env));
+
+    return response;
+  &#125;
+&#125;;
+
+// Strategy 2: Offload heavy work to a Queue
+ctx.waitUntil(
+  env.MY_QUEUE.send(&#123;
+    type: 'process-image',
+    url: imageUrl,
+    userId: userId,
+  &#125;)
+);
+// Queue consumer Worker handles the actual processing</code></pre>
+
+  <ToolPageCta currentTool="Cloudflare Worker Limits Checker" relatedTags={['cloudflare', 'workers', 'edge', 'serverless', 'cdn']} />
+  <FaqSection faq={faq} />
+</BaseLayout>
