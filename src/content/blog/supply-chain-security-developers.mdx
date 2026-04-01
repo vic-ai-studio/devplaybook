@@ -1,0 +1,286 @@
+---
+title: "Supply Chain Security: SBOMs, Sigstore & Dependency Scanning"
+description: "Protect your software supply chain: generate SBOMs with Syft, verify provenance with Sigstore/cosign, scan dependencies with Grype and npm audit, and implement SLSA."
+date: "2026-04-02"
+tags: [security, supply-chain, sbom, sigstore, devops]
+readingTime: "9 min read"
+---
+
+# Supply Chain Security: SBOMs, Sigstore & Dependency Scanning
+
+The SolarWinds attack (2020) and XZ Utils backdoor (2024) demonstrated that the software supply chain — the components, tools, and build processes that create your software — is a critical attack surface. This guide covers practical steps to secure it.
+
+---
+
+## What Is Software Supply Chain Security?
+
+Your application's attack surface extends beyond your own code to include:
+
+- **Dependencies** — npm packages, PyPI packages, Maven artifacts
+- **Build tools** — compilers, bundlers, CI runners
+- **Container base images** — node:20, ubuntu:22.04, etc.
+- **Infrastructure as Code** — Terraform modules, Helm charts
+- **CI/CD pipelines** — GitHub Actions workflows
+
+A compromised npm package with 10M weekly downloads is a more attractive attack target than your application directly.
+
+---
+
+## Software Bill of Materials (SBOM)
+
+An SBOM is a complete inventory of all software components in your application — like a nutrition label for software. It enables:
+- Rapid vulnerability response when a new CVE drops (you know immediately if you're affected)
+- Compliance with regulations requiring software transparency
+- License compliance auditing
+
+### Generate an SBOM with Syft
+
+```bash
+# Install Syft
+curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh
+
+# Generate SBOM for a container image
+syft nginx:latest -o spdx-json > sbom.spdx.json
+
+# Generate SBOM for your project directory
+syft dir:. -o cyclonedx-json > sbom.cyclonedx.json
+
+# Include in CI pipeline
+syft packages ghcr.io/myorg/myapp:${{ github.sha }} \
+  -o spdx-json=sbom.spdx.json \
+  -o cyclonedx-json=sbom.cyclonedx.json
+```
+
+### SBOM Formats
+
+- **SPDX** — Linux Foundation standard, wide tooling support
+- **CycloneDX** — OWASP standard, richer security metadata
+- **SWID** — ISO standard, common in enterprise
+
+### Scan SBOM for Vulnerabilities with Grype
+
+```bash
+# Install Grype
+curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh
+
+# Scan an image
+grype nginx:latest
+
+# Scan your SBOM
+grype sbom:sbom.spdx.json
+
+# Fail CI on high/critical CVEs
+grype ghcr.io/myorg/myapp:latest --fail-on high
+```
+
+---
+
+## Sigstore: Keyless Code Signing
+
+Sigstore provides free, open-source infrastructure for signing and verifying software artifacts. The key innovation is **keyless signing** — no private key to manage or leak.
+
+### Sign a Container Image with Cosign
+
+```bash
+# Install cosign
+brew install sigstore/tap/cosign
+
+# Keyless signing (uses OIDC from GitHub Actions)
+cosign sign --yes ghcr.io/myorg/myapp:${{ github.sha }}
+
+# Verify the signature
+cosign verify \
+  --certificate-identity "https://github.com/myorg/myapp/.github/workflows/release.yml@refs/heads/main" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  ghcr.io/myorg/myapp:latest
+```
+
+### GitHub Actions: Sign in CI
+
+```yaml
+jobs:
+  build-and-sign:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write  # Required for keyless signing
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the image
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+
+      - name: Attach SBOM to image
+        run: |
+          syft ghcr.io/${{ github.repository }}:${{ github.sha }} -o spdx-json > sbom.json
+          cosign attest --predicate sbom.json --type spdxjson \
+            ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+```
+
+---
+
+## Dependency Scanning
+
+### npm: Built-in Audit
+
+```bash
+# Audit dependencies
+npm audit
+
+# Audit with machine-readable output for CI
+npm audit --json | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+critical = data['metadata']['vulnerabilities']['critical']
+high = data['metadata']['vulnerabilities']['high']
+print(f'Critical: {critical}, High: {high}')
+sys.exit(1 if critical + high > 0 else 0)
+"
+```
+
+### Snyk: Deeper Dependency Analysis
+
+```bash
+# Test for vulnerabilities
+npx snyk test
+
+# Monitor continuously (sends results to Snyk dashboard)
+npx snyk monitor
+
+# Test Docker images
+snyk container test nginx:latest --file=Dockerfile
+```
+
+### Dependency Review in PRs
+
+```yaml
+# .github/workflows/dependency-review.yml
+on: [pull_request]
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-2.0, AGPL-3.0  # Block copyleft licenses
+```
+
+---
+
+## SLSA: Supply Chain Levels for Software Artifacts
+
+[SLSA](https://slsa.dev/) (pronounced "salsa") is a framework for supply chain integrity with four levels:
+
+| Level | Requirements | What it prevents |
+|---|---|---|
+| SLSA 1 | Scripted build, provenance available | Accidental build changes |
+| SLSA 2 | Version controlled, hosted build | Unauthorized changes |
+| SLSA 3 | Source + build verified | Build process compromise |
+| SLSA 4 | Two-person review, hermetic build | Insider threats |
+
+### Generate SLSA Provenance
+
+```yaml
+# Use the SLSA generator in GitHub Actions
+jobs:
+  build:
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+    steps:
+      - run: npm run build
+      - name: Generate artifact hashes
+        id: hash
+        run: |
+          HASHES=$(sha256sum dist/* | base64 -w0)
+          echo "hashes=$HASHES" >> $GITHUB_OUTPUT
+
+  provenance:
+    needs: build
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.9.0
+    with:
+      base64-subjects: ${{ needs.build.outputs.hashes }}
+```
+
+---
+
+## Pinning Dependencies
+
+Floating version ranges are a supply chain risk:
+
+```json
+// RISKY: Any patch version update
+{
+  "dependencies": {
+    "lodash": "^4.17.21"
+  }
+}
+
+// BETTER: Exact versions + lockfile
+{
+  "dependencies": {
+    "lodash": "4.17.21"
+  }
+}
+```
+
+```bash
+# Use package-lock.json / yarn.lock / bun.lockb and ALWAYS commit them
+# In CI, use npm ci (not npm install) to enforce lockfile
+
+npm ci  # Fails if lockfile is out of sync with package.json
+```
+
+For container base images, pin to digest instead of tag:
+
+```dockerfile
+# RISKY: Tag can be updated silently
+FROM node:20-alpine
+
+# SECURE: Pinned to exact digest
+FROM node:20-alpine@sha256:abc123...  # This exact image, forever
+```
+
+---
+
+## Supply Chain Security Checklist
+
+- [ ] Commit lockfiles (`package-lock.json`, `yarn.lock`)
+- [ ] Use `npm ci` (not `npm install`) in CI
+- [ ] Run `npm audit` or Snyk in every PR
+- [ ] Generate SBOM for container images
+- [ ] Sign container images with cosign (keyless)
+- [ ] Pin base images to digest
+- [ ] Enable Dependabot or Renovate for automated dependency updates
+- [ ] Review GitHub Actions workflows for third-party action permissions
+
+---
+
+The software supply chain is an adversarial surface. Every dependency you add is code you didn't write but are responsible for. Invest in dependency scanning, SBOM generation, and image signing early — retrofitting these into mature systems is significantly harder.
+
+Use the [Secret Entropy Checker](/tools/secret-entropy-checker) to validate signing keys, and the [Docker Image Size Analyzer](/tools/docker-image-size-analyzer) to audit your container base images.

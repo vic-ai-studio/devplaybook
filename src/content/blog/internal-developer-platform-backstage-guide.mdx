@@ -1,0 +1,304 @@
+---
+title: "Internal Developer Platforms: Building Your IDP with Backstage"
+description: "How to build an Internal Developer Platform with Backstage: service catalog, software templates, TechDocs, and plugins. Includes setup guide and real-world IDP patterns."
+date: "2026-04-02"
+tags: [devops, platform-engineering, backstage, idp, developer-experience]
+readingTime: "9 min read"
+---
+
+# Internal Developer Platforms: Building Your IDP with Backstage
+
+Backstage is Spotify's open-source developer portal, now a CNCF Incubating project used by Expedia, Zalando, American Airlines, and hundreds of other companies. It provides a foundation for building your Internal Developer Platform with a service catalog, scaffolding templates, documentation, and plugin ecosystem.
+
+---
+
+## What Backstage Provides
+
+**Service Catalog** — a unified view of all your services, APIs, libraries, and infrastructure:
+
+```yaml
+# catalog-info.yaml — check this into every service repo
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: payment-service
+  description: Handles all payment processing
+  annotations:
+    github.com/project-slug: myorg/payment-service
+    pagerduty.com/integration-key: abc123
+    sentry.io/project-slug: payment-service
+  tags:
+    - node
+    - payment
+    - critical
+  links:
+    - url: https://grafana.example.com/d/payment
+      title: Grafana Dashboard
+    - url: https://runbook.example.com/payment
+      title: Runbook
+spec:
+  type: service
+  lifecycle: production
+  owner: team-payments
+  system: checkout
+  dependsOn:
+    - component:stripe-integration
+    - resource:payment-database
+  providesApis:
+    - payment-api
+```
+
+---
+
+## Getting Started
+
+```bash
+# Scaffold a new Backstage app
+npx @backstage/create-app@latest
+cd my-backstage-app
+yarn dev  # Starts on http://localhost:3000
+```
+
+```yaml
+# app-config.yaml — core configuration
+app:
+  title: MyCompany Developer Portal
+  baseUrl: http://localhost:3000
+
+organization:
+  name: MyCompany
+
+backend:
+  baseUrl: http://localhost:7007
+
+catalog:
+  rules:
+    - allow: [Component, System, API, Resource, Location]
+  locations:
+    # Import your GitHub org's catalog-info.yaml files
+    - type: github-org
+      target: https://github.com/myorg
+      rules:
+        - allow: [Group, User]
+    - type: github-discovery
+      target: https://github.com/myorg
+```
+
+---
+
+## Software Templates: Scaffold New Services
+
+Software Templates (scaffolder) let teams create new services from approved templates — no more copying boilerplate:
+
+```yaml
+# templates/nodejs-api/template.yaml
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: nodejs-api-template
+  title: Node.js API Service
+  description: Creates a new Express API with CI/CD, monitoring, and K8s config
+  tags:
+    - nodejs
+    - api
+spec:
+  owner: platform-team
+  type: service
+
+  parameters:
+    - title: Service Details
+      required:
+        - name
+        - description
+        - owner
+      properties:
+        name:
+          title: Service Name
+          type: string
+          description: Lowercase, hyphenated
+          pattern: '^[a-z][a-z0-9-]*[a-z0-9]$'
+        description:
+          title: Description
+          type: string
+        owner:
+          title: Owner Team
+          type: string
+          ui:field: OwnerPicker
+          ui:options:
+            allowedKinds: ['Group']
+        environment:
+          title: Initial Environment
+          type: string
+          enum: ['staging', 'production']
+          default: staging
+
+  steps:
+    - id: fetch-base
+      name: Fetch Base Template
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+          description: ${{ parameters.description }}
+          owner: ${{ parameters.owner }}
+
+    - id: publish
+      name: Publish to GitHub
+      action: publish:github
+      input:
+        allowedHosts: ['github.com']
+        description: ${{ parameters.description }}
+        repoUrl: github.com?owner=myorg&repo=${{ parameters.name }}
+        defaultBranch: main
+        repoVisibility: private
+
+    - id: register
+      name: Register in Catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish'].output.remoteUrl }}
+      - title: Open in catalog
+        url: ${{ steps['register'].output.entityRef }}
+```
+
+---
+
+## TechDocs: Centralized Documentation
+
+TechDocs renders Markdown docs from service repositories directly in Backstage — no separate wiki needed:
+
+```yaml
+# In catalog-info.yaml
+metadata:
+  annotations:
+    backstage.io/techdocs-ref: dir:.  # Docs are in this repo
+```
+
+```yaml
+# mkdocs.yml — at the root of every service
+site_name: Payment Service
+docs_dir: docs/
+plugins:
+  - techdocs-core
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - API Reference: api.md
+  - Runbook: runbook.md
+  - Changelog: changelog.md
+```
+
+```bash
+# Test locally before pushing
+npx @techdocs/cli serve
+```
+
+---
+
+## Essential Plugins
+
+### Kubernetes Plugin
+
+Shows real-time pod status from your clusters directly in the service page:
+
+```bash
+yarn workspace backend add @backstage/plugin-kubernetes-backend
+yarn workspace app add @backstage/plugin-kubernetes
+```
+
+```yaml
+# app-config.yaml
+kubernetes:
+  serviceLocatorMethod:
+    type: 'multiTenant'
+  clusterLocatorMethods:
+    - type: 'config'
+      clusters:
+        - url: https://k8s.prod.example.com
+          name: production
+          authProvider: 'serviceAccount'
+          serviceAccountToken: ${K8S_TOKEN}
+```
+
+### PagerDuty Plugin
+
+Shows on-call schedule and recent incidents on the service page:
+
+```bash
+yarn workspace app add @pagerduty/backstage-plugin
+```
+
+### GitHub Actions Plugin
+
+Shows CI/CD status inline:
+
+```bash
+yarn workspace app add @backstage-community/plugin-github-actions
+```
+
+---
+
+## IDP Maturity Model
+
+**Level 1 — Service Catalog:**
+- All services registered with ownership, status, dependencies
+- Teams can find who owns what and how to contact them
+
+**Level 2 — Golden Paths:**
+- Software templates for all common service types
+- New service to first deployment in < 1 hour
+
+**Level 3 — Self-Service Operations:**
+- Teams provision infrastructure (databases, queues) through the portal
+- Automatic runbook and alert setup on service creation
+
+**Level 4 — Developer Intelligence:**
+- Portal surfaces quality metrics: test coverage, deploy frequency, MTTR
+- Automatic suggestions: "This service hasn't been deployed in 30 days"
+
+---
+
+## Real-World Patterns
+
+### Mandatory Tags for Discoverability
+
+```yaml
+# Enforce in CI — fail if catalog-info.yaml missing required tags
+- name: Validate catalog-info
+  run: |
+    python3 -c "
+    import yaml, sys
+    with open('catalog-info.yaml') as f:
+        data = yaml.safe_load(f)
+    tags = data.get('metadata', {}).get('tags', [])
+    required = ['team', 'tier']  # Your required tags
+    missing = [t for t in required if t not in tags]
+    if missing:
+        print(f'Missing required tags: {missing}')
+        sys.exit(1)
+    "
+```
+
+### Scorecards for Service Quality
+
+Plugins like Cortex or Roadie's Scorecards let you grade services on criteria:
+- Has TechDocs?
+- Has on-call rotation?
+- Has SLOs defined?
+- CI passing in last 7 days?
+
+This gives engineering leadership visibility into platform adoption.
+
+---
+
+Backstage takes time to set up correctly, but the ROI compounds: each new team onboarded benefits from everything the platform team has built. Start with the service catalog (pure information, no automation risk), add templates once you know your golden path, then expand to plugins that surface the information developers actually need.
+
+Use the [CI/CD Pipeline Cost Estimator](/tools/cicd-pipeline-cost-estimator) to quantify the savings your IDP generates by standardizing pipelines.

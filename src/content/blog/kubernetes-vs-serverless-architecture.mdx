@@ -1,0 +1,212 @@
+---
+title: "Kubernetes vs Serverless: Choosing the Right Architecture"
+description: "When to use Kubernetes and when to go serverless. Compare cold starts, cost models, operational complexity, vendor lock-in, and real-world use cases to make the right architecture decision."
+date: "2026-04-02"
+tags: [kubernetes, serverless, cloud, architecture, aws]
+readingTime: "9 min read"
+---
+
+# Kubernetes vs Serverless: Choosing the Right Architecture
+
+The choice between Kubernetes and serverless is one of the most consequential infrastructure decisions you'll make. Both can run your code reliably in production — but they make fundamentally different trade-offs around cost, complexity, scalability, and developer experience.
+
+---
+
+## The Core Trade-Off
+
+```
+Kubernetes:
+✓ Fine-grained control over infrastructure
+✓ Predictable performance (no cold starts)
+✓ Cost-efficient at steady, high load
+✓ Runs any workload (long-running processes, stateful apps, ML)
+✗ Operational complexity — teams need K8s expertise
+✗ Idle capacity costs money (you pay for reserved nodes)
+✗ Scaling latency (minutes for new nodes)
+
+Serverless (Lambda, Cloud Run, etc.):
+✓ Zero infrastructure management
+✓ Scales to zero — no idle costs
+✓ Scales instantly (to limits)
+✓ Pay only for execution time
+✗ Cold starts (100ms-5s latency on first request)
+✗ Execution limits (15-min max for Lambda)
+✗ Vendor lock-in
+✗ Limited observability vs. traditional servers
+```
+
+---
+
+## Cost Model Comparison
+
+### Kubernetes (AWS EKS example)
+
+```
+3-node cluster (t3.xlarge, 4 CPU, 16 GB each):
+- EC2: $0.1856/hr × 3 nodes × 730 hr = $406/mo
+- EKS control plane: $0.10/hr × 730 = $73/mo
+- Load balancer: ~$18/mo
+Total: ~$500/mo (whether you have 1 request or 1M)
+```
+
+### Serverless (AWS Lambda)
+
+```
+Lambda pricing: $0.0000166667 per GB-second + $0.20 per 1M requests
+
+Example: 10M requests/month, 200ms avg, 256MB memory
+- Compute: 10M × 0.2s × 0.25GB × $0.0000166667 = $8.33
+- Requests: $2.00
+Total: ~$10.33/mo
+
+But at 100M requests:
+- Compute: $83.30 + $20 requests = $103/mo (still cheaper)
+
+At 1B requests (high-scale):
+- Lambda: ~$1,033/mo
+- K8s (auto-scaled, 10 nodes): ~$1,800/mo but more consistent latency
+```
+
+**Break-even point**: For most workloads, Lambda is cheaper below ~30K requests/hour. Above that, a properly-sized Kubernetes cluster becomes more cost-effective.
+
+Use the [Infrastructure Cost Calculator](/tools/infrastructure-cost-calculator) to model your specific scenario.
+
+---
+
+## Cold Starts: The Serverless Tax
+
+Cold starts occur when a new Lambda instance is initialized. Impact:
+
+| Runtime | Cold start time | Mitigation |
+|---|---|---|
+| Node.js | 100-500ms | Provisioned concurrency |
+| Python | 200-800ms | Provisioned concurrency |
+| Java | 2-5s | Avoid Lambda / use GraalVM |
+| Go | 50-200ms | Best choice for Lambda |
+| Container image | 5-15s | Keep images small, use snapshots |
+
+```javascript
+// Mitigation: Keep connections warm
+let dbConnection = null;
+
+exports.handler = async (event) => {
+  // Reuse connection across invocations in same container
+  if (!dbConnection) {
+    dbConnection = await createDbConnection();
+  }
+  // ...
+};
+```
+
+Cold starts matter less for:
+- Asynchronous workloads (queues, events)
+- Batch processing
+- Infrequent background tasks
+
+Cold starts are a problem for:
+- Real-time user-facing APIs
+- Sub-100ms latency requirements
+- High-frequency trading or similar
+
+---
+
+## When to Choose Kubernetes
+
+**Long-running processes:**
+```yaml
+# Kubernetes supports StatefulSets, daemonsets, background jobs
+# that can run for hours or days — Lambda max is 15 minutes
+kind: CronJob
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: data-processor
+            command: ["python", "process-10gb-dataset.py"]  # Takes 2+ hours
+```
+
+**Stateful applications:**
+- Databases (Postgres, Redis, Kafka)
+- WebSocket servers (persistent connections)
+- ML model serving (model loaded in memory, not reloaded per request)
+
+**Compliance and data residency:**
+- Full control over where data sits
+- Custom network policies
+- No shared infrastructure with other tenants
+
+---
+
+## When to Choose Serverless
+
+**Event-driven architectures:**
+```javascript
+// Lambda naturally maps to events
+// S3 upload → process image
+// SQS message → process order
+// API Gateway → handle HTTP request
+// EventBridge → handle business event
+
+exports.handler = async (event) => {
+  const record = event.Records[0];
+  const bucket = record.s3.bucket.name;
+  const key = record.s3.object.key;
+  await processUploadedImage(bucket, key);
+};
+```
+
+**Intermittent workloads:**
+- Scheduled reports (daily/weekly)
+- Webhook processors
+- Dev/staging environments
+- Low-traffic internal tools
+
+**Rapid prototyping:**
+- Serverless deployments are 10x simpler to get running
+- No cluster management, no ingress configuration, no node sizing
+
+---
+
+## Hybrid: The Practical Architecture
+
+Most mature organizations use both:
+
+```
+User Request → CloudFront CDN
+     ↓
+API Gateway → Lambda (authentication, routing)
+     ↓
+EKS Cluster:
+  - Payment Service (strict latency SLA, stateful sessions)
+  - Order Service (complex business logic)
+  - Product Catalog (Redis cache needed)
+
+Lambda Functions:
+  - Email sender (triggered by SQS)
+  - Image resizer (triggered by S3 upload)
+  - Webhook receiver (sporadic traffic)
+  - Nightly reports (scheduled CronJob)
+```
+
+---
+
+## Decision Framework
+
+```
+Is this workload...
+├── Event-driven or async?           → Serverless first
+├── Bursty traffic (0 to 10K RPM)?   → Serverless first
+├── Running >15 minutes?              → Kubernetes required
+├── Stateful (needs local disk/mem)?  → Kubernetes required
+├── Latency SLA < 100ms p99?         → Kubernetes (no cold starts)
+├── >100K RPM steady state?          → Kubernetes (cost)
+├── Team has <2 K8s engineers?        → Serverless (less ops burden)
+└── Existing K8s cluster available?  → Probably use it (amortize cost)
+```
+
+---
+
+Neither Kubernetes nor serverless is universally better. The right answer depends on your team's capabilities, your workload's characteristics, and your cost tolerance. Start with serverless for new projects (lower operational overhead), and migrate to Kubernetes when you hit its cost or latency limits.

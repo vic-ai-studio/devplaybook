@@ -1,0 +1,194 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is a Solidity revert data?", answer: "When a smart contract reverts, it optionally returns error data — a hex-encoded ABI payload. The first 4 bytes are the function selector (keccak256 hash of the error signature). The remaining bytes are ABI-encoded parameters. This tool decodes that hex into a human-readable error message." },
+  { question: "What is error(string)?", answer: "require(condition, 'message') and revert('message') produce a standard Error(string) ABI encoding. The selector is 0x08c379a0. The string is ABI-encoded as an offset + length + data." },
+  { question: "What is Panic?", answer: "Solidity 0.8+ emits Panic(uint256) for programming errors: division by zero, array out of bounds, integer overflow, etc. The selector is 0x4e487b71. The uint256 code identifies the error type (0x11 = arithmetic overflow, 0x12 = divide by zero, 0x21 = enum conversion, 0x32 = array bounds)." },
+  { question: "What are custom errors?", answer: "Solidity 0.8.4+ introduced custom errors: error InsufficientBalance(address account, uint256 balance). They're more gas-efficient than string errors and can carry typed parameters. The selector is the first 4 bytes of keccak256('InsufficientBalance(address,uint256)')." },
+];
+---
+
+<BaseLayout
+  title="Solidity Error Decoder — Decode Revert Data & Panic Codes"
+  description="Decode Solidity revert hex data into human-readable errors. Decode Error(string), Panic(uint256), and custom errors. Includes Panic code reference table."
+  tool="Solidity Error Decoder, Revert Data Decoder, Ethereum Revert Decoder, Solidity Panic Decoder"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Solidity Error Decoder</h1>
+  <p class="text-text-muted mb-4">Paste hex revert data from a failed transaction to decode the error message, type, and parameters.</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- Input -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <label class="block text-sm font-medium mb-2">Revert Data (hex)</label>
+        <textarea id="revert-input" rows="4" placeholder="0x08c379a0..."
+          class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-none"></textarea>
+        <div class="flex gap-2 mt-3">
+          <button id="decode-btn" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">Decode</button>
+          <button id="sample-error" class="text-xs text-text-muted border border-border px-3 py-2 rounded-lg hover:bg-bg">Error(string)</button>
+          <button id="sample-panic" class="text-xs text-text-muted border border-border px-3 py-2 rounded-lg hover:bg-bg">Panic(0x11)</button>
+        </div>
+      </div>
+
+      <!-- Panic Reference -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Panic Code Reference</h2>
+        <div class="space-y-1 text-xs">
+          {[
+            ['0x00', 'Generic/unknown panic'],
+            ['0x01', 'assert() failed'],
+            ['0x11', 'Arithmetic overflow/underflow'],
+            ['0x12', 'Division or modulo by zero'],
+            ['0x21', 'Enum value out of range'],
+            ['0x22', 'Incorrectly encoded storage byte array'],
+            ['0x31', 'pop() on empty array'],
+            ['0x32', 'Array index out of bounds'],
+            ['0x41', 'Too much memory allocated'],
+            ['0x51', 'Called invalid internal function'],
+          ].map(([code, desc]) => (
+            <div class="flex gap-3">
+              <span class="font-mono text-amber-400 w-12 flex-shrink-0">{code}</span>
+              <span class="text-text-muted">{desc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div id="error-msg" class="hidden bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm"></div>
+      <div id="result-box" class="hidden bg-bg-card border border-border rounded-xl p-5 space-y-3">
+        <div>
+          <div class="text-xs font-medium text-text-muted mb-1">Error Type</div>
+          <div id="res-type" class="text-sm font-semibold font-mono"></div>
+        </div>
+        <div>
+          <div class="text-xs font-medium text-text-muted mb-1">Selector (4 bytes)</div>
+          <div id="res-selector" class="text-sm font-mono text-amber-400"></div>
+        </div>
+        <div>
+          <div class="text-xs font-medium text-text-muted mb-1">Decoded Message</div>
+          <div id="res-message" class="text-sm bg-bg rounded-lg p-3 font-mono break-all"></div>
+        </div>
+        <div id="res-extra-box" class="hidden">
+          <div class="text-xs font-medium text-text-muted mb-1">Additional Info</div>
+          <div id="res-extra" class="text-sm text-text-muted"></div>
+        </div>
+      </div>
+
+      <div id="empty-state" class="text-center text-text-muted text-sm py-8">Paste revert data above to decode it.</div>
+    </div>
+  </div>
+
+  <AdUnit slot="in-content" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Solidity Error Decoder" relatedTags={['blockchain', 'ethereum', 'solidity', 'web3', 'smart-contracts']} />
+</BaseLayout>
+
+<script>
+// Standard selectors
+const ERROR_SELECTOR = '08c379a0';   // Error(string)
+const PANIC_SELECTOR = '4e487b71';  // Panic(uint256)
+
+const PANIC_CODES: Record<string, string> = {
+  '0': 'Generic/unknown panic',
+  '1': 'assert() failed',
+  '17': 'Arithmetic overflow/underflow',  // 0x11
+  '18': 'Division or modulo by zero',     // 0x12
+  '33': 'Enum value out of range',         // 0x21
+  '34': 'Incorrectly encoded storage byte array', // 0x22
+  '49': 'pop() on empty array',            // 0x31
+  '50': 'Array index out of bounds',       // 0x32
+  '65': 'Too much memory allocated',       // 0x41
+  '81': 'Called invalid internal function', // 0x51
+};
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.replace('0x', '').replace(/\s/g, '');
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < clean.length; i += 2) {
+    bytes[i / 2] = parseInt(clean.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+function decodeAbiString(data: Uint8Array): string {
+  // ABI encoded string: offset (32) + length (32) + data
+  if (data.length < 64) return '(truncated or invalid)';
+  // offset is typically 0x20 = 32
+  const len = Number(BigInt('0x' + Array.from(data.slice(32, 64)).map(b => b.toString(16).padStart(2,'0')).join('')));
+  if (len === 0 || data.length < 64 + len) return '(empty or truncated)';
+  const strBytes = data.slice(64, 64 + len);
+  return new TextDecoder().decode(strBytes);
+}
+
+function decode() {
+  const raw = (document.getElementById('revert-input') as HTMLTextAreaElement).value.trim();
+  const errMsg = document.getElementById('error-msg')!;
+  const resultBox = document.getElementById('result-box')!;
+  const emptyState = document.getElementById('empty-state')!;
+
+  errMsg.classList.add('hidden');
+  resultBox.classList.add('hidden');
+  emptyState.classList.remove('hidden');
+
+  if (!raw) return;
+
+  const clean = raw.replace('0x', '').toLowerCase();
+  if (clean.length < 8) { errMsg.textContent = 'Too short to be valid revert data (< 4 bytes).'; errMsg.classList.remove('hidden'); return; }
+
+  const selector = clean.slice(0, 8);
+  const payload = clean.slice(8);
+
+  emptyState.classList.add('hidden');
+  resultBox.classList.remove('hidden');
+
+  document.getElementById('res-selector')!.textContent = `0x${selector}`;
+  document.getElementById('res-extra-box')!.classList.add('hidden');
+
+  if (selector === ERROR_SELECTOR) {
+    document.getElementById('res-type')!.textContent = 'Error(string)';
+    try {
+      const bytes = hexToBytes(payload);
+      const msg = decodeAbiString(bytes);
+      document.getElementById('res-message')!.textContent = `"${msg}"`;
+    } catch { document.getElementById('res-message')!.textContent = '(failed to decode string)'; }
+
+  } else if (selector === PANIC_SELECTOR) {
+    document.getElementById('res-type')!.textContent = 'Panic(uint256)';
+    const code = parseInt(payload.slice(0, 64), 16);
+    const codeHex = '0x' + code.toString(16);
+    const desc = PANIC_CODES[String(code)] || 'Unknown panic code';
+    document.getElementById('res-message')!.textContent = `Panic code: ${codeHex} — ${desc}`;
+
+  } else {
+    document.getElementById('res-type')!.textContent = 'Custom Error or Unknown';
+    document.getElementById('res-message')!.textContent = `Selector: 0x${selector}\nPayload: ${payload ? '0x' + payload : '(none)'}`;
+    const extraBox = document.getElementById('res-extra-box')!;
+    extraBox.classList.remove('hidden');
+    document.getElementById('res-extra')!.textContent = 'This is a custom error. Use the contract ABI to decode the parameters. The selector is the first 4 bytes of keccak256 of the error signature.';
+  }
+}
+
+document.getElementById('decode-btn')!.addEventListener('click', decode);
+document.getElementById('revert-input')!.addEventListener('input', decode);
+
+// Sample data: Error("Insufficient balance")
+const errorSample = '0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000001549727261696e73756666696369656e742062616c616e636500000000000000';
+document.getElementById('sample-error')!.addEventListener('click', () => {
+  (document.getElementById('revert-input') as HTMLTextAreaElement).value = errorSample;
+  decode();
+});
+// Panic(0x11) - overflow
+const panicSample = '0x4e487b710000000000000000000000000000000000000000000000000000000000000011';
+document.getElementById('sample-panic')!.addEventListener('click', () => {
+  (document.getElementById('revert-input') as HTMLTextAreaElement).value = panicSample;
+  decode();
+});
+</script>

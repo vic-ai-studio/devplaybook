@@ -1,0 +1,298 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is a Merkle tree?", answer: "A Merkle tree is a binary tree where each leaf node contains the hash of a data element, and each internal node contains the hash of its two children. The root hash (Merkle root) summarizes the entire dataset. Changing any single leaf changes the root, making it tamper-evident." },
+  { question: "How are Merkle trees used in NFT allowlists?", answer: "NFT projects use Merkle trees to manage allowlists (whitelists) gas-efficiently. Instead of storing thousands of addresses on-chain, only the Merkle root is stored. When a user wants to mint, they provide a Merkle proof (a path of sibling hashes) that their address is in the tree. The contract verifies the proof against the root." },
+  { question: "What is a Merkle proof?", answer: "A Merkle proof is a set of sibling hashes from the leaf to the root. To verify that a leaf is in the tree, you hash the leaf with each proof element in sequence until you reconstruct the root. If the computed root matches the stored root, the leaf is valid." },
+  { question: "How does OpenZeppelin's MerkleProof work?", answer: "OpenZeppelin provides MerkleProof.verify(bytes32[] proof, bytes32 root, bytes32 leaf). The leaf is typically keccak256(abi.encodePacked(address)). You generate the root off-chain, store it in the contract, and generate proofs for each allowlisted address to provide during mint." },
+];
+---
+
+<BaseLayout
+  title="Merkle Tree Generator — NFT Allowlist & Whitelist Merkle Root"
+  description="Generate Merkle trees for NFT allowlists and whitelists. Get Merkle root, proofs per address, and Solidity verification code for OpenZeppelin MerkleProof."
+  tool="Merkle Tree Generator, NFT Allowlist Generator, Merkle Proof Generator, Whitelist Merkle Root"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Merkle Tree Generator</h1>
+  <p class="text-text-muted mb-4">Generate a Merkle tree from a list of addresses or values. Get the Merkle root, proofs for each entry, and Solidity verification code.</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- Input -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <label class="block text-sm font-medium mb-2">Addresses / Values (one per line)</label>
+        <textarea id="leaves-input" rows="10" placeholder="0xAbCd...1234&#10;0x1234...5678&#10;0xDead...Beef"
+          class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary resize-none"></textarea>
+        <div class="flex gap-2 mt-3">
+          <button id="build-btn" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">Build Tree</button>
+          <button id="sample-btn" class="text-xs text-text-muted border border-border px-3 py-2 rounded-lg hover:bg-bg">Load Sample</button>
+          <button id="clear-btn" class="text-xs text-text-muted border border-border px-3 py-2 rounded-lg hover:bg-bg">Clear</button>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-2">Options</h2>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" id="sort-pairs" checked /> Sort pairs before hashing (standard)
+        </label>
+        <p class="text-xs text-text-muted mt-1">Sorting makes the tree deterministic regardless of proof order. OpenZeppelin's MerkleProof uses sorted pairs.</p>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div id="empty-state" class="text-center text-text-muted text-sm py-8">Enter addresses above to generate the tree.</div>
+      <div id="results" class="hidden space-y-4">
+        <div class="bg-bg-card border border-border rounded-xl p-5">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs font-medium text-text-muted">Merkle Root</div>
+            <button id="copy-root" class="text-xs text-text-muted border border-border px-2 py-1 rounded hover:bg-bg">Copy</button>
+          </div>
+          <div id="merkle-root" class="text-sm font-mono text-green-400 break-all"></div>
+        </div>
+
+        <div class="bg-bg-card border border-border rounded-xl p-5">
+          <div class="text-xs font-medium text-text-muted mb-2">Proofs per Entry</div>
+          <div id="proofs-list" class="space-y-3 max-h-64 overflow-auto"></div>
+        </div>
+
+        <div class="bg-bg-card border border-border rounded-xl p-5">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs font-medium text-text-muted">Solidity Verification (OpenZeppelin)</div>
+            <button id="copy-sol" class="text-xs text-text-muted border border-border px-2 py-1 rounded hover:bg-bg">Copy</button>
+          </div>
+          <pre id="sol-code" class="text-xs font-mono bg-bg rounded-lg p-3 overflow-auto text-text-muted whitespace-pre"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="in-content" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Merkle Tree Generator" relatedTags={['blockchain', 'ethereum', 'solidity', 'web3', 'smart-contracts', 'nft']} />
+</BaseLayout>
+
+<script>
+// Minimal keccak256 using SubtleCrypto is not available (it's SHA variants)
+// We'll use a pure-JS keccak256 implementation
+// Using a compact keccak implementation
+
+// Keccak-256 implementation (compact)
+const RC: bigint[] = [
+  0x0000000000000001n,0x0000000000008082n,0x800000000000808An,0x8000000080008000n,
+  0x000000000000808Bn,0x0000000080000001n,0x8000000080008081n,0x8000000000008009n,
+  0x000000000000008An,0x0000000000000088n,0x0000000080008009n,0x000000008000000An,
+  0x000000008000808Bn,0x800000000000008Bn,0x8000000000008089n,0x8000000000008003n,
+  0x8000000000008002n,0x8000000000000080n,0x000000000000800An,0x800000008000000An,
+  0x8000000080008081n,0x8000000000008080n,0x0000000080000001n,0x8000000080008008n,
+];
+
+function rotl64(x: bigint, n: bigint): bigint {
+  n = n & 63n;
+  return ((x << n) | (x >> (64n - n))) & 0xFFFFFFFFFFFFFFFFn;
+}
+
+function keccakF(state: bigint[]): void {
+  const ROUND = 24;
+  for (let r = 0; r < ROUND; r++) {
+    const C = [0,1,2,3,4].map(x => state[x]^state[x+5]^state[x+10]^state[x+15]^state[x+20]);
+    const D = C.map((c,i) => c ^ rotl64(C[(i+1)%5], 1n));
+    for (let i = 0; i < 25; i++) state[i] ^= D[i%5];
+    const B: bigint[] = new Array(25).fill(0n);
+    const PI = [0,10,20,5,15,6,16,1,11,21,7,17,2,12,22,8,18,3,13,23,9,19,4,14,24];
+    const ROT = [0n,1n,62n,28n,27n,36n,44n,6n,55n,20n,3n,10n,43n,25n,39n,41n,45n,15n,21n,8n,18n,2n,61n,56n,14n];
+    for (let i = 0; i < 25; i++) B[PI[i]] = rotl64(state[i], ROT[i]);
+    for (let i = 0; i < 25; i++) {
+      const x = i%5, y = Math.floor(i/5);
+      state[i] = B[i] ^ (~B[(x+1)%5 + y*5] & B[(x+2)%5 + y*5]);
+    }
+    state[0] ^= RC[r];
+  }
+}
+
+function keccak256(data: Uint8Array): Uint8Array {
+  const rate = 136; // 1088 bits for keccak256
+  const msg = new Uint8Array(Math.ceil((data.length + 1) / rate + 1) * rate);
+  msg.set(data);
+  msg[data.length] = 0x01;
+  msg[msg.length - 1] |= 0x80;
+
+  const state: bigint[] = new Array(25).fill(0n);
+
+  for (let i = 0; i < msg.length; i += rate) {
+    for (let j = 0; j < rate; j += 8) {
+      let word = 0n;
+      for (let k = 0; k < 8; k++) word |= BigInt(msg[i+j+k]) << BigInt(k*8);
+      state[j/8] ^= word;
+    }
+    keccakF(state);
+  }
+
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 4; i++) {
+    const w = state[i];
+    for (let j = 0; j < 8; j++) out[i*8+j] = Number((w >> BigInt(j*8)) & 0xFFn);
+  }
+  return out;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.replace(/^0x/, '').padStart(64, '0');
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < clean.length; i += 2) bytes[i/2] = parseInt(clean.slice(i, i+2), 16);
+  return bytes;
+}
+
+function bytesToHex(b: Uint8Array): string {
+  return '0x' + Array.from(b).map(x => x.toString(16).padStart(2,'0')).join('');
+}
+
+function leafHash(value: string): Uint8Array {
+  // keccak256(abi.encodePacked(address)) for addresses
+  // For addresses: strip 0x, pad to 20 bytes, double hash (standard OpenZeppelin pattern)
+  const clean = value.replace(/^0x/, '').toLowerCase().padStart(40, '0');
+  const bytes = hexToBytes(clean.slice(0, 40));
+  return keccak256(keccak256(bytes)); // double hash to prevent second preimage attacks
+}
+
+function combineHashes(a: Uint8Array, b: Uint8Array, sort: boolean): Uint8Array {
+  let l = a, r = b;
+  if (sort) {
+    // Compare as hex strings
+    const ah = bytesToHex(a), bh = bytesToHex(b);
+    if (ah > bh) { l = b; r = a; }
+  }
+  const combined = new Uint8Array(64);
+  combined.set(l, 0);
+  combined.set(r, 32);
+  return keccak256(combined);
+}
+
+interface TreeResult {
+  root: string;
+  proofs: { value: string; leaf: string; proof: string[] }[];
+}
+
+function buildTree(values: string[], sort: boolean): TreeResult {
+  const leaves = values.map(v => leafHash(v.trim()));
+  const n = leaves.length;
+
+  // Build tree layer by layer
+  let layer = leaves.map(l => l);
+  const tree: Uint8Array[][] = [layer];
+
+  while (layer.length > 1) {
+    const next: Uint8Array[] = [];
+    for (let i = 0; i < layer.length; i += 2) {
+      if (i + 1 < layer.length) {
+        next.push(combineHashes(layer[i], layer[i+1], sort));
+      } else {
+        next.push(layer[i]); // odd node bubbles up
+      }
+    }
+    layer = next;
+    tree.push(layer);
+  }
+
+  const root = tree[tree.length - 1][0];
+
+  // Generate proofs
+  const proofs = values.map((v, idx) => {
+    const proof: string[] = [];
+    let index = idx;
+    for (let d = 0; d < tree.length - 1; d++) {
+      const sibling = index % 2 === 0 ? index + 1 : index - 1;
+      if (sibling < tree[d].length) {
+        proof.push(bytesToHex(tree[d][sibling]));
+      }
+      index = Math.floor(index / 2);
+    }
+    return { value: v.trim(), leaf: bytesToHex(leaves[idx]), proof };
+  });
+
+  return { root: bytesToHex(root), proofs };
+}
+
+const sampleAddresses = [
+  '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B',
+  '0x4B0897b0513fdC7C541B6d9D7E929C4e5364D2dB',
+  '0x583031D1113aD414F02576BD6afaBfb302140225',
+  '0xdD870fA1b7C4700F2BD7f44238821C26f7392148',
+];
+
+function build() {
+  const raw = (document.getElementById('leaves-input') as HTMLTextAreaElement).value.trim();
+  const emptyState = document.getElementById('empty-state')!;
+  const results = document.getElementById('results')!;
+
+  if (!raw) { emptyState.classList.remove('hidden'); results.classList.add('hidden'); return; }
+
+  const values = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  if (values.length < 2) { emptyState.textContent = 'Need at least 2 entries.'; emptyState.classList.remove('hidden'); results.classList.add('hidden'); return; }
+
+  const sort = (document.getElementById('sort-pairs') as HTMLInputElement).checked;
+
+  try {
+    const { root, proofs } = buildTree(values, sort);
+
+    emptyState.classList.add('hidden');
+    results.classList.remove('hidden');
+
+    document.getElementById('merkle-root')!.textContent = root;
+
+    const proofsList = document.getElementById('proofs-list')!;
+    proofsList.innerHTML = proofs.map(p => `
+      <div class="border border-border rounded-lg p-3 text-xs">
+        <div class="font-mono text-text-muted truncate mb-1">${p.value}</div>
+        <div class="text-text-muted/60 mb-1">Leaf: <span class="font-mono text-amber-400">${p.leaf.slice(0,18)}…</span></div>
+        <div class="text-text-muted/60">Proof (${p.proof.length} nodes):</div>
+        ${p.proof.map(h => `<div class="font-mono text-xs text-text-muted pl-2 truncate">${h}</div>`).join('')}
+      </div>
+    `).join('');
+
+    const sol = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+
+contract AllowlistMint {
+    bytes32 public merkleRoot = ${root};
+
+    mapping(address => bool) public hasMinted;
+
+    function mint(bytes32[] calldata proof) external {
+        require(!hasMinted[msg.sender], "Already minted");
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(msg.sender))));
+        require(MerkleProof.verify(proof, merkleRoot, leaf), "Not in allowlist");
+        hasMinted[msg.sender] = true;
+        // _mint(msg.sender, tokenId);
+    }
+}`;
+    document.getElementById('sol-code')!.textContent = sol;
+
+    document.getElementById('copy-root')!.onclick = () => navigator.clipboard.writeText(root);
+    document.getElementById('copy-sol')!.onclick = () => navigator.clipboard.writeText(sol);
+  } catch (e) {
+    emptyState.textContent = 'Error building tree: ' + (e as Error).message;
+    emptyState.classList.remove('hidden');
+    results.classList.add('hidden');
+  }
+}
+
+document.getElementById('build-btn')!.addEventListener('click', build);
+document.getElementById('sample-btn')!.addEventListener('click', () => {
+  (document.getElementById('leaves-input') as HTMLTextAreaElement).value = sampleAddresses.join('\n');
+  build();
+});
+document.getElementById('clear-btn')!.addEventListener('click', () => {
+  (document.getElementById('leaves-input') as HTMLTextAreaElement).value = '';
+  document.getElementById('empty-state')!.textContent = 'Enter addresses above to generate the tree.';
+  document.getElementById('empty-state')!.classList.remove('hidden');
+  document.getElementById('results')!.classList.add('hidden');
+});
+</script>

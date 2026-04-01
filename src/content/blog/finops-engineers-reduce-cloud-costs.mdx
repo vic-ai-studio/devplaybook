@@ -1,0 +1,249 @@
+---
+title: "FinOps for Engineers: Reduce Cloud Costs Without Slowing Down"
+description: "Practical FinOps guide for engineers: rightsizing EC2, Reserved Instances vs Savings Plans, spot instances, storage tiering, cost allocation tags, and actionable dashboards."
+date: "2026-04-02"
+tags: [cloud, finops, aws, cost-optimization, devops]
+readingTime: "9 min read"
+---
+
+# FinOps for Engineers: Reduce Cloud Costs Without Slowing Down
+
+The average organization wastes 32% of their cloud spend, according to Flexera's 2024 State of the Cloud Report. That's not because engineers are careless — it's because cloud cost visibility is poor, pricing is complex, and there's no immediate feedback loop between "write code" and "pay the bill."
+
+FinOps (Financial Operations) is the practice of bringing financial accountability to cloud spending. This guide focuses on what engineers can actually do, not CFO-level governance.
+
+---
+
+## The Highest-Impact Cost Reducers
+
+### 1. Right-Size Instances
+
+Most instances run at 10-20% average CPU utilization but are provisioned for peak. AWS has a built-in right-sizing tool, but you can also use CloudWatch metrics:
+
+```bash
+# Find underutilized EC2 instances (< 5% average CPU over 14 days)
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/EC2 \
+  --metric-name CPUUtilization \
+  --dimensions Name=InstanceId,Value=i-1234567890abcdef0 \
+  --start-time 2026-03-18T00:00:00Z \
+  --end-time 2026-04-01T00:00:00Z \
+  --period 86400 \
+  --statistics Average
+```
+
+For Kubernetes workloads, use [Goldilocks](https://github.com/FairwindsOps/goldilocks):
+
+```bash
+helm install goldilocks fairwinds-stable/goldilocks
+kubectl label ns production goldilocks.fairwinds.com/enabled=true
+# Goldilocks will recommend requests/limits based on actual usage
+```
+
+### 2. Reserved Instances and Savings Plans
+
+On-demand is the most expensive way to run EC2. For stable workloads:
+
+| Commitment | Discount | Flexibility |
+|---|---|---|
+| On-Demand | 0% | None needed |
+| 1-yr Reserved (no upfront) | ~40% | Fixed instance family |
+| 3-yr Reserved (all upfront) | ~72% | Fixed instance family |
+| 1-yr Compute Savings Plan | ~37% | Any EC2 + Lambda + Fargate |
+| 1-yr EC2 Savings Plan | ~40% | Any size in one family |
+
+**Rule of thumb**: If a workload runs >50% of the time at consistent load, it's a Reserved Instance candidate.
+
+```python
+# Calculate break-even for reserved vs on-demand
+on_demand_monthly = 0.192  # $/hr for m5.xlarge × 730 hrs
+reserved_1yr_monthly = 0.192 * 0.60  # 40% discount
+
+# Payback on 1-yr, all-upfront reserved:
+upfront = 0.192 * 0.45 * 8760  # 55% discount, full year upfront
+monthly_savings = (on_demand_monthly - 0.192 * 0.45) * 730
+payback_months = upfront / monthly_savings  # Should be < 12 months
+```
+
+### 3. Spot Instances for Non-Critical Workloads
+
+Spot instances offer 60-90% discount at the cost of potential interruption:
+
+```yaml
+# EKS: Use spot for batch/non-critical node groups
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+nodeGroups:
+  - name: spot-workers
+    instancesDistribution:
+      instanceTypes: ["m5.xlarge", "m5a.xlarge", "m4.xlarge"]  # Multiple types = fewer interruptions
+      onDemandBaseCapacity: 0
+      onDemandPercentageAboveBaseCapacity: 0
+      spotInstancePools: 3
+    labels:
+      workload-type: "spot"
+    taints:
+      - key: spot
+        value: "true"
+        effect: NoSchedule
+```
+
+```yaml
+# Tolerate spot taints for batch jobs
+spec:
+  tolerations:
+  - key: "spot"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+  nodeSelector:
+    workload-type: spot
+```
+
+---
+
+## Storage Cost Optimization
+
+S3 storage costs compound silently. Enable S3 Intelligent-Tiering or lifecycle policies:
+
+```json
+// S3 lifecycle policy — automatically tier old objects
+{
+  "Rules": [
+    {
+      "ID": "move-to-infrequent-access",
+      "Status": "Enabled",
+      "Transitions": [
+        {
+          "Days": 30,
+          "StorageClass": "STANDARD_IA"  // 45% cheaper than STANDARD
+        },
+        {
+          "Days": 90,
+          "StorageClass": "GLACIER_IR"   // 68% cheaper than STANDARD
+        },
+        {
+          "Days": 365,
+          "StorageClass": "DEEP_ARCHIVE" // 95% cheaper, retrieval in hours
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Storage Class | $/GB/month | Retrieval | Use case |
+|---|---|---|---|
+| S3 Standard | $0.023 | Instant | Frequently accessed |
+| S3 Standard-IA | $0.0125 | Instant | Monthly access |
+| S3 Glacier IR | $0.004 | Instant | Quarterly access |
+| S3 Glacier Flexible | $0.0036 | 3-5 hours | Annual access |
+| S3 Deep Archive | $0.00099 | 12 hours | Compliance archives |
+
+---
+
+## Data Transfer: The Hidden Cost
+
+Egress (data leaving AWS) costs $0.09/GB. This adds up fast:
+
+```python
+# Common cost surprises
+egress_costs = {
+    'region_to_internet': 0.09,     # GB
+    'region_to_region': 0.02,       # GB
+    'az_to_az': 0.01,               # GB (within region!)
+    'to_cloudfront': 0.00,          # Free
+    'direct_connect': 0.02,         # GB (much cheaper for high volume)
+}
+
+# At 1TB/month:
+internet_egress_cost = 1024 * 0.09  # $92/mo
+# Via CloudFront (first 1TB free, then $0.0085/GB):
+cdn_cost = 0  # First TB free!
+```
+
+Put your public assets behind CloudFront — it's almost always cheaper.
+
+---
+
+## Cost Allocation Tags
+
+Without tags, you can't tell which team or product is driving costs. Enforce tagging with AWS Config:
+
+```json
+// AWS Config rule: require tags on EC2 instances
+{
+  "ConfigRuleName": "required-tags",
+  "Source": {
+    "Owner": "AWS",
+    "SourceIdentifier": "REQUIRED_TAGS"
+  },
+  "InputParameters": {
+    "tag1Key": "team",
+    "tag2Key": "environment",
+    "tag3Key": "product"
+  },
+  "Scope": {
+    "ComplianceResourceTypes": ["AWS::EC2::Instance", "AWS::RDS::DBInstance"]
+  }
+}
+```
+
+```bash
+# Tag all EC2 instances in Terraform
+resource "aws_instance" "app" {
+  # ...
+  tags = {
+    team        = "payments"
+    environment = "production"
+    product     = "checkout"
+    owner       = "jane.doe@company.com"
+    cost-center = "CC-1234"
+  }
+}
+```
+
+---
+
+## FinOps Dashboards
+
+### AWS Cost Explorer API
+
+```python
+import boto3
+
+ce = boto3.client('ce', region_name='us-east-1')
+
+# Get cost by team tag for last 30 days
+response = ce.get_cost_and_usage(
+    TimePeriod={'Start': '2026-03-01', 'End': '2026-04-01'},
+    Granularity='MONTHLY',
+    Filter={
+        'Tags': {'Key': 'environment', 'Values': ['production']}
+    },
+    GroupBy=[{'Type': 'TAG', 'Key': 'team'}],
+    Metrics=['UnblendedCost'],
+)
+
+for result in response['ResultsByTime'][0]['Groups']:
+    team = result['Keys'][0].replace('team$', '')
+    cost = result['Metrics']['UnblendedCost']['Amount']
+    print(f"{team}: ${float(cost):.2f}")
+```
+
+---
+
+## Quick Wins Checklist
+
+- [ ] Delete unattached EBS volumes (`aws ec2 describe-volumes --filters Name=status,Values=available`)
+- [ ] Release unattached Elastic IPs ($0.005/hr each when not attached)
+- [ ] Delete unused Load Balancers ($16/mo minimum per ALB)
+- [ ] Enable S3 lifecycle policies for buckets >100GB
+- [ ] Review and delete old snapshots (`aws ec2 describe-snapshots --owner-ids self`)
+- [ ] Set up AWS Budget alerts at 80% and 100% of expected spend
+- [ ] Enable Cost Anomaly Detection in Cost Explorer
+- [ ] Purchase 1-yr Savings Plans for baseline compute
+
+---
+
+Use the [Infrastructure Cost Calculator](/tools/infrastructure-cost-calculator) to model your current spend and simulate the impact of Reserved Instances. Most teams find 20-40% savings by implementing the quick wins list above — that's often $10K-$100K/year for mid-sized engineering organizations.
