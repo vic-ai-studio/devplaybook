@@ -1,410 +1,53 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import WasmBinaryInspector from '../../components/WasmBinaryInspector.tsx';
 import ToolPageCta from '../../components/ToolPageCta.astro';
 import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
 
 const faq = [
-  { question: "What is WAT (WebAssembly Text format)?", answer: "WAT is the human-readable text representation of WebAssembly bytecode. It uses S-expression syntax (parentheses) to describe modules, functions, types, memory, imports, and exports. Every valid .wasm binary has an equivalent .wat text form. WAT is useful for debugging, learning, and hand-authoring small Wasm modules before compilation." },
-  { question: "What are the main sections in a WebAssembly binary?", answer: "A Wasm binary is divided into numbered sections: Type (function signatures), Import (external functions/memory/globals), Function (references types for local functions), Table (function pointer tables), Memory (linear memory declarations), Global (global variables), Export (names exposed to host), Start (entry point), Element (table initializers), Code (function bodies with instructions), Data (memory initializers). Each section is optional." },
-  { question: "How do I identify a valid WASM binary from hex?", answer: "Every valid WebAssembly binary starts with the magic bytes 0x00 0x61 0x73 0x6D (which is '\\0asm' in ASCII) followed by the version 0x01 0x00 0x00 0x00. If your hex input doesn't start with these 8 bytes, the binary is not a valid Wasm module. This inspector checks for the magic bytes and reports whether the input looks like a valid Wasm binary." },
-  { question: "What does 'estimated binary size' mean for WAT input?", answer: "WAT text is verbose — one line of WAT compiles down to very few bytes of binary. This tool uses a rough heuristic of ~0.3 bytes of binary per character of WAT source. The real compiled size depends on the number of distinct types, function bodies, and optimizer settings. Tools like wasm-opt (Binaryen) can further reduce binary size by 20-50%." },
-  { question: "What instructions count toward the instruction count?", answer: "This tool counts occurrences of common Wasm instruction mnemonics in WAT source: arithmetic (i32.add, i64.mul, f32.*, f64.*), memory (i32.load, i32.store), control flow (if, loop, block, return, br, call), and local/global variable ops (local.get, local.set, global.get, global.set). The count is a rough estimate of code complexity — real instruction counts in the binary may differ due to encoding." },
+  {
+    question: "What are the WASM magic bytes?",
+    answer: "Every valid WebAssembly binary starts with the 4-byte magic sequence 0x00 0x61 0x73 0x6D, which spells '\\0asm' in ASCII. Following the magic bytes are 4 version bytes (0x01 0x00 0x00 0x00 = version 1, the MVP). If these 8 bytes are incorrect, the runtime will reject the file immediately before parsing any sections."
+  },
+  {
+    question: "What sections does a WASM binary contain?",
+    answer: "A WASM binary is divided into sections identified by a 1-byte section ID: Type (1) defines function signatures, Import (2) lists imported functions/memories/tables/globals, Function (3) maps functions to type signatures, Table (4) defines function reference tables, Memory (5) defines linear memory, Global (6) declares global variables, Export (7) lists exported symbols, Start (8) specifies an entry point, Element (9) and Data (11) initialize tables and memory, Code (10) contains function bodies, and Custom (0) holds arbitrary metadata like debug info or DWARF."
+  },
+  {
+    question: "What is LEB128 encoding in WASM?",
+    answer: "LEB128 (Little Endian Base 128) is a variable-length integer encoding used throughout WASM binaries. Each byte uses 7 bits for data and 1 bit (the MSB) as a continuation flag. If the MSB is 1, another byte follows. This allows small integers to occupy just 1 byte while supporting arbitrarily large values. WASM uses unsigned LEB128 for sizes and indices, and signed LEB128 for integer constants."
+  },
+  {
+    question: "How do I generate a WASM binary?",
+    answer: "You can produce WASM from multiple sources: (1) Compile Rust with 'cargo build --target wasm32-unknown-unknown', (2) Compile C/C++ with Emscripten ('emcc main.c -o out.wasm'), (3) Compile WAT text format with 'wat2wasm module.wat -o module.wasm' from the wabt toolkit, (4) Use AssemblyScript which compiles TypeScript to WASM. The wabt toolkit also includes wasm-objdump and wasm-validate for inspection."
+  },
+  {
+    question: "What is the difference between WASM imports and exports?",
+    answer: "Imports are symbols a WASM module needs from the host environment — your JavaScript must provide these when instantiating the module via the imports object: WebAssembly.instantiate(bytes, { 'env': { 'memory': mem, 'log': console.log } }). Exports are symbols the WASM module exposes to the host — after instantiation, these appear as instance.exports.functionName(). A module can import/export functions, tables, memories, and globals."
+  },
 ];
 ---
 
 <BaseLayout
-  title="WASM Binary Inspector — WebAssembly WAT Parser & Hex Analyzer"
-  description="Inspect WebAssembly modules in WAT text format or hex bytes. Parse sections, count instructions, estimate binary size, and validate WASM magic bytes — all in the browser."
-  tool="WASM Inspector, WebAssembly Parser, WAT Analyzer, WASM Hex Decoder, WebAssembly Sections"
+  title="WASM Binary Inspector — WebAssembly Binary Parser & Section Analyzer"
+  description="Inspect WebAssembly binary files in your browser. Paste hex bytes or Base64-encoded WASM to validate magic bytes, parse sections, and list imports and exports. No upload needed."
+  tool="WASM inspector, WebAssembly binary parser, wasm hex viewer, wasm section analyzer, wasm imports exports"
   faq={faq}
 >
   <h1 class="text-3xl font-bold mb-2">WASM Binary Inspector</h1>
-  <p class="text-text-muted mb-4">Inspect WebAssembly modules by pasting WAT text or raw hex bytes. Parses sections, counts instructions, and estimates binary size.</p>
-
+  <p class="text-text-muted mb-4">Parse WebAssembly binaries in your browser. Validates magic bytes, decodes section structure, and lists imports and exports — no server needed.</p>
   <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> WAT section parser</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Instruction counter</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Hex byte analyzer</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Binary size estimate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Magic bytes validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Section breakdown table</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Imports & exports list</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Hex or Base64 input</span>
   </div>
 
-  <!-- Mode toggle + buttons -->
-  <div class="flex items-center gap-3 mb-4 flex-wrap">
-    <div class="flex rounded-lg border border-border overflow-hidden">
-      <button id="mode-wat" class="px-4 py-2 text-sm bg-primary text-white">WAT Text</button>
-      <button id="mode-hex" class="px-4 py-2 text-sm text-text-muted hover:text-primary transition-colors">Hex Bytes</button>
-    </div>
-    <button id="load-example" class="px-4 py-2 text-sm border border-border text-text-muted rounded-lg hover:border-primary hover:text-primary transition-colors">Load Example</button>
-    <button id="clear-btn" class="px-4 py-2 text-sm border border-border text-text-muted rounded-lg hover:border-red-400 hover:text-red-400 transition-colors">Clear</button>
-  </div>
+  <WasmBinaryInspector client:only="preact" />
 
-  <!-- Input -->
-  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
-    <div class="flex items-center justify-between mb-3">
-      <label id="input-label" class="text-sm font-semibold">WAT Source</label>
-      <span id="input-hint" class="text-xs text-text-muted">Paste WebAssembly Text format</span>
-    </div>
-    <textarea
-      id="wasm-input"
-      rows="12"
-      placeholder="(module&#10;  (func $add (param i32 i32) (result i32)&#10;    local.get 0&#10;    local.get 1&#10;    i32.add)&#10;  (export &quot;add&quot; (func $add))&#10;)"
-      class="w-full bg-bg-surface border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y"
-    ></textarea>
-    <button id="inspect-btn" class="mt-3 px-6 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/80 transition-colors">Inspect →</button>
-  </div>
-
-  <!-- Results -->
-  <div id="results" class="hidden space-y-6 mb-6">
-
-    <!-- Summary row -->
-    <div id="summary-cards" class="grid grid-cols-2 sm:grid-cols-4 gap-4"></div>
-
-    <!-- Sections table -->
-    <div class="bg-bg-card border border-border rounded-xl p-5">
-      <h2 class="text-base font-semibold mb-4">Detected Sections</h2>
-      <div id="sections-table" class="space-y-2"></div>
-    </div>
-
-    <!-- Instructions breakdown (WAT only) -->
-    <div id="instructions-panel" class="bg-bg-card border border-border rounded-xl p-5">
-      <h2 class="text-base font-semibold mb-4">Instruction Breakdown</h2>
-      <div id="instructions-list" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
-    </div>
-
-    <!-- Hex validity (hex mode only) -->
-    <div id="hex-panel" class="bg-bg-card border border-border rounded-xl p-5 hidden">
-      <h2 class="text-base font-semibold mb-4">Binary Analysis</h2>
-      <div id="hex-details" class="space-y-3"></div>
-    </div>
-
-  </div>
-
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
   <FaqSection faq={faq} />
-  <ToolPageCta currentTool="WASM Binary Inspector" relatedTags={['webassembly', 'wasm', 'wat', 'binary', 'compiler', 'performance', 'low-level']} />
+  <ToolPageCta currentTool="WASM Binary Inspector" relatedTags={['webassembly', 'wasm', 'binary', 'parser', 'compiler', 'systems']} />
 </BaseLayout>
 
-<script>
-  var currentMode = 'wat';
-
-  var SAMPLE_WAT = `(module
-  (type $t0 (func (param i32 i32) (result i32)))
-  (func $add (type $t0) (param $p0 i32) (param $p1 i32) (result i32)
-    local.get $p0
-    local.get $p1
-    i32.add)
-  (export "add" (func $add))
-  (memory $memory 1)
-)`;
-
-  var SAMPLE_HEX = '00 61 73 6d 01 00 00 00 01 07 01 60 02 7f 7f 01 7f 03 02 01 00 07 07 01 03 61 64 64 00 00 0a 09 01 07 00 20 00 20 01 6a 0b';
-
-  var SECTION_PATTERNS = [
-    { key: 'type',     label: 'Type Section',     pattern: /\(\s*type\b/g,     desc: 'Function type signatures' },
-    { key: 'func',     label: 'Function Section', pattern: /\(\s*func\b/g,     desc: 'Function bodies' },
-    { key: 'memory',   label: 'Memory Section',   pattern: /\(\s*memory\b/g,   desc: 'Linear memory declarations' },
-    { key: 'export',   label: 'Export Section',   pattern: /\(\s*export\b/g,   desc: 'Exported names' },
-    { key: 'import',   label: 'Import Section',   pattern: /\(\s*import\b/g,   desc: 'Imported functions/memory' },
-    { key: 'table',    label: 'Table Section',    pattern: /\(\s*table\b/g,    desc: 'Function pointer tables' },
-    { key: 'global',   label: 'Global Section',   pattern: /\(\s*global\b/g,   desc: 'Global variables' },
-    { key: 'data',     label: 'Data Section',     pattern: /\(\s*data\b/g,     desc: 'Memory initializers' },
-    { key: 'elem',     label: 'Element Section',  pattern: /\(\s*elem\b/g,     desc: 'Table element initializers' },
-    { key: 'start',    label: 'Start Section',    pattern: /\(\s*start\b/g,    desc: 'Module entry point' },
-  ];
-
-  var INSTR_GROUPS = [
-    { label: 'i32 arithmetic', patterns: ['i32.add','i32.sub','i32.mul','i32.div_s','i32.div_u','i32.rem_s','i32.rem_u','i32.and','i32.or','i32.xor','i32.shl','i32.shr_s','i32.shr_u','i32.rotl','i32.rotr'] },
-    { label: 'i64 arithmetic', patterns: ['i64.add','i64.sub','i64.mul','i64.div_s','i64.div_u','i64.rem_s','i64.rem_u','i64.and','i64.or','i64.xor','i64.shl','i64.shr_s','i64.shr_u'] },
-    { label: 'f32 ops',        patterns: ['f32.add','f32.sub','f32.mul','f32.div','f32.sqrt','f32.min','f32.max','f32.abs','f32.neg','f32.ceil','f32.floor'] },
-    { label: 'f64 ops',        patterns: ['f64.add','f64.sub','f64.mul','f64.div','f64.sqrt','f64.min','f64.max','f64.abs','f64.neg'] },
-    { label: 'i32 compare',    patterns: ['i32.eq','i32.ne','i32.lt_s','i32.lt_u','i32.gt_s','i32.gt_u','i32.le_s','i32.le_u','i32.ge_s','i32.ge_u','i32.eqz'] },
-    { label: 'i64 compare',    patterns: ['i64.eq','i64.ne','i64.lt_s','i64.lt_u','i64.gt_s','i64.gt_u','i64.eqz'] },
-    { label: 'memory load',    patterns: ['i32.load','i64.load','f32.load','f64.load','i32.load8_s','i32.load8_u','i32.load16_s','i32.load16_u'] },
-    { label: 'memory store',   patterns: ['i32.store','i64.store','f32.store','f64.store','i32.store8','i32.store16'] },
-    { label: 'local ops',      patterns: ['local.get','local.set','local.tee'] },
-    { label: 'global ops',     patterns: ['global.get','global.set'] },
-    { label: 'control flow',   patterns: ['if','else','end','loop','block','br','br_if','br_table','return','unreachable','nop','select'] },
-    { label: 'calls',          patterns: ['call','call_indirect'] },
-    { label: 'constants',      patterns: ['i32.const','i64.const','f32.const','f64.const'] },
-    { label: 'conversions',    patterns: ['i32.wrap_i64','i64.extend_i32_s','i64.extend_i32_u','i32.trunc_f32_s','i32.trunc_f64_s','f32.convert_i32_s','f64.convert_i32_s','f32.demote_f64','f64.promote_f32'] },
-    { label: 'memory misc',    patterns: ['memory.size','memory.grow','drop'] },
-  ];
-
-  function countPatternInText(text, pattern) {
-    var re = new RegExp(pattern.replace('.', '\\.'), 'g');
-    return (text.match(re) || []).length;
-  }
-
-  function parseWAT(text) {
-    var sections = [];
-    var totalInstructions = 0;
-    var instrBreakdown = [];
-
-    SECTION_PATTERNS.forEach(function(s) {
-      var count = (text.match(s.pattern) || []).length;
-      if (count > 0) {
-        sections.push({ label: s.label, count: count, desc: s.desc });
-      }
-    });
-
-    INSTR_GROUPS.forEach(function(group) {
-      var groupTotal = 0;
-      group.patterns.forEach(function(p) {
-        groupTotal += countPatternInText(text, p);
-      });
-      if (groupTotal > 0) {
-        instrBreakdown.push({ label: group.label, count: groupTotal });
-        totalInstructions += groupTotal;
-      }
-    });
-
-    var estimatedBytes = Math.round(text.length * 0.3);
-    var hasModule = /\(\s*module\b/.test(text);
-
-    return {
-      mode: 'wat',
-      valid: hasModule,
-      sections: sections,
-      totalInstructions: totalInstructions,
-      instrBreakdown: instrBreakdown,
-      estimatedBytes: estimatedBytes,
-      charCount: text.length,
-    };
-  }
-
-  function parseHex(text) {
-    var cleaned = text.replace(/[^0-9a-fA-F]/g, '');
-    if (cleaned.length % 2 !== 0) cleaned = cleaned.slice(0, -1);
-    var bytes = [];
-    for (var i = 0; i < cleaned.length; i += 2) {
-      bytes.push(parseInt(cleaned.substring(i, i + 2), 16));
-    }
-
-    var isValid = bytes.length >= 8
-      && bytes[0] === 0x00
-      && bytes[1] === 0x61
-      && bytes[2] === 0x73
-      && bytes[3] === 0x6d
-      && bytes[4] === 0x01
-      && bytes[5] === 0x00
-      && bytes[6] === 0x00
-      && bytes[7] === 0x00;
-
-    var magicStr = bytes.slice(0, 4).map(function(b) { return '0x' + b.toString(16).padStart(2,'0'); }).join(' ');
-    var versionStr = bytes.length >= 8 ? bytes.slice(4, 8).map(function(b) { return '0x' + b.toString(16).padStart(2,'0'); }).join(' ') : 'N/A';
-
-    // Try to detect sections from section IDs (bytes after header)
-    var SECTION_IDS = {
-      1: 'Type Section',
-      2: 'Import Section',
-      3: 'Function Section',
-      4: 'Table Section',
-      5: 'Memory Section',
-      6: 'Global Section',
-      7: 'Export Section',
-      8: 'Start Section',
-      9: 'Element Section',
-      10: 'Code Section',
-      11: 'Data Section',
-    };
-
-    var detectedSections = [];
-    if (isValid) {
-      var offset = 8;
-      while (offset < bytes.length) {
-        var sectionId = bytes[offset];
-        if (sectionId === undefined) break;
-        var label = SECTION_IDS[sectionId] || ('Unknown Section (' + sectionId + ')');
-        // Read LEB128 size
-        var size = 0;
-        var shift = 0;
-        var pos = offset + 1;
-        while (pos < bytes.length) {
-          var byte = bytes[pos];
-          size |= (byte & 0x7f) << shift;
-          pos++;
-          if ((byte & 0x80) === 0) break;
-          shift += 7;
-        }
-        detectedSections.push({ label: label, count: 1, desc: 'offset: ' + offset + ', size: ' + size + ' bytes' });
-        offset = pos + size;
-      }
-    }
-
-    return {
-      mode: 'hex',
-      valid: isValid,
-      byteCount: bytes.length,
-      magicStr: magicStr,
-      versionStr: versionStr,
-      sections: detectedSections,
-      rawBytes: bytes,
-    };
-  }
-
-  function renderSummaryCards(data) {
-    var cards = [];
-    if (data.mode === 'wat') {
-      cards = [
-        { label: 'Sections', value: data.sections.length, color: 'text-primary' },
-        { label: 'Instructions', value: data.totalInstructions, color: 'text-primary' },
-        { label: 'Est. Binary', value: formatBytes(data.estimatedBytes), color: 'text-primary' },
-        { label: 'Valid Module', value: data.valid ? 'Yes' : 'No', color: data.valid ? 'text-green-400' : 'text-red-400' },
-      ];
-    } else {
-      cards = [
-        { label: 'Total Bytes', value: data.byteCount, color: 'text-primary' },
-        { label: 'Sections', value: data.sections.length, color: 'text-primary' },
-        { label: 'Magic Bytes', value: data.valid ? 'Valid' : 'Invalid', color: data.valid ? 'text-green-400' : 'text-red-400' },
-        { label: 'Version', value: data.valid ? '1' : 'N/A', color: 'text-primary' },
-      ];
-    }
-
-    document.getElementById('summary-cards').innerHTML = cards.map(function(c) {
-      return '<div class="bg-bg-card border border-border rounded-xl p-4 text-center">'
-        + '<div class="text-xs text-text-muted mb-1">' + c.label + '</div>'
-        + '<div class="text-2xl font-bold ' + c.color + '">' + c.value + '</div>'
-        + '</div>';
-    }).join('');
-  }
-
-  function renderSections(sections) {
-    var el = document.getElementById('sections-table');
-    if (sections.length === 0) {
-      el.innerHTML = '<p class="text-sm text-text-muted">No sections detected.</p>';
-      return;
-    }
-    el.innerHTML = sections.map(function(s, i) {
-      return '<div class="flex items-center justify-between py-2 px-3 rounded-lg ' + (i % 2 === 0 ? 'bg-bg-surface' : '') + '">'
-        + '<div>'
-        + '<span class="text-sm font-medium">' + s.label + '</span>'
-        + '<span class="text-xs text-text-muted ml-3">' + s.desc + '</span>'
-        + '</div>'
-        + '<span class="text-sm font-mono text-primary font-semibold">×' + s.count + '</span>'
-        + '</div>';
-    }).join('');
-  }
-
-  function renderInstructions(breakdown, total) {
-    var el = document.getElementById('instructions-list');
-    if (breakdown.length === 0) {
-      el.innerHTML = '<p class="text-sm text-text-muted col-span-3">No instructions detected.</p>';
-      return;
-    }
-    var sorted = breakdown.slice().sort(function(a, b) { return b.count - a.count; });
-    el.innerHTML = sorted.map(function(item) {
-      var pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
-      return '<div class="bg-bg-surface rounded-lg p-3">'
-        + '<div class="flex items-center justify-between mb-1">'
-        + '<span class="text-xs text-text-muted">' + item.label + '</span>'
-        + '<span class="text-xs font-mono font-semibold text-primary">' + item.count + '</span>'
-        + '</div>'
-        + '<div class="w-full bg-border rounded-full h-1.5">'
-        + '<div class="bg-primary h-1.5 rounded-full" style="width:' + pct + '%"></div>'
-        + '</div>'
-        + '</div>';
-    }).join('');
-  }
-
-  function renderHexDetails(data) {
-    var el = document.getElementById('hex-details');
-    el.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">'
-      + '<div class="space-y-2">'
-      + '<div class="flex items-center justify-between p-3 bg-bg-surface rounded-lg">'
-      + '<span class="text-sm text-text-muted">Magic Bytes</span>'
-      + '<span class="font-mono text-xs ' + (data.valid ? 'text-green-400' : 'text-red-400') + '">' + data.magicStr + '</span>'
-      + '</div>'
-      + '<div class="flex items-center justify-between p-3 bg-bg-surface rounded-lg">'
-      + '<span class="text-sm text-text-muted">Version</span>'
-      + '<span class="font-mono text-xs text-primary">' + data.versionStr + '</span>'
-      + '</div>'
-      + '<div class="flex items-center justify-between p-3 bg-bg-surface rounded-lg">'
-      + '<span class="text-sm text-text-muted">Total Bytes</span>'
-      + '<span class="font-mono text-xs text-primary">' + data.byteCount + ' bytes (' + formatBytes(data.byteCount) + ')</span>'
-      + '</div>'
-      + '</div>'
-      + '<div class="p-3 bg-bg-surface rounded-lg">'
-      + '<div class="text-xs text-text-muted mb-2">Validity</div>'
-      + '<div class="flex items-center gap-2">'
-      + '<span class="text-2xl">' + (data.valid ? '✓' : '✗') + '</span>'
-      + '<span class="text-sm ' + (data.valid ? 'text-green-400' : 'text-red-400') + '">'
-      + (data.valid ? 'Valid WebAssembly binary (magic bytes match)' : 'Invalid — magic bytes 0x00 0x61 0x73 0x6D not found at offset 0')
-      + '</span>'
-      + '</div>'
-      + '</div>'
-      + '</div>';
-  }
-
-  function formatBytes(n) {
-    if (n < 1024) return n + ' B';
-    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-    return (n / (1024 * 1024)).toFixed(2) + ' MB';
-  }
-
-  function runInspect() {
-    var input = document.getElementById('wasm-input').value.trim();
-    if (!input) return;
-
-    var data = currentMode === 'wat' ? parseWAT(input) : parseHex(input);
-
-    document.getElementById('results').classList.remove('hidden');
-    renderSummaryCards(data);
-    renderSections(data.sections);
-
-    if (currentMode === 'wat') {
-      document.getElementById('instructions-panel').classList.remove('hidden');
-      document.getElementById('hex-panel').classList.add('hidden');
-      renderInstructions(data.instrBreakdown, data.totalInstructions);
-    } else {
-      document.getElementById('instructions-panel').classList.add('hidden');
-      document.getElementById('hex-panel').classList.remove('hidden');
-      renderHexDetails(data);
-    }
-  }
-
-  function setMode(mode) {
-    currentMode = mode;
-    var watBtn = document.getElementById('mode-wat');
-    var hexBtn = document.getElementById('mode-hex');
-    if (mode === 'wat') {
-      watBtn.classList.add('bg-primary', 'text-white');
-      watBtn.classList.remove('text-text-muted');
-      hexBtn.classList.remove('bg-primary', 'text-white');
-      hexBtn.classList.add('text-text-muted');
-      document.getElementById('input-label').textContent = 'WAT Source';
-      document.getElementById('input-hint').textContent = 'Paste WebAssembly Text format';
-      document.getElementById('wasm-input').placeholder = '(module\n  (func $add (param i32 i32) (result i32)\n    local.get 0\n    local.get 1\n    i32.add)\n  (export "add" (func $add))\n)';
-    } else {
-      hexBtn.classList.add('bg-primary', 'text-white');
-      hexBtn.classList.remove('text-text-muted');
-      watBtn.classList.remove('bg-primary', 'text-white');
-      watBtn.classList.add('text-text-muted');
-      document.getElementById('input-label').textContent = 'Hex Bytes';
-      document.getElementById('input-hint').textContent = 'Paste hex bytes (space-separated or continuous)';
-      document.getElementById('wasm-input').placeholder = '00 61 73 6d 01 00 00 00 ...';
-    }
-  }
-
-  document.getElementById('mode-wat').addEventListener('click', function() { setMode('wat'); });
-  document.getElementById('mode-hex').addEventListener('click', function() { setMode('hex'); });
-
-  document.getElementById('load-example').addEventListener('click', function() {
-    if (currentMode === 'wat') {
-      document.getElementById('wasm-input').value = SAMPLE_WAT;
-    } else {
-      document.getElementById('wasm-input').value = SAMPLE_HEX;
-    }
-  });
-
-  document.getElementById('clear-btn').addEventListener('click', function() {
-    document.getElementById('wasm-input').value = '';
-    document.getElementById('results').classList.add('hidden');
-  });
-
-  document.getElementById('inspect-btn').addEventListener('click', runInspect);
-
-  document.getElementById('wasm-input').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      runInspect();
-    }
-  });
-</script>
