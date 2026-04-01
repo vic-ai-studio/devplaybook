@@ -1,0 +1,243 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is the most popular API versioning strategy?", answer: "URL path versioning (/v1/, /v2/) is by far the most widely used approach, employed by Stripe, Twilio, GitHub v3, and most large public APIs. It wins on practical grounds: URLs are self-describing, developers can see the version immediately, curl and browser testing work without setting headers, proxy caches and CDNs work correctly, and you can route traffic by URL prefix in any load balancer or API gateway. Despite being technically 'impure' from a REST perspective (the version is not a resource property), its developer experience advantages outweigh the theoretical objections." },
+  { question: "When should I use header-based versioning?", answer: "Header versioning (Accept: application/vnd.myapi.v2+json or a custom X-API-Version header) is appropriate when you want clean URLs that never change — the same URL /users always points to the 'current' users resource but clients opt into a specific version via header. This is popular in content negotiation-heavy APIs and internal APIs where all clients are controlled. The downsides: impossible to test in a browser without dev tools, CDN caching is trickier (you must vary on the header: Vary: Accept), and many developers forget to set the header and get unexpected behavior when you ship v2." },
+  { question: "What are Sunset headers and how do I use them?", answer: "The Sunset HTTP response header (RFC 8594) indicates when a deprecated API version will be removed. Format: Sunset: Sat, 01 Mar 2025 00:00:00 GMT. Also add a Deprecation header (IETF draft): Deprecation: Tue, 01 Sep 2024 00:00:00 GMT. Pair these with a Link header pointing to migration docs: Link: &lt;https://docs.example.com/v2/migration&gt;; rel='successor-version'. Send these headers on every response from deprecated endpoints — well-behaved API clients will log warnings when they detect Sunset headers, alerting developers to migrate before the deadline." },
+  { question: "How do I avoid breaking changes when evolving an API?", answer: "Follow additive-only changes for minor versions: adding new optional fields, new endpoints, or new enum values to responses is always safe. Breaking changes (removing fields, changing field types, making optional fields required, changing URL structure) require a new version. Use feature flags or API preview programs to give early adopters access to breaking changes before the official version bump. Maintain a public changelog and announce deprecations at least 6 months before removal. Consider consumer-driven contract testing (Pact) to detect when your changes would break specific known clients." },
+  { question: "Can I version a GraphQL API?", answer: "The GraphQL community's official guidance is to avoid versioning: instead, evolve the schema by adding new fields, deprecating old ones with @deprecated(reason: '...')  directive, and eventually removing deprecated fields after clients have migrated. This works because GraphQL clients only request fields they need — adding fields is never breaking. For larger breaking changes, use a field migration pattern: add newField alongside the old field, announce deprecation, run a query analyzing tool to see if clients still use the old field, then remove it. If a true version break is unavoidable, use a separate endpoint (/graphql/v2) or API schema stitching." },
+  { question: "How long should I maintain old API versions?", answer: "Industry standard is 12–24 months after a deprecation announcement, depending on your client base and contract terms. Stripe famously never removes API versions — they maintain backward compatibility forever. Twilio and SendGrid provide 12-month sunsets. GitHub deprecated v3 REST in favor of GraphQL but still maintains it. For enterprise APIs, 24 months is a safe default. Track which clients are still using deprecated versions via API key analytics — if a version has zero traffic for 90 days, you can safely remove it. Always send Sunset headers and email clients whose API keys are calling deprecated versions." },
+];
+---
+
+<BaseLayout
+  title="API Versioning Strategies: URL, Header &amp; Content-Type Versioning"
+  description="Complete API versioning guide: URL versioning (/v1/), query param versioning, request headers, content-type negotiation, Sunset headers, migration strategies, and pros/cons comparison."
+  tool="API versioning, URL versioning, header versioning, content negotiation, Sunset header, API deprecation"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "API Versioning Strategies",
+    "url": "https://devplaybook.cc/tools/api-versioning-strategies",
+    "description": "API versioning guide: URL versioning, header versioning, content negotiation, Sunset headers, and migration strategies.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">API Versioning Strategies</h1>
+  <p class="text-text-muted mb-6">
+    How you version your API determines how painful it is to evolve it — and how painful it is for your clients to migrate. This guide covers every versioning approach with real request examples, a clear pros/cons matrix, and the Sunset/deprecation headers that make migrations manageable.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> URL, header &amp; content-type strategies</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Sunset &amp; deprecation headers</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Migration patterns</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pros/cons comparison table</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Strategy 1: URL Path Versioning</h2>
+  <p class="text-text-muted mb-3">The version is part of the URL path. Used by Stripe, Twilio, GitHub, and most public APIs.</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">GET  https://api.example.com/v1/users/42
+POST https://api.example.com/v2/users
+
+# Express routing — mount per-version routers
+import express from 'express';
+import v1Routes from './routes/v1';
+import v2Routes from './routes/v2';
+
+const app = express();
+app.use('/v1', v1Routes);
+app.use('/v2', v2Routes);
+
+# Or use a single router with version middleware
+app.use('/v:version', (req, res, next) => &#123;
+  req.apiVersion = parseInt(req.params.version);
+  next();
+&#125;, mainRouter);</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># nginx — route by URL prefix to versioned backends
+location /v1/ &#123;
+  proxy_pass http://api-v1:3000/;
+&#125;
+location /v2/ &#123;
+  proxy_pass http://api-v2:3001/;
+&#125;
+# Default (no version prefix) → latest stable
+location /api/ &#123;
+  proxy_pass http://api-v2:3001/;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Strategy 2: Request Header Versioning</h2>
+  <p class="text-text-muted mb-3">The URL stays clean; clients declare the version in a request header.</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Option A: custom header
+GET /users/42
+X-API-Version: 2
+
+# Option B: Accept header (content negotiation, RFC 6838)
+GET /users/42
+Accept: application/vnd.acme.v2+json
+
+# Option C: Stripe-style date-based versions
+GET /users/42
+Stripe-Version: 2024-06-20</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Express middleware — extract version from header
+function apiVersionMiddleware(req, res, next) &#123;
+  const headerVersion = req.headers['x-api-version'];
+  const acceptVersion  = (req.headers['accept'] ?? '')
+    .match(/vnd\.acme\.v(\d+)\+json/)?.[1];
+
+  req.apiVersion = parseInt(headerVersion ?? acceptVersion ?? '1');
+
+  // Tell CDN to cache separately per version
+  res.setHeader('Vary', 'X-API-Version, Accept');
+  next();
+&#125;
+
+app.use(apiVersionMiddleware);
+
+app.get('/users/:id', (req, res) => &#123;
+  if (req.apiVersion >= 2) &#123;
+    return res.json(buildUserResponseV2(req.params.id));
+  &#125;
+  return res.json(buildUserResponseV1(req.params.id));
+&#125;);</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Strategy 3: Query Parameter Versioning</h2>
+  <p class="text-text-muted mb-3">Simple but mixes routing concerns with filtering. Avoid for public APIs.</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">GET /users/42?version=2
+GET /users/42?v=2&amp;format=json
+
+# Simple to implement but has problems:
+# - Easy to accidentally omit from generated URLs
+# - Some proxies strip query params from cache keys
+# - Harder to route at the infrastructure level
+# - Mixes version (routing concern) with filters (query concern)</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Sunset &amp; Deprecation Headers</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Express middleware — attach deprecation headers to v1 responses
+function deprecationHeaders(req, res, next) &#123;
+  // Deprecation: when this version was deprecated (past date)
+  res.setHeader('Deprecation', 'Mon, 01 Jul 2024 00:00:00 GMT');
+
+  // Sunset: when this version will be removed (future date)
+  res.setHeader('Sunset', 'Fri, 01 Jan 2026 00:00:00 GMT');
+
+  // Link to migration guide
+  res.setHeader(
+    'Link',
+    '&lt;https://docs.example.com/v2/migration&gt;; rel="successor-version", ' +
+    '&lt;https://docs.example.com/changelog&gt;; rel="deprecation"'
+  );
+
+  next();
+&#125;
+
+// Apply only to v1 routes
+app.use('/v1', deprecationHeaders, v1Router);</pre>
+
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// Client-side: detect Sunset header and warn developers
+async function apiRequest(url: string, options?: RequestInit) &#123;
+  const response = await fetch(url, options);
+
+  const sunset = response.headers.get('Sunset');
+  if (sunset) &#123;
+    const sunsetDate = new Date(sunset);
+    const daysUntil  = Math.floor(
+      (sunsetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+    );
+    console.warn(
+      `[API] Warning: This endpoint is deprecated and will be removed ` +
+      `in $&#123;daysUntil&#125; days ($&#123;sunset&#125;). ` +
+      `See Link header for migration guide.`
+    );
+  &#125;
+
+  return response;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Pros &amp; Cons Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Strategy</th>
+          <th class="border border-border px-3 py-2 text-left">Pros</th>
+          <th class="border border-border px-3 py-2 text-left">Cons</th>
+          <th class="border border-border px-3 py-2 text-left">Best for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">URL path (/v1/)</td><td class="border border-border px-3 py-2">Visible, cacheable, easy routing, curl-friendly</td><td class="border border-border px-3 py-2">Version in URL is "not RESTful"</td><td class="border border-border px-3 py-2">Public APIs, SDK-heavy clients</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Custom header</td><td class="border border-border px-3 py-2">Clean URLs, server-side routing control</td><td class="border border-border px-3 py-2">Not browser-testable, Vary cache complexity</td><td class="border border-border px-3 py-2">Internal APIs, controlled clients</td></tr>
+        <tr><td class="border border-border px-3 py-2">Accept header</td><td class="border border-border px-3 py-2">RFC-compliant, content negotiation</td><td class="border border-border px-3 py-2">Complex media types, poor DX</td><td class="border border-border px-3 py-2">Hypermedia APIs</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Query param (?v=2)</td><td class="border border-border px-3 py-2">Simple to implement</td><td class="border border-border px-3 py-2">Hard to route, cache issues, poor DX</td><td class="border border-border px-3 py-2">Prototypes only</td></tr>
+        <tr><td class="border border-border px-3 py-2">Date-based (Stripe)</td><td class="border border-border px-3 py-2">Granular control, no major versions</td><td class="border border-border px-3 py-2">Complex compatibility matrix</td><td class="border border-border px-3 py-2">Mature APIs with long history</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Breaking vs Non-Breaking Changes</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Change Type</th>
+          <th class="border border-border px-3 py-2 text-left">Breaking?</th>
+          <th class="border border-border px-3 py-2 text-left">Action required</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2">Add new optional response field</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2">Safe — deploy anytime</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Add new endpoint</td><td class="border border-border px-3 py-2">No</td><td class="border border-border px-3 py-2">Safe — deploy anytime</td></tr>
+        <tr><td class="border border-border px-3 py-2">Remove a response field</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">New version required</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Rename a field</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">New version required</td></tr>
+        <tr><td class="border border-border px-3 py-2">Change field type (string→int)</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">New version required</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Make optional field required</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">New version required</td></tr>
+        <tr><td class="border border-border px-3 py-2">Change error response shape</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">New version required</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2">Change auth mechanism</td><td class="border border-border px-3 py-2">Yes</td><td class="border border-border px-3 py-2">New version + migration guide</td></tr>
+        <tr><td class="border border-border px-3 py-2">Add new enum value to response</td><td class="border border-border px-3 py-2">Soft</td><td class="border border-border px-3 py-2">Communicate ahead; clients should use default/else</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Migration Checklist</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># API Version Migration Checklist
+# --------------------------------
+# 1. Announce deprecation with at least 6-month timeline
+#    - Blog post, email to API key holders, changelog entry
+#    - Start sending Deprecation + Sunset headers immediately
+
+# 2. Publish migration guide
+#    - Diff of breaking changes
+#    - Before/after code examples for each change
+#    - Link in Sunset Link header
+
+# 3. Track adoption via analytics
+#    - Log X-API-Version / URL prefix per API key
+#    - Identify clients still on old version at 3mo, 1mo, 1wk marks
+
+# 4. Email stragglers
+#    SELECT api_key, last_seen FROM api_requests
+#    WHERE version = 'v1' AND last_seen > NOW() - INTERVAL '30 days';
+
+# 5. Sunset the version
+#    - Return 410 Gone with migration URL
+#    - Keep route handler, just return error
+#    app.use('/v1', (req, res) => res.status(410).json(&#123;
+#      error: &#123;
+#        code: 'VERSION_SUNSET',
+#        message: 'API v1 has been removed. Please migrate to v2.',
+#        migration_guide: 'https://docs.example.com/v2/migration',
+#      &#125;
+#    &#125;)));</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="API Versioning Strategies" relatedTags={['api', 'versioning', 'rest', 'backend', 'deprecation']} />
+</BaseLayout>
