@@ -1,0 +1,195 @@
+---
+title: "Building AI Agents with LangChain vs LlamaIndex: Complete Comparison"
+description: "LangChain vs LlamaIndex for building AI agents: architecture, memory, tools, RAG support, and when to choose each framework. Code examples included."
+date: "2026-04-02"
+tags: [ai, langchain, llamaindex, agents, llm]
+readingTime: "10 min read"
+---
+
+# Building AI Agents with LangChain vs LlamaIndex: Complete Comparison
+
+Two frameworks dominate the Python AI agent ecosystem: **LangChain** and **LlamaIndex**. Both let you build LLM-powered applications, but they come from different design philosophies and excel in different scenarios. This guide breaks down exactly when to use each.
+
+## TL;DR
+
+| | LangChain | LlamaIndex |
+|---|---|---|
+| Primary focus | Chains, agents, tool use | Data ingestion, RAG, indexing |
+| Best for | Multi-step agents, complex workflows | Knowledge retrieval, document Q&A |
+| Learning curve | Steeper (more abstractions) | Gentler for RAG use cases |
+| Community | Very large | Growing fast |
+| Python maturity | Production-ready | Production-ready |
+
+---
+
+## LangChain: The Agent-First Framework
+
+LangChain launched in 2022 and became the go-to framework for chaining LLM calls together. Its core abstraction is the **chain** — a sequence of steps where each step can call an LLM, a tool, or a transformation.
+
+### LangChain's Core Concepts
+
+**Chains** compose LLM calls, prompts, and tools into reusable pipelines. The modern LangChain Expression Language (LCEL) makes this declarative:
+
+```python
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
+
+prompt = ChatPromptTemplate.from_template("Explain {concept} in one paragraph.")
+model = ChatOpenAI(model="gpt-4o")
+chain = prompt | model | StrOutputParser()
+
+result = chain.invoke({"concept": "gradient descent"})
+```
+
+**Agents** extend chains with tool use and autonomous decision-making. LangChain agents choose which tools to call based on the current context:
+
+```python
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.tools import tool
+
+@tool
+def get_stock_price(ticker: str) -> str:
+    """Get the current stock price for a ticker symbol."""
+    # real implementation here
+    return f"{ticker}: $150.00"
+
+agent = create_tool_calling_agent(model, [get_stock_price], prompt)
+executor = AgentExecutor(agent=agent, tools=[get_stock_price], verbose=True)
+executor.invoke({"input": "What is the price of AAPL?"})
+```
+
+**Memory** lets agents remember conversation history:
+
+```python
+from langchain.memory import ConversationBufferMemory
+
+memory = ConversationBufferMemory(return_messages=True)
+```
+
+### When LangChain Shines
+
+- **Multi-step agentic workflows** — planning, tool selection, execution loops
+- **Diverse tool integrations** — LangChain has 100+ built-in tool integrations
+- **Complex chain orchestration** — conditional branching, parallel execution via LCEL
+- **LangSmith observability** — built-in tracing for debugging agent behavior
+
+---
+
+## LlamaIndex: The Data-Centric Framework
+
+LlamaIndex (formerly GPT Index) is purpose-built for connecting LLMs to your data. Where LangChain thinks in "chains and agents," LlamaIndex thinks in "indexes and queries."
+
+### LlamaIndex's Core Concepts
+
+**Nodes and Documents** are the data primitives. You load documents, parse them into nodes, and index them:
+
+```python
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+
+# Load all documents from a directory
+documents = SimpleDirectoryReader("./docs").load_data()
+
+# Create a searchable index
+index = VectorStoreIndex.from_documents(documents)
+
+# Query it
+query_engine = index.as_query_engine()
+response = query_engine.query("What are the refund policies?")
+print(response)
+```
+
+**Retrievers and Query Engines** are where LlamaIndex's sophistication shows. You can compose multiple retrieval strategies:
+
+```python
+from llama_index.core.retrievers import VectorIndexRetriever, BM25Retriever
+from llama_index.core.query_engine import RetrieverQueryEngine
+
+# Hybrid retrieval: vector similarity + keyword search
+vector_retriever = VectorIndexRetriever(index, similarity_top_k=5)
+bm25_retriever = BM25Retriever.from_defaults(index)
+
+# Custom fusion
+from llama_index.core.retrievers import QueryFusionRetriever
+fusion_retriever = QueryFusionRetriever(
+    [vector_retriever, bm25_retriever],
+    num_queries=3,
+    mode="reciprocal_rerank",
+)
+```
+
+**LlamaIndex Agents** are built on top of this retrieval foundation:
+
+```python
+from llama_index.core.agent import ReActAgent
+from llama_index.core.tools import QueryEngineTool
+
+tool = QueryEngineTool.from_defaults(
+    query_engine=query_engine,
+    name="policy_search",
+    description="Search company policy documents.",
+)
+
+agent = ReActAgent.from_tools([tool], llm=llm, verbose=True)
+agent.chat("Can I get a refund after 30 days?")
+```
+
+### When LlamaIndex Shines
+
+- **RAG applications** — document Q&A, knowledge bases, enterprise search
+- **Complex data ingestion** — PDFs, databases, APIs, Notion, Confluence
+- **Advanced retrieval** — hybrid search, reranking, query transformations
+- **Structured data reasoning** — NL-to-SQL, DataFrame queries
+
+---
+
+## Head-to-Head: Key Differences
+
+### Data Ingestion & Indexing
+
+LlamaIndex wins decisively. It has 160+ data loaders (databases, cloud storage, SaaS tools) and sophisticated chunking/indexing strategies. LangChain has document loaders too, but it's a secondary concern.
+
+### Agent Capabilities
+
+LangChain is more mature for pure agents. Its ReAct and tool-calling patterns are battle-tested, and the LangGraph extension adds stateful multi-agent workflows with explicit state machines.
+
+### Memory & State
+
+Both support conversation memory. LangGraph (LangChain's extension) is the most sophisticated option for persistent, stateful multi-agent systems.
+
+### Observability
+
+LangChain has LangSmith — a purpose-built tracing platform. LlamaIndex has Arize Phoenix integration. Both are solid; LangSmith is more tightly integrated.
+
+### Learning Curve
+
+LlamaIndex is easier to get started with for RAG use cases — the `VectorStoreIndex` + `query_engine` pattern is intuitive. LangChain has more abstractions to learn upfront.
+
+---
+
+## Which Should You Use?
+
+**Choose LangChain when:**
+- You're building autonomous agents that use multiple tools
+- Your workflow involves complex multi-step reasoning
+- You need rich integrations (APIs, databases, external services) as tools
+- You want LangSmith for production observability
+
+**Choose LlamaIndex when:**
+- Your primary goal is connecting LLMs to your documents/data
+- You need sophisticated RAG — hybrid search, reranking, multi-hop queries
+- You're building a knowledge base or enterprise Q&A system
+- You need advanced data connectors (Notion, Confluence, databases)
+
+**Use both when:**
+Many production systems do. LlamaIndex handles data ingestion and retrieval; LangChain orchestrates the agent logic that uses LlamaIndex as a tool. They compose well together.
+
+---
+
+## Practical Tooling on DevPlaybook
+
+Building AI agents involves a lot of prompt iteration. The [AI Prompt Template Tester](/tools/ai-prompt-template-tester) lets you test prompts across models quickly. The [AI Context Window Visualizer](/tools/ai-context-window-visualizer) helps you understand token limits when designing RAG chunk sizes. The [AI API Rate Limit Calculator](/tools/ai-api-rate-limit-calculator) is useful when planning agent throughput.
+
+---
+
+Both LangChain and LlamaIndex are mature, production-ready frameworks in 2026. The choice comes down to your primary use case: agents with tool use (LangChain) or data-centric RAG (LlamaIndex). When in doubt, start with LlamaIndex for any knowledge retrieval task, and reach for LangChain when you need autonomous multi-step reasoning.

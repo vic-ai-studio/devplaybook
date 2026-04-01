@@ -1,0 +1,260 @@
+---
+title: "LLM Prompt Engineering Best Practices for Developers in 2026"
+description: "Practical prompt engineering techniques for developers: chain-of-thought, few-shot examples, structured output, system prompts, and avoiding common pitfalls. With code examples."
+date: "2026-04-02"
+tags: [ai, llm, prompt-engineering, openai, anthropic]
+readingTime: "9 min read"
+---
+
+# LLM Prompt Engineering Best Practices for Developers in 2026
+
+Prompt engineering has matured from a novelty into a core developer skill. Whether you're building a customer support bot, a code reviewer, or an autonomous agent, the difference between a useful AI feature and a frustrating one often comes down to how well you write prompts.
+
+This guide covers practical techniques that work across OpenAI, Anthropic Claude, and Google Gemini.
+
+---
+
+## 1. Be Specific About Format and Structure
+
+LLMs are powerful pattern completers — they continue what you start. Being explicit about the output format dramatically improves consistency:
+
+```python
+# Vague — inconsistent output format
+prompt = "Analyze this code and tell me what's wrong."
+
+# Specific — structured, predictable output
+prompt = """Analyze the following Python code for bugs.
+
+Respond with JSON in this exact format:
+{
+  "has_bugs": boolean,
+  "bugs": [
+    {
+      "line": number,
+      "severity": "critical" | "warning" | "info",
+      "description": "string",
+      "fix": "string"
+    }
+  ],
+  "overall_quality": "good" | "fair" | "poor"
+}
+
+Code to analyze:
+```python
+{code}
+```"""
+```
+
+For structured output, most frontier models now support native JSON mode or structured outputs:
+
+```python
+from openai import OpenAI
+from pydantic import BaseModel
+
+class BugReport(BaseModel):
+    has_bugs: bool
+    severity: str
+    description: str
+
+client = OpenAI()
+response = client.beta.chat.completions.parse(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": prompt}],
+    response_format=BugReport,
+)
+bug_report = response.choices[0].message.parsed
+```
+
+---
+
+## 2. Use Chain-of-Thought for Complex Reasoning
+
+For tasks requiring multi-step reasoning — math, logic, code analysis — add explicit reasoning steps. The model "thinks out loud," which significantly improves accuracy:
+
+```python
+# Without chain-of-thought — error-prone for complex reasoning
+prompt = "Is this API design RESTful? {api_spec}"
+
+# With chain-of-thought
+prompt = """Evaluate whether this API design follows REST principles.
+
+Think through this step by step:
+1. First, list the resources and their URL patterns
+2. Check if HTTP methods are used correctly (GET=read, POST=create, PUT/PATCH=update, DELETE=delete)
+3. Evaluate if the design is stateless
+4. Check for proper use of HTTP status codes
+5. Assess resource naming conventions
+
+After your analysis, give a final verdict: "RESTful", "Partially RESTful", or "Not RESTful", with a brief justification.
+
+API spec:
+{api_spec}"""
+```
+
+With modern models, you can also use structured thinking via the `thinking` parameter (Claude) or reasoning models (o1, o3):
+
+```python
+# Claude extended thinking
+import anthropic
+
+client = anthropic.Anthropic()
+response = client.messages.create(
+    model="claude-opus-4-5",
+    max_tokens=16000,
+    thinking={"type": "enabled", "budget_tokens": 10000},
+    messages=[{"role": "user", "content": "Design the data model for a multi-tenant SaaS billing system."}]
+)
+```
+
+---
+
+## 3. Craft System Prompts Like Job Descriptions
+
+The system prompt sets the model's "role." Treat it like writing a detailed job description — the more specific you are, the better the output:
+
+```python
+# Weak system prompt
+system = "You are a helpful coding assistant."
+
+# Strong system prompt
+system = """You are a senior Python engineer specializing in backend API development.
+
+Your responsibilities:
+- Write clean, production-ready Python code following PEP 8 and type hints
+- Explain your technical decisions briefly
+- Point out potential edge cases and error handling gaps
+- Prefer built-in libraries over third-party when appropriate
+- Always consider performance for high-traffic scenarios (1000+ req/s)
+
+Constraints:
+- Do NOT write code without type annotations
+- Do NOT suggest deprecated libraries (e.g., no asyncio.coroutine)
+- If a requirement is ambiguous, ask a clarifying question instead of guessing
+
+Output format: code blocks with Python syntax highlighting, followed by a brief explanation."""
+```
+
+---
+
+## 4. Few-Shot Examples Beat Long Instructions
+
+Showing the model what you want is often more effective than describing it. Include 2-5 high-quality examples in your prompt:
+
+```python
+prompt = """Extract key information from support tickets.
+
+Examples:
+
+Ticket: "My order #12345 hasn't arrived and it's been 2 weeks. I need a refund."
+Output: {"ticket_type": "shipping", "order_id": "12345", "urgency": "high", "action": "refund"}
+
+Ticket: "How do I export my data to CSV?"
+Output: {"ticket_type": "how-to", "order_id": null, "urgency": "low", "action": "documentation"}
+
+Ticket: "Charged twice for subscription in March, please fix."
+Output: {"ticket_type": "billing", "order_id": null, "urgency": "high", "action": "credit"}
+
+Now extract from this ticket:
+{ticket_text}"""
+```
+
+---
+
+## 5. Control Hallucination with Grounding Constraints
+
+LLMs hallucinate when asked to recall facts they don't have. Ground responses in provided context:
+
+```python
+# Hallucination-prone
+prompt = "What are the system requirements for our software?"
+
+# Grounded — forces the model to cite from provided context
+prompt = """Answer the following question based ONLY on the documentation provided below.
+If the answer is not explicitly stated in the documentation, say "I don't have that information."
+Do NOT infer or guess.
+
+Documentation:
+{documentation_text}
+
+Question: {user_question}"""
+```
+
+---
+
+## 6. Temperature and Top-P for Consistent Outputs
+
+For production systems with structured outputs (JSON, code, classifications), use low temperature:
+
+```python
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[...],
+    temperature=0.0,    # Deterministic — best for structured outputs
+    # temperature=0.7,  # Creative — better for content generation
+    # temperature=1.0+  # Highly varied — brainstorming, ideation
+)
+```
+
+---
+
+## 7. Break Complex Tasks into Subtasks
+
+Single long prompts asking for many things at once degrade quality. Chain shorter, focused prompts instead:
+
+```python
+# One long prompt — quality degrades
+prompt = "Read this codebase, identify security vulnerabilities, suggest refactors, write tests, and create documentation."
+
+# Chained prompts — better results at each step
+async def code_review_pipeline(code: str):
+    # Step 1: Security analysis
+    security_issues = await analyze_security(code)
+
+    # Step 2: Refactoring suggestions (informed by security findings)
+    refactor_plan = await suggest_refactors(code, security_issues)
+
+    # Step 3: Write tests (informed by refactor plan)
+    tests = await write_tests(refactor_plan)
+
+    return {"security": security_issues, "refactors": refactor_plan, "tests": tests}
+```
+
+---
+
+## 8. Handle Token Limits Proactively
+
+Long prompts degrade quality (the "lost in the middle" problem) and increase costs. Use the [AI Context Window Visualizer](/tools/ai-context-window-visualizer) to understand what fits, and the [AI API Cost Calculator](/tools/ai-api-rate-limit-calculator) to estimate costs.
+
+Strategies for long content:
+- **Chunking** — split documents, process each chunk, synthesize results
+- **Summarization** — compress earlier context before adding new context
+- **Retrieval** — fetch only the relevant sections (RAG pattern)
+
+---
+
+## Common Prompt Anti-Patterns to Avoid
+
+| Anti-pattern | Problem | Fix |
+|---|---|---|
+| "Be concise" with no length constraint | Subjective — model's definition of concise varies | Specify: "Answer in 2-3 sentences" |
+| "Don't hallucinate" | Doesn't actually prevent hallucination | Ground with context + "only from provided text" |
+| Asking for 10 things in one prompt | Attention dilution, lower quality on each | Chain into subtasks |
+| No output format specified | Inconsistent structure, harder to parse | Always specify format (JSON, markdown table, etc.) |
+| Overly restrictive negative instructions | "Don't do X" is less reliable than "Do Y instead" | Reframe as positive instructions |
+
+---
+
+## Testing and Iteration
+
+Good prompts are discovered, not written. Build a systematic testing process:
+
+1. Create a golden dataset of 20-50 input/output pairs
+2. Score model outputs against expected results
+3. Iterate on the prompt to improve the score
+4. Track versions with tools like LangSmith or PromptLayer
+
+The [AI Prompt Template Tester](/tools/ai-prompt-template-tester) on DevPlaybook lets you quickly test prompts across multiple inputs without writing code.
+
+---
+
+Prompt engineering is engineering. Apply the same rigor you bring to code: version control your prompts, test them against real data, monitor production performance, and iterate. The models will keep improving — solid prompt architecture ensures you improve with them.

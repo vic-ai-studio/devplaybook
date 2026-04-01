@@ -1,0 +1,253 @@
+---
+title: "JavaScript Modules ESM vs CJS: What Every Developer Must Know"
+description: "ESM vs CommonJS: understand the difference, why it matters, how to migrate, dual-package publishing, and how to fix common interop errors."
+date: "2026-04-02"
+tags: [javascript, esm, commonjs, modules, nodejs, typescript]
+readingTime: "8 min read"
+---
+
+# JavaScript Modules ESM vs CJS: What Every Developer Must Know
+
+The JavaScript module system split between **CommonJS (CJS)** and **ES Modules (ESM)** has caused more developer confusion than almost any other ecosystem change. In 2026, ESM is the standard — but CJS is still everywhere, and the interop rules are non-obvious.
+
+---
+
+## The Two Module Systems
+
+### CommonJS (CJS) — Node.js original
+
+CommonJS was created for Node.js in 2009, long before JavaScript had official module syntax:
+
+```javascript
+// Importing (CJS)
+const fs = require('fs');
+const { readFile } = require('fs');
+const myLib = require('./myLib');
+
+// Exporting (CJS)
+module.exports = { greet, parse };
+module.exports.greet = function(name) { return `Hello, ${name}`; };
+```
+
+CJS is **synchronous** — `require()` blocks until the file is loaded. This works fine for disk reads at startup, but can't be used in browsers (no synchronous file I/O).
+
+### ES Modules (ESM) — the standard
+
+ESM was standardized in ES2015 (ES6) as the official JavaScript module system:
+
+```javascript
+// Importing (ESM)
+import fs from 'fs';
+import { readFile } from 'fs';
+import { greet } from './myLib.js';  // extension required!
+import type { User } from './types.js';  // TypeScript type-only import
+
+// Dynamic import (async, works everywhere)
+const module = await import('./heavy-module.js');
+
+// Exporting (ESM)
+export function greet(name) { return `Hello, ${name}`; }
+export default class MyClass {}
+export { greet, parse };
+```
+
+ESM is **asynchronous** — imports are evaluated at parse time, enabling static analysis and tree shaking. Works in browsers natively.
+
+---
+
+## Key Differences
+
+| | CJS | ESM |
+|---|---|---|
+| Syntax | `require()` / `module.exports` | `import` / `export` |
+| Loading | Synchronous | Asynchronous |
+| Resolution | Extensions optional | Extensions required (`.js`) |
+| Tree shaking | Limited | Full support |
+| Top-level await | Not supported | Supported |
+| Browser support | No | Yes (native) |
+| Node.js default | Yes (still) | Yes (with `.mjs` or `"type":"module"`) |
+
+---
+
+## File Extensions and package.json type
+
+Node.js uses file extensions and `package.json` to determine module format:
+
+```json
+// package.json — "type": "module" makes .js files ESM
+{
+  "type": "module"
+}
+```
+
+| Extension | Without "type" | With "type":"module" |
+|---|---|---|
+| `.js` | CJS | ESM |
+| `.cjs` | Always CJS | Always CJS |
+| `.mjs` | Always ESM | Always ESM |
+
+```bash
+# Explicit ESM — works regardless of package.json type
+node myfile.mjs
+
+# Explicit CJS — works regardless of package.json type
+node myfile.cjs
+```
+
+---
+
+## Common Interop Errors and Fixes
+
+### Error: Cannot use import statement in a module
+
+```
+SyntaxError: Cannot use import statement in a module
+```
+
+**Cause:** File is treated as CJS but contains ESM syntax.
+
+**Fix:**
+```json
+// Add to package.json:
+{ "type": "module" }
+// OR rename file to .mjs
+// OR if using bundler (Vite/webpack), let it handle the transform
+```
+
+### Error: require() of ES Module is not supported
+
+```
+Error [ERR_REQUIRE_ESM]: require() of ES Module not supported.
+```
+
+**Cause:** CJS code trying to `require()` a pure ESM package.
+
+**Fix:** Convert the CJS caller to ESM, OR use dynamic import:
+
+```javascript
+// Can't: require() an ESM package from CJS
+const esmPackage = require('pure-esm-package'); // ERR_REQUIRE_ESM
+
+// Can: dynamic import works from CJS
+const esmPackage = await import('pure-esm-package');
+```
+
+### __dirname and __filename in ESM
+
+These globals don't exist in ESM. Use `import.meta.url` instead:
+
+```javascript
+// CJS
+const path = require('path');
+const dir = __dirname;
+const file = __filename;
+
+// ESM equivalent
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+```
+
+---
+
+## TypeScript and ESM
+
+TypeScript adds another layer. Key tsconfig settings for ESM:
+
+```json
+{
+  "compilerOptions": {
+    "module": "NodeNext",      // or "ESNext" for bundled projects
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  }
+}
+```
+
+**Important:** With `"module": "NodeNext"`, TypeScript requires `.js` extensions in imports (even though you're writing `.ts` files):
+
+```typescript
+// WRONG with NodeNext resolution
+import { greet } from './utils';     // TS error: missing extension
+
+// CORRECT
+import { greet } from './utils.js';  // TypeScript resolves to utils.ts
+```
+
+---
+
+## Publishing an npm Package (Dual CJS + ESM)
+
+Supporting both CJS and ESM consumers requires a "dual package":
+
+```json
+{
+  "name": "my-package",
+  "main": "./dist/cjs/index.js",    // CJS entry
+  "module": "./dist/esm/index.js",  // ESM entry (bundlers use this)
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",  // ESM (import statement)
+      "require": "./dist/cjs/index.js", // CJS (require())
+      "types": "./dist/types/index.d.ts"
+    }
+  },
+  "types": "./dist/types/index.d.ts"
+}
+```
+
+Build both formats:
+
+```json
+{
+  "scripts": {
+    "build:esm": "tsc --outDir dist/esm --module esnext",
+    "build:cjs": "tsc --outDir dist/cjs --module commonjs",
+    "build": "npm run build:esm && npm run build:cjs"
+  }
+}
+```
+
+---
+
+## Migration: CJS to ESM
+
+For a Node.js app (not a library), the migration is straightforward:
+
+```bash
+# 1. Add "type": "module" to package.json
+# 2. Rename .js files to .mjs (if you want gradual migration)
+# 3. Update imports
+```
+
+```javascript
+// Before (CJS)
+const express = require('express');
+const { join } = require('path');
+const config = require('./config');
+
+// After (ESM)
+import express from 'express';
+import { join } from 'path';
+import config from './config.js';  // note: .js extension
+```
+
+---
+
+## Practical Guidance
+
+**For new Node.js applications:** Use ESM (`"type":"module"` in package.json). Top-level await alone is worth it.
+
+**For new npm libraries:** Publish dual CJS/ESM using the `exports` field. Don't force your users to choose.
+
+**For existing CJS codebases:** Don't migrate unless you have a specific reason. CJS works fine and the migration has real friction.
+
+**For TypeScript projects:** Use `"module": "NodeNext"` for Node.js apps. Use `"module": "ESNext"` for bundled browser apps.
+
+---
+
+Use the [JavaScript Module Checker](/tools/javascript-module-checker) to diagnose interop issues, and the [package.json Validator](/tools/package-json-validator) to verify your exports field is correct. The ESM/CJS split is a solved problem once you understand the rules — it just takes a bit of upfront learning.

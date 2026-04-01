@@ -1,0 +1,269 @@
+---
+title: "Retrieval Augmented Generation (RAG) Tutorial: Build Your Own"
+description: "Step-by-step RAG tutorial: embed documents, store in a vector database, retrieve relevant chunks, and generate grounded answers. Python code with OpenAI and ChromaDB."
+date: "2026-04-02"
+tags: [ai, rag, llm, vector-database, openai, langchain]
+readingTime: "11 min read"
+---
+
+# Retrieval Augmented Generation (RAG) Tutorial: Build Your Own
+
+RAG (Retrieval Augmented Generation) solves the two biggest problems with raw LLMs: hallucinations and stale knowledge. Instead of hoping the model remembers relevant facts, you dynamically retrieve those facts from your own data and inject them into the prompt.
+
+This tutorial builds a working RAG system from scratch with Python, OpenAI embeddings, and ChromaDB.
+
+---
+
+## How RAG Works
+
+The RAG pipeline has two phases:
+
+**Indexing (offline, run once):**
+1. Load your documents (PDFs, docs, web pages)
+2. Split them into chunks
+3. Embed each chunk into a vector (numerical representation of meaning)
+4. Store chunks + vectors in a vector database
+
+**Querying (online, every request):**
+1. Embed the user's question into a vector
+2. Find the most semantically similar document chunks (vector search)
+3. Inject those chunks into the LLM prompt as context
+4. Generate an answer grounded in your retrieved documents
+
+---
+
+## Setup
+
+```bash
+pip install openai chromadb langchain langchain-openai tiktoken pypdf
+```
+
+```python
+import os
+os.environ["OPENAI_API_KEY"] = "your-key-here"
+```
+
+---
+
+## Step 1: Load and Chunk Documents
+
+The chunking strategy is critical — too large and context gets diluted, too small and you lose context. 512-1024 tokens with ~100 token overlap is a common starting point:
+
+```python
+from langchain.document_loaders import PyPDFLoader, DirectoryLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+# Load documents
+loader = DirectoryLoader("./docs", glob="**/*.pdf", loader_cls=PyPDFLoader)
+documents = loader.load()
+
+# Chunk documents
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,      # characters per chunk (not tokens)
+    chunk_overlap=200,    # overlap to preserve context across chunk boundaries
+    separators=["\n\n", "\n", " ", ""],  # try largest separators first
+)
+chunks = splitter.split_documents(documents)
+
+print(f"Loaded {len(documents)} documents → {len(chunks)} chunks")
+```
+
+For non-PDF content:
+
+```python
+from langchain.document_loaders import TextLoader, WebBaseLoader
+
+# Plain text
+text_loader = TextLoader("./README.md")
+
+# Web pages
+web_loader = WebBaseLoader(["https://docs.example.com/api"])
+```
+
+---
+
+## Step 2: Embed and Store in ChromaDB
+
+```python
+from langchain_openai import OpenAIEmbeddings
+from langchain.vectorstores import Chroma
+
+# Initialize embeddings model
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")  # 1536 dims, $0.02/1M tokens
+
+# Create vector store and embed all chunks
+# This calls the OpenAI API once per chunk — cache the result
+vectorstore = Chroma.from_documents(
+    documents=chunks,
+    embedding=embeddings,
+    persist_directory="./chroma_db",  # persist to disk
+    collection_name="my_docs",
+)
+
+print(f"Indexed {vectorstore._collection.count()} chunks")
+```
+
+Load an existing vector store on subsequent runs:
+
+```python
+vectorstore = Chroma(
+    persist_directory="./chroma_db",
+    embedding_function=embeddings,
+    collection_name="my_docs",
+)
+```
+
+---
+
+## Step 3: Retrieve Relevant Chunks
+
+```python
+# Simple similarity search
+retriever = vectorstore.as_retriever(
+    search_type="similarity",
+    search_kwargs={"k": 5},  # return top 5 most relevant chunks
+)
+
+# Test retrieval
+question = "What are the rate limits for the API?"
+relevant_docs = retriever.invoke(question)
+
+for i, doc in enumerate(relevant_docs):
+    print(f"\n--- Chunk {i+1} (score: {doc.metadata.get('score', 'N/A')}) ---")
+    print(doc.page_content[:300])
+```
+
+### Advanced: MMR Retrieval
+
+Maximum Marginal Relevance (MMR) balances relevance with diversity — avoids returning 5 chunks that all say the same thing:
+
+```python
+retriever = vectorstore.as_retriever(
+    search_type="mmr",
+    search_kwargs={
+        "k": 5,
+        "fetch_k": 20,   # fetch 20, then pick the 5 most diverse
+        "lambda_mult": 0.7,  # 0=max diversity, 1=max relevance
+    },
+)
+```
+
+---
+
+## Step 4: Generate a Grounded Answer
+
+```python
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+
+# Prompt that forces grounding
+prompt_template = ChatPromptTemplate.from_template("""
+Answer the question based ONLY on the following context.
+If the answer is not in the context, say "I don't have that information in my knowledge base."
+Do not use prior knowledge.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:""")
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+def format_docs(docs):
+    return "\n\n---\n\n".join([doc.page_content for doc in docs])
+
+# Build the RAG chain using LCEL
+rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt_template
+    | llm
+    | StrOutputParser()
+)
+
+# Ask a question
+answer = rag_chain.invoke("What are the rate limits for the API?")
+print(answer)
+```
+
+---
+
+## Step 5: Add Citations
+
+Production RAG systems should cite their sources so users can verify answers:
+
+```python
+from langchain_core.runnables import RunnableParallel
+
+rag_chain_with_sources = RunnableParallel(
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+).assign(answer=prompt_template | llm | StrOutputParser())
+
+result = rag_chain_with_sources.invoke("What are the rate limits?")
+print("Answer:", result["answer"])
+print("\nSources:")
+for doc in retriever.invoke("What are the rate limits?"):
+    print(f"  - {doc.metadata.get('source', 'unknown')} (page {doc.metadata.get('page', '?')})")
+```
+
+---
+
+## Production Considerations
+
+### Chunking Strategy
+
+| Content Type | Recommended Strategy |
+|---|---|
+| Technical docs | Semantic chunking by section headings |
+| PDFs | Page-aware chunking, preserve table structure |
+| Code | Function/class-level chunking |
+| Conversation logs | Turn-based chunking |
+
+### Embedding Model Choice
+
+| Model | Dims | Quality | Cost |
+|---|---|---|---|
+| `text-embedding-3-small` | 1536 | Good | $0.02/1M tokens |
+| `text-embedding-3-large` | 3072 | Better | $0.13/1M tokens |
+| `nomic-embed-text` (local) | 768 | Good | Free |
+
+### Hybrid Search (Vector + Keyword)
+
+Pure vector search misses exact keyword matches (product names, codes, IDs). Combine with BM25 for production:
+
+```python
+from langchain.retrievers import EnsembleRetriever
+from langchain_community.retrievers import BM25Retriever
+
+bm25_retriever = BM25Retriever.from_documents(chunks, k=5)
+vector_retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+
+# 40% keyword, 60% semantic
+hybrid_retriever = EnsembleRetriever(
+    retrievers=[bm25_retriever, vector_retriever],
+    weights=[0.4, 0.6]
+)
+```
+
+---
+
+## Evaluating RAG Quality
+
+A RAG system is only as good as its retrieval. Measure:
+
+1. **Retrieval relevance** — are the retrieved chunks actually relevant to the question?
+2. **Answer faithfulness** — does the answer stick to the retrieved context?
+3. **Answer correctness** — is the answer factually right?
+
+Tools: [RAGAS](https://docs.ragas.io/), [LangSmith](https://smith.langchain.com/), [Arize Phoenix](https://phoenix.arize.com/).
+
+---
+
+## Complete Example
+
+The full working code is under 100 lines. Use the [AI Embeddings Dimension Explorer](/tools/ai-embeddings-dimension-explorer) to understand how different embedding models compare, and the [AI Context Window Visualizer](/tools/ai-context-window-visualizer) to optimize your chunk sizes relative to your LLM's context window.
+
+RAG is now table stakes for any LLM application that needs to answer questions about proprietary or recent information. The pattern is simple; the craft is in tuning the retrieval strategy for your specific data and use case.

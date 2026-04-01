@@ -1,0 +1,306 @@
+---
+title: "Web Workers and Shared Workers: Offload CPU-Heavy Tasks in JavaScript"
+description: "Learn how to use Web Workers and Shared Workers to run CPU-intensive code off the main thread. Includes practical examples for image processing, data parsing, and crypto operations."
+date: "2026-04-02"
+tags: [javascript, web-workers, performance, frontend, browser]
+readingTime: "9 min read"
+---
+
+# Web Workers and Shared Workers: Offload CPU-Heavy Tasks in JavaScript
+
+JavaScript runs on a single thread. One expensive operation — parsing a large CSV, resizing an image, running a complex algorithm — blocks the entire UI. Web Workers solve this by providing true parallel execution in the browser.
+
+---
+
+## Why Web Workers Matter
+
+The browser's main thread handles rendering, user interaction, JavaScript execution, and layout — all in sequence. When your code takes more than ~16ms (one frame at 60fps), the UI freezes.
+
+```javascript
+// This freezes the UI for however long it takes
+function expensiveOperation(data) {
+  let result = 0;
+  for (let i = 0; i < data.length * 1000000; i++) {
+    result += Math.sqrt(data[i]);
+  }
+  return result;
+}
+
+button.onclick = () => {
+  const result = expensiveOperation(largeDataset);  // UI is frozen during this
+  display.textContent = result;
+};
+```
+
+Move it to a Web Worker:
+
+```javascript
+// main.js
+const worker = new Worker('./expensive-worker.js');
+
+worker.postMessage({ data: largeDataset });
+
+worker.onmessage = (event) => {
+  display.textContent = event.data.result;  // UI stays responsive
+};
+```
+
+---
+
+## Basic Web Worker
+
+### Creating a Worker
+
+```javascript
+// worker.js — runs in a separate thread
+self.onmessage = function(event) {
+  const { data } = event.data;
+
+  // This runs off the main thread — UI stays responsive
+  let result = 0;
+  for (let i = 0; i < data.length * 1000000; i++) {
+    result += Math.sqrt(data[i]);
+  }
+
+  self.postMessage({ result });
+};
+```
+
+```javascript
+// main.js
+const worker = new Worker('./worker.js');
+
+// Send data to worker
+worker.postMessage({ data: [1, 2, 3, 4, 5] });
+
+// Receive result
+worker.onmessage = (event) => {
+  console.log('Result:', event.data.result);
+};
+
+// Handle errors
+worker.onerror = (error) => {
+  console.error('Worker error:', error.message);
+};
+
+// Terminate when done
+worker.terminate();
+```
+
+### Inline Workers (no separate file)
+
+```javascript
+const workerCode = `
+  self.onmessage = function(e) {
+    const result = e.data.numbers.reduce((sum, n) => sum + n, 0);
+    self.postMessage({ sum: result });
+  };
+`;
+
+const blob = new Blob([workerCode], { type: 'application/javascript' });
+const worker = new Worker(URL.createObjectURL(blob));
+```
+
+---
+
+## Transferable Objects (Zero-Copy Transfer)
+
+By default, data sent to workers is **copied** (structured clone algorithm). For large ArrayBuffers, use Transferable Objects to transfer ownership instead — O(1) instead of O(n):
+
+```javascript
+// Create a large buffer
+const buffer = new ArrayBuffer(100 * 1024 * 1024); // 100MB
+const view = new Float64Array(buffer);
+// ... fill with data
+
+// SLOW: copies 100MB
+worker.postMessage({ buffer });
+
+// FAST: transfers ownership, buffer is unusable in main thread after this
+worker.postMessage({ buffer }, [buffer]);
+// buffer.byteLength === 0 now in main thread
+```
+
+This is critical for image processing, audio, or any large binary data.
+
+---
+
+## Practical Example: Parse a Large CSV
+
+```javascript
+// csv-worker.js
+self.onmessage = function(event) {
+  const { csvText } = event.data;
+
+  const rows = csvText
+    .trim()
+    .split('\n')
+    .map(line => line.split(',').map(cell => cell.trim()));
+
+  const headers = rows[0];
+  const records = rows.slice(1).map(row =>
+    Object.fromEntries(headers.map((h, i) => [h, row[i]]))
+  );
+
+  self.postMessage({ records, count: records.length });
+};
+
+// main.js
+async function parseCSV(file) {
+  const csvText = await file.text();
+  const worker = new Worker('./csv-worker.js');
+
+  return new Promise((resolve, reject) => {
+    worker.postMessage({ csvText });
+    worker.onmessage = e => { resolve(e.data); worker.terminate(); };
+    worker.onerror = e => { reject(e); worker.terminate(); };
+  });
+}
+
+fileInput.onchange = async (e) => {
+  const { records, count } = await parseCSV(e.target.files[0]);
+  console.log(`Parsed ${count} records`);
+};
+```
+
+---
+
+## Worker Pools for Repeated Tasks
+
+Creating workers has overhead. For repeated tasks, maintain a pool:
+
+```javascript
+class WorkerPool {
+  constructor(workerScript, poolSize = navigator.hardwareConcurrency || 4) {
+    this.workers = Array.from({ length: poolSize }, () => ({
+      worker: new Worker(workerScript),
+      busy: false,
+    }));
+    this.queue = [];
+  }
+
+  run(data) {
+    return new Promise((resolve, reject) => {
+      const task = { data, resolve, reject };
+      const availableWorker = this.workers.find(w => !w.busy);
+
+      if (availableWorker) {
+        this._execute(availableWorker, task);
+      } else {
+        this.queue.push(task);
+      }
+    });
+  }
+
+  _execute(workerEntry, task) {
+    workerEntry.busy = true;
+    workerEntry.worker.onmessage = (e) => {
+      task.resolve(e.data);
+      workerEntry.busy = false;
+      if (this.queue.length > 0) {
+        this._execute(workerEntry, this.queue.shift());
+      }
+    };
+    workerEntry.worker.onerror = (e) => {
+      task.reject(e);
+      workerEntry.busy = false;
+    };
+    workerEntry.worker.postMessage(task.data);
+  }
+
+  terminate() {
+    this.workers.forEach(w => w.worker.terminate());
+  }
+}
+
+// Usage
+const pool = new WorkerPool('./image-processor.js', 4);
+
+const results = await Promise.all(
+  images.map(img => pool.run({ imageData: img }))
+);
+```
+
+---
+
+## Shared Workers: Share State Across Tabs
+
+A Shared Worker is shared across multiple browser tabs/windows from the same origin. Useful for shared WebSocket connections, caching, or background sync:
+
+```javascript
+// shared-worker.js
+const connections = new Set();
+
+self.onconnect = function(event) {
+  const port = event.ports[0];
+  connections.add(port);
+
+  port.onmessage = function(e) {
+    if (e.data.type === 'broadcast') {
+      // Send to ALL connected tabs
+      connections.forEach(p => {
+        if (p !== port) p.postMessage(e.data);
+      });
+    }
+  };
+
+  port.onmessageerror = () => connections.delete(port);
+  port.start();
+};
+```
+
+```javascript
+// main.js (in each tab)
+const worker = new SharedWorker('./shared-worker.js');
+const port = worker.port;
+
+port.start();
+port.postMessage({ type: 'broadcast', payload: 'Hello from tab!' });
+port.onmessage = (e) => console.log('Received:', e.data.payload);
+```
+
+---
+
+## Web Workers with TypeScript and Vite
+
+Modern tooling makes Workers easy:
+
+```typescript
+// Vite: import worker as a module
+import MyWorker from './worker?worker';
+const worker = new MyWorker();
+
+// With TypeScript types
+// worker.ts
+/// <reference lib="webworker" />
+declare const self: DedicatedWorkerGlobalScope;
+
+self.onmessage = (event: MessageEvent<{ numbers: number[] }>) => {
+  const sum = event.data.numbers.reduce((a, b) => a + b, 0);
+  self.postMessage({ sum });
+};
+```
+
+---
+
+## When to Use Web Workers
+
+**Good candidates:**
+- Parsing large JSON, CSV, XML files
+- Image manipulation (resize, filter, compress)
+- Cryptographic operations (hashing, encryption)
+- Heavy data transformations before rendering
+- Scientific calculations, simulations
+
+**Not a good fit:**
+- DOM manipulation (Workers can't access DOM)
+- Operations that finish in < 5ms (worker overhead not worth it)
+- Simple async I/O (use async/await instead — I/O is already non-blocking)
+
+---
+
+Related: Use the [JavaScript Performance Benchmarks](/tools/javascript-performance-benchmarks) to measure if your operation actually needs a worker, and the [Web Crypto API Tester](/tools/web-crypto-api-tester) which demonstrates Workers with real cryptographic workloads.
+
+---
+
+Web Workers are one of JavaScript's most underused performance tools. For any operation that makes your UI stutter, offloading to a Worker is often the cleanest fix — no complex caching, no approximations, just genuine parallelism in the browser.

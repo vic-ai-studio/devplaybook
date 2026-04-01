@@ -1,0 +1,281 @@
+---
+title: "OpenAI vs Anthropic vs Google Gemini: API Comparison for Developers"
+description: "Compare OpenAI, Anthropic Claude, and Google Gemini APIs: pricing, context windows, function calling, rate limits, streaming, and which to choose for each use case in 2026."
+date: "2026-04-02"
+tags: [ai, openai, anthropic, gemini, llm, api]
+readingTime: "10 min read"
+---
+
+# OpenAI vs Anthropic vs Google Gemini: API Comparison for Developers
+
+You've decided to build with an LLM API. Now which one? OpenAI, Anthropic, and Google each offer capable models, but they differ significantly in pricing, developer experience, context windows, and performance on different task types.
+
+This comparison focuses on what developers actually care about: API design, pricing, rate limits, and real-world trade-offs.
+
+---
+
+## Model Overview (2026)
+
+| Provider | Flagship Model | Context Window | Best At |
+|---|---|---|---|
+| OpenAI | GPT-4o / o3 | 128K (GPT-4o) / 200K (o1) | General tasks, function calling, image input |
+| Anthropic | Claude Opus 4.5 / Sonnet 4.6 | 200K | Long document analysis, coding, safety |
+| Google | Gemini 2.0 Ultra / Flash | 1M (Flash) | Multimodal, long context, cost efficiency |
+
+---
+
+## Pricing Comparison
+
+Pricing as of Q1 2026 (input/output per 1M tokens):
+
+| Model | Input | Output | Notes |
+|---|---|---|---|
+| GPT-4o | $2.50 | $10.00 | Best general-purpose balance |
+| GPT-4o mini | $0.15 | $0.60 | Budget tier |
+| o3-mini | $1.10 | $4.40 | Reasoning model, high value |
+| Claude Opus 4.5 | $15.00 | $75.00 | Premium, complex tasks |
+| Claude Sonnet 4.6 | $3.00 | $15.00 | Best cost/performance |
+| Claude Haiku 4.5 | $0.80 | $4.00 | Fast, budget |
+| Gemini 2.0 Flash | $0.10 | $0.40 | Extremely cheap, 1M context |
+| Gemini 2.0 Ultra | $5.00 | $15.00 | Multimodal premium |
+
+Use the [AI API Cost Calculator](/tools/ai-api-rate-limit-calculator) to estimate your monthly costs for a specific use case.
+
+---
+
+## API Design & Developer Experience
+
+### OpenAI
+
+OpenAI's API is the de facto standard. Most third-party tools, frameworks, and tutorials default to it. The SDK is clean and well-documented:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(api_key="sk-...")
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Explain async/await in Python."}
+    ],
+    temperature=0.3,
+    max_tokens=1000,
+)
+
+print(response.choices[0].message.content)
+print(f"Tokens used: {response.usage.total_tokens}")
+```
+
+**Structured outputs** (guaranteed JSON schema compliance):
+
+```python
+from pydantic import BaseModel
+
+class CodeReview(BaseModel):
+    has_issues: bool
+    severity: str
+    issues: list[str]
+
+response = client.beta.chat.completions.parse(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": f"Review this code: {code}"}],
+    response_format=CodeReview,
+)
+review = response.choices[0].message.parsed
+```
+
+### Anthropic Claude
+
+Claude's API has excellent long-document handling and is the safest choice for applications with sensitive content:
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(api_key="sk-ant-...")
+
+message = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    system="You are an expert code reviewer.",
+    messages=[
+        {"role": "user", "content": "Review this Python function for bugs."}
+    ],
+)
+
+print(message.content[0].text)
+print(f"Input tokens: {message.usage.input_tokens}")
+```
+
+**Claude-specific: Extended thinking** for complex reasoning:
+
+```python
+response = client.messages.create(
+    model="claude-opus-4-5",
+    max_tokens=16000,
+    thinking={"type": "enabled", "budget_tokens": 10000},
+    messages=[{"role": "user", "content": "Design a distributed rate limiting system."}]
+)
+# response.content[0] is the thinking block
+# response.content[1] is the answer
+```
+
+### Google Gemini
+
+Gemini's 1M token context window is a genuine differentiator — you can pass entire codebases or full books:
+
+```python
+import google.generativeai as genai
+
+genai.configure(api_key="AIza...")
+model = genai.GenerativeModel("gemini-2.0-flash")
+
+response = model.generate_content("Summarize this codebase: " + entire_codebase)
+print(response.text)
+```
+
+For OpenAI compatibility (easier migration), Gemini supports the OpenAI SDK format:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="AIza...",
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+)
+
+response = client.chat.completions.create(
+    model="gemini-2.0-flash",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+```
+
+---
+
+## Function Calling / Tool Use
+
+All three support tool use, but with slightly different APIs:
+
+```python
+# OpenAI tool definition
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather for a city",
+            "parameters": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            },
+        },
+    }
+]
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
+    tools=tools,
+    tool_choice="auto",
+)
+```
+
+```python
+# Anthropic tool definition (same concept, different schema)
+tools = [
+    {
+        "name": "get_weather",
+        "description": "Get current weather for a city",
+        "input_schema": {
+            "type": "object",
+            "properties": {"city": {"type": "string", "description": "City name"}},
+            "required": ["city"],
+        },
+    }
+]
+
+response = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    tools=tools,
+    messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
+)
+```
+
+---
+
+## Streaming
+
+All three support streaming for responsive UIs:
+
+```python
+# OpenAI streaming
+with client.chat.completions.stream(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Write a poem."}],
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)
+
+# Anthropic streaming
+with client.messages.stream(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Write a poem."}],
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)
+```
+
+---
+
+## Rate Limits
+
+Rate limits vary by tier. Use the [AI API Rate Limit Calculator](/tools/ai-api-rate-limit-calculator) to plan your application's throughput.
+
+General guidance:
+- **OpenAI** — tiered limits tied to spend history. Tier 1 starts at $5 credit. RPM increases automatically as you spend more.
+- **Anthropic** — similar tier system. Sonnet has higher limits than Opus.
+- **Google Gemini** — free tier is generous; paid tier limits are high for Flash.
+
+---
+
+## When to Choose Each
+
+### Choose OpenAI when:
+- You want maximum ecosystem compatibility (LangChain, LlamaIndex, every tool defaults to OpenAI)
+- You need structured output with schema validation
+- You're building multi-modal apps with vision capabilities
+- You want reasoning models (o3, o3-mini) for complex problem-solving
+
+### Choose Anthropic Claude when:
+- You're processing long documents (contracts, codebases, research papers) — 200K context is excellent
+- Safety and refusal behavior matters (Claude refuses harmful requests more consistently)
+- You need extended thinking for hard reasoning problems
+- You're building coding tools (Claude Sonnet benchmarks strongly on code)
+
+### Choose Google Gemini when:
+- You need the 1M token context window (analyze entire repositories)
+- Cost efficiency is critical — Gemini Flash is the cheapest capable model
+- You're building on Google Cloud / Vertex AI
+- You need multimodal with video understanding
+
+### Hedging: Multi-Provider with LiteLLM
+
+For production systems, abstract the provider layer so you can switch models:
+
+```python
+import litellm
+
+# Works with OpenAI, Anthropic, Gemini, Cohere, and 100+ more
+response = litellm.completion(
+    model="anthropic/claude-sonnet-4-6",  # or "gpt-4o" or "gemini/gemini-2.0-flash"
+    messages=[{"role": "user", "content": "Hello"}],
+)
+```
+
+---
+
+The "best" API depends entirely on your use case. For most new projects, Claude Sonnet 4.6 or GPT-4o offer the best balance of capability and cost. For budget-conscious high-volume use cases, Gemini Flash is hard to beat. Build with provider abstraction from day one so you can switch when pricing or capabilities change.
