@@ -1,0 +1,278 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a system prompt and how does it differ from a user message?", answer: "The system prompt sets the AI's persona, constraints, and behavior rules — it persists across the conversation. The user message is the per-request input from the user. For most LLM APIs, the system prompt is sent in the 'system' role, while user inputs use the 'user' role. Always separate concerns: put instructions in system, data in user." },
+  { question: "When should I use JSON mode?", answer: "Enable JSON mode when you need structured output you'll parse programmatically (extracting entities, classification labels, function arguments). Always include a JSON schema example in your prompt when using JSON mode — models perform much better with a concrete example than abstract instructions." },
+  { question: "How do I write effective system prompts?", answer: "Be specific and concrete. Define: persona (who the AI is), task (what it does), constraints (what it never does), output format (structure/length), and tone. Use XML-style delimiters (<context>, <question>, <output>) to clearly separate sections. Short, explicit instructions outperform long verbose ones." },
+  { question: "What are prompt variables and how do I use them?", answer: "Variables ({{variable_name}}) are placeholders replaced at runtime with actual values. Use variables for: user inputs, retrieved context (RAG), dynamic data. Keep static instructions in the system prompt and dynamic data in the user message. This makes your prompt cacheable (Anthropic prompt caching, OpenAI cached completions)." },
+];
+---
+
+<BaseLayout
+  title="LLM Prompt Template Builder — System, User & Assistant Role Editor"
+  description="Build structured LLM prompts with system/user/assistant roles. Add variables, toggle JSON mode, preview API payload, and copy ready-to-use Python/JS SDK code."
+  tool="LLM prompt template builder, system prompt builder, OpenAI prompt template, Claude system prompt, JSON mode prompt"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">LLM Prompt Template Builder</h1>
+  <p class="text-text-muted mb-6">Build structured prompts with system/user/assistant roles. Add <code class="bg-bg-card px-1 rounded text-xs">{"{{variables}}"}</code>, toggle JSON mode, and copy ready-to-use API code.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> System + user + assistant roles</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Variable substitution</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> JSON mode toggle</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy Python/JS code</span>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+    <div>
+      <label class="block text-sm font-medium mb-1">Model</label>
+      <select id="model-select" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary">
+        <option value="gpt-4o">GPT-4o (OpenAI)</option>
+        <option value="gpt-4o-mini">GPT-4o Mini (OpenAI)</option>
+        <option value="claude-sonnet-4-5">claude-sonnet-4-5 (Anthropic)</option>
+        <option value="claude-haiku-4-5">claude-haiku-4-5 (Anthropic)</option>
+        <option value="gemini-1.5-pro">gemini-1.5-pro (Google)</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Max tokens</label>
+      <input id="max-tokens" type="number" value="1000" min="1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Temperature</label>
+      <input id="temperature" type="number" value="0.7" min="0" max="2" step="0.1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+  </div>
+
+  <div class="flex items-center gap-4 mb-4">
+    <label class="flex items-center gap-2 text-sm cursor-pointer">
+      <input type="checkbox" id="json-mode" class="w-4 h-4 accent-primary" />
+      <span>JSON mode</span>
+    </label>
+    <label class="flex items-center gap-2 text-sm cursor-pointer">
+      <input type="checkbox" id="streaming" class="w-4 h-4 accent-primary" />
+      <span>Streaming</span>
+    </label>
+  </div>
+
+  <div class="space-y-3 mb-4">
+    <div>
+      <label class="block text-sm font-medium mb-1">
+        <span class="bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded text-xs mr-2">system</span>
+        System prompt
+      </label>
+      <textarea id="system-prompt" rows="5" placeholder="You are a helpful assistant. {{persona}}" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y">You are a helpful {{role}} assistant. Always respond in a {{tone}} tone. {{additional_instructions}}</textarea>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">
+        <span class="bg-green-500/20 text-green-300 px-2 py-0.5 rounded text-xs mr-2">user</span>
+        User message template
+      </label>
+      <textarea id="user-prompt" rows="4" placeholder="{{user_input}}" class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y">Context: {{context}}
+
+Question: {{question}}</textarea>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">
+        <span class="bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded text-xs mr-2">assistant</span>
+        Assistant prefill <span class="text-xs text-text-muted">(optional, forces start of response)</span>
+      </label>
+      <input id="assistant-prefill" type="text" placeholder='{"result":' class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm font-mono focus:outline-none focus:border-primary" />
+    </div>
+  </div>
+
+  <!-- Variable editor -->
+  <div id="variables-section" class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <h3 class="font-medium mb-3 text-sm">Detected Variables <span id="var-count" class="text-text-muted font-normal"></span></h3>
+    <div id="variable-inputs" class="space-y-2"></div>
+    <p class="text-xs text-text-muted mt-2">Variables in <code class="bg-bg-surface px-1 rounded">{"{{double_braces}}"}</code> are auto-detected. Fill values to preview resolved prompt.</p>
+  </div>
+
+  <!-- Preview tabs -->
+  <div class="mb-2">
+    <div class="flex gap-1 mb-3">
+      <button data-tab="preview" class="tab-btn active px-3 py-1.5 text-xs rounded border border-primary bg-primary/10 text-primary">Preview</button>
+      <button data-tab="python" class="tab-btn px-3 py-1.5 text-xs rounded border border-border text-text-muted hover:text-primary hover:border-primary">Python</button>
+      <button data-tab="js" class="tab-btn px-3 py-1.5 text-xs rounded border border-border text-text-muted hover:text-primary hover:border-primary">JavaScript</button>
+      <button data-tab="json" class="tab-btn px-3 py-1.5 text-xs rounded border border-border text-text-muted hover:text-primary hover:border-primary">JSON payload</button>
+    </div>
+    <div class="relative">
+      <pre id="code-output" class="bg-bg-card border border-border rounded-lg p-4 text-xs font-mono overflow-auto max-h-64 whitespace-pre-wrap text-text-muted"></pre>
+      <button id="copy-btn" class="absolute top-2 right-2 text-xs px-2 py-1 bg-primary/20 hover:bg-primary/30 text-primary rounded transition-colors">Copy</button>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="LLM Prompt Template Builder" relatedTags={['ai', 'openai', 'claude', 'gemini', 'prompt-engineering', 'llm']} />
+</BaseLayout>
+
+<script>
+  let activeTab = 'preview';
+  const varValues: Record<string, string> = {};
+
+  function getVars(text: string): string[] {
+    const matches = text.match(/\{\{([^}]+)\}\}/g) || [];
+    return [...new Set(matches.map(m => m.slice(2, -2).trim()))];
+  }
+
+  function resolve(text: string): string {
+    return text.replace(/\{\{([^}]+)\}\}/g, (_, key) => varValues[key.trim()] || `{{${key.trim()}}}`);
+  }
+
+  function buildVarInputs() {
+    const sys = (document.getElementById('system-prompt') as HTMLTextAreaElement).value;
+    const usr = (document.getElementById('user-prompt') as HTMLTextAreaElement).value;
+    const allVars = getVars(sys + ' ' + usr);
+    const container = document.getElementById('variable-inputs')!;
+    document.getElementById('var-count')!.textContent = `(${allVars.length})`;
+    container.innerHTML = allVars.map(v => `
+      <div class="flex items-center gap-2">
+        <label class="text-xs font-mono text-primary w-36 shrink-0">{{${v}}}</label>
+        <input type="text" data-var="${v}" placeholder="value for ${v}" value="${varValues[v] || ''}"
+          class="flex-1 bg-bg-surface border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-primary" />
+      </div>`).join('');
+    container.querySelectorAll('input[data-var]').forEach(el => {
+      el.addEventListener('input', (e) => {
+        const key = (e.target as HTMLInputElement).dataset.var!;
+        varValues[key] = (e.target as HTMLInputElement).value;
+        renderOutput();
+      });
+    });
+  }
+
+  function buildPayload() {
+    const model = (document.getElementById('model-select') as HTMLSelectElement).value;
+    const maxTok = parseInt((document.getElementById('max-tokens') as HTMLInputElement).value) || 1000;
+    const temp = parseFloat((document.getElementById('temperature') as HTMLInputElement).value) ?? 0.7;
+    const jsonMode = (document.getElementById('json-mode') as HTMLInputElement).checked;
+    const stream = (document.getElementById('streaming') as HTMLInputElement).checked;
+    const sysTpl = (document.getElementById('system-prompt') as HTMLTextAreaElement).value;
+    const usrTpl = (document.getElementById('user-prompt') as HTMLTextAreaElement).value;
+    const prefill = (document.getElementById('assistant-prefill') as HTMLInputElement).value;
+
+    const sysResolved = resolve(sysTpl);
+    const usrResolved = resolve(usrTpl);
+
+    const messages: {role: string; content: string}[] = [
+      { role: 'system', content: sysResolved },
+      { role: 'user', content: usrResolved },
+    ];
+    if (prefill.trim()) messages.push({ role: 'assistant', content: prefill.trim() });
+
+    const payload: Record<string, unknown> = { model, messages, max_tokens: maxTok, temperature: temp };
+    if (jsonMode) payload.response_format = { type: 'json_object' };
+    if (stream) payload.stream = true;
+    return payload;
+  }
+
+  function renderOutput() {
+    const tab = activeTab;
+    const payload = buildPayload();
+    const model = payload.model as string;
+    const isAnthropic = (model as string).startsWith('claude');
+    let output = '';
+
+    if (tab === 'json') {
+      output = JSON.stringify(payload, null, 2);
+    } else if (tab === 'python') {
+      if (isAnthropic) {
+        const msgs = (payload.messages as {role: string; content: string}[]).filter(m => m.role !== 'system');
+        const sys = ((payload.messages as {role: string; content: string}[]).find(m => m.role === 'system')?.content || '').replace(/`/g, '\\`');
+        output = `import anthropic
+
+client = anthropic.Anthropic()
+message = client.messages.create(
+    model="${model}",
+    max_tokens=${payload.max_tokens},
+    system="""${sys}""",
+    messages=${JSON.stringify(msgs, null, 4)},
+)
+print(message.content[0].text)`;
+      } else {
+        output = `from openai import OpenAI
+
+client = OpenAI()
+response = client.chat.completions.create(
+    model="${model}",
+    messages=${JSON.stringify(payload.messages, null, 4)},
+    max_tokens=${payload.max_tokens},
+    temperature=${payload.temperature},${(payload as Record<string, unknown>).response_format ? `\n    response_format={"type": "json_object"},` : ''}${payload.stream ? '\n    stream=True,' : ''}
+)
+print(response.choices[0].message.content)`;
+      }
+    } else if (tab === 'js') {
+      if (isAnthropic) {
+        const msgs = (payload.messages as {role: string; content: string}[]).filter(m => m.role !== 'system');
+        const sys = ((payload.messages as {role: string; content: string}[]).find(m => m.role === 'system')?.content || '');
+        output = `import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic();
+const message = await client.messages.create({
+  model: "${model}",
+  max_tokens: ${payload.max_tokens},
+  system: \`${sys}\`,
+  messages: ${JSON.stringify(msgs, null, 2)},
+});
+console.log(message.content[0].text);`;
+      } else {
+        output = `import OpenAI from "openai";
+
+const openai = new OpenAI();
+const response = await openai.chat.completions.create({
+  model: "${model}",
+  messages: ${JSON.stringify(payload.messages, null, 2)},
+  max_tokens: ${payload.max_tokens},
+  temperature: ${payload.temperature},${(payload as Record<string, unknown>).response_format ? '\n  response_format: { type: "json_object" },' : ''}${payload.stream ? '\n  stream: true,' : ''}
+});
+console.log(response.choices[0].message.content);`;
+      }
+    } else {
+      // preview
+      const msgs = payload.messages as {role: string; content: string}[];
+      output = msgs.map(m => `[${m.role.toUpperCase()}]\n${m.content}`).join('\n\n---\n\n');
+    }
+
+    document.getElementById('code-output')!.textContent = output;
+  }
+
+  // Tab switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('active', 'border-primary', 'bg-primary/10', 'text-primary');
+        b.classList.add('border-border', 'text-text-muted');
+      });
+      btn.classList.add('active', 'border-primary', 'bg-primary/10', 'text-primary');
+      btn.classList.remove('border-border', 'text-text-muted');
+      activeTab = (btn as HTMLElement).dataset.tab || 'preview';
+      renderOutput();
+    });
+  });
+
+  document.getElementById('copy-btn')!.addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('code-output')!.textContent || '');
+    const btn = document.getElementById('copy-btn')!;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+
+  ['system-prompt', 'user-prompt'].forEach(id => {
+    document.getElementById(id)!.addEventListener('input', () => { buildVarInputs(); renderOutput(); });
+  });
+  ['assistant-prefill', 'max-tokens', 'temperature'].forEach(id => {
+    document.getElementById(id)!.addEventListener('input', renderOutput);
+  });
+  ['model-select'].forEach(id => {
+    document.getElementById(id)!.addEventListener('change', renderOutput);
+  });
+  ['json-mode', 'streaming'].forEach(id => {
+    document.getElementById(id)!.addEventListener('change', renderOutput);
+  });
+
+  buildVarInputs();
+  renderOutput();
+</script>

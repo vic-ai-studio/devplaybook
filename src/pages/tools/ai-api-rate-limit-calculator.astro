@@ -1,0 +1,169 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are OpenAI rate limits?", answer: "OpenAI limits by Requests Per Minute (RPM), Tokens Per Minute (TPM), and sometimes Requests Per Day (RPD). Limits vary by model and tier. GPT-4o on Tier 1: 500 RPM, 30K TPM. Tier 5: 10K RPM, 2M TPM. Check platform.openai.com/docs/guides/rate-limits for your current tier." },
+  { question: "How do I handle 429 rate limit errors?", answer: "Implement exponential backoff with jitter: wait 1s, retry; if fails wait 2s, then 4s, etc. Use a token bucket or semaphore to cap concurrent requests. For batch workloads, use the Batch API (OpenAI) which has 50% higher limits at 50% lower cost." },
+  { question: "What is the Batch API and when should I use it?", answer: "OpenAI's Batch API processes requests within 24 hours at 50% discount. Use it for: offline processing (embeddings, classification), datasets, nightly reports. Batch API has separate, higher limits. Not suitable for real-time user-facing features." },
+  { question: "How do I estimate the number of parallel workers needed?", answer: "Workers = (target_throughput_req/s × avg_latency_sec). If you need 10 req/s and each takes 3 seconds, you need ~30 concurrent workers. Add 20-30% headroom for variance. Ensure your RPM limit ≥ workers × 60 / avg_latency_sec." },
+];
+---
+
+<BaseLayout
+  title="AI API Rate Limit Calculator — Throughput, Batching & Worker Sizing"
+  description="Calculate API throughput limits, batching strategy, and concurrent worker count for OpenAI, Anthropic, and Google AI APIs. Avoid 429 errors with optimal queue sizing."
+  tool="AI API rate limit calculator, OpenAI rate limit, throughput calculator, concurrent workers LLM, API batching strategy"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI API Rate Limit Calculator</h1>
+  <p class="text-text-muted mb-6">Calculate throughput capacity, optimal worker count, batch sizing, and queue depth for AI API integrations. Prevent 429 errors before they happen.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Worker sizing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Queue depth estimate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Batch API comparison</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Safety headroom calc</span>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-1">Provider / model tier</label>
+      <select id="provider-select" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary">
+        <option value="500,30000">OpenAI GPT-4o — Tier 1 (500 RPM / 30K TPM)</option>
+        <option value="5000,450000">OpenAI GPT-4o — Tier 3 (5K RPM / 450K TPM)</option>
+        <option value="10000,2000000">OpenAI GPT-4o — Tier 5 (10K RPM / 2M TPM)</option>
+        <option value="2000,80000">OpenAI GPT-4o Mini — Tier 1 (2K RPM / 80K TPM)</option>
+        <option value="1000,80000">Anthropic Claude 3.5 — Build tier (1K RPM / 80K TPM)</option>
+        <option value="4000,400000">Anthropic Claude 3.5 — Scale tier (4K RPM / 400K TPM)</option>
+        <option value="1000,4000000">Google Gemini 1.5 Pro — paid (1K RPM / 4M TPM)</option>
+        <option value="custom,custom">Custom limits</option>
+      </select>
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <label class="block text-sm font-medium mb-1">RPM limit</label>
+        <input id="rpm-input" type="number" value="500" min="1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">TPM limit</label>
+        <input id="tpm-input" type="number" value="30000" min="1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Tokens per request (input + output)</label>
+      <input id="tokens-per-req" type="number" value="1500" min="1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+      <p class="text-xs text-text-muted mt-1">Avg. input tokens + expected output tokens</p>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Avg. request latency (seconds)</label>
+      <input id="latency-input" type="number" value="3" min="0.1" step="0.1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Target throughput (req/min)</label>
+      <input id="target-rpm" type="number" value="200" min="1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Safety headroom %</label>
+      <input id="headroom" type="number" value="20" min="0" max="50" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+      <p class="text-xs text-text-muted mt-1">Buffer below rate limit (recommended: 20%)</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+      <div class="text-xs text-text-muted mb-1">Max safe RPM</div>
+      <div id="res-safe-rpm" class="font-bold text-2xl text-primary">—</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+      <div class="text-xs text-text-muted mb-1">Concurrent workers</div>
+      <div id="res-workers" class="font-bold text-2xl">—</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+      <div class="text-xs text-text-muted mb-1">Bottleneck</div>
+      <div id="res-bottleneck" class="font-bold text-xl">—</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+      <div class="text-xs text-text-muted mb-1">Target feasible?</div>
+      <div id="res-feasible" class="font-bold text-2xl">—</div>
+    </div>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-6">
+    <h3 class="font-medium mb-3">Backoff & Queue Strategy</h3>
+    <div id="strategy-text" class="text-sm text-text-muted space-y-2"></div>
+  </div>
+
+  <div id="warnings-area" class="space-y-2 mb-8"></div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI API Rate Limit Calculator" relatedTags={['ai', 'openai', 'api', 'claude', 'rate-limiting', 'production']} />
+</BaseLayout>
+
+<script>
+  const providerSelect = document.getElementById('provider-select') as HTMLSelectElement;
+  const rpmInput = document.getElementById('rpm-input') as HTMLInputElement;
+  const tpmInput = document.getElementById('tpm-input') as HTMLInputElement;
+  const tokensPerReq = document.getElementById('tokens-per-req') as HTMLInputElement;
+  const latencyInput = document.getElementById('latency-input') as HTMLInputElement;
+  const targetRpm = document.getElementById('target-rpm') as HTMLInputElement;
+  const headroomInput = document.getElementById('headroom') as HTMLInputElement;
+
+  providerSelect.addEventListener('change', () => {
+    const val = providerSelect.value;
+    if (val === 'custom,custom') return;
+    const [rpm, tpm] = val.split(',');
+    rpmInput.value = rpm;
+    tpmInput.value = tpm;
+    update();
+  });
+
+  function update() {
+    const rpm = Math.max(1, parseInt(rpmInput.value) || 500);
+    const tpm = Math.max(1, parseInt(tpmInput.value) || 30000);
+    const tokReq = Math.max(1, parseInt(tokensPerReq.value) || 1500);
+    const latency = Math.max(0.1, parseFloat(latencyInput.value) || 3);
+    const target = Math.max(1, parseInt(targetRpm.value) || 200);
+    const headroom = Math.min(50, Math.max(0, parseInt(headroomInput.value) || 20));
+
+    const safeRpm = Math.floor(rpm * (1 - headroom / 100));
+    const safeTpmRpm = Math.floor((tpm / tokReq) * (1 - headroom / 100));
+    const effectiveSafeRpm = Math.min(safeRpm, safeTpmRpm);
+    const bottleneck = safeRpm <= safeTpmRpm ? 'RPM' : 'TPM';
+
+    // Workers = target_req_per_sec × latency
+    const targetRps = target / 60;
+    const workersNeeded = Math.ceil(targetRps * latency);
+    const effectiveRps = effectiveSafeRpm / 60;
+    const maxWorkers = Math.ceil(effectiveRps * latency);
+    const feasible = target <= effectiveSafeRpm;
+
+    document.getElementById('res-safe-rpm')!.textContent = effectiveSafeRpm.toLocaleString();
+    document.getElementById('res-workers')!.textContent = Math.min(workersNeeded, maxWorkers).toLocaleString();
+    document.getElementById('res-bottleneck')!.textContent = bottleneck;
+    const feasibleEl = document.getElementById('res-feasible')!;
+    feasibleEl.textContent = feasible ? '✓ Yes' : '✗ No';
+    feasibleEl.className = `font-bold text-2xl ${feasible ? 'text-green-400' : 'text-red-400'}`;
+
+    const retryMs = 60000 / effectiveSafeRpm;
+    document.getElementById('strategy-text')!.innerHTML = `
+      <div>• <strong>Min delay between requests:</strong> ${retryMs.toFixed(0)}ms per worker (at safe capacity)</div>
+      <div>• <strong>Exponential backoff:</strong> on 429 → wait 1s, 2s, 4s, 8s (max 32s), add ±25% jitter</div>
+      <div>• <strong>Queue depth:</strong> pre-fill up to ${Math.min(workersNeeded, maxWorkers)} in-flight requests, queue remaining</div>
+      <div>• <strong>Token bucket:</strong> refill at ${(effectiveSafeRpm / 60).toFixed(1)} req/sec, burst up to ${Math.min(workersNeeded, maxWorkers)} tokens</div>
+      ${!feasible ? `<div class="text-yellow-400">• <strong>To reach target:</strong> upgrade to a higher tier, use Batch API, or split across multiple API keys.</div>` : ''}
+    `;
+
+    const warnings: string[] = [];
+    if (!feasible) warnings.push(`⚠️ Target ${target} RPM exceeds safe capacity ${effectiveSafeRpm} RPM. You will hit rate limits.`);
+    if (bottleneck === 'TPM' && tokReq > tpm / rpm * 0.5) warnings.push(`💡 TPM is the bottleneck. Reduce output tokens (set max_tokens) or use streaming to improve throughput.`);
+    if (workersNeeded > 100) warnings.push(`⚠️ ${workersNeeded} workers needed — consider async queue (Celery, BullMQ) instead of thread-per-request.`);
+
+    const warningsArea = document.getElementById('warnings-area')!;
+    warningsArea.innerHTML = warnings.map(w => `<div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2 text-sm text-yellow-300">${w}</div>`).join('');
+  }
+
+  [rpmInput, tpmInput, tokensPerReq, latencyInput, targetRpm, headroomInput].forEach(el => el.addEventListener('input', update));
+  update();
+</script>

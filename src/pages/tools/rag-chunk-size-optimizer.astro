@@ -1,0 +1,147 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the optimal chunk size for RAG?", answer: "There is no universal optimum — it depends on your documents and queries. Short chunks (256-512 tokens) work well for precise Q&A and fact retrieval. Longer chunks (512-1024 tokens) preserve more context for summarization and reasoning tasks. Start at 512 tokens with 10% overlap and evaluate retrieval quality." },
+  { question: "What is chunk overlap and why does it matter?", answer: "Overlap is the number of tokens shared between adjacent chunks. It prevents important context from being split across chunk boundaries. A 10-20% overlap (e.g., 50-100 tokens for 512-token chunks) is typical. Too much overlap increases index size and retrieval noise; too little loses boundary context." },
+  { question: "How does chunk size affect retrieval quality?", answer: "Smaller chunks improve precision (the retrieved chunk is relevant) but can miss surrounding context. Larger chunks improve recall (the answer is likely inside) but increase noise in the retrieved text sent to the LLM. The LLM's context window limits how many chunks you can pass." },
+  { question: "What is sentence-window retrieval?", answer: "Sentence-window retrieval (also called 'small-to-big') stores small chunks for embedding but retrieves surrounding context at query time. You index 128-token child chunks but return their 512-token parent chunks to the LLM. This balances precision in retrieval with context richness in generation." },
+];
+---
+
+<BaseLayout
+  title="RAG Chunk Size Optimizer — Optimal Chunking for Retrieval-Augmented Generation"
+  description="Calculate optimal chunk size and overlap for RAG pipelines. Input document type, LLM context window, and retrieval strategy to get recommended chunk parameters and index size estimates."
+  tool="RAG chunk size optimizer, RAG chunking calculator, retrieval augmented generation chunk size, optimal chunk overlap, LlamaIndex chunk size"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">RAG Chunk Size Optimizer</h1>
+  <p class="text-text-muted mb-6">Find the optimal chunk size and overlap for your RAG pipeline. Configure your document type, LLM, and retrieval strategy to get a recommended configuration.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Strategy recommendations</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Index size estimate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Context budget calculator</span>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-1">Document type</label>
+      <select id="doc-type" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary">
+        <option value="qa">Q&A / Knowledge base</option>
+        <option value="legal">Legal / contracts</option>
+        <option value="code">Source code / docs</option>
+        <option value="news">News articles / blog posts</option>
+        <option value="book">Books / long-form content</option>
+        <option value="chat">Chat logs / transcripts</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">LLM context window</label>
+      <select id="ctx-window" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary">
+        <option value="4096">4K tokens (GPT-3.5 legacy)</option>
+        <option value="8192">8K tokens</option>
+        <option value="16384">16K tokens</option>
+        <option value="32768">32K tokens</option>
+        <option value="128000" selected>128K tokens (GPT-4o, Claude 3.5)</option>
+        <option value="200000">200K tokens (Claude 3.5 max)</option>
+        <option value="1000000">1M tokens (Gemini 1.5 Pro)</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Retrieval strategy</label>
+      <select id="strategy" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary">
+        <option value="topk">Top-K retrieval (fixed K)</option>
+        <option value="mmr">MMR (diversity-aware)</option>
+        <option value="hybrid">Hybrid (dense + sparse BM25)</option>
+        <option value="smallbig">Small-to-big / sentence window</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Total documents</label>
+      <input id="doc-count" type="number" value="10000" min="1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Avg. document length (words)</label>
+      <input id="doc-words" type="number" value="800" min="10" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">K (chunks to retrieve)</label>
+      <input id="top-k" type="number" value="5" min="1" max="50" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+  </div>
+
+  <div id="recommendation" class="bg-primary/5 border border-primary/30 rounded-lg p-5 mb-6">
+    <h3 class="font-semibold mb-3 text-primary">Recommended Configuration</h3>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+      <div class="text-center"><div class="text-xs text-text-muted mb-1">Chunk size</div><div id="rec-chunk" class="font-bold text-2xl">—</div><div class="text-xs text-text-muted">tokens</div></div>
+      <div class="text-center"><div class="text-xs text-text-muted mb-1">Overlap</div><div id="rec-overlap" class="font-bold text-2xl">—</div><div class="text-xs text-text-muted">tokens</div></div>
+      <div class="text-center"><div class="text-xs text-text-muted mb-1">Total chunks</div><div id="rec-chunks" class="font-bold text-2xl">—</div></div>
+      <div class="text-center"><div class="text-xs text-text-muted mb-1">Context used</div><div id="rec-ctx" class="font-bold text-2xl">—</div><div class="text-xs text-text-muted">of window</div></div>
+    </div>
+    <div id="rec-rationale" class="text-sm text-text-muted"></div>
+  </div>
+
+  <div id="warnings" class="space-y-2 mb-8"></div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="RAG Chunk Size Optimizer" relatedTags={['ai', 'rag', 'embeddings', 'llm', 'vector-database', 'llama-index', 'langchain']} />
+</BaseLayout>
+
+<script>
+  const CONFIG: Record<string, { chunkSize: number; overlap: number; rationale: string }> = {
+    qa:     { chunkSize: 512,  overlap: 50,  rationale: 'Q&A databases benefit from precise, self-contained chunks. 512 tokens fits most paragraph-level answers.' },
+    legal:  { chunkSize: 1024, overlap: 128, rationale: 'Legal text has high inter-sentence dependencies. Larger chunks with higher overlap preserve clause context.' },
+    code:   { chunkSize: 256,  overlap: 64,  rationale: 'Code chunking by function/class boundaries is ideal. 256 tokens covers most functions; use AST splitting if possible.' },
+    news:   { chunkSize: 512,  overlap: 32,  rationale: 'Articles are naturally paragraph-structured. 512 tokens per chunk preserves full paragraphs with minimal overlap needed.' },
+    book:   { chunkSize: 768,  overlap: 100, rationale: 'Long-form narrative requires larger chunks to preserve plot/argument thread. Consider hierarchical indexing.' },
+    chat:   { chunkSize: 256,  overlap: 80,  rationale: 'Chat logs should chunk by turn or time window. High overlap preserves conversational context across turns.' },
+  };
+
+  function update() {
+    const docType = (document.getElementById('doc-type') as HTMLSelectElement).value;
+    const ctxWindow = parseInt((document.getElementById('ctx-window') as HTMLSelectElement).value);
+    const strategy = (document.getElementById('strategy') as HTMLSelectElement).value;
+    const docCount = Math.max(1, parseInt((document.getElementById('doc-count') as HTMLInputElement).value) || 10000);
+    const docWords = Math.max(10, parseInt((document.getElementById('doc-words') as HTMLInputElement).value) || 800);
+    const topK = Math.max(1, parseInt((document.getElementById('top-k') as HTMLInputElement).value) || 5);
+
+    const cfg = CONFIG[docType];
+    let chunkSize = cfg.chunkSize;
+    let overlap = cfg.overlap;
+
+    // Adjust for strategy
+    if (strategy === 'smallbig') { chunkSize = Math.round(chunkSize / 2); overlap = Math.round(overlap / 2); }
+    if (strategy === 'hybrid') overlap = Math.round(overlap * 1.2);
+
+    // Estimate tokens per doc (words × 1.3)
+    const tokensPerDoc = Math.round(docWords * 1.3);
+    const effectiveChunk = chunkSize - overlap;
+    const chunksPerDoc = Math.max(1, Math.ceil(tokensPerDoc / effectiveChunk));
+    const totalChunks = docCount * chunksPerDoc;
+
+    const ctxUsed = topK * chunkSize;
+    const ctxPct = Math.round((ctxUsed / ctxWindow) * 100);
+
+    document.getElementById('rec-chunk')!.textContent = chunkSize.toLocaleString();
+    document.getElementById('rec-overlap')!.textContent = overlap.toLocaleString();
+    document.getElementById('rec-chunks')!.textContent = totalChunks > 1e6 ? (totalChunks / 1e6).toFixed(1) + 'M' : totalChunks.toLocaleString();
+    document.getElementById('rec-ctx')!.textContent = ctxPct + '%';
+    document.getElementById('rec-rationale')!.textContent = cfg.rationale + (strategy === 'smallbig' ? ' Small-to-big: using half chunk size for child nodes.' : '');
+
+    const warnings: string[] = [];
+    if (ctxPct > 70) warnings.push(`⚠️ Retrieved chunks consume ${ctxPct}% of context window — reduce K or chunk size, or increase output budget.`);
+    if (ctxPct < 5) warnings.push(`💡 Only ${ctxPct}% context used — you can increase K to ${Math.floor(ctxWindow * 0.4 / chunkSize)} for better recall.`);
+    if (totalChunks > 5e6) warnings.push('⚠️ 5M+ chunks — consider hierarchical indexing or filtering before retrieval.');
+    if (overlap > chunkSize * 0.3) warnings.push('⚠️ Overlap > 30% of chunk size increases index size and retrieval noise significantly.');
+
+    const warningsEl = document.getElementById('warnings')!;
+    warningsEl.innerHTML = warnings.map(w => `<div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2 text-sm text-yellow-300">${w}</div>`).join('');
+  }
+
+  ['doc-type', 'ctx-window', 'strategy'].forEach(id => document.getElementById(id)!.addEventListener('change', update));
+  ['doc-count', 'doc-words', 'top-k'].forEach(id => document.getElementById(id)!.addEventListener('input', update));
+  update();
+</script>

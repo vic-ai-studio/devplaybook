@@ -1,0 +1,155 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is an embedding dimension?", answer: "An embedding dimension is the size of the vector that represents a piece of text. text-embedding-3-small uses 1536 dimensions by default (can be reduced to 512). Each dimension is a float32 (4 bytes). Higher dimensions capture more semantic nuance but cost more storage." },
+  { question: "How much storage does a vector database need?", answer: "Storage = number of vectors × dimension × 4 bytes (float32). For 1M vectors at 1536 dims, that's 1M × 1536 × 4 = ~6 GB of raw vector data. Add ~20% overhead for index structures (HNSW, IVF). Quantized (int8) storage halves the size." },
+  { question: "Should I use float32 or int8 quantization?", answer: "float32 gives full precision. int8 quantization (product quantization) reduces storage by 4× with a small accuracy drop (~1-3% on recall@10). For production RAG at scale, int8 is usually worth the trade-off. OpenAI's text-embedding-3 supports native dimension reduction as a better alternative." },
+  { question: "What vector database should I use?", answer: "For managed cloud: Pinecone (simplest), Weaviate Cloud, Qdrant Cloud. For self-hosted: pgvector (if you're already on Postgres), Chroma (local dev), Qdrant, Milvus. For serverless scale: Turbopuffer, Zilliz. Choose based on scale, existing infra, and query pattern." },
+];
+---
+
+<BaseLayout
+  title="Embedding Storage Calculator — Vector Database Size Estimator"
+  description="Calculate storage requirements for vector embeddings at scale. Input dimension size, vector count, and precision to get RAM, disk, and cost estimates for Pinecone, pgvector, Qdrant, and more."
+  tool="embedding storage calculator, vector database size, embedding dimension storage, pgvector storage, Pinecone cost estimate"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Embedding Storage Calculator</h1>
+  <p class="text-text-muted mb-6">Estimate storage requirements and costs for your vector embedding index. Choose model, precision, and scale to plan your vector database infrastructure.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> RAM + disk estimates</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 5 embedding models</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pinecone cost ref</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Index overhead included</span>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-1">Embedding model</label>
+      <select id="model-select" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary">
+        <option value="1536">OpenAI text-embedding-3-small (1536 dims)</option>
+        <option value="3072">OpenAI text-embedding-3-large (3072 dims)</option>
+        <option value="1536">OpenAI text-embedding-ada-002 (1536 dims)</option>
+        <option value="768">sentence-transformers/all-MiniLM-L6-v2 (768 dims)</option>
+        <option value="1024">Cohere embed-english-v3 (1024 dims)</option>
+        <option value="custom">Custom dimension</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Dimensions (if custom)</label>
+      <input id="dim-input" type="number" value="1536" min="64" max="4096" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Number of vectors</label>
+      <input id="vec-count" type="number" value="1000000" min="1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+      <p class="text-xs text-text-muted mt-1">Total documents / chunks in your index</p>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Storage precision</label>
+      <select id="precision-select" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary">
+        <option value="4">float32 (4 bytes) — full precision</option>
+        <option value="2">float16 (2 bytes) — half precision</option>
+        <option value="1">int8 / quantized (1 byte) — 4× compression</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="results" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+    <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+      <div class="text-xs text-text-muted mb-1">Raw vector storage</div>
+      <div id="res-raw" class="font-bold text-xl text-primary">—</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+      <div class="text-xs text-text-muted mb-1">With HNSW index (~20%)</div>
+      <div id="res-index" class="font-bold text-xl">—</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+      <div class="text-xs text-text-muted mb-1">RAM for in-memory</div>
+      <div id="res-ram" class="font-bold text-xl">—</div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4 text-center">
+      <div class="text-xs text-text-muted mb-1">Bytes per vector</div>
+      <div id="res-per-vec" class="font-bold text-xl">—</div>
+    </div>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-6">
+    <h3 class="font-medium mb-3">Pinecone Cost Reference <span class="text-xs text-text-muted font-normal ml-2">(approximate, verify at pinecone.io/pricing)</span></h3>
+    <div id="pinecone-ref" class="text-sm text-text-muted"></div>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-8">
+    <h3 class="font-medium mb-3">Optimization Tips</h3>
+    <div id="tips" class="text-sm space-y-1.5 text-text-muted"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Embedding Storage Calculator" relatedTags={['ai', 'embeddings', 'vector-database', 'rag', 'openai', 'pinecone']} />
+</BaseLayout>
+
+<script>
+  const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
+  const dimInput = document.getElementById('dim-input') as HTMLInputElement;
+  const vecCount = document.getElementById('vec-count') as HTMLInputElement;
+  const precisionSelect = document.getElementById('precision-select') as HTMLSelectElement;
+
+  function fmtBytes(bytes: number): string {
+    if (bytes >= 1e12) return (bytes / 1e12).toFixed(2) + ' TB';
+    if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
+    if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+    return (bytes / 1e3).toFixed(1) + ' KB';
+  }
+
+  function update() {
+    const modelVal = modelSelect.value;
+    let dims: number;
+    if (modelVal === 'custom') {
+      dims = parseInt(dimInput.value) || 1536;
+      dimInput.disabled = false;
+    } else {
+      dims = parseInt(modelVal);
+      dimInput.value = String(dims);
+      dimInput.disabled = true;
+    }
+
+    const vecs = Math.max(1, parseInt(vecCount.value) || 1000000);
+    const bytesPerDim = parseInt(precisionSelect.value);
+    const bytesPerVec = dims * bytesPerDim;
+    const rawBytes = vecs * bytesPerVec;
+    const indexBytes = rawBytes * 1.2;
+    const ramBytes = indexBytes; // in-memory requires full index in RAM
+
+    document.getElementById('res-raw')!.textContent = fmtBytes(rawBytes);
+    document.getElementById('res-index')!.textContent = fmtBytes(indexBytes);
+    document.getElementById('res-ram')!.textContent = fmtBytes(ramBytes);
+    document.getElementById('res-per-vec')!.textContent = bytesPerVec.toLocaleString() + ' B';
+
+    // Pinecone cost reference (pods)
+    const gbSize = indexBytes / 1e9;
+    let pineconeNote = '';
+    if (gbSize < 1) pineconeNote = 'Starter plan (free) likely sufficient for &lt;100K vectors.';
+    else if (gbSize < 5) pineconeNote = `~${(gbSize).toFixed(1)} GB — s1.x1 pod (~$0.096/hr) or serverless at ~$0.033/GB/month.`;
+    else if (gbSize < 50) pineconeNote = `~${(gbSize).toFixed(1)} GB — p2.x1 pod or serverless. Est. $${(gbSize * 0.033).toFixed(0)}-$${(gbSize * 0.10).toFixed(0)}/month depending on queries.`;
+    else pineconeNote = `~${(gbSize).toFixed(0)} GB — enterprise tier recommended. Plan for $${(gbSize * 0.05).toFixed(0)}+/month.`;
+    document.getElementById('pinecone-ref')!.innerHTML = pineconeNote;
+
+    // Tips
+    const tips: string[] = [];
+    if (bytesPerDim === 4 && dims > 1024) tips.push('💡 Consider float16 precision — halves storage with minimal accuracy loss for most retrieval tasks.');
+    if (dims > 1536) tips.push('💡 Matryoshka embeddings (text-embedding-3) let you reduce dimensions to 512-768 with small recall drop, cutting storage by 3×.');
+    if (vecs > 500000) tips.push('💡 For 500K+ vectors, use IVF index over HNSW — lower RAM footprint, slightly slower query.');
+    if (gbSize > 10) tips.push('💡 Consider disk-based ANN (DiskANN, Qdrant on-disk) to avoid full index in RAM.');
+    if (tips.length === 0) tips.push('✓ Your index size looks manageable. Standard HNSW in-memory index should work well.');
+    document.getElementById('tips')!.innerHTML = tips.map(t => `<div>${t}</div>`).join('');
+  }
+
+  modelSelect.addEventListener('change', update);
+  dimInput.addEventListener('input', update);
+  vecCount.addEventListener('input', update);
+  precisionSelect.addEventListener('change', update);
+  update();
+</script>

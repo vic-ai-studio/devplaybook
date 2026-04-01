@@ -1,0 +1,187 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How are token counts estimated?", answer: "This tool estimates tokens using character-to-token ratios (roughly 4 chars/token for English). For exact counts, use tiktoken (OpenAI) or the Anthropic SDK tokenizer. Non-English and code text may vary by 10–20%." },
+  { question: "Why is output cost higher than input?", answer: "LLM APIs charge more for output (generated) tokens because they require sequential GPU computation — each token depends on the previous one. Input tokens are processed in parallel. Output is typically 3–5× more expensive." },
+  { question: "How do I reduce API costs in production?", answer: "Use a smaller/cheaper model for simple tasks, implement prompt caching (Anthropic), reduce output length with structured prompts, batch similar requests, and set max_tokens limits. Switching from GPT-4o to GPT-4o Mini can reduce costs by 97%." },
+  { question: "What is the monthly estimate based on?", answer: "Monthly cost = (input tokens cost + output tokens cost) per request × requests per month. It assumes all requests use the same text you've pasted. Adjust the 'requests/month' field to match your production volume." },
+];
+---
+
+<BaseLayout
+  title="Token Counter & Cost Estimator — GPT-4, Claude, Gemini API Pricing"
+  description="Count tokens and estimate monthly API costs for GPT-4o, Claude 3.5, Gemini 1.5, and Llama. Paste your prompt, set output length and volume, get instant cost breakdown."
+  tool="token counter cost estimator, LLM API cost calculator, GPT-4 cost, Claude pricing, Gemini token price"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Token Counter & Cost Estimator</h1>
+  <p class="text-text-muted mb-6">Paste your prompt to count tokens and estimate API costs across GPT-4o, Claude, Gemini, and Llama. Set output length and monthly volume for production budgeting.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 10 models</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Monthly cost projection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Input + output pricing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs in browser</span>
+  </div>
+
+  <div class="mb-4">
+    <label class="block text-sm font-medium mb-2">Your prompt / input text</label>
+    <textarea
+      id="input-text"
+      rows="7"
+      placeholder="Paste your system prompt, user message, or full conversation..."
+      class="w-full bg-bg-card border border-border rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-primary resize-y"
+    ></textarea>
+    <div class="flex justify-between text-xs text-text-muted mt-1">
+      <span id="char-count">0 characters · 0 words</span>
+      <button id="clear-btn" class="hover:text-primary transition-colors">Clear</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-1">Output tokens per request</label>
+      <input id="output-tokens" type="number" value="500" min="0" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+      <p class="text-xs text-text-muted mt-1">Average generated response length</p>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Requests per month</label>
+      <input id="monthly-requests" type="number" value="10000" min="1" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Sort by</label>
+      <select id="sort-by" class="w-full bg-bg-card border border-border rounded-lg p-2 text-sm focus:outline-none focus:border-primary">
+        <option value="monthly">Monthly cost</option>
+        <option value="per-request">Per request</option>
+        <option value="provider">Provider</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="results" class="overflow-x-auto mb-6">
+    <table class="w-full text-sm min-w-[640px]">
+      <thead>
+        <tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-3 pr-4 font-medium">Model</th>
+          <th class="text-right pb-3 pr-4 font-medium">Input Tokens</th>
+          <th class="text-right pb-3 pr-4 font-medium">$/1M In</th>
+          <th class="text-right pb-3 pr-4 font-medium">$/1M Out</th>
+          <th class="text-right pb-3 pr-4 font-medium">Per Request</th>
+          <th class="text-right pb-3 font-medium">Monthly</th>
+        </tr>
+      </thead>
+      <tbody id="model-rows" class="divide-y divide-border"></tbody>
+    </table>
+  </div>
+
+  <div id="summary-bar" class="bg-bg-card border border-border rounded-lg p-4 mb-8 grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+    <div><div class="text-xs text-text-muted mb-1">Cheapest monthly</div><div id="sum-cheapest" class="font-bold text-green-400 text-lg">—</div></div>
+    <div><div class="text-xs text-text-muted mb-1">Most capable</div><div id="sum-flagship" class="font-bold text-primary text-lg">—</div></div>
+    <div><div class="text-xs text-text-muted mb-1">Input tokens</div><div id="sum-tokens" class="font-bold text-lg">—</div></div>
+    <div><div class="text-xs text-text-muted mb-1">Savings (cheap vs flag)</div><div id="sum-savings" class="font-bold text-yellow-400 text-lg">—</div></div>
+  </div>
+
+  <p class="text-xs text-text-muted mb-8">Pricing as of Q1 2025 — verify at provider pricing pages before budgeting. Token estimates are approximations (±10%).</p>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Token Counter & Cost Estimator" relatedTags={['ai', 'openai', 'claude', 'gemini', 'llm', 'api', 'cost']} />
+</BaseLayout>
+
+<script>
+  interface Model {
+    name: string;
+    provider: string;
+    charsPerToken: number;
+    inputPriceM: number;
+    outputPriceM: number;
+    flagship: boolean;
+  }
+
+  const MODELS: Model[] = [
+    { name: 'GPT-4o', provider: 'OpenAI', charsPerToken: 4.0, inputPriceM: 5.00, outputPriceM: 15.00, flagship: true },
+    { name: 'GPT-4o Mini', provider: 'OpenAI', charsPerToken: 4.0, inputPriceM: 0.15, outputPriceM: 0.60, flagship: false },
+    { name: 'GPT-4 Turbo', provider: 'OpenAI', charsPerToken: 4.0, inputPriceM: 10.00, outputPriceM: 30.00, flagship: false },
+    { name: 'Claude 3.5 Sonnet', provider: 'Anthropic', charsPerToken: 4.1, inputPriceM: 3.00, outputPriceM: 15.00, flagship: true },
+    { name: 'Claude 3.5 Haiku', provider: 'Anthropic', charsPerToken: 4.1, inputPriceM: 0.80, outputPriceM: 4.00, flagship: false },
+    { name: 'Claude 3 Opus', provider: 'Anthropic', charsPerToken: 4.1, inputPriceM: 15.00, outputPriceM: 75.00, flagship: false },
+    { name: 'Gemini 1.5 Pro', provider: 'Google', charsPerToken: 4.2, inputPriceM: 3.50, outputPriceM: 10.50, flagship: true },
+    { name: 'Gemini 1.5 Flash', provider: 'Google', charsPerToken: 4.2, inputPriceM: 0.075, outputPriceM: 0.30, flagship: false },
+    { name: 'Llama 3.1 70B', provider: 'Meta/Together', charsPerToken: 3.8, inputPriceM: 0.90, outputPriceM: 0.90, flagship: false },
+    { name: 'Llama 3.1 405B', provider: 'Meta/Together', charsPerToken: 3.8, inputPriceM: 5.00, outputPriceM: 5.00, flagship: false },
+  ];
+
+  const inputEl = document.getElementById('input-text') as HTMLTextAreaElement;
+  const outputEl = document.getElementById('output-tokens') as HTMLInputElement;
+  const monthlyEl = document.getElementById('monthly-requests') as HTMLInputElement;
+  const sortEl = document.getElementById('sort-by') as HTMLSelectElement;
+  const charCountEl = document.getElementById('char-count')!;
+  const tableBody = document.getElementById('model-rows')!;
+  const clearBtn = document.getElementById('clear-btn')!;
+
+  function fmt(n: number, d = 2): string {
+    if (n === 0) return '$0.00';
+    if (n < 0.0001) return '<$0.0001';
+    if (n < 0.01) return '$' + n.toFixed(4);
+    return '$' + n.toFixed(d);
+  }
+
+  function fmtLarge(n: number): string {
+    if (n >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
+    return '$' + n.toFixed(2);
+  }
+
+  function update() {
+    const text = inputEl.value;
+    const chars = text.length;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    charCountEl.textContent = `${chars.toLocaleString()} characters · ${words.toLocaleString()} words`;
+
+    const outputTokens = Math.max(0, parseInt(outputEl.value) || 0);
+    const monthly = Math.max(1, parseInt(monthlyEl.value) || 1);
+    const sortBy = sortEl.value;
+
+    const rows = MODELS.map(m => {
+      const inputTokens = Math.round(chars / m.charsPerToken);
+      const inputCost = (inputTokens / 1_000_000) * m.inputPriceM;
+      const outputCost = (outputTokens / 1_000_000) * m.outputPriceM;
+      const perRequest = inputCost + outputCost;
+      const monthlyEst = perRequest * monthly;
+      return { ...m, inputTokens, perRequest, monthlyEst };
+    });
+
+    if (sortBy === 'monthly') rows.sort((a, b) => a.monthlyEst - b.monthlyEst);
+    else if (sortBy === 'per-request') rows.sort((a, b) => a.perRequest - b.perRequest);
+    else rows.sort((a, b) => a.provider.localeCompare(b.provider));
+
+    tableBody.innerHTML = rows.map((r, i) => `
+      <tr class="hover:bg-bg-card/50 transition-colors${i === 0 && sortBy !== 'provider' ? ' bg-green-500/5' : ''}">
+        <td class="py-3 pr-4">
+          <span class="font-semibold">${r.name}</span>
+          <span class="text-xs text-text-muted ml-2">${r.provider}</span>
+          ${r.flagship ? '<span class="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded ml-1">flagship</span>' : ''}
+        </td>
+        <td class="py-3 pr-4 text-right tabular-nums font-medium">${r.inputTokens.toLocaleString()}</td>
+        <td class="py-3 pr-4 text-right tabular-nums text-text-muted">${fmt(r.inputPriceM, r.inputPriceM < 1 ? 3 : 2)}</td>
+        <td class="py-3 pr-4 text-right tabular-nums text-text-muted">${fmt(r.outputPriceM, r.outputPriceM < 1 ? 3 : 2)}</td>
+        <td class="py-3 pr-4 text-right tabular-nums">${r.perRequest < 0.0001 ? '<$0.0001' : '$' + r.perRequest.toFixed(4)}</td>
+        <td class="py-3 text-right tabular-nums font-medium ${r.monthlyEst > 500 ? 'text-red-400' : r.monthlyEst > 50 ? 'text-yellow-400' : 'text-green-400'}">${fmtLarge(r.monthlyEst)}</td>
+      </tr>`).join('');
+
+    // Summary bar
+    const byMonthly = [...rows].sort((a, b) => a.monthlyEst - b.monthlyEst);
+    const cheapest = byMonthly[0];
+    const flagship = rows.find(r => r.flagship && r.provider === 'OpenAI') || rows[0];
+    document.getElementById('sum-cheapest')!.textContent = fmtLarge(cheapest.monthlyEst);
+    document.getElementById('sum-flagship')!.textContent = fmtLarge(flagship.monthlyEst);
+    document.getElementById('sum-tokens')!.textContent = rows[0].inputTokens.toLocaleString();
+    const savings = flagship.monthlyEst - cheapest.monthlyEst;
+    document.getElementById('sum-savings')!.textContent = savings > 0 ? fmtLarge(savings) + '/mo' : '—';
+  }
+
+  clearBtn.addEventListener('click', () => { inputEl.value = ''; update(); });
+  [inputEl, outputEl, monthlyEl, sortEl].forEach(el => el.addEventListener('input', update));
+  update();
+</script>
