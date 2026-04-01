@@ -1,0 +1,205 @@
+---
+title: "Platform Engineering & Internal Developer Platforms 2026: Backstage, Golden Paths & Self-Service"
+description: "A practical guide to platform engineering in 2026. Learn IDP concepts, Backstage setup, golden path templates, and how to build developer self-service that scales without a growing ops team."
+date: "2026-04-01"
+readingTime: "12 min read"
+tags: ["Platform Engineering", "DevOps", "Backstage", "Developer Experience", "Kubernetes", "IDP"]
+slug: "platform-engineering-internal-developer-platform-2026"
+---
+
+The premise of platform engineering is simple: developers shouldn't need to understand Kubernetes, Terraform, service mesh configuration, and IAM policies to deploy a new service. They should focus on business logic. The platform team builds the abstractions that make the hard things easy — or invisible.
+
+An **Internal Developer Platform (IDP)** is the product that platform teams build for their internal customers (developers). Done well, it reduces cognitive load, accelerates onboarding, and makes security and reliability the path of least resistance.
+
+## What is Platform Engineering?
+
+Platform engineering is the discipline of building and maintaining the self-service infrastructure and tooling that other engineering teams use. It emerged from a frustration: as organizations scaled, developers spent more time on infra, compliance, and tooling configuration than on product features.
+
+Platform engineering treats developers as customers. The platform team builds products — CLIs, service templates, CI/CD pipelines, self-service portals — that make developers more productive without requiring deep infrastructure expertise.
+
+The key difference from traditional DevOps/SRE: platform engineers build products with APIs and UIs, not just scripts and runbooks.
+
+## The Three Components of a Modern IDP
+
+### 1. Service Catalog: Know What You Have
+
+Before you can manage your systems at scale, you need to know what exists. A service catalog is the single source of truth for all software components in your organization.
+
+**Backstage** (from Spotify, now CNCF) is the dominant open-source platform for this. Every team registers their services, libraries, and APIs in a `catalog-info.yaml` file:
+
+```yaml
+# catalog-info.yaml (in your repo)
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: order-service
+  description: Handles order creation and fulfillment
+  annotations:
+    github.com/project-slug: myorg/order-service
+    backstage.io/techdocs-ref: dir:.
+    pagerduty.com/service-id: P123ABC
+tags:
+  - nodejs
+  - api
+  - payments
+spec:
+  type: service
+  owner: payments-team
+  lifecycle: production
+  system: e-commerce-platform
+  providesApis:
+    - orders-api
+  consumesApis:
+    - inventory-api
+    - payments-api
+  dependsOn:
+    - resource:postgres-orders-db
+```
+
+With this, Backstage builds a dependency graph. You can instantly answer: "What services does `order-service` depend on? Who owns them? What's their on-call rotation?"
+
+### 2. Golden Paths: Opinionated Templates
+
+A golden path is a supported, pre-configured way to create a new service. Instead of developers stitching together a Dockerfile, Kubernetes manifests, CI/CD pipeline, observability config, and secrets setup from scratch — they clone a template that has all of that already done correctly.
+
+**Backstage Software Templates:**
+
+```yaml
+# template.yaml — New Node.js service template
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: nodejs-service
+  title: Node.js Microservice
+  description: Create a production-ready Node.js service with CI/CD, observability, and secrets management pre-configured
+spec:
+  parameters:
+    - title: Service Details
+      required: [name, owner]
+      properties:
+        name:
+          type: string
+          description: Service name (kebab-case)
+        owner:
+          type: string
+          description: Team owner (e.g., payments-team)
+        database:
+          type: boolean
+          description: Does this service need a Postgres database?
+
+  steps:
+    - id: fetch-template
+      name: Fetch Template
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+          owner: ${{ parameters.owner }}
+
+    - id: publish
+      name: Publish to GitHub
+      action: publish:github
+      input:
+        repoUrl: github.com?owner=myorg&repo=${{ parameters.name }}
+        defaultBranch: main
+
+    - id: register
+      name: Register in Catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+```
+
+When a developer runs this template, they get a new GitHub repo with: Node.js project structure, Dockerfile, GitHub Actions CI/CD pipeline, Kubernetes deployment manifests, Prometheus metrics endpoint, Sentry error tracking configured, [Vault](/tools/hashicorp-vault) secrets integration, and a Backstage catalog entry — all working from day one.
+
+### 3. Self-Service Operations
+
+The goal is to reduce developer-to-ops tickets. Common self-service operations in a mature IDP:
+
+**Environment provisioning:**
+```bash
+# Developer creates a preview environment via CLI
+platform env create --service order-service --branch feature/new-checkout --ttl 24h
+# → Spins up ephemeral Kubernetes namespace
+# → Deploys the branch
+# → Configures ingress at preview-order-service-abc123.preview.example.com
+# → Tears down automatically after 24 hours
+```
+
+**Database provisioning via Terraform + Portal:**
+```hcl
+# Developer fills out a form in the IDP portal
+# Platform team's Terraform module handles the rest
+module "service_database" {
+  source  = "internal/service-postgres/aws"
+  version = "~> 2.0"
+
+  service_name = "order-service"
+  environment  = "production"
+  size         = "small"  # Platform team defines what "small" means in RDS terms
+
+  # Vault integration auto-configured
+  vault_role = "order-service-${var.environment}"
+}
+```
+
+**Runbooks as code:**
+The platform exposes operational runbooks as automated actions in Backstage. "Scale up replicas," "rotate credentials," "run database migration" — all accessible from the service page with an audit trail, instead of buried in Confluence.
+
+## Backstage: Setup and Adoption
+
+Getting Backstage running is straightforward. Adopting it is an organizational challenge.
+
+```bash
+# Create a new Backstage app
+npx @backstage/create-app@latest
+cd my-backstage-app
+yarn dev
+```
+
+Key plugins to install immediately:
+
+| Plugin | Purpose |
+|--------|---------|
+| `@backstage/plugin-github-actions` | CI/CD pipeline status |
+| `@roadiehq/backstage-plugin-github-insights` | PR and contributor insights |
+| `@backstage/plugin-pagerduty` | On-call info and incident management |
+| `@backstage/plugin-kubernetes` | Live Kubernetes workload status |
+| `@backstage/plugin-techdocs` | Auto-rendered documentation from Markdown |
+| `@backstage/plugin-cost-insights` | Cloud cost attribution by team/service |
+
+**The adoption challenge:** Backstage is only useful if the catalog is populated and maintained. Common patterns that work:
+
+1. **Mandate catalog registration for new services** — part of the new service checklist
+2. **Golden path templates auto-register** — the template step creates the catalog entry
+3. **Automate catalog maintenance** — GitHub Actions that keep catalog-info.yaml in sync with deployment manifests
+
+## Measuring Platform Success
+
+Platform teams should measure their impact like a product team:
+
+**DORA Metrics (team-level):**
+- Deployment frequency
+- Lead time for changes
+- Change failure rate
+- Mean time to restore
+
+**Platform-specific:**
+- Percentage of services using golden paths vs custom setup
+- Time to create a new service (target: < 30 minutes)
+- Number of infra tickets per developer per month (target: trend to zero)
+- Developer satisfaction score (quarterly survey)
+
+## Common Mistakes
+
+**Building for the platform team, not developers.** The catalog UI your ops team loves might be confusing to developers. Do user research. Watch developers try to use your golden paths. Fix the sharp edges.
+
+**Too many golden paths.** One well-maintained golden path beats five poorly maintained ones. Start with your most common service type and nail it before expanding.
+
+**Skipping the developer feedback loop.** Treat your platform as a product. Have a public roadmap, a feedback channel, and a regular cadence of "platform office hours" where developers can ask questions.
+
+**Ignoring the existing mess.** New greenfield services get golden paths. What about the 200 services that predate your platform? Build a migration program — incremental adoption beats big-bang rewrites.
+
+Platform engineering done right is invisible. Developers don't think about Kubernetes or IAM or certificate management — they just ship features. That's the goal.
