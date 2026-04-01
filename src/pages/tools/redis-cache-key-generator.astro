@@ -1,0 +1,253 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is a Redis cache key naming convention?", answer: "A cache key naming convention is a structured pattern for Redis keys that makes them self-documenting, easy to namespace, and query-friendly with SCAN. Common patterns: colon-separated ('user:123:profile'), pipe-separated ('user|123|profile'), or dot-separated ('user.123.profile'). Colon-separated is the most widely adopted convention." },
+  { question: "What is a good TTL for different data types?", answer: "General guidelines: User sessions: 30 min–24 hours (depending on security needs). API responses: 60–300 seconds (balance freshness vs load). Auth tokens: match token expiry (15 min for access tokens, 7 days for refresh). Rate limit counters: 1 minute or sliding window. Search results: 5–30 minutes. Product catalog: 1–24 hours. Use shorter TTLs for frequently changing data." },
+  { question: "How do I invalidate all keys for a namespace in Redis?", answer: "Use SCAN with a glob pattern: SCAN 0 MATCH user:* COUNT 100. Never use KEYS * in production as it blocks the server. For atomic bulk deletion, use a Lua script: redis.call('DEL', unpack(redis.call('KEYS', ARGV[1]))). Better yet, use key prefixes designed for SCAN and delete in batches." },
+  { question: "What is the maximum Redis key length?", answer: "Redis supports keys up to 512 MB, but best practice is to keep keys under 1KB for memory efficiency. Very long keys increase memory usage and slow down comparisons. Use SHA hashes for keys derived from large inputs (like full URL paths): 'api:response:'+sha256(url)." },
+  { question: "What is the difference between EXPIRE, EXPIREAT, and SETEX?", answer: "EXPIRE key seconds — sets TTL in seconds from now. EXPIREAT key timestamp — sets expiry at a Unix timestamp. PEXPIRE key ms — sets TTL in milliseconds. SETEX key seconds value — atomically SET + EXPIRE in one command. SET key value EX seconds — modern equivalent with additional options (NX, XX, GET). Always prefer atomic SET...EX over separate SET+EXPIRE." }
+];
+---
+
+<BaseLayout
+  title="Redis Cache Key Generator — Cache Key Convention & TTL Patterns"
+  description="Generate Redis cache key patterns with namespace, segments, and separators. Get TTL recommendations by data type and SETEX/GET command examples. Free browser tool."
+  tool="Redis cache key generator, Redis key naming convention, Redis TTL calculator, Redis key pattern, Redis SETEX generator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Redis Cache Key Generator",
+    "url": "https://devplaybook.cc/tools/redis-cache-key-generator",
+    "description": "Generate Redis cache key patterns with naming conventions and TTL recommendations.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Redis Cache Key Convention Generator</h1>
+  <p class="text-text-muted mb-4">
+    Build Redis cache key patterns with namespace and segment configuration. Get TTL recommendations,
+    SETEX/GET command examples, and key pattern conventions for your caching strategy.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> Namespace + segment builder</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> TTL by data type</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> SETEX / GET / SCAN examples</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> Colon / pipe / dot separators</span>
+  </div>
+
+  <!-- Key builder -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <h2 class="text-sm font-semibold mb-3">Key Pattern Builder</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Namespace</label>
+        <input id="namespace" type="text" value="user" placeholder="e.g. user, product, api" class="w-full bg-surface border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Separator</label>
+        <select id="separator" class="w-full bg-surface border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value=":">Colon (:) — recommended</option>
+          <option value="|">Pipe (|)</option>
+          <option value=".">Dot (.)</option>
+          <option value="-">Dash (-)</option>
+          <option value="/">Slash (/)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Data Type (for TTL)</label>
+        <select id="data-type" class="w-full bg-surface border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="session">User Session</option>
+          <option value="api">API Response</option>
+          <option value="ratelimit">Rate Limit Counter</option>
+          <option value="auth">Auth / JWT Token</option>
+          <option value="search">Search Results</option>
+          <option value="product">Product / Catalog</option>
+          <option value="user">User Profile</option>
+          <option value="config">App Config</option>
+          <option value="custom">Custom TTL</option>
+        </select>
+      </div>
+    </div>
+    <div id="custom-ttl-row" class="hidden mb-4">
+      <label class="block text-xs text-text-muted mb-1">Custom TTL (seconds)</label>
+      <input id="custom-ttl" type="number" value="300" min="1" class="w-48 bg-surface border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+    </div>
+  </div>
+
+  <!-- Key segments -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold">Key Segments</h2>
+      <button id="add-seg" class="px-3 py-1.5 text-xs border border-dashed border-border rounded hover:border-primary transition-colors text-text-muted">+ Add Segment</button>
+    </div>
+    <div class="mb-1 hidden sm:grid gap-3 text-xs text-text-muted font-semibold px-1" style="grid-template-columns:1fr 1fr 48px">
+      <span>Segment Name / Type</span><span>Example Value</span><span></span>
+    </div>
+    <div id="segs-container" class="space-y-2"></div>
+  </div>
+
+  <!-- Output -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <h2 class="text-sm font-semibold mb-3">Generated Key Pattern &amp; Commands</h2>
+
+    <!-- Key pattern -->
+    <div class="mb-4">
+      <div class="flex items-center justify-between mb-1">
+        <label class="text-xs text-text-muted font-medium">Key Pattern</label>
+        <button id="copy-pattern" class="px-3 py-1 text-xs bg-surface border border-border rounded hover:border-primary transition-colors">Copy</button>
+      </div>
+      <div id="key-pattern" class="bg-surface rounded p-3 text-sm font-mono text-accent font-bold"></div>
+    </div>
+
+    <!-- TTL info -->
+    <div class="mb-4 p-3 bg-surface rounded-lg">
+      <div class="flex items-center gap-3 flex-wrap">
+        <span class="text-xs text-text-muted">Recommended TTL:</span>
+        <span id="ttl-value" class="text-accent font-bold font-mono text-sm"></span>
+        <span id="ttl-reason" class="text-xs text-text-muted"></span>
+      </div>
+    </div>
+
+    <!-- Commands -->
+    <div class="space-y-3">
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs text-text-muted font-medium">SET (with TTL)</label>
+          <button class="copy-cmd px-3 py-1 text-xs bg-surface border border-border rounded hover:border-primary transition-colors" data-target="cmd-set">Copy</button>
+        </div>
+        <pre id="cmd-set" class="bg-surface rounded p-2.5 text-xs font-mono text-foreground/90 overflow-x-auto whitespace-pre"></pre>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs text-text-muted font-medium">GET</label>
+          <button class="copy-cmd px-3 py-1 text-xs bg-surface border border-border rounded hover:border-primary transition-colors" data-target="cmd-get">Copy</button>
+        </div>
+        <pre id="cmd-get" class="bg-surface rounded p-2.5 text-xs font-mono text-foreground/90 overflow-x-auto whitespace-pre"></pre>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs text-text-muted font-medium">SCAN (list all keys in namespace)</label>
+          <button class="copy-cmd px-3 py-1 text-xs bg-surface border border-border rounded hover:border-primary transition-colors" data-target="cmd-scan">Copy</button>
+        </div>
+        <pre id="cmd-scan" class="bg-surface rounded p-2.5 text-xs font-mono text-foreground/90 overflow-x-auto whitespace-pre"></pre>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs text-text-muted font-medium">Node.js (ioredis) Example</label>
+          <button class="copy-cmd px-3 py-1 text-xs bg-surface border border-border rounded hover:border-primary transition-colors" data-target="cmd-node">Copy</button>
+        </div>
+        <pre id="cmd-node" class="bg-surface rounded p-2.5 text-xs font-mono text-foreground/90 overflow-x-auto whitespace-pre"></pre>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Redis Cache Key Generator" relatedTags={["redis", "caching", "database", "backend", "performance", "node"]} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var TTL_MAP = {
+    session:   { ttl: 1800,    label: "1800s (30 min)", reason: "User sessions expire after inactivity to enforce security." },
+    api:       { ttl: 120,     label: "120s (2 min)",   reason: "API responses balance freshness with server load reduction." },
+    ratelimit: { ttl: 60,      label: "60s (1 min)",    reason: "Rate limit windows typically reset every minute." },
+    auth:      { ttl: 900,     label: "900s (15 min)",  reason: "Access tokens use short TTLs; refresh tokens need longer TTLs." },
+    search:    { ttl: 300,     label: "300s (5 min)",   reason: "Search results are moderately fresh and expensive to compute." },
+    product:   { ttl: 3600,    label: "3600s (1 hour)", reason: "Product catalogs change infrequently but need some freshness." },
+    user:      { ttl: 600,     label: "600s (10 min)",  reason: "User profiles change occasionally — short cache prevents stale data." },
+    config:    { ttl: 86400,   label: "86400s (24 hr)", reason: "App config rarely changes and can be cached aggressively." },
+    custom:    { ttl: null,    label: "Custom",         reason: "Set your own TTL based on your data freshness requirements." }
+  };
+
+  var segs = [
+    { id: uid(), name: "id", example: "123" },
+    { id: uid(), name: "resource", example: "profile" }
+  ];
+
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+  function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function findSeg(id){ return segs.find(function(s){ return s.id===id; }); }
+
+  function hSeg(s){
+    return "<div class='grid gap-2 items-center p-2 bg-surface rounded border border-border' style='grid-template-columns:1fr 1fr 48px' data-sid='"+s.id+"'>" +
+      "<input type='text' value='"+esc(s.name)+"' placeholder='segment name' class='seg-name bg-surface border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-primary' data-sid='"+s.id+"' />" +
+      "<input type='text' value='"+esc(s.example)+"' placeholder='example value' class='seg-ex bg-surface border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-primary' data-sid='"+s.id+"' />" +
+      "<button class='del-seg text-xs text-red-400 border border-border rounded px-1 py-1 hover:text-red-300 transition-colors' data-sid='"+s.id+"'>Del</button>" +
+      "</div>";
+  }
+
+  function renderSegs(){
+    document.getElementById("segs-container").innerHTML = segs.map(hSeg).join("");
+    document.querySelectorAll(".seg-name").forEach(function(el){ el.oninput=function(e){ var s=findSeg(e.target.dataset.sid); if(s){s.name=e.target.value; gen();} }; });
+    document.querySelectorAll(".seg-ex").forEach(function(el){ el.oninput=function(e){ var s=findSeg(e.target.dataset.sid); if(s){s.example=e.target.value; gen();} }; });
+    document.querySelectorAll(".del-seg").forEach(function(el){ el.onclick=function(e){ segs=segs.filter(function(s){ return s.id!==e.target.dataset.sid; }); renderSegs(); gen(); }; });
+  }
+
+  function gen(){
+    var ns = document.getElementById("namespace").value.trim() || "ns";
+    var sep = document.getElementById("separator").value;
+    var dt = document.getElementById("data-type").value;
+    var customTtl = parseInt(document.getElementById("custom-ttl").value) || 300;
+
+    // Build pattern parts
+    var patternParts = [ns].concat(segs.map(function(s){ return "{"+s.name+"}"; }));
+    var exampleParts = [ns].concat(segs.map(function(s){ return s.example || s.name; }));
+    var pattern = patternParts.join(sep);
+    var exampleKey = exampleParts.join(sep);
+
+    var ttlInfo = TTL_MAP[dt] || TTL_MAP.api;
+    var ttl = dt === "custom" ? customTtl : ttlInfo.ttl;
+
+    document.getElementById("key-pattern").textContent = pattern;
+    document.getElementById("ttl-value").textContent = dt === "custom" ? ttl+"s" : ttlInfo.label;
+    document.getElementById("ttl-reason").textContent = ttlInfo.reason;
+
+    // Commands
+    document.getElementById("cmd-set").textContent = "SET "+exampleKey+' "{\\"data\\":\\"...\\", \\"cached_at\\":\\"'+new Date().toISOString()+'\\"}"\nEXPIRE '+exampleKey+" "+ttl+"\n\n-- Or atomically:\nSET "+exampleKey+' "value" EX '+ttl;
+    document.getElementById("cmd-get").textContent = "GET "+exampleKey+"\n\n-- Check TTL remaining:\nTTL "+exampleKey+"\n\n-- Delete:\nDEL "+exampleKey;
+    document.getElementById("cmd-scan").textContent = "-- List all keys in namespace '"+ns+"' (safe, non-blocking):\nSCAN 0 MATCH "+ns+sep+"* COUNT 100\n\n-- Delete all namespace keys (Lua script):\nEVAL \"local keys = redis.call('KEYS', ARGV[1]) if #keys > 0 then redis.call('DEL', unpack(keys)) end return #keys\" 0 \""+ns+sep+"*\"";
+
+    var segArgs = segs.map(function(s){ return "    "+s.name+": "+s.example; }).join(",\n");
+    var keyConstruct = "const "+ns.replace(/-/g,"")+"Key = ("+segs.map(function(s){ return s.name+": string | number"; }).join(", ")+") =>\n  ["+patternParts.map(function(p,i){return i===0?"'"+p+"'":"${"+segs[i-1].name+"}";}).map(function(p,i){ return i===0?p:"`"+segs[i-1].name+"`"; }).join(", ")+"].join('"+sep+"');";
+    var nodeEx = "import Redis from 'ioredis';\nconst redis = new Redis(process.env.REDIS_URL);\n\n// Key builder\nconst buildKey = ("+segs.map(function(s){ return s.name+": string | number"; }).join(", ")+") =>\n  `"+patternParts.map(function(p,i){ return i===0?p:"${"+segs[i-1].name+"}"; }).join(sep)+"`;\n\n// Set with TTL\nasync function setCache("+segs.map(function(s){ return s.name+": string"; }).join(", ")+", value: unknown) {\n  const key = buildKey("+segs.map(function(s){ return s.name; }).join(", ")+");\n  await redis.set(key, JSON.stringify(value), 'EX', "+ttl+");\n  return key;\n}\n\n// Get with JSON parse\nasync function getCache("+segs.map(function(s){ return s.name+": string"; }).join(", ")+") {\n  const key = buildKey("+segs.map(function(s){ return s.name; }).join(", ")+");\n  const val = await redis.get(key);\n  return val ? JSON.parse(val) : null;\n}";
+    document.getElementById("cmd-node").textContent = nodeEx;
+  }
+
+  document.getElementById("add-seg").onclick = function(){
+    segs.push({ id:uid(), name:"seg"+segs.length, example:"value" });
+    renderSegs(); gen();
+  };
+  document.getElementById("copy-pattern").onclick = function(){
+    navigator.clipboard.writeText(document.getElementById("key-pattern").textContent).then(function(){
+      var b=document.getElementById("copy-pattern"); b.textContent="Copied!"; setTimeout(function(){b.textContent="Copy";},1500);
+    });
+  };
+  document.querySelectorAll(".copy-cmd").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var target = btn.dataset.target;
+      navigator.clipboard.writeText(document.getElementById(target).textContent).then(function(){
+        btn.textContent="Copied!"; setTimeout(function(){btn.textContent="Copy";},1500);
+      });
+    });
+  });
+  document.getElementById("namespace").oninput = gen;
+  document.getElementById("separator").onchange = gen;
+  document.getElementById("data-type").onchange = function(){
+    var dt = document.getElementById("data-type").value;
+    document.getElementById("custom-ttl-row").classList.toggle("hidden", dt !== "custom");
+    gen();
+  };
+  document.getElementById("custom-ttl").oninput = gen;
+
+  renderSegs();
+  gen();
+})();
+</script>

@@ -1,398 +1,297 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import AffiliateSection from '../../components/AffiliateSection.astro';
 import ToolPageCta from '../../components/ToolPageCta.astro';
 import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
 
 const faq = [
-  { question: "What is a database index and why does it matter?", answer: "A database index is a data structure (usually a B-tree) that the database engine builds alongside your table to speed up data retrieval. Without an index, every query performs a full table scan — reading every row. With the right index, the engine can jump directly to matching rows. Indexes are critical for performance once tables have more than a few thousand rows, but they also add overhead to INSERT/UPDATE/DELETE operations." },
-  { question: "What is a composite index and how should I order columns?", answer: "A composite index covers multiple columns in a single index structure. Column order matters: the index can only be used from left to right. For a query filtering on (user_id, status), the index (user_id, status) works. The index (status, user_id) does not help a filter on user_id alone. General rule: put the highest-cardinality filter column first, then equality columns, then range/sort columns last." },
-  { question: "What is a covering index?", answer: "A covering index includes all columns needed by a query — both the filter/sort columns and the SELECT columns. When the index covers the query, the database engine never touches the main table data at all (index-only scan). This is the fastest possible query execution. The tradeoff is larger index size and slower writes." },
-  { question: "Should I add an index on every column?", answer: "No. Each index consumes disk space and slows down writes. You should index columns that appear frequently in WHERE, JOIN ON, ORDER BY, or GROUP BY clauses with large tables. Primary keys and unique constraints are auto-indexed. Avoid indexing low-cardinality columns (e.g., a boolean flag) alone — the planner may ignore it. Focus on the slow queries first, measure, then add indexes." },
+  { question: "What is a database index and why does it matter?", answer: "A database index is a data structure (usually a B-tree) that stores a sorted copy of column values alongside pointers to the full rows. Indexes allow the DB engine to find rows without scanning the entire table, reducing query time from O(n) to O(log n). Without indexes on WHERE, JOIN, and ORDER BY columns, large tables suffer full table scans." },
+  { question: "What is a B-tree index and when should I use it?", answer: "B-tree is the default index type in PostgreSQL and MySQL, suitable for equality (=), range (<, >, BETWEEN), and ORDER BY operations on any data type with a natural sort order. Use B-tree for most columns. It handles about 95% of indexing needs efficiently." },
+  { question: "When should I use a GIN or GiST index?", answer: "GIN (Generalized Inverted Index) is optimal for array containment, JSONB operators (@>, ?, ?|), and full-text search (tsvector). GiST (Generalized Search Tree) is ideal for geometric/PostGIS data, range types, and full-text. Use GIN for JSON and full-text, GiST for spatial and range queries." },
+  { question: "What is a partial index and when is it useful?", answer: "A partial index includes only rows matching a WHERE condition, e.g., CREATE INDEX idx ON orders(user_id) WHERE status = 'pending'. This creates a much smaller, faster index for queries that always filter on that condition. Great for soft-deleted records, status filters, or active-only queries." },
+  { question: "How does column order in composite indexes matter?", answer: "In a composite index (col1, col2, col3), the leftmost prefix rule applies: the index can be used for queries filtering on col1, col1+col2, or col1+col2+col3. Queries filtering only on col2 or col3 cannot use the index. Put high-cardinality equality columns first, then range columns, then sort columns." }
 ];
 ---
 
 <BaseLayout
-  title="Database Index Advisor — SQL Query Index Optimization Suggestions"
-  description="Paste SQL queries and get index optimization suggestions. Analyzes WHERE, JOIN, ORDER BY, and GROUP BY clauses to recommend single-column, composite, and covering indexes with CREATE INDEX statements."
-  tool="database index advisor, SQL index optimizer, CREATE INDEX generator, query index suggestions, SQL performance tuning"
+  title="Database Index Strategy Advisor — Get Recommended Indexes"
+  description="Get index recommendations for your database tables. Input column names, types, and cardinality. Receive CREATE INDEX statements, index type recommendations, and optimization tips."
+  tool="database index advisor, SQL index recommender, CREATE INDEX generator, database index strategy, PostgreSQL index advisor"
   faq={faq}
 >
   <script type="application/ld+json" set:html={JSON.stringify({
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    "name": "Database Index Advisor",
+    "name": "Database Index Strategy Advisor",
     "url": "https://devplaybook.cc/tools/database-index-advisor",
-    "description": "Analyze SQL queries and get index optimization suggestions. Generates CREATE INDEX statements for WHERE, JOIN, ORDER BY, and GROUP BY clauses.",
+    "description": "Get database index recommendations. Input columns and query patterns to receive CREATE INDEX statements and indexing strategy tips.",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Any",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
   })} />
 
-  <h1 class="text-3xl font-bold mb-2">Database Index Advisor</h1>
+  <h1 class="text-3xl font-bold mb-2">Database Index Strategy Advisor</h1>
   <p class="text-text-muted mb-4">
-    Paste one or more SQL queries to get index optimization suggestions.
-    The advisor analyzes <code class="font-mono text-primary">WHERE</code>, <code class="font-mono text-primary">JOIN ON</code>,
-    <code class="font-mono text-primary">ORDER BY</code>, and <code class="font-mono text-primary">GROUP BY</code> clauses
-    and recommends single-column, composite, and covering indexes with <code class="font-mono text-primary">CREATE INDEX</code> statements.
-    Client-side pattern matching — no server calls.
+    Input your table name, columns, and query patterns to get recommended index types, CREATE INDEX statements,
+    and indexing best practices for PostgreSQL, MySQL, and SQLite.
   </p>
-  <div class="flex items-center gap-3 mb-8 text-sm text-text-muted flex-wrap">
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> WHERE / JOIN / ORDER BY / GROUP BY</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Composite index ordering</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Covering index detection</span>
-    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CREATE INDEX statements</span>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> B-tree / GIN / GiST / Hash</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> Composite index ordering</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> Partial index suggestions</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">&#10003;</span> CREATE INDEX statements</span>
   </div>
 
-  <!-- Input -->
-  <div class="bg-bg-card border border-border rounded-xl p-5 mb-4">
-    <div class="flex items-center justify-between mb-3">
-      <label class="font-semibold text-sm" for="query-input">SQL Queries (separate with ; or newlines)</label>
-      <button id="idx-example" class="text-xs text-primary hover:underline">Load example</button>
+  <!-- Table setup -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Table Name</label>
+        <input id="table-name" type="text" value="orders" class="w-full bg-surface border border-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Database</label>
+        <select id="db-type" class="w-full bg-surface border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="postgresql">PostgreSQL</option>
+          <option value="mysql">MySQL</option>
+          <option value="sqlite">SQLite</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-text-muted mb-1">Approx. Row Count</label>
+        <select id="row-count" class="w-full bg-surface border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="small">Small (&lt; 10K rows)</option>
+          <option value="medium" selected>Medium (10K–1M rows)</option>
+          <option value="large">Large (&gt; 1M rows)</option>
+        </select>
+      </div>
     </div>
-    <textarea id="query-input" rows="10"
-      placeholder="SELECT * FROM orders WHERE user_id = $1 AND status = 'pending' ORDER BY created_at DESC;"
-      class="w-full bg-bg border border-border rounded-lg px-3 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"></textarea>
   </div>
 
-  <div class="flex gap-3 mb-6">
-    <button id="analyze-btn" class="bg-primary text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-primary/80 transition-colors">
-      Analyze Queries
-    </button>
-    <button id="idx-clear" class="text-sm text-text-muted hover:text-red-400 transition-colors">Clear</button>
+  <!-- Columns -->
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold">Columns</h2>
+      <button id="add-col" class="px-3 py-1.5 text-xs border border-dashed border-border rounded hover:border-primary transition-colors text-text-muted">+ Add Column</button>
+    </div>
+    <div class="mb-1 hidden sm:grid gap-2 text-xs text-text-muted font-semibold px-1" style="grid-template-columns:1fr 110px 90px 130px 48px">
+      <span>Column Name</span><span>Data Type</span><span>Cardinality</span><span>Query Usage</span><span></span>
+    </div>
+    <div id="cols-container" class="space-y-2"></div>
   </div>
+
+  <!-- Generate -->
+  <button id="gen-btn" class="w-full py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors mb-4">
+    Generate Index Recommendations
+  </button>
 
   <!-- Results -->
-  <div id="results-area" class="hidden mb-8">
-    <div id="idx-error" class="hidden mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400"></div>
-    <div id="suggestions-list" class="flex flex-col gap-4"></div>
-    <div class="mt-4 flex gap-3">
-      <button id="copy-all-btn" class="text-xs text-primary hover:underline">Copy all CREATE INDEX statements</button>
+  <div id="results" class="hidden">
+    <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold">Recommended Indexes</h2>
+        <button id="copy-indexes" class="px-4 py-1.5 bg-primary text-white rounded text-sm font-medium hover:bg-primary/90 transition-colors">Copy All</button>
+      </div>
+      <div id="index-list" class="space-y-3"></div>
+    </div>
+    <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+      <h2 class="text-sm font-semibold mb-3">Strategy Notes</h2>
+      <div id="strategy-notes" class="space-y-2"></div>
     </div>
   </div>
 
-  <!-- Index types guide -->
-  <div class="bg-bg-card border border-border rounded-xl p-6 mb-8">
-    <h2 class="font-bold text-sm uppercase tracking-wide text-text-muted mb-4">Index Type Guide</h2>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-      <div class="bg-bg border border-border rounded-lg p-4">
-        <div class="font-semibold mb-1 text-primary">Single-Column</div>
-        <div class="text-text-muted text-xs mb-2">Best for high-cardinality equality filters or foreign keys.</div>
-        <code class="text-xs font-mono text-text-muted block">CREATE INDEX idx_users_email<br>ON users (email);</code>
-      </div>
-      <div class="bg-bg border border-border rounded-lg p-4">
-        <div class="font-semibold mb-1 text-primary">Composite</div>
-        <div class="text-text-muted text-xs mb-2">Multiple columns. Order matters: equality first, range last.</div>
-        <code class="text-xs font-mono text-text-muted block">CREATE INDEX idx_orders_uid_status<br>ON orders (user_id, status);</code>
-      </div>
-      <div class="bg-bg border border-border rounded-lg p-4">
-        <div class="font-semibold mb-1 text-primary">Covering</div>
-        <div class="text-text-muted text-xs mb-2">INCLUDE extra SELECT columns to avoid table lookups entirely.</div>
-        <code class="text-xs font-mono text-text-muted block">CREATE INDEX idx_posts_uid<br>ON posts (user_id)<br>INCLUDE (title, created_at);</code>
-      </div>
-    </div>
-  </div>
-
-  <AffiliateSection />
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
   <FaqSection faq={faq} />
-  <ToolPageCta currentTool="Database Index Advisor" relatedTags={['sql', 'database', 'performance', 'postgresql', 'index', 'optimization']} />
+  <ToolPageCta currentTool="Database Index Strategy Advisor" relatedTags={["database", "postgresql", "mysql", "sql", "performance", "indexing"]} />
 </BaseLayout>
 
 <script is:inline>
 (function () {
-  var EXAMPLE = [
-    'SELECT id, title, created_at FROM posts WHERE user_id = $1 AND status = \'published\' ORDER BY created_at DESC LIMIT 20;',
-    '',
-    'SELECT * FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status = \'pending\' AND o.created_at > NOW() - INTERVAL \'7 days\';',
-    '',
-    'SELECT category, COUNT(*) FROM products WHERE is_active = true GROUP BY category ORDER BY category;',
-    '',
-    'SELECT email, name FROM users WHERE email = $1 AND deleted_at IS NULL;',
-  ].join('\n');
+  var COL_TYPES = ["varchar","text","integer","bigint","boolean","timestamp","uuid","jsonb","float","decimal","enum"];
+  var QUERY_TYPES = [
+    { val:"eq", label:"Equality (=)" },
+    { val:"range", label:"Range (<, >, BETWEEN)" },
+    { val:"sort", label:"ORDER BY / sort" },
+    { val:"fts", label:"Full-text search" },
+    { val:"json", label:"JSONB / array ops" },
+    { val:"join", label:"JOIN key" }
+  ];
 
-  function splitQueries(raw) {
-    // Split by semicolon, keeping multi-line queries together
-    var parts = raw.split(/;+/).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
-    return parts;
+  var cols = [
+    { id:uid(), name:"user_id", type:"integer", card:"high", usage:["eq","join"] },
+    { id:uid(), name:"status", type:"varchar", card:"low", usage:["eq"] },
+    { id:uid(), name:"created_at", type:"timestamp", card:"high", usage:["range","sort"] },
+    { id:uid(), name:"search_text", type:"text", card:"high", usage:["fts"] }
+  ];
+
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+  function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function findCol(id){ return cols.find(function(c){ return c.id===id; }); }
+
+  function hCol(c){
+    var typeOpts = COL_TYPES.map(function(t){ return "<option value='"+t+"'"+(c.type===t?" selected":"")+">"+t+"</option>"; }).join("");
+    var usageChecks = QUERY_TYPES.map(function(q){
+      var checked = c.usage.indexOf(q.val) >= 0;
+      return "<label class='flex items-center gap-1 text-xs cursor-pointer'><input type='checkbox' class='col-usage' data-cid='"+c.id+"' data-u='"+q.val+"'"+(checked?" checked":"")+">"+q.label+"</label>";
+    }).join("");
+    var cardOpts = ["low","medium","high"].map(function(v){
+      return "<option value='"+v+"'"+(c.card===v?" selected":"")+">"+v[0].toUpperCase()+v.slice(1)+"</option>";
+    }).join("");
+    return "<div class='grid gap-2 items-start p-2 bg-surface rounded border border-border' style='grid-template-columns:1fr 110px 90px 1fr 48px' data-cid='"+c.id+"'>" +
+      "<input type='text' value='"+esc(c.name)+"' class='col-name bg-surface border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-primary' data-cid='"+c.id+"' />" +
+      "<select class='col-type bg-bg-card border border-border rounded px-1 py-1 text-xs focus:outline-none focus:border-primary' data-cid='"+c.id+"'>"+typeOpts+"</select>" +
+      "<select class='col-card bg-bg-card border border-border rounded px-1 py-1 text-xs focus:outline-none focus:border-primary' data-cid='"+c.id+"'>"+cardOpts+"</select>" +
+      "<div class='flex flex-wrap gap-x-3 gap-y-1 pl-1'>"+usageChecks+"</div>" +
+      "<button class='del-col text-xs text-red-400 border border-border rounded px-1 py-1 hover:text-red-300 transition-colors self-center' data-cid='"+c.id+"'>Del</button>" +
+      "</div>";
   }
 
-  function extractTable(query) {
-    var m = query.match(/\bFROM\s+["'`]?(\w+)["'`]?/i);
-    return m ? m[1] : 'table';
+  function render(){
+    document.getElementById("cols-container").innerHTML = cols.map(hCol).join("");
+    attach();
   }
 
-  function extractJoinTables(query) {
-    var tables = [];
-    var re = /\bJOIN\s+["'`]?(\w+)["'`]?\s+(?:\w+\s+)?ON\s+([\w.]+)\s*=\s*([\w.]+)/gi;
-    var m;
-    while ((m = re.exec(query)) !== null) {
-      tables.push({ joinTable: m[1], left: m[2], right: m[3] });
-    }
-    return tables;
-  }
-
-  function extractColumns(clause) {
-    // Extract column names from a clause, stripping table aliases and operators
-    var cols = [];
-    var parts = clause.split(/,/);
-    parts.forEach(function (part) {
-      // Match col = val, col > val, col IS NULL, col BETWEEN, etc.
-      var m = part.match(/\b(?:\w+\.)?(\w+)\s*(?:=|>|<|>=|<=|!=|<>|IS\s+NULL|IS\s+NOT\s+NULL|LIKE|IN\s*\(|BETWEEN)/i);
-      if (m) cols.push(m[1]);
-      else {
-        // ORDER BY / GROUP BY — just bare column names
-        var bm = part.match(/\b(?:\w+\.)?(\w+)\b(?:\s+(?:ASC|DESC))?/i);
-        if (bm && !/^(ASC|DESC|NULL|NOT|IS|IN|AND|OR|BETWEEN|LIKE)$/i.test(bm[1])) cols.push(bm[1]);
-      }
+  function attach(){
+    var c = document.getElementById("cols-container");
+    c.querySelectorAll(".col-name").forEach(function(el){ el.oninput=function(e){ var col=findCol(e.target.dataset.cid); if(col) col.name=e.target.value; }; });
+    c.querySelectorAll(".col-type").forEach(function(el){ el.onchange=function(e){ var col=findCol(e.target.dataset.cid); if(col) col.type=e.target.value; }; });
+    c.querySelectorAll(".col-card").forEach(function(el){ el.onchange=function(e){ var col=findCol(e.target.dataset.cid); if(col) col.card=e.target.value; }; });
+    c.querySelectorAll(".col-usage").forEach(function(el){
+      el.onchange=function(e){
+        var col=findCol(e.target.dataset.cid); if(!col) return;
+        if(e.target.checked){ if(col.usage.indexOf(e.target.dataset.u)<0) col.usage.push(e.target.dataset.u); }
+        else { col.usage=col.usage.filter(function(u){ return u!==e.target.dataset.u; }); }
+      };
     });
-    return cols.filter(function (c, i, arr) { return arr.indexOf(c) === i; });
+    c.querySelectorAll(".del-col").forEach(function(el){ el.onclick=function(e){ cols=cols.filter(function(c){ return c.id!==e.target.dataset.cid; }); render(); }; });
   }
 
-  function analyzeQuery(sql) {
-    var suggestions = [];
-    var table = extractTable(sql);
+  function recommendIndexType(col, dbType){
+    if(col.usage.indexOf("fts") >= 0){
+      return dbType === "postgresql" ? "GIN (tsvector)" : "FULLTEXT";
+    }
+    if((col.usage.indexOf("json") >= 0) && dbType === "postgresql"){
+      return "GIN (jsonb_ops)";
+    }
+    if(col.card === "low" && col.usage.indexOf("eq") >= 0 && col.usage.indexOf("range") < 0){
+      return dbType === "postgresql" ? "B-tree (partial candidates)" : "B-tree";
+    }
+    if(col.type === "uuid" && col.usage.indexOf("eq") >= 0){
+      return dbType === "postgresql" ? "B-tree (or Hash for equality-only)" : "B-tree";
+    }
+    return "B-tree";
+  }
 
-    // WHERE columns
-    var whereMatch = sql.match(/\bWHERE\b([\s\S]+?)(?:\bGROUP\s+BY\b|\bORDER\s+BY\b|\bHAVING\b|\bLIMIT\b|$)/i);
-    var whereCols = whereMatch ? extractColumns(whereMatch[1]) : [];
+  function genCreateIndex(table, col, dbType, idx){
+    var idxName = "idx_"+table+"_"+col.name.toLowerCase().replace(/\s+/g,"_");
+    var fts = col.usage.indexOf("fts") >= 0;
+    var json = col.usage.indexOf("json") >= 0;
 
-    // ORDER BY columns
-    var orderMatch = sql.match(/\bORDER\s+BY\b([\s\S]+?)(?:\bLIMIT\b|\bHAVING\b|$)/i);
-    var orderCols = orderMatch ? orderMatch[1].split(',').map(function (c) {
-      var m = c.match(/\b(?:\w+\.)?(\w+)\b/i);
-      return m ? m[1] : null;
-    }).filter(Boolean) : [];
+    if(fts && dbType === "postgresql"){
+      return "-- Full-text index on "+col.name+"\nCREATE INDEX "+idxName+"_fts ON "+table+" USING GIN (to_tsvector('english', "+col.name+"));";
+    }
+    if(fts && dbType === "mysql"){
+      return "-- Full-text index on "+col.name+"\nALTER TABLE "+table+" ADD FULLTEXT INDEX "+idxName+"_fts ("+col.name+");";
+    }
+    if(json && dbType === "postgresql"){
+      return "-- JSONB index on "+col.name+"\nCREATE INDEX "+idxName+"_gin ON "+table+" USING GIN ("+col.name+");";
+    }
+    if(col.card === "low" && col.usage.indexOf("eq") >= 0 && dbType === "postgresql"){
+      return "-- Partial index example (customize WHERE clause)\nCREATE INDEX "+idxName+" ON "+table+" ("+col.name+") WHERE "+col.name+" IS NOT NULL;";
+    }
+    return "CREATE INDEX "+idxName+" ON "+table+" ("+col.name+");";
+  }
 
-    // GROUP BY columns
-    var groupMatch = sql.match(/\bGROUP\s+BY\b([\s\S]+?)(?:\bHAVING\b|\bORDER\s+BY\b|\bLIMIT\b|$)/i);
-    var groupCols = groupMatch ? groupMatch[1].split(',').map(function (c) {
-      var m = c.match(/\b(?:\w+\.)?(\w+)\b/i);
-      return m ? m[1] : null;
-    }).filter(Boolean) : [];
+  function generate(){
+    var table = document.getElementById("table-name").value.trim() || "my_table";
+    var dbType = document.getElementById("db-type").value;
+    var rowCount = document.getElementById("row-count").value;
 
-    // SELECT columns (for covering index)
-    var selectMatch = sql.match(/\bSELECT\b([\s\S]+?)\bFROM\b/i);
-    var selectCols = [];
-    if (selectMatch && !/\*/.test(selectMatch[1])) {
-      selectCols = selectMatch[1].split(',').map(function (c) {
-        var m = c.match(/\b(?:\w+\.)?(\w+)\b/i);
-        return m ? m[1] : null;
-      }).filter(Boolean);
+    if(cols.length === 0){ alert("Add at least one column."); return; }
+
+    var indexHtml = [];
+    var allSQL = [];
+
+    // Check for composite index candidates (eq + sort, eq + range)
+    var eqCols = cols.filter(function(c){ return c.usage.indexOf("eq") >= 0 || c.usage.indexOf("join") >= 0; });
+    var sortCols = cols.filter(function(c){ return c.usage.indexOf("sort") >= 0; });
+    var rangeCols = cols.filter(function(c){ return c.usage.indexOf("range") >= 0; });
+
+    if(eqCols.length >= 2){
+      var names = eqCols.slice(0,3).map(function(c){ return c.name; });
+      var compSQL = "-- Composite index for equality lookups\nCREATE INDEX idx_"+table+"_composite ON "+table+" ("+names.join(", ")+");";
+      allSQL.push(compSQL);
+      indexHtml.push("<div class='bg-surface rounded-lg p-3'>" +
+        "<div class='flex items-center gap-2 mb-1'><span class='px-2 py-0.5 text-xs bg-blue-500/20 text-blue-400 rounded font-medium'>Composite</span><span class='text-xs text-text-muted'>High priority</span></div>" +
+        "<pre class='text-xs font-mono text-foreground/90 whitespace-pre-wrap'>"+esc(compSQL)+"</pre>" +
+        "<p class='text-xs text-text-muted mt-1'>Tip: Put high-cardinality equality columns first, then range/sort columns.</p>" +
+        "</div>");
     }
 
-    // JOIN suggestions
-    var joins = extractJoinTables(sql);
-    joins.forEach(function (j) {
-      var colMatch = (j.right + ' ' + j.left).match(/\b\w+\.(\w+)/g);
-      if (colMatch) {
-        colMatch.forEach(function (c) {
-          var col = c.split('.')[1];
-          if (col) {
-            suggestions.push({
-              type: 'JOIN',
-              table: j.joinTable,
-              columns: [col],
-              reason: 'JOIN ON ' + j.left + ' = ' + j.right + ' — index on join key speeds up nested loop joins.',
-              sql: 'CREATE INDEX idx_' + j.joinTable + '_' + col + ' ON ' + j.joinTable + ' (' + col + ');',
-            });
-          }
-        });
-      }
-    });
-
-    // WHERE single-column
-    whereCols.forEach(function (col) {
-      suggestions.push({
-        type: 'WHERE',
-        table: table,
-        columns: [col],
-        reason: 'WHERE ' + col + ' — single-column index enables fast equality/range filtering.',
-        sql: 'CREATE INDEX idx_' + table + '_' + col + ' ON ' + table + ' (' + col + ');',
-      });
-    });
-
-    // Composite: WHERE + ORDER BY
-    if (whereCols.length > 0 && orderCols.length > 0) {
-      var compositeCols = whereCols.concat(orderCols.filter(function (c) { return whereCols.indexOf(c) === -1; }));
-      if (compositeCols.length > 1) {
-        suggestions.push({
-          type: 'COMPOSITE',
-          table: table,
-          columns: compositeCols,
-          reason: 'WHERE ' + whereCols.join(', ') + ' + ORDER BY ' + orderCols.join(', ') + ' — composite index eliminates sort and filter in one scan.',
-          sql: 'CREATE INDEX idx_' + table + '_' + compositeCols.join('_') + ' ON ' + table + ' (' + compositeCols.join(', ') + ');',
-        });
-      }
-    }
-
-    // Composite: WHERE multi-column
-    if (whereCols.length > 1) {
-      suggestions.push({
-        type: 'COMPOSITE',
-        table: table,
-        columns: whereCols,
-        reason: 'Multiple WHERE columns (' + whereCols.join(', ') + ') — composite index more efficient than multiple single-column indexes.',
-        sql: 'CREATE INDEX idx_' + table + '_' + whereCols.join('_') + ' ON ' + table + ' (' + whereCols.join(', ') + ');',
-      });
-    }
-
-    // ORDER BY only
-    if (whereCols.length === 0 && orderCols.length > 0) {
-      suggestions.push({
-        type: 'ORDER BY',
-        table: table,
-        columns: orderCols,
-        reason: 'ORDER BY ' + orderCols.join(', ') + ' without WHERE — index on sort columns avoids full table sort.',
-        sql: 'CREATE INDEX idx_' + table + '_' + orderCols.join('_') + ' ON ' + table + ' (' + orderCols.join(', ') + ');',
-      });
-    }
-
-    // GROUP BY
-    if (groupCols.length > 0) {
-      suggestions.push({
-        type: 'GROUP BY',
-        table: table,
-        columns: groupCols,
-        reason: 'GROUP BY ' + groupCols.join(', ') + ' — index enables loose index scan instead of hash aggregate.',
-        sql: 'CREATE INDEX idx_' + table + '_' + groupCols.join('_') + ' ON ' + table + ' (' + groupCols.join(', ') + ');',
-      });
-    }
-
-    // Covering index: WHERE filter + SELECT columns (non-* only)
-    if (whereCols.length > 0 && selectCols.length > 0) {
-      var coveringInclude = selectCols.filter(function (c) { return whereCols.indexOf(c) === -1; });
-      if (coveringInclude.length > 0) {
-        suggestions.push({
-          type: 'COVERING',
-          table: table,
-          columns: whereCols,
-          reason: 'SELECT ' + selectCols.join(', ') + ' — covering index (INCLUDE) avoids table heap access entirely.',
-          sql: 'CREATE INDEX idx_' + table + '_' + whereCols.join('_') + '_cover ON ' + table +
-            ' (' + whereCols.join(', ') + ') INCLUDE (' + coveringInclude.join(', ') + ');',
-        });
+    if(eqCols.length >= 1 && sortCols.length >= 1){
+      var eq1 = eqCols[0].name;
+      var sort1 = sortCols[0].name;
+      if(eq1 !== sort1){
+        var covSQL = "-- Equality + sort composite\nCREATE INDEX idx_"+table+"_"+eq1.toLowerCase()+"_"+sort1.toLowerCase()+" ON "+table+" ("+eq1+", "+sort1+");";
+        allSQL.push(covSQL);
+        indexHtml.push("<div class='bg-surface rounded-lg p-3'>" +
+          "<div class='flex items-center gap-2 mb-1'><span class='px-2 py-0.5 text-xs bg-purple-500/20 text-purple-400 rounded font-medium'>Sort+Filter</span><span class='text-xs text-text-muted'>Covers WHERE + ORDER BY</span></div>" +
+          "<pre class='text-xs font-mono text-foreground/90 whitespace-pre-wrap'>"+esc(covSQL)+"</pre>" +
+          "</div>");
       }
     }
 
-    // Deduplicate by SQL statement
-    var seen = {};
-    suggestions = suggestions.filter(function (s) {
-      if (seen[s.sql]) return false;
-      seen[s.sql] = true;
-      return true;
+    cols.forEach(function(col, i){
+      var indexType = recommendIndexType(col, dbType);
+      var sql = genCreateIndex(table, col, dbType, i);
+      allSQL.push(sql);
+      var tagClass = indexType.startsWith("GIN") ? "bg-green-500/20 text-green-400" :
+                     indexType.startsWith("GiST") ? "bg-teal-500/20 text-teal-400" :
+                     indexType.startsWith("FULLTEXT") ? "bg-green-500/20 text-green-400" :
+                     "bg-surface text-text-muted border border-border";
+      indexHtml.push("<div class='bg-surface rounded-lg p-3'>" +
+        "<div class='flex items-center gap-2 mb-1'>" +
+        "<span class='text-sm font-mono font-semibold'>"+esc(col.name)+"</span>" +
+        "<span class='px-2 py-0.5 text-xs rounded font-medium "+tagClass+"'>"+indexType+"</span>" +
+        "<span class='text-xs text-text-muted'>card: "+col.card+"</span>" +
+        "</div>" +
+        "<pre class='text-xs font-mono text-foreground/90 whitespace-pre-wrap'>"+esc(sql)+"</pre>" +
+        "</div>");
     });
 
-    return suggestions;
+    document.getElementById("index-list").innerHTML = indexHtml.join("");
+    document.getElementById("copy-indexes").onclick = function(){
+      navigator.clipboard.writeText(allSQL.join("\n\n")).then(function(){
+        var b=document.getElementById("copy-indexes"); b.textContent="Copied!"; setTimeout(function(){b.textContent="Copy All";},1500);
+      });
+    };
+
+    // Strategy notes
+    var notes = [];
+    if(rowCount === "small") notes.push({ icon:"&#8505;", text:"Small table (&lt;10K rows): indexes may not improve performance — the query planner may prefer seq scans. Index for future growth." });
+    if(rangeCols.length > 0) notes.push({ icon:"&#9888;", text:"Range query columns ("+rangeCols.map(function(c){return c.name;}).join(", ")+"): B-tree handles range well. Place range columns after equality columns in composites." });
+    var lowCardCols = cols.filter(function(c){ return c.card==="low" && c.usage.indexOf("eq")>=0; });
+    if(lowCardCols.length > 0) notes.push({ icon:"&#9888;", text:"Low-cardinality columns ("+lowCardCols.map(function(c){return c.name;}).join(", ")+"): indexes on boolean or status columns may not help unless combined with high-cardinality columns in a composite, or used as partial indexes." });
+    var hasFts = cols.some(function(c){ return c.usage.indexOf("fts")>=0; });
+    if(hasFts && dbType === "postgresql") notes.push({ icon:"&#9888;", text:"Full-text search: consider a dedicated tsvector generated column with a GIN index for better performance with complex queries." });
+    notes.push({ icon:"&#10003;", text:"Always run EXPLAIN ANALYZE after adding indexes to confirm the planner uses them. Monitor pg_stat_user_indexes (PostgreSQL) or SHOW INDEX FROM table (MySQL) to find unused indexes." });
+
+    document.getElementById("strategy-notes").innerHTML = notes.map(function(n){
+      var isOk = n.icon === "&#10003;";
+      return "<div class='flex items-start gap-2 p-3 rounded-lg "+(isOk?"bg-green-500/10":"bg-blue-500/10")+"'>" +
+        "<span class='mt-0.5 text-sm "+(isOk?"text-green-400":"text-blue-400")+"'>"+n.icon+"</span>" +
+        "<span class='text-sm'>"+n.text+"</span></div>";
+    }).join("");
+
+    document.getElementById("results").classList.remove("hidden");
+    document.getElementById("results").scrollIntoView({ behavior:"smooth", block:"nearest" });
   }
 
-  var TYPE_COLORS = {
-    'WHERE': 'text-blue-400',
-    'JOIN': 'text-purple-400',
-    'COMPOSITE': 'text-green-400',
-    'ORDER BY': 'text-yellow-400',
-    'GROUP BY': 'text-orange-400',
-    'COVERING': 'text-cyan-400',
+  document.getElementById("add-col").onclick = function(){
+    cols.push({ id:uid(), name:"column_"+cols.length, type:"varchar", card:"medium", usage:["eq"] });
+    render();
   };
-
-  var TYPE_LABELS = {
-    'WHERE': 'Single-Column',
-    'JOIN': 'Join Key',
-    'COMPOSITE': 'Composite',
-    'ORDER BY': 'Sort Index',
-    'GROUP BY': 'Group Index',
-    'COVERING': 'Covering Index',
-  };
-
-  var allIndexStatements = [];
-
-  function renderSuggestions(all) {
-    var list = document.getElementById('suggestions-list');
-    allIndexStatements = [];
-    if (!all.length) {
-      list.innerHTML = '<p class="text-sm text-text-muted text-center py-6">No index suggestions found. Make sure your queries have WHERE, JOIN, ORDER BY, or GROUP BY clauses.</p>';
-      return;
-    }
-    list.innerHTML = all.map(function (s, i) {
-      allIndexStatements.push(s.sql);
-      var color = TYPE_COLORS[s.type] || 'text-text-muted';
-      var label = TYPE_LABELS[s.type] || s.type;
-      return '<div class="bg-bg-card border border-border rounded-xl p-5">' +
-        '<div class="flex items-center gap-2 mb-2">' +
-        '  <span class="text-xs font-semibold uppercase tracking-wide ' + color + '">' + label + '</span>' +
-        '  <span class="text-xs text-text-muted">on <span class="font-mono text-text">' + s.table + '</span></span>' +
-        '  <span class="text-xs text-text-muted ml-auto">(' + s.columns.join(', ') + ')</span>' +
-        '</div>' +
-        '<p class="text-xs text-text-muted mb-3">' + s.reason + '</p>' +
-        '<div class="flex items-center justify-between gap-2 bg-bg border border-border rounded-lg px-3 py-2">' +
-        '  <code class="text-xs font-mono text-text">' + s.sql + '</code>' +
-        '  <button class="copy-one text-xs text-primary hover:underline whitespace-nowrap ml-3" data-i="' + i + '">Copy</button>' +
-        '</div>' +
-        '</div>';
-    }).join('');
-
-    list.querySelectorAll('.copy-one').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var idx = parseInt(this.getAttribute('data-i'), 10);
-        var stmt = allIndexStatements[idx];
-        if (stmt) navigator.clipboard && navigator.clipboard.writeText(stmt);
-        this.textContent = 'Copied!';
-        var b = this;
-        setTimeout(function () { b.textContent = 'Copy'; }, 2000);
-      });
-    });
-  }
-
-  document.getElementById('idx-example').addEventListener('click', function () {
-    document.getElementById('query-input').value = EXAMPLE;
-  });
-
-  document.getElementById('idx-clear').addEventListener('click', function () {
-    document.getElementById('query-input').value = '';
-    document.getElementById('results-area').classList.add('hidden');
-    document.getElementById('suggestions-list').innerHTML = '';
-    document.getElementById('idx-error').classList.add('hidden');
-  });
-
-  document.getElementById('analyze-btn').addEventListener('click', function () {
-    var raw = document.getElementById('query-input').value.trim();
-    var errEl = document.getElementById('idx-error');
-    var resultsArea = document.getElementById('results-area');
-    errEl.classList.add('hidden');
-
-    if (!raw) {
-      errEl.textContent = 'Please paste at least one SQL query first.';
-      errEl.classList.remove('hidden');
-      resultsArea.classList.add('hidden');
-      return;
-    }
-
-    var queries = splitQueries(raw);
-    var allSuggestions = [];
-    queries.forEach(function (q) {
-      if (/\bSELECT\b/i.test(q)) {
-        var s = analyzeQuery(q);
-        allSuggestions = allSuggestions.concat(s);
-      }
-    });
-
-    // Final dedup across all queries
-    var seen = {};
-    allSuggestions = allSuggestions.filter(function (s) {
-      if (seen[s.sql]) return false;
-      seen[s.sql] = true;
-      return true;
-    });
-
-    resultsArea.classList.remove('hidden');
-    renderSuggestions(allSuggestions);
-  });
-
-  document.getElementById('copy-all-btn').addEventListener('click', function () {
-    if (allIndexStatements.length) {
-      navigator.clipboard && navigator.clipboard.writeText(allIndexStatements.join('\n'));
-      this.textContent = 'Copied all!';
-      var btn = this;
-      setTimeout(function () { btn.textContent = 'Copy all CREATE INDEX statements'; }, 2000);
-    }
-  });
+  document.getElementById("gen-btn").onclick = generate;
+  render();
 })();
 </script>
