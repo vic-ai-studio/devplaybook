@@ -1,0 +1,261 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are p50, p90, and p99 latency percentiles?", answer: "Percentile latencies describe the distribution of response times. p50 (median) means 50% of requests complete in that time or less. p90 means 90% of requests are that fast or faster — 10% are slower. p99 is the '99th percentile': 99% of requests complete in that time, only 1% are slower. p99 is critical for user experience because it captures your worst-case 'tail latency'." },
+  { question: "Why is average (mean) latency misleading?", answer: "The mean is easily skewed by outliers. If 99 requests take 10ms and 1 request takes 10,000ms, the mean is ~110ms — but the p99 is 10,000ms. Users experience individual requests, not averages. Always monitor p95 or p99 alongside the mean for a realistic picture of performance." },
+  { question: "What is a good API response time target?", answer: "General guidelines: under 100ms feels instant, 100-300ms is acceptable for most API calls, 300ms-1s starts to feel slow, over 1s significantly impacts user experience. For background jobs or data export endpoints, higher latency is acceptable. Real-time features (chat, live search) should target under 50ms." },
+  { question: "What causes high p99 latency (tail latency)?", answer: "Common causes: garbage collection pauses, database lock contention, cold cache misses, N+1 query problems, connection pool exhaustion, large payload serialization, external API slowness. Profile at the p99 level — optimizing the median won't fix tail latency if the root cause is intermittent." },
+  { question: "How should I format the input JSON for this tool?", answer: "Provide a JSON array where each object has at minimum a `url` string and `duration` number (milliseconds). Optionally include `size` (bytes) and `status` (HTTP status code). Example: [{\"url\": \"/api/users\", \"duration\": 45, \"size\": 1200, \"status\": 200}]. You can export this format from many APM tools." },
+];
+---
+
+<BaseLayout
+  title="API Response Time Analyzer — p50/p90/p99 Latency & Waterfall Chart"
+  description="Analyze API response time distributions. Calculate p50, p90, p99 latency percentiles, rank slowest endpoints, and visualize response time waterfall from JSON data."
+  tool="API Latency Analyzer, p99 Percentile Calculator, Response Time Distribution, Waterfall Chart, API Performance"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">API Response Time Analyzer</h1>
+  <p class="text-text-muted mb-4">Paste your API response time data as JSON to calculate latency percentiles, rank slow endpoints, and visualize the distribution waterfall.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> p50 / p90 / p99 percentiles</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Slowest endpoints ranking</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> ASCII waterfall chart</span>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-2">
+      <label class="text-sm font-medium">Response Time Data <span class="text-text-muted font-normal">(JSON array)</span></label>
+      <button id="art-load-sample" class="text-xs text-primary hover:underline">Load Sample</button>
+    </div>
+    <textarea id="art-input" rows="10"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono resize-y mb-3"
+    ></textarea>
+    <div class="flex gap-2">
+      <button id="art-analyze" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity">
+        Analyze
+      </button>
+      <div id="art-error" class="text-sm text-red-500 self-center hidden"></div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div id="art-stats-section" class="hidden">
+    <!-- Percentile cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-p50" class="text-2xl font-bold text-green-500 mb-1">—</div>
+        <div class="text-xs text-text-muted">p50 (median)</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-p90" class="text-2xl font-bold text-yellow-500 mb-1">—</div>
+        <div class="text-xs text-text-muted">p90</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-p99" class="text-2xl font-bold text-red-500 mb-1">—</div>
+        <div class="text-xs text-text-muted">p99</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-mean" class="text-2xl font-bold text-primary mb-1">—</div>
+        <div class="text-xs text-text-muted">Mean</div>
+      </div>
+    </div>
+
+    <!-- Extra stats row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-min" class="text-xl font-bold text-text-muted mb-1">—</div>
+        <div class="text-xs text-text-muted">Min</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-max" class="text-xl font-bold text-text-muted mb-1">—</div>
+        <div class="text-xs text-text-muted">Max</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-count" class="text-xl font-bold text-text-muted mb-1">—</div>
+        <div class="text-xs text-text-muted">Total Requests</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="stat-size" class="text-xl font-bold text-text-muted mb-1">—</div>
+        <div class="text-xs text-text-muted">Total Payload</div>
+      </div>
+    </div>
+
+    <!-- Slowest endpoints -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <h2 class="text-base font-semibold mb-3">Slowest 5 Endpoints</h2>
+      <div id="art-slowest" class="overflow-x-auto"></div>
+    </div>
+
+    <!-- Waterfall chart -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <h2 class="text-base font-semibold mb-3">Response Time Distribution</h2>
+      <div id="art-waterfall" class="space-y-1.5 font-mono text-xs"></div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="API Response Time Analyzer" relatedTags={['api', 'performance', 'latency', 'monitoring', 'backend']} />
+</BaseLayout>
+
+<script>
+  interface ApiEntry {
+    url: string;
+    duration: number;
+    size?: number;
+    status?: number;
+    method?: string;
+  }
+
+  const SAMPLE: ApiEntry[] = [
+    { url: '/api/users', duration: 45, size: 1240, status: 200, method: 'GET' },
+    { url: '/api/users/123', duration: 12, size: 480, status: 200, method: 'GET' },
+    { url: '/api/users', duration: 89, size: 320, status: 201, method: 'POST' },
+    { url: '/api/products', duration: 234, size: 58000, status: 200, method: 'GET' },
+    { url: '/api/products/456', duration: 18, size: 920, status: 200, method: 'GET' },
+    { url: '/api/orders', duration: 567, size: 12400, status: 200, method: 'GET' },
+    { url: '/api/orders/789', duration: 34, size: 2100, status: 200, method: 'GET' },
+    { url: '/api/orders', duration: 145, size: 540, status: 201, method: 'POST' },
+    { url: '/api/search?q=shoes', duration: 1230, size: 34000, status: 200, method: 'GET' },
+    { url: '/api/auth/login', duration: 78, size: 280, status: 200, method: 'POST' },
+    { url: '/api/auth/refresh', duration: 23, size: 180, status: 200, method: 'POST' },
+    { url: '/api/products', duration: 180, size: 24000, status: 200, method: 'GET' },
+    { url: '/api/users/456', duration: 9, size: 460, status: 200, method: 'GET' },
+    { url: '/api/analytics/report', duration: 2890, size: 128000, status: 200, method: 'GET' },
+    { url: '/api/notifications', duration: 56, size: 3200, status: 200, method: 'GET' },
+    { url: '/api/search?q=boots', duration: 980, size: 28000, status: 200, method: 'GET' },
+    { url: '/api/users/789/profile', duration: 67, size: 740, status: 200, method: 'GET' },
+    { url: '/api/checkout', duration: 340, size: 620, status: 200, method: 'POST' },
+    { url: '/api/payment/verify', duration: 456, size: 280, status: 200, method: 'POST' },
+    { url: '/api/categories', duration: 88, size: 5600, status: 200, method: 'GET' },
+  ];
+
+  function percentile(sorted: number[], p: number): number {
+    if (sorted.length === 0) return 0;
+    const idx = (p / 100) * (sorted.length - 1);
+    const low = Math.floor(idx);
+    const high = Math.ceil(idx);
+    if (low === high) return sorted[low];
+    return sorted[low] + (sorted[high] - sorted[low]) * (idx - low);
+  }
+
+  function fmtDuration(ms: number): string {
+    if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+    return `${Math.round(ms)}ms`;
+  }
+
+  function fmtBytes(bytes: number): string {
+    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${bytes} B`;
+  }
+
+  function barChar(val: number, max: number, width: number): string {
+    const filled = Math.round((val / max) * width);
+    return '█'.repeat(filled) + '░'.repeat(width - filled);
+  }
+
+  function analyze() {
+    const raw = (document.getElementById('art-input') as HTMLTextAreaElement).value.trim();
+    const errEl = document.getElementById('art-error')!;
+    errEl.classList.add('hidden');
+
+    let data: ApiEntry[];
+    try {
+      data = JSON.parse(raw);
+      if (!Array.isArray(data)) throw new Error('Must be a JSON array');
+      data.forEach((d, i) => {
+        if (typeof d.duration !== 'number') throw new Error(`Entry ${i}: "duration" must be a number`);
+        if (typeof d.url !== 'string') throw new Error(`Entry ${i}: "url" must be a string`);
+      });
+    } catch (e: any) {
+      errEl.textContent = e.message;
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    const durations = data.map(d => d.duration).sort((a, b) => a - b);
+    const totalSize = data.reduce((s, d) => s + (d.size || 0), 0);
+    const mean = durations.reduce((s, v) => s + v, 0) / durations.length;
+
+    const p50 = percentile(durations, 50);
+    const p90 = percentile(durations, 90);
+    const p99 = percentile(durations, 99);
+    const min = durations[0];
+    const max = durations[durations.length - 1];
+
+    (document.getElementById('stat-p50') as HTMLElement).textContent = fmtDuration(p50);
+    (document.getElementById('stat-p90') as HTMLElement).textContent = fmtDuration(p90);
+    (document.getElementById('stat-p99') as HTMLElement).textContent = fmtDuration(p99);
+    (document.getElementById('stat-mean') as HTMLElement).textContent = fmtDuration(mean);
+    (document.getElementById('stat-min') as HTMLElement).textContent = fmtDuration(min);
+    (document.getElementById('stat-max') as HTMLElement).textContent = fmtDuration(max);
+    (document.getElementById('stat-count') as HTMLElement).textContent = data.length.toLocaleString();
+    (document.getElementById('stat-size') as HTMLElement).textContent = totalSize > 0 ? fmtBytes(totalSize) : '—';
+
+    // Slowest 5
+    const slowest = [...data].sort((a, b) => b.duration - a.duration).slice(0, 5);
+    const slowestEl = document.getElementById('art-slowest')!;
+    slowestEl.innerHTML = `<table class="w-full text-sm min-w-[400px]">
+      <thead><tr class="text-text-muted text-xs uppercase border-b border-border">
+        <th class="text-left pb-2 pr-4">Rank</th>
+        <th class="text-left pb-2 pr-4">URL</th>
+        <th class="text-left pb-2 pr-4">Method</th>
+        <th class="text-right pb-2 pr-4">Duration</th>
+        <th class="text-right pb-2">Size</th>
+      </tr></thead>
+      <tbody class="divide-y divide-border">${slowest.map((d, i) => {
+        const color = i === 0 ? 'text-red-500' : i === 1 ? 'text-orange-500' : 'text-text-muted';
+        return `<tr>
+          <td class="py-2 pr-4 font-bold ${color}">#${i + 1}</td>
+          <td class="py-2 pr-4 font-mono text-xs">${d.url}</td>
+          <td class="py-2 pr-4 text-xs text-text-muted">${d.method || '—'}</td>
+          <td class="py-2 pr-4 text-right font-mono font-semibold ${color}">${fmtDuration(d.duration)}</td>
+          <td class="py-2 text-right text-xs text-text-muted">${d.size ? fmtBytes(d.size) : '—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+
+    // Waterfall distribution chart
+    const bucketCount = Math.min(20, data.length);
+    const bucketSize = (max - min) / bucketCount || 1;
+    const buckets: number[] = new Array(bucketCount).fill(0);
+    durations.forEach(d => {
+      const idx = Math.min(Math.floor((d - min) / bucketSize), bucketCount - 1);
+      buckets[idx]++;
+    });
+    const maxBucket = Math.max(...buckets);
+    const BAR_W = 30;
+
+    const waterfallEl = document.getElementById('art-waterfall')!;
+    waterfallEl.innerHTML = buckets.map((count, i) => {
+      const lo = min + i * bucketSize;
+      const hi = lo + bucketSize;
+      const bar = barChar(count, maxBucket, BAR_W);
+      const pct = ((count / data.length) * 100).toFixed(1);
+      const label = `${fmtDuration(lo).padStart(7)} - ${fmtDuration(hi).padStart(7)}`;
+      return `<div class="flex items-center gap-2">
+        <span class="text-text-muted w-36 shrink-0">${label}</span>
+        <span class="text-primary">${bar}</span>
+        <span class="text-text-muted">${count} (${pct}%)</span>
+      </div>`;
+    }).join('');
+
+    document.getElementById('art-stats-section')!.classList.remove('hidden');
+  }
+
+  document.getElementById('art-load-sample')!.addEventListener('click', () => {
+    (document.getElementById('art-input') as HTMLTextAreaElement).value = JSON.stringify(SAMPLE, null, 2);
+  });
+
+  document.getElementById('art-analyze')!.addEventListener('click', analyze);
+
+  // Load sample on init
+  (document.getElementById('art-input') as HTMLTextAreaElement).value = JSON.stringify(SAMPLE, null, 2);
+  analyze();
+</script>

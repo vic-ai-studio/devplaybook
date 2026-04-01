@@ -1,0 +1,264 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the difference between locator() and getByRole()?", answer: "locator() accepts CSS selectors, XPath, and Playwright's extended selectors. getByRole() uses ARIA roles to find elements, which is the most robust approach for accessibility testing since it matches how screen readers see the page. Playwright recommends using getByRole() first, then getByText() or getByTestId(), and falling back to CSS selectors only when needed." },
+  { question: "What are data-testid attributes and should I use them?", answer: "data-testid (or data-test-id) are custom HTML attributes added specifically for testing. They don't affect styling or functionality and are stable across refactors. Playwright's getByTestId() defaults to the 'data-testid' attribute but you can configure it. They're ideal for elements that have no unique text or role." },
+  { question: "How do I select elements by their text content in Playwright?", answer: "Use `page.getByText('Submit')` for exact text matching. For partial matches, use `page.getByText('Submit', { exact: false })`. You can also use CSS like `page.locator('button:has-text(\"Submit\")')` or the text= pseudo-selector `page.locator('text=Submit')`." },
+  { question: "What makes a good Playwright selector?", answer: "Good selectors are: (1) user-facing — they target what the user sees, (2) stable — they don't break on minor refactors, (3) unique — they match exactly one element. Avoid selectors based on position (nth-child), auto-generated class names, or implementation details like internal IDs that change between builds." },
+  { question: "Can I test selectors without running Playwright?", answer: "Yes — this tool uses your browser's DOMParser and querySelector to validate selectors against the HTML you paste. For production use, Playwright's codegen tool (`playwright codegen <url>`) records real interactions and generates selectors automatically. The VS Code Playwright extension also has a built-in selector picker." },
+];
+---
+
+<BaseLayout
+  title="Playwright Selector Tester — CSS, Role & Text Locator Builder"
+  description="Test Playwright selectors against HTML snippets. Validate CSS selectors, generate getByRole, getByText, and getByTestId locator variants client-side."
+  tool="Playwright Selector Tester, Locator Builder, getByRole Generator, CSS Selector Validator, Playwright Testing"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Playwright Selector Tester</h1>
+  <p class="text-text-muted mb-4">Test CSS selectors and generate Playwright locator variants against a pasted HTML snippet. All processing is client-side — no server needed.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CSS selector validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> locator / getByRole / getByText / getByTestId</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Match count &amp; element preview</span>
+  </div>
+
+  <!-- Inputs -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">HTML &amp; Selector Input</h2>
+    <div class="mb-4">
+      <label class="block text-sm font-medium mb-1.5">HTML Snippet</label>
+      <textarea id="pw-html" rows="10"
+        class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono resize-y"
+><nav class="navbar" role="navigation" aria-label="main navigation">
+  <a href="/" class="brand" role="link">DevPlaybook</a>
+  <button class="btn btn-primary" data-testid="cta-button" aria-label="Get started">
+    Get Started
+  </button>
+  <ul class="nav-list">
+    <li><a href="/tools" class="nav-link active" role="link">Tools</a></li>
+    <li><a href="/articles" class="nav-link" role="link">Articles</a></li>
+    <li><a href="/about" class="nav-link" role="link">About</a></li>
+  </ul>
+</nav>
+<main>
+  <h1 class="hero-title">Build faster with the right tools</h1>
+  <p class="hero-desc">500+ developer tools, all free.</p>
+  <input type="email" placeholder="Enter your email" aria-label="Email address" class="email-input" />
+  <button type="submit" class="btn btn-submit">Subscribe</button>
+</main></textarea>
+    </div>
+    <div class="flex gap-3 items-end">
+      <div class="flex-1">
+        <label class="block text-sm font-medium mb-1.5">Selector String (CSS)</label>
+        <input id="pw-selector" type="text" value="button.btn"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+      </div>
+      <button id="pw-test" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity whitespace-nowrap">
+        Test Selector
+      </button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="pw-results" class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Results</h2>
+
+    <!-- Stats row -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="stat-valid" class="text-2xl font-bold mb-1">—</div>
+        <div class="text-xs text-text-muted">Selector Valid</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="stat-count" class="text-2xl font-bold mb-1">—</div>
+        <div class="text-xs text-text-muted">Matching Elements</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="stat-type" class="text-2xl font-bold mb-1">—</div>
+        <div class="text-xs text-text-muted">Selector Type</div>
+      </div>
+    </div>
+
+    <!-- Matched elements preview -->
+    <div id="pw-matches-wrap" class="mb-4 hidden">
+      <h3 class="text-sm font-medium mb-2">Matched Elements (outerHTML)</h3>
+      <div id="pw-matches" class="space-y-2"></div>
+    </div>
+
+    <!-- Locator variants -->
+    <h3 class="text-sm font-medium mb-3">Playwright Locator Variants</h3>
+    <div class="space-y-3" id="pw-locators"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Playwright Selector Tester" relatedTags={['playwright', 'testing', 'selector', 'e2e', 'automation']} />
+</BaseLayout>
+
+<script>
+  function getV(id: string): string {
+    return (document.getElementById(id) as HTMLInputElement).value;
+  }
+
+  function escapeHtml(str: string): string {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function detectSelectorType(sel: string): string {
+    if (sel.startsWith('text=') || sel.startsWith('/')) return 'text/xpath';
+    if (sel.startsWith('[role=') || sel.includes('[role=')) return 'role-attr';
+    if (sel.startsWith('.')) return 'class';
+    if (sel.startsWith('#')) return 'id';
+    if (sel.startsWith('[data-testid')) return 'testid-attr';
+    if (/^[a-z][a-z0-9]*(\s|$|[.#\[>~+])/i.test(sel)) return 'element';
+    return 'css';
+  }
+
+  function generateLocators(el: Element, selector: string): Array<{label: string; code: string}> {
+    const tag = el.tagName.toLowerCase();
+    const text = (el.textContent || '').trim().slice(0, 50);
+    const testId = el.getAttribute('data-testid') || el.getAttribute('data-test-id');
+    const ariaLabel = el.getAttribute('aria-label');
+    const role = el.getAttribute('role') || inferRole(tag);
+    const id = el.getAttribute('id');
+
+    const locators: Array<{label: string; code: string}> = [];
+
+    // locator (CSS)
+    locators.push({ label: 'locator()', code: `page.locator('${selector}')` });
+
+    // getByRole
+    if (role) {
+      const nameOpt = ariaLabel ? `, { name: '${ariaLabel}' }` : text ? `, { name: '${text}' }` : '';
+      locators.push({ label: 'getByRole()', code: `page.getByRole('${role}'${nameOpt})` });
+    }
+
+    // getByText
+    if (text) {
+      locators.push({ label: 'getByText()', code: `page.getByText('${text}')` });
+    }
+
+    // getByTestId
+    if (testId) {
+      locators.push({ label: 'getByTestId()', code: `page.getByTestId('${testId}')` });
+    }
+
+    // getByLabel (for inputs)
+    if (ariaLabel && (tag === 'input' || tag === 'textarea' || tag === 'select')) {
+      locators.push({ label: 'getByLabel()', code: `page.getByLabel('${ariaLabel}')` });
+    }
+
+    // getByPlaceholder
+    const placeholder = el.getAttribute('placeholder');
+    if (placeholder) {
+      locators.push({ label: 'getByPlaceholder()', code: `page.getByPlaceholder('${placeholder}')` });
+    }
+
+    // ID fallback
+    if (id) {
+      locators.push({ label: 'locator (id)', code: `page.locator('#${id}')` });
+    }
+
+    return locators;
+  }
+
+  function inferRole(tag: string): string {
+    const map: Record<string, string> = {
+      a: 'link', button: 'button', input: 'textbox', textarea: 'textbox',
+      select: 'combobox', nav: 'navigation', main: 'main', header: 'banner',
+      footer: 'contentinfo', h1: 'heading', h2: 'heading', h3: 'heading',
+      ul: 'list', ol: 'list', li: 'listitem', img: 'img',
+      form: 'form', table: 'table',
+    };
+    return map[tag] || '';
+  }
+
+  function copyCode(text: string, btn: HTMLElement) {
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  }
+
+  function test() {
+    const html = getV('pw-html');
+    const selector = getV('pw-selector').trim();
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    let valid = true;
+    let matches: Element[] = [];
+
+    try {
+      matches = Array.from(doc.querySelectorAll(selector));
+    } catch (e) {
+      valid = false;
+    }
+
+    const selectorType = detectSelectorType(selector);
+
+    // Stats
+    const validEl = document.getElementById('stat-valid')!;
+    validEl.textContent = valid ? '✓ Valid' : '✗ Invalid';
+    validEl.className = `text-2xl font-bold mb-1 ${valid ? 'text-green-500' : 'text-red-500'}`;
+
+    const countEl = document.getElementById('stat-count')!;
+    countEl.textContent = valid ? String(matches.length) : '—';
+    countEl.className = `text-2xl font-bold mb-1 ${matches.length > 0 ? 'text-primary' : 'text-text-muted'}`;
+
+    document.getElementById('stat-type')!.textContent = selectorType;
+
+    // Matches preview
+    const matchesWrap = document.getElementById('pw-matches-wrap')!;
+    if (valid && matches.length > 0) {
+      matchesWrap.classList.remove('hidden');
+      const matchesEl = document.getElementById('pw-matches')!;
+      matchesEl.innerHTML = matches.slice(0, 5).map((el, i) => `
+        <div class="bg-bg-card border border-border rounded-lg p-2 text-xs font-mono text-text-muted overflow-x-auto">
+          <span class="text-primary font-semibold">[${i + 1}]</span> ${escapeHtml(el.outerHTML.slice(0, 200))}${el.outerHTML.length > 200 ? '…' : ''}
+        </div>
+      `).join('');
+      if (matches.length > 5) {
+        matchesEl.innerHTML += `<p class="text-xs text-text-muted">…and ${matches.length - 5} more</p>`;
+      }
+    } else {
+      matchesWrap.classList.add('hidden');
+    }
+
+    // Locator variants
+    const locatorsEl = document.getElementById('pw-locators')!;
+    if (valid && matches.length > 0) {
+      const locators = generateLocators(matches[0], selector);
+      locatorsEl.innerHTML = locators.map(l => `
+        <div class="flex items-center gap-3 bg-bg-card border border-border rounded-lg px-4 py-2.5">
+          <span class="text-xs font-medium text-text-muted w-32 shrink-0">${l.label}</span>
+          <code class="flex-1 text-sm font-mono text-primary overflow-x-auto">${escapeHtml(l.code)}</code>
+          <button class="pw-copy-btn text-xs text-primary hover:underline shrink-0" data-code="${escapeHtml(l.code)}">Copy</button>
+        </div>
+      `).join('');
+
+      locatorsEl.querySelectorAll('.pw-copy-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const code = (btn as HTMLElement).dataset.code || '';
+          copyCode(code, btn as HTMLElement);
+        });
+      });
+    } else if (!valid) {
+      locatorsEl.innerHTML = '<p class="text-sm text-red-500">Selector is invalid CSS syntax.</p>';
+    } else {
+      locatorsEl.innerHTML = '<p class="text-sm text-text-muted">No elements matched. Try a different selector.</p>';
+    }
+  }
+
+  document.getElementById('pw-test')!.addEventListener('click', test);
+  document.getElementById('pw-selector')!.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') test();
+  });
+
+  test();
+</script>

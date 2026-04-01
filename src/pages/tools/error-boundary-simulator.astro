@@ -1,0 +1,506 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is an error boundary in React?", answer: "An error boundary is a React component that catches JavaScript errors in its child component tree, logs them, and displays a fallback UI instead of crashing the entire app. Error boundaries catch errors during rendering, in lifecycle methods, and in constructors of child components — but NOT in event handlers, async code, or server-side rendering." },
+  { question: "Why can't I use hooks to create error boundaries?", answer: "React error boundaries must be class components because they use the getDerivedStateFromError and componentDidCatch lifecycle methods, which have no hook equivalents. The React team is working on a future hook-based API (useErrorBoundary exists in some libraries), but as of React 18, class components are required for defining boundaries. You can use the 'react-error-boundary' library as a wrapper." },
+  { question: "What is the react-error-boundary library?", answer: "react-error-boundary is a lightweight utility that wraps React's class-based error boundary API in a user-friendly component and hook interface. It provides ErrorBoundary component, useErrorBoundary hook for triggering boundaries from async code or event handlers, and withErrorBoundary HOC. It's the de facto standard for error handling in modern React apps." },
+  { question: "How do error boundaries propagate upward?", answer: "When a component throws, React walks up the component tree looking for the nearest ancestor that is an error boundary. If found, that boundary catches the error and renders its fallback. If no boundary is found, the entire React tree unmounts and the error propagates to the browser. This is why it's good practice to place boundaries at multiple levels." },
+  { question: "Should I put an error boundary around every component?", answer: "No — that would be excessive and hide real bugs. Best practice: (1) one top-level boundary as a safety net, (2) boundaries around major UI regions (sidebar, main content, widgets) so one failure doesn't kill the whole UI, (3) boundaries around third-party components you don't control, (4) boundaries around data-fetching components. Don't wrap every leaf component." },
+];
+---
+
+<BaseLayout
+  title="React Error Boundary Simulator — Visualize Catch Behavior & Component Trees"
+  description="Simulate React error boundary propagation visually. Build component trees, mark which components throw, and see which boundary catches the error with code examples."
+  tool="React Error Boundary, Error Boundary Simulator, useErrorBoundary, React Error Handling, Component Tree"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">React Error Boundary Simulator</h1>
+  <p class="text-text-muted mb-4">Build a component tree, mark which component throws, and visualize which error boundary catches the error. Includes class and hook-based boundary code.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual tree propagation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Class &amp; hook boundary code</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Error logging snippet</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+    <!-- Tree Builder -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-4">Component Tree Builder</h2>
+
+      <div class="mb-4">
+        <div class="flex gap-2 mb-3">
+          <input id="eb-new-name" type="text" placeholder="Component name"
+            class="flex-1 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <select id="eb-new-parent" class="bg-bg-card border border-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-primary">
+          </select>
+        </div>
+        <div class="flex gap-2 mb-3">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="eb-new-boundary" type="checkbox" class="w-4 h-4 rounded accent-primary" />
+            <span>Is Error Boundary</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer ml-4">
+            <input id="eb-new-throws" type="checkbox" class="w-4 h-4 rounded accent-primary" />
+            <span>Throws Error</span>
+          </label>
+        </div>
+        <button id="eb-add-node" class="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90 transition-opacity w-full">
+          Add Component
+        </button>
+      </div>
+
+      <div class="border-t border-border pt-4">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-sm font-medium">Components</span>
+          <div class="flex gap-2">
+            <button id="eb-reset" class="text-xs text-text-muted hover:text-primary">Reset to default</button>
+            <button id="eb-simulate" class="text-xs bg-primary text-white rounded px-3 py-1 font-medium hover:opacity-90">Simulate</button>
+          </div>
+        </div>
+        <div id="eb-node-list" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
+      </div>
+    </div>
+
+    <!-- Visual Tree -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-4">Visual Tree</h2>
+      <div id="eb-legend" class="flex gap-4 mb-4 text-xs flex-wrap">
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-green-500/20 border border-green-500/50 inline-block"></span> Normal</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-blue-500/20 border border-blue-500/50 inline-block"></span> Error Boundary</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-red-500/20 border border-red-500/50 inline-block"></span> Throws / Caught</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-yellow-500/20 border border-yellow-500/50 inline-block"></span> Unmounted</span>
+      </div>
+      <div id="eb-tree" class="overflow-auto min-h-48"></div>
+      <div id="eb-result-msg" class="mt-3 text-sm font-medium hidden"></div>
+    </div>
+  </div>
+
+  <!-- Code snippets -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-4">Error Boundary Code</h2>
+    <div class="flex gap-1 mb-4 border-b border-border">
+      <button class="eb-code-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-primary text-primary" data-tab="class">Class Component</button>
+      <button class="eb-code-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-text-muted hover:text-primary" data-tab="hook">react-error-boundary</button>
+      <button class="eb-code-tab px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 border-transparent text-text-muted hover:text-primary" data-tab="logging">Error Logging</button>
+    </div>
+
+    <div id="eb-code-class" class="eb-code-panel">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs text-text-muted font-mono">typescript</span>
+        <button class="eb-copy text-xs text-primary hover:underline" data-target="code-class">Copy</button>
+      </div>
+      <pre id="code-class" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted">import React, { Component, ErrorInfo, ReactNode } from 'react';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+}
+
+interface State {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component&lt;Props, State&gt; {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    // Called during render phase — update state to show fallback UI
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // Called after render — use for logging
+    this.props.onError?.(error, errorInfo);
+    console.error('ErrorBoundary caught:', error, errorInfo.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? (
+        &lt;div role="alert" className="error-fallback"&gt;
+          &lt;h2&gt;Something went wrong&lt;/h2&gt;
+          &lt;button onClick={() =&gt; this.setState({ hasError: false, error: null })}&gt;
+            Try again
+          &lt;/button&gt;
+        &lt;/div&gt;
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Usage:
+// &lt;ErrorBoundary fallback={&lt;p&gt;Failed to load&lt;/p&gt;}&gt;
+//   &lt;MyWidget /&gt;
+// &lt;/ErrorBoundary&gt;
+
+export default ErrorBoundary;</pre>
+    </div>
+
+    <div id="eb-code-hook" class="eb-code-panel hidden">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs text-text-muted font-mono">typescript</span>
+        <button class="eb-copy text-xs text-primary hover:underline" data-target="code-hook">Copy</button>
+      </div>
+      <pre id="code-hook" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted">// npm install react-error-boundary
+import { ErrorBoundary, useErrorBoundary } from 'react-error-boundary';
+
+// ── Declarative wrapping ────────────────────────────────────
+function App() {
+  return (
+    &lt;ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onError={(error, info) =&gt; logToSentry(error, info)}
+      onReset={() =&gt; { /* reset app state */ }}
+    &gt;
+      &lt;MainContent /&gt;
+    &lt;/ErrorBoundary&gt;
+  );
+}
+
+function ErrorFallback({ error, resetErrorBoundary }: {
+  error: Error;
+  resetErrorBoundary: () =&gt; void;
+}) {
+  return (
+    &lt;div role="alert"&gt;
+      &lt;p&gt;Error: {error.message}&lt;/p&gt;
+      &lt;button onClick={resetErrorBoundary}&gt;Try again&lt;/button&gt;
+    &lt;/div&gt;
+  );
+}
+
+// ── Trigger boundary from async code / event handlers ──────
+function DataLoader() {
+  const { showBoundary } = useErrorBoundary();
+
+  async function fetchData() {
+    try {
+      const data = await api.getData();
+      setData(data);
+    } catch (error) {
+      // This triggers the nearest parent ErrorBoundary
+      showBoundary(error);
+    }
+  }
+
+  return &lt;button onClick={fetchData}&gt;Load Data&lt;/button&gt;;
+}</pre>
+    </div>
+
+    <div id="eb-code-logging" class="eb-code-panel hidden">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs text-text-muted font-mono">typescript</span>
+        <button class="eb-copy text-xs text-primary hover:underline" data-target="code-logging">Copy</button>
+      </div>
+      <pre id="code-logging" class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap text-text-muted">// Error logging with Sentry + structured context
+import * as Sentry from '@sentry/react';
+import { ErrorInfo } from 'react';
+
+function logErrorToBoundary(error: Error, errorInfo: ErrorInfo): void {
+  // 1. Sentry with component stack
+  Sentry.withScope((scope) =&gt; {
+    scope.setExtra('componentStack', errorInfo.componentStack);
+    scope.setLevel('error');
+    Sentry.captureException(error);
+  });
+
+  // 2. Console for development
+  if (process.env.NODE_ENV === 'development') {
+    console.group('ErrorBoundary caught an error');
+    console.error('Error:', error);
+    console.error('Component Stack:', errorInfo.componentStack);
+    console.groupEnd();
+  }
+
+  // 3. Custom analytics / observability
+  analytics.track('error_boundary_triggered', {
+    message: error.message,
+    stack: error.stack?.slice(0, 500),
+    component: errorInfo.componentStack?.split('\n')[1]?.trim(),
+    url: window.location.href,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+// Sentry also provides a built-in error boundary:
+// import { ErrorBoundary } from '@sentry/react';
+// &lt;ErrorBoundary fallback={&lt;p&gt;An error has occurred&lt;/p&gt;}&gt;
+//   &lt;App /&gt;
+// &lt;/ErrorBoundary&gt;</pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="React Error Boundary Simulator" relatedTags={['react', 'error-boundary', 'debugging', 'frontend', 'typescript']} />
+</BaseLayout>
+
+<script>
+  interface EbNode {
+    id: string;
+    name: string;
+    parentId: string | null;
+    isBoundary: boolean;
+    throws: boolean;
+  }
+
+  let nodes: EbNode[] = [];
+  let simulated = false;
+
+  const DEFAULT_NODES: EbNode[] = [
+    { id: 'app', name: 'App', parentId: null, isBoundary: false, throws: false },
+    { id: 'layout', name: 'Layout', parentId: 'app', isBoundary: false, throws: false },
+    { id: 'header', name: 'Header', parentId: 'layout', isBoundary: false, throws: false },
+    { id: 'main', name: 'Main', parentId: 'layout', isBoundary: true, throws: false },
+    { id: 'sidebar', name: 'Sidebar', parentId: 'main', isBoundary: false, throws: false },
+    { id: 'content', name: 'Content', parentId: 'main', isBoundary: false, throws: false },
+    { id: 'widget', name: 'Widget', parentId: 'content', isBoundary: false, throws: false },
+    { id: 'chart', name: 'Chart', parentId: 'content', isBoundary: false, throws: true },
+  ];
+
+  function genId(): string {
+    return 'node_' + Math.random().toString(36).slice(2, 8);
+  }
+
+  function getChildren(parentId: string | null): EbNode[] {
+    return nodes.filter(n => n.parentId === parentId);
+  }
+
+  function getAncestorBoundary(nodeId: string): EbNode | null {
+    let current = nodes.find(n => n.id === nodeId);
+    while (current?.parentId) {
+      const parent = nodes.find(n => n.id === current!.parentId);
+      if (!parent) break;
+      if (parent.isBoundary) return parent;
+      current = parent;
+    }
+    return null;
+  }
+
+  // Find all nodes in a subtree
+  function getSubtree(nodeId: string): string[] {
+    const result: string[] = [nodeId];
+    const children = getChildren(nodeId);
+    children.forEach(c => result.push(...getSubtree(c.id)));
+    return result;
+  }
+
+  type NodeState = 'normal' | 'throws' | 'caught' | 'unmounted' | 'boundary-ok';
+
+  function simulate(): Record<string, NodeState> {
+    const states: Record<string, NodeState> = {};
+    nodes.forEach(n => {
+      states[n.id] = n.isBoundary ? 'boundary-ok' : 'normal';
+    });
+
+    const throwers = nodes.filter(n => n.throws);
+    throwers.forEach(thrower => {
+      states[thrower.id] = 'throws';
+      // Find nearest ancestor boundary
+      const boundary = getAncestorBoundary(thrower.id);
+      if (boundary) {
+        states[boundary.id] = 'caught';
+        // All children of the boundary (except the boundary itself) get unmounted
+        const subtree = getSubtree(boundary.id).filter(id => id !== boundary.id);
+        subtree.forEach(id => {
+          if (states[id] !== 'throws') states[id] = 'unmounted';
+        });
+      } else {
+        // No boundary — entire tree unmounts
+        nodes.forEach(n => {
+          if (states[n.id] !== 'throws') states[n.id] = 'unmounted';
+        });
+      }
+    });
+
+    return states;
+  }
+
+  function stateClass(state: NodeState): string {
+    switch (state) {
+      case 'throws': return 'bg-red-500/20 border-red-500/60 text-red-400';
+      case 'caught': return 'bg-blue-500/20 border-blue-500/60 text-blue-400';
+      case 'unmounted': return 'bg-yellow-500/20 border-yellow-500/60 text-yellow-500 opacity-60';
+      case 'boundary-ok': return 'bg-blue-500/10 border-blue-500/30 text-blue-300';
+      default: return 'bg-green-500/10 border-green-500/30 text-green-400';
+    }
+  }
+
+  function stateLabel(state: NodeState): string {
+    switch (state) {
+      case 'throws': return '💥 throws';
+      case 'caught': return '🛡 catches error';
+      case 'unmounted': return '⚠ unmounted';
+      case 'boundary-ok': return '🛡 boundary';
+      default: return '';
+    }
+  }
+
+  function renderTreeNode(nodeId: string | null, states: Record<string, NodeState> | null, depth: number): string {
+    const children = getChildren(nodeId);
+    if (children.length === 0 && nodeId === null) return '';
+
+    return children.map(node => {
+      const state = states ? (states[node.id] || 'normal') : (node.isBoundary ? 'boundary-ok' : 'normal');
+      const cls = stateClass(state);
+      const label = stateLabel(state);
+      const badge = node.isBoundary && !states ? '<span class="text-xs bg-blue-500/20 text-blue-400 rounded px-1 ml-1">boundary</span>' : '';
+      const throwsBadge = node.throws && !states ? '<span class="text-xs bg-red-500/20 text-red-400 rounded px-1 ml-1">throws</span>' : '';
+      const stateSpan = label ? `<span class="text-xs ml-2 opacity-80">${label}</span>` : '';
+
+      return `<div style="margin-left: ${depth * 20}px">
+        <div class="border rounded-lg px-3 py-1.5 text-sm flex items-center gap-2 mb-1 ${cls}">
+          <span class="font-medium font-mono">${node.name}</span>${badge}${throwsBadge}${stateSpan}
+        </div>
+        ${renderTreeNode(node.id, states, depth + 1)}
+      </div>`;
+    }).join('');
+  }
+
+  function renderTree(states: Record<string, NodeState> | null = null) {
+    const treeEl = document.getElementById('eb-tree')!;
+    if (nodes.length === 0) {
+      treeEl.innerHTML = '<p class="text-sm text-text-muted">Add components to build the tree.</p>';
+      return;
+    }
+    treeEl.innerHTML = renderTreeNode(null, states, 0);
+  }
+
+  function renderNodeList() {
+    const listEl = document.getElementById('eb-node-list')!;
+    listEl.innerHTML = nodes.map(n => `
+      <div class="flex items-center gap-2 text-sm py-1">
+        <span class="flex-1 font-mono font-medium">${n.name}</span>
+        ${n.isBoundary ? '<span class="text-xs bg-blue-500/20 text-blue-400 rounded px-1">boundary</span>' : ''}
+        ${n.throws ? '<span class="text-xs bg-red-500/20 text-red-400 rounded px-1">throws</span>' : ''}
+        <button class="eb-del-node text-xs text-text-muted hover:text-red-400 ml-auto" data-id="${n.id}">✕</button>
+      </div>
+    `).join('');
+
+    listEl.querySelectorAll('.eb-del-node').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = (btn as HTMLElement).dataset.id!;
+        // Remove node and its children recursively
+        const toRemove = getSubtree(id);
+        nodes = nodes.filter(n => !toRemove.includes(n.id));
+        updateParentSelect();
+        renderNodeList();
+        renderTree();
+        simulated = false;
+        document.getElementById('eb-result-msg')!.classList.add('hidden');
+      });
+    });
+
+    // Update parent select
+    updateParentSelect();
+  }
+
+  function updateParentSelect() {
+    const sel = document.getElementById('eb-new-parent') as HTMLSelectElement;
+    sel.innerHTML = '<option value="">— root (no parent)</option>' +
+      nodes.map(n => `<option value="${n.id}">${n.name}</option>`).join('');
+  }
+
+  document.getElementById('eb-add-node')!.addEventListener('click', () => {
+    const nameEl = document.getElementById('eb-new-name') as HTMLInputElement;
+    const parentEl = document.getElementById('eb-new-parent') as HTMLSelectElement;
+    const boundaryEl = document.getElementById('eb-new-boundary') as HTMLInputElement;
+    const throwsEl = document.getElementById('eb-new-throws') as HTMLInputElement;
+
+    const name = nameEl.value.trim();
+    if (!name) return;
+
+    nodes.push({
+      id: genId(),
+      name,
+      parentId: parentEl.value || null,
+      isBoundary: boundaryEl.checked,
+      throws: throwsEl.checked,
+    });
+
+    nameEl.value = '';
+    boundaryEl.checked = false;
+    throwsEl.checked = false;
+    simulated = false;
+    document.getElementById('eb-result-msg')!.classList.add('hidden');
+    renderNodeList();
+    renderTree();
+  });
+
+  document.getElementById('eb-simulate')!.addEventListener('click', () => {
+    const throwers = nodes.filter(n => n.throws);
+    const resultEl = document.getElementById('eb-result-msg')!;
+    resultEl.classList.remove('hidden');
+
+    if (throwers.length === 0) {
+      resultEl.textContent = 'No components marked as throwing. Mark at least one component to simulate.';
+      resultEl.className = 'mt-3 text-sm font-medium text-yellow-500';
+      renderTree(null);
+      return;
+    }
+
+    const states = simulate();
+    renderTree(states);
+    simulated = true;
+
+    const caughtBoundaries = nodes.filter(n => states[n.id] === 'caught');
+    if (caughtBoundaries.length > 0) {
+      const names = caughtBoundaries.map(n => n.name).join(', ');
+      resultEl.textContent = `Error caught by: ${names}. Children below the boundary unmounted; siblings above remain active.`;
+      resultEl.className = 'mt-3 text-sm font-medium text-blue-400';
+    } else {
+      resultEl.textContent = 'No error boundary found! The entire React tree would unmount. Add an ErrorBoundary ancestor.';
+      resultEl.className = 'mt-3 text-sm font-medium text-red-400';
+    }
+  });
+
+  document.getElementById('eb-reset')!.addEventListener('click', () => {
+    nodes = DEFAULT_NODES.map(n => ({ ...n }));
+    simulated = false;
+    document.getElementById('eb-result-msg')!.classList.add('hidden');
+    renderNodeList();
+    renderTree();
+  });
+
+  // Code tabs
+  document.querySelectorAll('.eb-code-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = (btn as HTMLElement).dataset.tab!;
+      document.querySelectorAll('.eb-code-tab').forEach(b => {
+        b.classList.remove('border-primary', 'text-primary');
+        b.classList.add('border-transparent', 'text-text-muted');
+      });
+      btn.classList.add('border-primary', 'text-primary');
+      btn.classList.remove('border-transparent', 'text-text-muted');
+      document.querySelectorAll('.eb-code-panel').forEach(p => p.classList.add('hidden'));
+      document.getElementById('eb-code-' + tab)!.classList.remove('hidden');
+    });
+  });
+
+  // Copy buttons
+  document.querySelectorAll('.eb-copy').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = (btn as HTMLElement).dataset.target!;
+      const text = (document.getElementById(target) as HTMLElement).textContent || '';
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+      });
+    });
+  });
+
+  // Init
+  nodes = DEFAULT_NODES.map(n => ({ ...n }));
+  renderNodeList();
+  renderTree();
+</script>
