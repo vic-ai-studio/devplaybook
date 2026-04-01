@@ -1,0 +1,152 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is the difference between a CDN and edge computing?", answer: "A CDN (Content Delivery Network) caches static assets (HTML, CSS, JS, images) at edge nodes distributed globally, reducing latency by serving content from a node close to the user. Edge computing goes further — it runs server-side code at the edge node, enabling personalized responses, A/B testing, authentication, and dynamic content generation without round-tripping to an origin server. Vercel Edge Functions, Cloudflare Workers, and Fastly Compute are edge computing platforms. Traditional CDNs (CloudFront, CloudFlare in cache mode) primarily serve cached static content." },
+  { question: "What Cache-Control headers should I use for different asset types?", answer: "Static assets with content hashes (app.abc123.js): `Cache-Control: public, max-age=31536000, immutable`. HTML files (no hash): `Cache-Control: public, max-age=0, must-revalidate` or `no-cache`. API responses: `Cache-Control: private, max-age=60` or `no-store` for sensitive data. Images with hashes: `public, max-age=31536000, immutable`. Service worker file (sw.js): `Cache-Control: no-cache` — always re-fetched so updates deploy immediately." },
+  { question: "How do I invalidate CDN cache after a deployment?", answer: "The preferred approach is to use content-addressed filenames (app.[hash].js) — each deploy generates new URLs, so no invalidation is needed, and old files remain cached. For files with fixed names (HTML, sw.js), invalidate via the CDN API after deployment: AWS CloudFront CreateInvalidation, Cloudflare Cache Purge API, or Fastly instant purge. In CI/CD, call the invalidation API as a post-deploy step. Never rely on TTL alone for HTML files — always invalidate manually after deploy." },
+  { question: "Should I use Cloudflare, CloudFront, or a platform CDN like Vercel?", answer: "Platform CDNs (Vercel, Netlify, Cloudflare Pages) are easiest — zero configuration, automatic edge deployment, and integrated edge functions. Use these if your stack supports them. Cloudflare (with custom origin) gives the most control: 300+ PoPs, advanced WAF, DDoS protection, Workers for edge logic, and R2 for storage. CloudFront (AWS) is best if you're already in AWS — integrates with S3, Lambda@Edge, Shield. For a new project, Cloudflare or a platform CDN is usually the right choice." },
+];
+---
+
+<BaseLayout
+  title="CDN Performance Guide — Cache Headers, Edge Caching & Deployment Strategies"
+  description="Optimize CDN performance: configure Cache-Control headers, set up edge caching for static and dynamic content, invalidate cache on deploy, and compare Cloudflare vs CloudFront vs Vercel CDN."
+  tool="CDN, Cache-Control, edge caching, Cloudflare, CloudFront, Vercel, cache invalidation, performance, TTFB"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "CDN Performance Guide",
+    "url": "https://devplaybook.cc/tools/cdn-performance-guide",
+    "description": "Configure CDN caching, Cache-Control headers, and edge deployment for maximum web performance.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">CDN Setup & Edge Caching Guide</h1>
+  <p class="text-text-muted mb-6">
+    A well-configured <strong>CDN</strong> can reduce TTFB from 800ms to &lt;50ms by serving assets from edge nodes close to users. The key is setting the right <strong>Cache-Control headers</strong> for each asset type and invalidating efficiently on deploy.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cache-Control header recipes</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cloudflare setup</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cache invalidation on deploy</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CDN comparison</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cache-Control Header Recipes</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Static assets with content hash — cache forever
+# (JS/CSS/images with [hash] in filename)
+Cache-Control: public, max-age=31536000, immutable
+
+# HTML pages — revalidate every time
+Cache-Control: public, max-age=0, must-revalidate
+
+# API responses (non-sensitive) — cache 60 seconds
+Cache-Control: public, max-age=60, s-maxage=300, stale-while-revalidate=60
+
+# Private data (user-specific) — browser only, no CDN
+Cache-Control: private, max-age=300
+
+# Never cache (payments, real-time)
+Cache-Control: no-store
+
+# Service worker — always recheck
+Cache-Control: no-cache</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">CDN Provider Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Provider</th>
+          <th class="border border-border px-3 py-2 text-left">PoPs</th>
+          <th class="border border-border px-3 py-2 text-left">Edge Compute</th>
+          <th class="border border-border px-3 py-2 text-left">Best For</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2 font-semibold">Cloudflare</td><td class="border border-border px-3 py-2">310+</td><td class="border border-border px-3 py-2 text-green-400">Workers (V8)</td><td class="border border-border px-3 py-2">Custom origin, WAF, global apps</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 font-semibold">Vercel</td><td class="border border-border px-3 py-2">100+</td><td class="border border-border px-3 py-2 text-green-400">Edge Functions</td><td class="border border-border px-3 py-2">Next.js, React, frontend teams</td></tr>
+        <tr><td class="border border-border px-3 py-2 font-semibold">CloudFront</td><td class="border border-border px-3 py-2">450+</td><td class="border border-border px-3 py-2 text-yellow-400">Lambda@Edge</td><td class="border border-border px-3 py-2">AWS-native, S3 static sites</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 font-semibold">Fastly</td><td class="border border-border px-3 py-2">85+</td><td class="border border-border px-3 py-2 text-green-400">Compute (Wasm)</td><td class="border border-border px-3 py-2">Enterprise, low-latency APIs</td></tr>
+        <tr><td class="border border-border px-3 py-2 font-semibold">Netlify</td><td class="border border-border px-3 py-2">25+</td><td class="border border-border px-3 py-2 text-yellow-400">Edge Functions</td><td class="border border-border px-3 py-2">JAMstack, static + serverless</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cloudflare Page Rules Setup</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Cloudflare — via Terraform or API
+resource "cloudflare_page_rule" "static_assets" &#123;
+  zone_id  = var.zone_id
+  target   = "example.com/_next/static/*"
+  priority = 1
+
+  actions &#123;
+    cache_level       = "cache_everything"
+    edge_cache_ttl    = 31536000  # 1 year at edge
+    browser_cache_ttl = 31536000  # 1 year in browser
+  &#125;
+&#125;
+
+resource "cloudflare_page_rule" "html" &#123;
+  zone_id  = var.zone_id
+  target   = "example.com/*.html"
+  priority = 2
+
+  actions &#123;
+    cache_level       = "bypass"  # Always revalidate HTML
+  &#125;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cache Invalidation on Deploy (CI/CD)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># GitHub Actions: invalidate Cloudflare cache after deploy
+- name: Purge Cloudflare cache
+  run: |
+    curl -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/purge_cache" \
+      -H "Authorization: Bearer $CF_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      --data '&#123;"files":["https://example.com/","https://example.com/sitemap.xml"]&#125;'
+  env:
+    CF_ZONE_ID: $&#123;&#123; secrets.CF_ZONE_ID &#125;&#125;
+    CF_API_TOKEN: $&#123;&#123; secrets.CF_API_TOKEN &#125;&#125;
+
+# AWS CloudFront invalidation
+- name: Invalidate CloudFront
+  run: |
+    aws cloudfront create-invalidation \
+      --distribution-id $&#123;&#123; secrets.CF_DISTRIBUTION_ID &#125;&#125; \
+      --paths "/*"</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Vercel Edge Config (next.config.js)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// next.config.js — fine-tune Vercel CDN headers
+module.exports = &#123;
+  async headers() &#123;
+    return [
+      &#123;
+        source: '/_next/static/:path*',
+        headers: [&#123;
+          key: 'Cache-Control',
+          value: 'public, max-age=31536000, immutable',
+        &#125;],
+      &#125;,
+      &#123;
+        source: '/(.*)',
+        headers: [
+          &#123; key: 'X-DNS-Prefetch-Control', value: 'on' &#125;,
+          &#123; key: 'X-Content-Type-Options', value: 'nosniff' &#125;,
+          &#123; key: 'X-Frame-Options', value: 'SAMEORIGIN' &#125;,
+        ],
+      &#125;,
+    ];
+  &#125;,
+&#125;;</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="CDN Performance Guide" relatedTags={['cdn', 'performance', 'caching', 'cloudflare', 'ttfb', 'deployment']} />
+</BaseLayout>
