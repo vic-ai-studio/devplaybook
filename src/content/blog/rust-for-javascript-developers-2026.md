@@ -1,540 +1,250 @@
 ---
-title: "Rust for JavaScript Developers: A Practical Guide in 2026"
-description: "Learn Rust as a JavaScript/TypeScript developer. Ownership, borrowing, async/await, and building CLI tools. Side-by-side JS vs Rust code examples throughout."
+title: "Rust for JavaScript Developers 2026: Ownership, Borrowing & Traits Explained"
+description: "Learn Rust fundamentals mapped to JavaScript concepts: ownership vs garbage collection, borrowing vs references, traits vs interfaces, Result vs try/catch, and cargo vs npm."
 date: "2026-04-02"
 author: "DevPlaybook Team"
-tags: ["rust", "javascript", "typescript", "systems-programming", "webassembly"]
-readingTime: "14 min read"
+tags: ["rust", "javascript", "ownership", "borrowing", "traits", "webassembly", "systems programming"]
+readingTime: "9 min read"
 ---
 
-Rust is the language JavaScript developers are most likely to encounter next—and for good reason. It powers the tools you use daily: Bun, Deno, SWC, Rolldown, Biome, and Turbopack are all written in Rust. In 2026, understanding Rust is increasingly a prerequisite for contributing to the JS ecosystem toolchain, building WebAssembly modules, or writing performance-critical server-side code.
+Rust is the most-loved language in developer surveys for the seventh consecutive year, and JavaScript developers are increasingly crossing over — driven by WebAssembly performance, CLI tool development, and the growing Rust-in-the-browser story. The concepts aren't as alien as they first appear. This guide maps Rust fundamentals to things you already know from JavaScript.
 
-This guide is written specifically for JavaScript and TypeScript developers. Every Rust concept is explained with a JS/TS comparison. No C++ background required.
+## Why Rust Is Worth Your Time as a JS Developer
 
-## Why Rust Feels Familiar (and What's Different)
+JavaScript is a garbage-collected language with a runtime that manages memory for you. That's convenient until it isn't: unpredictable GC pauses, heavy runtime overhead, and no compile-time guarantees about memory safety. Rust gives you C-level performance with memory safety enforced at compile time — no runtime, no GC, no surprises.
 
-JavaScript and Rust have more in common than you'd expect:
+In 2026, the most relevant Rust use cases for JS developers are:
 
-- Both support `async/await`
-- Both have closures and first-class functions
-- Both have pattern matching (sort of—`switch` in JS, `match` in Rust)
-- Both support iterators with `.map()`, `.filter()`, `.reduce()`
+- **WebAssembly modules** — compute-heavy work (image processing, crypto, parsing) that JS can't handle at speed
+- **CLI tools** — `ripgrep`, `fd`, `bat`, and dozens of developer tools the JS ecosystem depends on are written in Rust
+- **Node.js native addons** — replacing C++ addons with Rust via `napi-rs`
+- **Edge compute** — Cloudflare Workers supports Rust via WASM compilation
 
-The big differences:
-- **No garbage collector**: Rust uses ownership and borrowing instead
-- **Explicit types, always**: TypeScript is optional types; Rust types are mandatory
-- **No null/undefined**: Rust uses `Option<T>` instead
-- **No exceptions**: Rust uses `Result<T, E>` instead
+## Ownership vs Garbage Collection
 
-Let's work through these with code.
+JavaScript manages memory automatically. V8 tracks object references and reclaims memory when nothing points to an object anymore. You never think about it. The cost is a runtime that follows your code everywhere and pauses occasionally to clean up.
 
-## Setting Up Rust
+Rust tracks ownership statically at compile time. Every value has exactly one owner. When the owner goes out of scope, the value is freed. No runtime. No pauses. The compiler rejects programs that would create use-after-free or double-free bugs.
 
-```bash
-# Install Rust via rustup (the official installer)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```rust
+// Rust: ownership transfer (move semantics)
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = s1; // s1 is MOVED to s2
 
-# Verify installation
-rustc --version
-cargo --version
-
-# Create a new project (like npm init)
-cargo new my-project
-cd my-project
-
-# Build and run
-cargo run
+    // println!("{}", s1); // COMPILE ERROR: value borrowed after move
+    println!("{}", s2);    // OK
+}
 ```
 
-`cargo` is Rust's package manager—think of it as npm + webpack + tsc combined. `cargo.toml` is your `package.json`.
-
-## Variables: let vs let mut
-
-In JavaScript, `let` creates a mutable variable. In Rust, `let` creates an *immutable* binding by default. You need `let mut` for mutability.
+The JavaScript equivalent has no parallel — JS copies the reference and both variables point to the same object:
 
 ```javascript
-// JavaScript
-let count = 0;
-count = 1;  // Fine
-
-const MAX = 100;
-// MAX = 200;  // Error: Assignment to constant variable
+// JavaScript: reference semantics
+const s1 = { value: "hello" };
+const s2 = s1; // s2 points to the same object
+console.log(s1.value); // "hello" — still valid
 ```
+
+Think of Rust ownership as: only one variable can hold this value at a time. Moving a value hands it to the new owner and invalidates the old reference.
+
+## Borrowing vs References
+
+Instead of transferring ownership everywhere, Rust lets you borrow values. Borrowing is like passing a reference in JavaScript, but with strict rules enforced at compile time.
+
+**Immutable borrow — multiple readers, no writers:**
 
 ```rust
-// Rust
-let count = 0;
-// count = 1;  // Error: cannot assign twice to immutable variable
-
-let mut count = 0;
-count = 1;  // Fine
-
-const MAX: u32 = 100;  // Constants require explicit type
-```
-
-Rust's default immutability encourages you to be explicit about what changes—a pattern TypeScript developers appreciate when using `readonly` and `const`.
-
-## Types: TypeScript vs Rust
-
-If you're comfortable with TypeScript, Rust types will feel familiar but more strict.
-
-```typescript
-// TypeScript
-function add(a: number, b: number): number {
-  return a + b;
+fn print_length(s: &String) {
+    println!("Length: {}", s.len());
 }
 
-type User = {
-  id: number;
-  name: string;
-  email: string | null;
-};
+fn main() {
+    let s = String::from("hello");
+    print_length(&s); // borrow s without moving it
+    println!("{}", s); // s is still valid
+}
 ```
+
+**Mutable borrow — exactly one writer, no readers:**
 
 ```rust
-// Rust
-fn add(a: i32, b: i32) -> i32 {
-    a + b  // No semicolon = expression = return value
+fn append_world(s: &mut String) {
+    s.push_str(", world");
 }
 
-struct User {
-    id: u32,
-    name: String,
-    email: Option<String>,  // No null — use Option<T>
+fn main() {
+    let mut s = String::from("hello");
+    append_world(&mut s);
+    println!("{}", s); // "hello, world"
 }
 ```
 
-Key differences:
-- Rust has multiple integer types (`i32`, `u32`, `i64`, `u64`, `usize`, etc.)
-- Rust has no `null` or `undefined`—use `Option<T>` instead
-- `Option<String>` is like TypeScript's `string | null`
+The rule that prevents data races: you cannot have a mutable reference while any other reference exists. The borrow checker enforces this at compile time — no runtime overhead, no race conditions, no `Cannot read properties of undefined` from mutated shared state.
 
-## The Ownership System: Rust's Most Unique Feature
+## Traits vs Interfaces
 
-This is the concept JavaScript developers find most unfamiliar—and the most important to understand.
-
-### The Problem Rust Solves
-
-JavaScript uses a garbage collector to manage memory. The GC periodically pauses your program to find and free unused memory. This causes unpredictable latency. Rust achieves the same memory safety *without* a GC by enforcing ownership rules at compile time.
-
-### Ownership Rules (Simplified)
-
-1. Every value has exactly one owner
-2. When the owner goes out of scope, the value is freed
-3. You can *move* ownership (transfer) or *borrow* a reference
-
-```javascript
-// JavaScript: Copying is implicit
-const a = { name: "Alice" };
-const b = a;  // b references the same object
-a.name = "Bob";
-console.log(b.name);  // "Bob" — same object!
-```
+TypeScript developers will find traits conceptually similar to interfaces, but more powerful. A trait defines behavior that any type can implement.
 
 ```rust
-// Rust: Ownership is explicit
-let a = String::from("Alice");
-let b = a;  // Ownership MOVED to b. a is now invalid.
-// println!("{}", a);  // Compile error: value used after move
+// Define a trait (like a TypeScript interface)
+trait Greet {
+    fn greet(&self) -> String;
 
-// To keep both, clone explicitly (like deep copy in JS)
-let a = String::from("Alice");
-let b = a.clone();  // Deep copy — both are valid
-println!("{} {}", a, b);  // "Alice Alice"
-```
-
-### Borrowing: References Without Transferring Ownership
-
-Most of the time, you don't want to transfer ownership—you want to read or modify a value temporarily. That's what references (`&`) are for.
-
-```typescript
-// TypeScript: Pass object by reference implicitly
-function greet(user: { name: string }): string {
-  return `Hello, ${user.name}`;
-}
-
-const user = { name: "Alice" };
-const greeting = greet(user);
-console.log(user.name);  // Still valid
-```
-
-```rust
-// Rust: Pass by reference explicitly with &
-fn greet(user: &User) -> String {
-    format!("Hello, {}", user.name)
-}
-
-let user = User { name: String::from("Alice"), id: 1, email: None };
-let greeting = greet(&user);  // Borrow, don't move
-println!("{}", user.name);  // Still valid — we only borrowed
-```
-
-### Mutable References
-
-```rust
-fn add_greeting(user: &mut User) {
-    user.name = format!("Greeted {}", user.name);
-}
-
-let mut user = User { name: String::from("Alice"), id: 1, email: None };
-add_greeting(&mut user);  // Mutable borrow
-println!("{}", user.name);  // "Greeted Alice"
-
-// Rust rule: Only ONE mutable reference at a time
-// This prevents data races at compile time
-```
-
-The compiler rejects code that would cause data races or use-after-free bugs. You learn to write the code correctly upfront, which is why Rust programs rarely crash in production.
-
-## Option and Result: Goodbye null and Exceptions
-
-### Option: No More null Checks
-
-```typescript
-// TypeScript
-function findUser(id: number): User | null {
-  const user = db.find(id);
-  if (user === null) {
-    return null;
-  }
-  return user;
-}
-
-const user = findUser(1);
-if (user !== null) {
-  console.log(user.name);
-}
-```
-
-```rust
-// Rust
-fn find_user(id: u32) -> Option<User> {
-    db.iter().find(|u| u.id == id).cloned()
-}
-
-// Pattern matching (like a type-safe switch)
-match find_user(1) {
-    Some(user) => println!("{}", user.name),
-    None => println!("User not found"),
-}
-
-// Or use if let for single case
-if let Some(user) = find_user(1) {
-    println!("{}", user.name);
-}
-
-// Chaining with ? (like optional chaining in JS)
-fn get_user_email(id: u32) -> Option<String> {
-    let user = find_user(id)?;  // Returns None if not found
-    user.email  // Returns Option<String>
-}
-```
-
-### Result: No More try/catch
-
-```typescript
-// TypeScript
-async function fetchData(url: string): Promise<Data> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP error: ${response.status}`);
+    // Traits can have default implementations
+    fn greet_loudly(&self) -> String {
+        self.greet().to_uppercase()
     }
-    return response.json();
-  } catch (error) {
-    throw new Error(`Fetch failed: ${error}`);
-  }
-}
-```
-
-```rust
-// Rust
-use std::error::Error;
-
-async fn fetch_data(url: &str) -> Result<Data, Box<dyn Error>> {
-    let response = reqwest::get(url).await?;  // ? propagates errors
-
-    if !response.status().is_success() {
-        return Err(format!("HTTP error: {}", response.status()).into());
-    }
-
-    let data = response.json::<Data>().await?;
-    Ok(data)
 }
 
-// Caller handles it
-match fetch_data("https://api.example.com/data").await {
-    Ok(data) => process(data),
-    Err(e) => eprintln!("Error: {}", e),
-}
-```
-
-The `?` operator is like a short-circuit: if the `Result` is an error, it returns early with that error. This makes error propagation explicit and chainable without nested try/catch blocks.
-
-## Async/Await in Rust
-
-Rust has `async/await` syntax, but the runtime is not built in—you choose one. [Tokio](/tools/tokio) is the dominant choice.
-
-```toml
-# Cargo.toml
-[dependencies]
-tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.11", features = ["json"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-```
-
-```javascript
-// Node.js async
-async function fetchUsers(): Promise<User[]> {
-  const response = await fetch('/api/users');
-  return response.json();
-}
-
-async function main() {
-  const users = await fetchUsers();
-  const names = users.map(u => u.name);
-  console.log(names);
-}
-```
-
-```rust
-// Rust async with Tokio
-use tokio;
-use serde::Deserialize;
-
-#[derive(Deserialize)]
-struct User {
-    id: u32,
+struct Person {
     name: String,
 }
 
-async fn fetch_users() -> Result<Vec<User>, reqwest::Error> {
-    let users = reqwest::get("https://api.example.com/users")
-        .await?
-        .json::<Vec<User>>()
-        .await?;
-    Ok(users)
+impl Greet for Person {
+    fn greet(&self) -> String {
+        format!("Hello, I am {}", self.name)
+    }
 }
 
-#[tokio::main]  // This macro sets up the Tokio runtime
-async fn main() {
-    let users = fetch_users().await.expect("Failed to fetch users");
-    let names: Vec<&str> = users.iter().map(|u| u.name.as_str()).collect();
-    println!("{:?}", names);
+// Generic function accepting any type that implements Greet
+fn make_greeting(item: &impl Greet) -> String {
+    item.greet()
 }
 ```
 
-## Iterators: .map(), .filter(), .collect()
+Equivalent TypeScript:
 
-Rust iterators are lazy and composable—very similar to JavaScript array methods.
+```typescript
+interface Greet {
+  greet(): string;
+}
 
-```javascript
-// JavaScript
-const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
-const result = numbers
-  .filter(n => n % 2 === 0)
-  .map(n => n * n)
-  .reduce((sum, n) => sum + n, 0);
-
-console.log(result);  // 220
+class Person implements Greet {
+  constructor(public name: string) {}
+  greet() { return `Hello, I am ${this.name}`; }
+}
 ```
+
+Key difference: Rust traits support **blanket implementations** — implement a trait for any type that satisfies certain conditions. This enables powerful abstractions not possible with TypeScript interfaces.
+
+## Result and Option vs try/catch
+
+JavaScript uses exceptions for error handling. Rust uses return values: `Result<T, E>` for operations that can fail, `Option<T>` for values that might not exist.
 
 ```rust
-// Rust
-let numbers = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+use std::num::ParseIntError;
 
-let result: i32 = numbers
-    .iter()
-    .filter(|&&n| n % 2 == 0)
-    .map(|&n| n * n)
-    .sum();
+fn parse_port(s: &str) -> Result<u16, ParseIntError> {
+    s.parse::<u16>()
+}
 
-println!("{}", result);  // 220
+fn main() {
+    match parse_port("8080") {
+        Ok(port) => println!("Port: {}", port),
+        Err(e) => println!("Error: {}", e),
+    }
+}
 ```
 
-Rust iterators are zero-cost abstractions—the compiler optimizes iterator chains into the same machine code as a hand-written loop.
+```javascript
+// JavaScript equivalent
+function parsePort(s) {
+  const port = parseInt(s, 10);
+  if (isNaN(port) || port < 0 || port > 65535) {
+    throw new Error(`Invalid port: ${s}`);
+  }
+  return port;
+}
 
-## Building a CLI Tool in Rust
+try {
+  const port = parsePort("8080");
+  console.log(`Port: ${port}`);
+} catch (e) {
+  console.log(`Error: ${e.message}`);
+}
+```
 
-Let's build a practical tool: a CLI that reads a JSON file and formats it. This is a complete, runnable project.
+The `?` operator is Rust's ergonomic shortcut — it unwraps `Ok` or returns `Err` early from the calling function:
+
+```rust
+fn read_config() -> Result<Config, Box<dyn Error>> {
+    let contents = fs::read_to_string("config.toml")?; // early return if file missing
+    let config: Config = toml::from_str(&contents)?;   // early return if parse fails
+    Ok(config)
+}
+```
+
+This is functionally similar to `async/await` with `try/catch` — errors propagate up until something handles them, but the compiler forces you to handle them explicitly.
+
+## Cargo vs npm
+
+| Feature | Cargo | npm |
+|---|---|---|
+| Package registry | crates.io | npmjs.com |
+| Lock file | Cargo.lock | package-lock.json |
+| Build | `cargo build` | `npm run build` |
+| Test | `cargo test` | `npm test` |
+| Lint | `cargo clippy` | `npm run lint` |
+| Format | `cargo fmt` | `prettier --write .` |
+| Run | `cargo run` | `node index.js` |
+| Add dependency | `cargo add tokio` | `npm install express` |
+| Publish | `cargo publish` | `npm publish` |
+| Docs | `cargo doc --open` | No equivalent |
+| Benchmarks | `cargo bench` | No built-in |
+
+Cargo does more than npm: it compiles, links, tests, generates documentation, and benchmarks as first-class commands. No separate tools required.
 
 ```toml
-# Cargo.toml
+# Cargo.toml (equivalent to package.json)
 [package]
-name = "json-fmt"
+name = "my-cli"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }
-serde_json = "1"
-colored = "2"
 ```
 
-```rust
-// src/main.rs
-use clap::Parser;
-use std::fs;
-use std::io::{self, Read};
-use colored::*;
+## WebAssembly: The JS-Rust Bridge
 
-#[derive(Parser)]
-#[command(name = "json-fmt")]
-#[command(about = "Format and validate JSON files", long_about = None)]
-struct Cli {
-    /// Input file (reads from stdin if not provided)
-    #[arg(short, long)]
-    file: Option<String>,
-
-    /// Output indentation (default: 2)
-    #[arg(short, long, default_value = "2")]
-    indent: usize,
-
-    /// Compact output (no whitespace)
-    #[arg(short, long)]
-    compact: bool,
-}
-
-fn main() {
-    let cli = Cli::parse();
-
-    // Read input
-    let input = if let Some(file) = cli.file {
-        fs::read_to_string(&file).unwrap_or_else(|e| {
-            eprintln!("{}: {}", "Error reading file".red(), e);
-            std::process::exit(1);
-        })
-    } else {
-        let mut buf = String::new();
-        io::stdin().read_to_string(&mut buf).expect("Failed to read stdin");
-        buf
-    };
-
-    // Parse JSON
-    let value: serde_json::Value = serde_json::from_str(&input).unwrap_or_else(|e| {
-        eprintln!("{}: {}", "Invalid JSON".red(), e);
-        std::process::exit(1);
-    });
-
-    // Format output
-    let output = if cli.compact {
-        serde_json::to_string(&value).unwrap()
-    } else {
-        let indent = " ".repeat(cli.indent);
-        let formatter = serde_json::ser::PrettyFormatter::with_indent(indent.as_bytes());
-        let mut buf = Vec::new();
-        let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
-        serde_json::ser::Serialize::serialize(&value, &mut ser).unwrap();
-        String::from_utf8(buf).unwrap()
-    };
-
-    println!("{}", output);
-}
-```
-
-```bash
-# Build optimized release binary
-cargo build --release
-
-# Use it
-echo '{"name":"Alice","age":30}' | ./target/release/json-fmt
-./target/release/json-fmt --file data.json --indent 4
-./target/release/json-fmt --file data.json --compact
-```
-
-This produces a single binary with no runtime dependencies—a major advantage over Node.js CLIs that require Node to be installed.
-
-## WebAssembly: Running Rust in the Browser
-
-Rust compiles to WebAssembly with excellent tooling. This is ideal for performance-critical code that needs to run in the browser.
-
-```bash
-# Install wasm-pack
-cargo install wasm-pack
-
-# Create a new wasm library
-cargo new --lib image-processor
-```
-
-```toml
-# Cargo.toml
-[lib]
-crate-type = ["cdylib"]
-
-[dependencies]
-wasm-bindgen = "0.2"
-```
+The most immediately practical use case for JS developers is compiling Rust to WASM for browser performance. `wasm-pack` makes this straightforward:
 
 ```rust
 // src/lib.rs
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
-pub fn fibonacci(n: u32) -> u32 {
-    match n {
-        0 => 0,
-        1 => 1,
-        _ => fibonacci(n - 1) + fibonacci(n - 2),
-    }
+pub fn compress_data(data: &[u8]) -> Vec<u8> {
+    // Heavy compression logic runs at near-native speed in the browser
+    // Replace with actual compression algorithm
+    data.to_vec()
 }
-
-#[wasm_bindgen]
-pub fn process_pixels(data: &[u8], width: u32, height: u32) -> Vec<u8> {
-    // Grayscale conversion — massively faster than pure JS
-    data.chunks(4).flat_map(|pixel| {
-        let gray = (0.299 * pixel[0] as f32
-            + 0.587 * pixel[1] as f32
-            + 0.114 * pixel[2] as f32) as u8;
-        vec![gray, gray, gray, pixel[3]]
-    }).collect()
-}
-```
-
-```bash
-wasm-pack build --target web
 ```
 
 ```javascript
-// In your browser/Node.js code
-import init, { fibonacci, process_pixels } from './pkg/image_processor.js';
+// JavaScript caller
+import init, { compress_data } from './pkg/my_wasm.js';
 
 await init();
-console.log(fibonacci(40));  // Computed in Rust at near-native speed
+const compressed = compress_data(new Uint8Array(rawData));
 ```
 
-For a canvas pixel manipulation benchmark, Rust/WASM typically runs 10–30x faster than equivalent JavaScript.
+The Rust function is callable directly from JavaScript with automatic type conversion handled by `wasm-bindgen`. No FFI boilerplate required.
 
-## Learning Path for JS Developers
+## When to Choose Rust
 
-1. **Week 1**: Variables, functions, structs, enums, pattern matching
-2. **Week 2**: Ownership and borrowing (this takes time—be patient)
-3. **Week 3**: Error handling with `Option` and `Result`
-4. **Week 4**: Traits (Rust's equivalent of interfaces/type classes)
-5. **Week 5**: Async/await with Tokio
-6. **Month 2**: Build a real project (CLI tool, HTTP server with Axum, or WASM module)
+**Use Rust when:**
+- You're building a CLI tool that needs fast startup and a single distributable binary
+- You need WebAssembly for compute-intensive browser work (image processing, video, crypto)
+- You're building a server that requires predictable latency under high concurrency
+- You're replacing a Node.js native addon and want safety over C++
 
-### Essential Resources
+**Stick with JavaScript/TypeScript when:**
+- You're building a typical CRUD API or standard web UI
+- Team familiarity and iteration speed matter more than raw performance
+- You need breadth from the npm ecosystem
 
-- [The Rust Book](https://doc.rust-lang.org/book/) — the official tutorial, free online
-- [Rustlings](https://github.com/rust-lang/rustlings) — small exercises (like Advent of Code for Rust basics)
-- [Exercism Rust track](https://exercism.org/tracks/rust) — community-reviewed exercises
-
-### Common Gotchas for JS Developers
-
-1. **Semicolons matter in Rust**: A line without a semicolon is an expression (return value); with one is a statement
-2. **`String` vs `&str`**: `String` is owned heap data; `&str` is a borrowed reference. Use `&str` for function parameters, `String` for owned values
-3. **The borrow checker is your friend**: When it rejects your code, it's preventing a bug. Don't fight it—restructure
-
-## Conclusion
-
-Rust's learning curve is real, but it's worth it. The ownership system initially feels like fighting the compiler—but once it clicks, you'll write code that is both safe and fast by construction. No runtime errors from null dereferences, no memory leaks, no data races.
-
-For JavaScript developers, the immediate payoffs are:
-- Contributing to JS ecosystem tools (Biome, Rolldown, SWC)
-- Writing WebAssembly modules for performance-critical browser code
-- Building CLI tools that distribute as single binaries
-- Systems-level programming when Node.js performance isn't enough
-
-Explore the [Rust tools and libraries](/tools/rust) collection and the [WebAssembly tools](/tools/webassembly) on DevPlaybook.
+The learning curve is real — the borrow checker will fight you for the first few weeks. But the compiler errors are educational: fix them enough times and you internalize memory safety as an instinct, not a chore.
