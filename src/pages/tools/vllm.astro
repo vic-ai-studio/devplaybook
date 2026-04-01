@@ -1,0 +1,164 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is vLLM?", answer: "vLLM is a high-throughput, memory-efficient LLM inference and serving library developed at UC Berkeley. It uses PagedAttention — a novel memory management algorithm inspired by OS virtual memory paging — to dramatically improve GPU memory utilization. vLLM can serve 2–24x more requests per second than naive implementations at the same GPU count, making it the standard choice for production LLM serving." },
+  { question: "What is PagedAttention?", answer: "PagedAttention is vLLM's core innovation. Standard attention mechanisms pre-allocate a contiguous block of GPU memory for each request's KV (key-value) cache — leading to memory fragmentation and waste. PagedAttention divides the KV cache into small, fixed-size pages (like OS memory pages) that can be allocated non-contiguously. This eliminates fragmentation, enables memory sharing between requests that have the same prefix, and allows vLLM to handle many more concurrent requests." },
+  { question: "How do I install and run vLLM?", answer: "Install vLLM via pip: pip install vllm (requires Python 3.9+ and CUDA). Then start the server: python -m vllm.entrypoints.openai.api_server --model meta-llama/Llama-3.2-7B-Instruct --port 8000. vLLM downloads the model from HuggingFace automatically (requires HF_TOKEN for gated models). The server exposes an OpenAI-compatible API at /v1/chat/completions." },
+  { question: "What quantization methods does vLLM support?", answer: "vLLM supports AWQ, GPTQ, SqueezeLLM, and GGUF (via llama.cpp backend). For production, AWQ and GPTQ are most common — they halve VRAM requirements with minimal quality loss. Enable with --quantization awq or --quantization gptq. vLLM also supports FP8 and INT8 quantization for Ampere+ NVIDIA GPUs and FP8 inference on H100/H200/A100 GPUs via Flux." },
+  { question: "How does vLLM handle multiple GPUs?", answer: "vLLM supports tensor parallelism (split a model across multiple GPUs) and pipeline parallelism (split model layers across GPUs). Use --tensor-parallel-size N to split across N GPUs on a single node. For models too large for one node, use --pipeline-parallel-size. Example: serving Llama 3 70B requires at minimum 2x A100-40GB or 1x A100-80GB. Multi-node serving uses Ray for distributed coordination." },
+  { question: "vLLM vs TGI vs TensorRT-LLM — which to use?", answer: "vLLM is the easiest to deploy with the best out-of-the-box throughput for most models. HuggingFace Text Generation Inference (TGI) has tighter HuggingFace ecosystem integration and supports more model architectures. TensorRT-LLM (NVIDIA) achieves the highest raw throughput via aggressive CUDA kernel optimization but requires model compilation and is NVIDIA-only. For most production use cases, vLLM is the pragmatic choice; TensorRT-LLM is for when you need maximum NVIDIA throughput." },
+];
+---
+
+<BaseLayout
+  title="vLLM: High-Throughput LLM Serving with PagedAttention (2026)"
+  description="vLLM is the fastest open-source LLM inference server with PagedAttention, continuous batching, and OpenAI-compatible API. Complete guide to installation, quantization, and multi-GPU setup."
+  tool="vLLM, LLM serving, PagedAttention, inference server, GPU inference, production LLM, local AI tools"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"vLLM: High-Throughput LLM Serving with PagedAttention","url":"https://devplaybook.cc/tools/vllm","description":"vLLM is a high-throughput LLM serving library with PagedAttention for production inference — complete 2026 guide."})} />
+
+  <h1 class="text-3xl font-bold mb-2">vLLM: High-Throughput LLM Serving with PagedAttention</h1>
+  <p class="text-text-muted mb-6">vLLM is the production-grade standard for self-hosted LLM serving. Its PagedAttention algorithm dramatically improves GPU memory utilization and throughput, while continuous batching ensures low latency even under heavy load. If you're serving LLMs to more than a handful of users, vLLM is the right tool.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> PagedAttention: 2–24x throughput improvement</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Continuous batching for low latency</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OpenAI-compatible API</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-GPU tensor parallelism</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- Installation -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-xl font-semibold mb-3">Installation &amp; Quick Start</h2>
+    <p class="text-text-muted text-sm mb-4">vLLM requires an NVIDIA GPU with CUDA 11.8+ or 12.x. It downloads models from HuggingFace automatically. For gated models (Llama, Gemma), set your HuggingFace token first.</p>
+    <pre class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Install vLLM (Python 3.9+, NVIDIA GPU required)
+pip install vllm
+
+# For specific CUDA versions:
+pip install vllm --extra-index-url https://download.pytorch.org/whl/cu121
+
+# Set HuggingFace token for gated models (Llama, Gemma, etc.)
+export HF_TOKEN=hf_your_token_here
+huggingface-cli login  # or set HF_TOKEN env var
+
+# Start the OpenAI-compatible server
+python -m vllm.entrypoints.openai.api_server \
+  --model meta-llama/Llama-3.2-8B-Instruct \
+  --port 8000 \
+  --host 0.0.0.0
+
+# Test the server
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "model": "meta-llama/Llama-3.2-8B-Instruct",
+    "messages": [&#123;"role": "user", "content": "Hello!"&#125;]
+  &#125;'</code></pre>
+  </div>
+
+  <!-- PagedAttention explained -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-xl font-semibold mb-3">PagedAttention &amp; Continuous Batching</h2>
+    <p class="text-text-muted text-sm mb-4">Understanding vLLM's two core innovations helps you configure it correctly and understand its throughput claims:</p>
+    <pre class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># PagedAttention — GPU memory management
+# ─────────────────────────────────────────────────────────────
+# Without PagedAttention (naive):
+#   Request A: [████████████████████████____] ← 25% wasted (pre-allocated)
+#   Request B: [████████________] ← 50% wasted
+#   GPU memory utilization: ~40-60%
+#
+# With PagedAttention:
+#   KV cache divided into 16-token "pages"
+#   Pages allocated on demand, can be non-contiguous
+#   GPU memory utilization: ~95%+
+#   Shared prefix caching: requests with same system prompt
+#   share KV cache pages → further memory savings
+
+# Continuous batching — request scheduling
+# ─────────────────────────────────────────────────────────────
+# Without (static batching):
+#   Batch waits for ALL requests to finish before starting new ones
+#   Short requests waste time waiting for long ones
+#
+# With continuous batching:
+#   New requests inserted into the batch at every iteration step
+#   Finished sequences immediately replaced with new ones
+#   Result: much higher GPU utilization under real traffic
+
+# Configure GPU memory and concurrency:
+python -m vllm.entrypoints.openai.api_server \
+  --model mistralai/Mistral-7B-Instruct-v0.3 \
+  --gpu-memory-utilization 0.90 \   # Use 90% of GPU memory for KV cache
+  --max-num-seqs 256 \              # Max concurrent sequences
+  --max-model-len 32768             # Max context length</code></pre>
+  </div>
+
+  <!-- Quantization and multi-GPU -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-xl font-semibold mb-3">Quantization &amp; Multi-GPU Serving</h2>
+    <p class="text-text-muted text-sm mb-4">vLLM supports multiple quantization methods and scales horizontally across GPUs using tensor parallelism:</p>
+    <pre class="bg-bg-card border border-border rounded-lg p-4 text-sm font-mono overflow-x-auto mb-4"><code># Quantization — reduce VRAM requirements
+# AWQ 4-bit (recommended for quality/speed balance)
+python -m vllm.entrypoints.openai.api_server \
+  --model TheBloke/Llama-2-70B-Chat-AWQ \
+  --quantization awq \
+  --dtype float16
+
+# GPTQ 4-bit
+python -m vllm.entrypoints.openai.api_server \
+  --model TheBloke/Mistral-7B-Instruct-v0.2-GPTQ \
+  --quantization gptq
+
+# FP8 (NVIDIA H100/H200/A100 only — fastest)
+python -m vllm.entrypoints.openai.api_server \
+  --model meta-llama/Llama-3.1-70B-Instruct \
+  --quantization fp8
+
+# Multi-GPU tensor parallelism (single node)
+# Llama 70B across 4x A100-40GB
+python -m vllm.entrypoints.openai.api_server \
+  --model meta-llama/Llama-3.1-70B-Instruct \
+  --tensor-parallel-size 4 \
+  --gpu-memory-utilization 0.95
+
+# Check GPU memory requirements:
+# 7B FP16: ~14 GB  | 7B AWQ-4bit: ~4 GB
+# 13B FP16: ~26 GB | 13B AWQ: ~7 GB
+# 70B FP16: ~140 GB | 70B AWQ: ~35 GB</code></pre>
+  </div>
+
+  <!-- Comparison -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-xl font-semibold mb-4">vLLM vs TGI vs TensorRT-LLM</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Feature</th>
+            <th class="text-left pb-2 pr-4">vLLM</th>
+            <th class="text-left pb-2 pr-4">HF TGI</th>
+            <th class="text-left pb-2">TensorRT-LLM</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-xs">
+          <tr><td class="py-2 pr-4 font-medium">Setup complexity</td><td class="py-2 pr-4 text-green-500">Low (pip install)</td><td class="py-2 pr-4 text-green-500">Low (Docker)</td><td class="py-2 text-red-400">High (compile models)</td></tr>
+          <tr><td class="py-2 pr-4 font-medium">Throughput</td><td class="py-2 pr-4 text-green-500">Excellent</td><td class="py-2 pr-4 text-yellow-500">Good</td><td class="py-2 text-green-500">Best (NVIDIA)</td></tr>
+          <tr><td class="py-2 pr-4 font-medium">GPU vendor</td><td class="py-2 pr-4 text-green-500">NVIDIA + AMD</td><td class="py-2 pr-4 text-green-500">NVIDIA + AMD</td><td class="py-2 text-yellow-500">NVIDIA only</td></tr>
+          <tr><td class="py-2 pr-4 font-medium">Model support</td><td class="py-2 pr-4 text-green-500">Wide (50+ architectures)</td><td class="py-2 pr-4 text-green-500">Wide</td><td class="py-2 text-yellow-500">Curated list</td></tr>
+          <tr><td class="py-2 pr-4 font-medium">OpenAI API</td><td class="py-2 pr-4 text-green-500">Native</td><td class="py-2 pr-4 text-green-500">Native</td><td class="py-2 text-yellow-500">Via wrapper</td></tr>
+          <tr><td class="py-2 pr-4 font-medium">PagedAttention</td><td class="py-2 pr-4 text-green-500">Yes (core feature)</td><td class="py-2 pr-4 text-yellow-500">Partial</td><td class="py-2 text-green-500">Yes (Inflight batching)</td></tr>
+          <tr><td class="py-2 pr-4 font-medium">Best for</td><td class="py-2 pr-4">General production</td><td class="py-2 pr-4">HF ecosystem</td><td class="py-2">Max NVIDIA perf</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="vLLM" relatedTags={['ai', 'llm', 'inference', 'gpu', 'production', 'serving', 'openai']} />
+</BaseLayout>
