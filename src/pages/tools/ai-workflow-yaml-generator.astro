@@ -1,0 +1,491 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is an AI workflow and why do I need a config format?", answer: "An AI workflow is a sequence of steps that combine LLM calls, tool use, conditional logic, and HTTP requests to automate complex tasks. Config formats (n8n JSON, LangGraph Python, Temporal YAML) let you define, version-control, and reproduce these workflows declaratively, making them easier to maintain than ad-hoc code." },
+  { question: "When should I use n8n vs LangGraph vs Temporal?", answer: "n8n is best for no-code/low-code automation with a visual editor — great for business users and simple integrations. LangGraph is ideal for AI-native stateful agent graphs with complex branching — built for developers using Python. Temporal is best for long-running, fault-tolerant workflows that must survive failures and resume from checkpoints — great for production pipelines that run for minutes to hours." },
+  { question: "What is a LangGraph StateGraph?", answer: "LangGraph's StateGraph models your workflow as a directed graph of nodes (functions) connected by edges (transitions). Each node receives the shared state dict, modifies it, and passes it to the next node. Conditional edges allow dynamic routing based on state values. This makes complex branching agent logic easy to visualize and debug." },
+  { question: "How does Temporal handle failures in AI workflows?", answer: "Temporal persists every step's input/output to its event history. If a worker crashes mid-workflow, Temporal replays the history to restore state and resumes from the last completed step. This makes it ideal for multi-step AI pipelines where an individual LLM call or tool step might fail due to timeouts or rate limits." },
+  { question: "Should I version control my AI workflow configs?", answer: "Yes, always. Workflow configs define your AI system's behavior — versioning them in Git lets you track changes, roll back to previous behavior, run A/B tests between workflow versions, and review changes in PRs. Treat workflow configs the same as source code. Use environment variables for API keys and sensitive values, never hardcode them." },
+];
+---
+
+<BaseLayout
+  title="AI Workflow YAML Generator — n8n / LangGraph / Temporal Config Builder"
+  description="Generate AI workflow configs for n8n, LangGraph, and Temporal. Define steps (LLM calls, tool calls, conditions, loops, HTTP), set triggers, and get ready-to-use workflow code."
+  tool="AI Workflow YAML Generator, n8n Workflow Builder, LangGraph Config, Temporal Workflow Generator, AI Pipeline Builder"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Workflow Config Generator</h1>
+  <p class="text-text-muted mb-4">Build multi-step AI workflow configs for n8n, LangGraph, or Temporal. Define steps, triggers, and LLM settings — get production-ready code.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> n8n JSON / LangGraph / Temporal</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dynamic step builder</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> One-click copy</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+    <!-- Config Panel -->
+    <div class="space-y-4">
+      <!-- Workflow basics -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Workflow Settings</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Workflow Name</label>
+            <input id="wf-name" type="text" value="ai_content_pipeline"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Trigger Type</label>
+            <select id="wf-trigger" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+              <option value="webhook">Webhook — HTTP POST trigger</option>
+              <option value="cron">Cron — Scheduled (e.g. every hour)</option>
+              <option value="manual">Manual — Run on demand</option>
+              <option value="event">Event — Message queue / pubsub</option>
+            </select>
+          </div>
+          <div id="cron-field" class="hidden">
+            <label class="block text-sm font-medium mb-1.5">Cron Expression</label>
+            <input id="wf-cron" type="text" value="0 * * * *" placeholder="0 * * * *"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Output Format</label>
+            <div class="flex gap-2">
+              <label class="flex-1">
+                <input type="radio" name="output-fmt" value="n8n" class="sr-only" />
+                <div class="fmt-btn border border-border rounded-lg p-2.5 text-center text-sm cursor-pointer hover:border-primary transition-colors">n8n JSON</div>
+              </label>
+              <label class="flex-1">
+                <input type="radio" name="output-fmt" value="langgraph" checked class="sr-only" />
+                <div class="fmt-btn border-primary bg-primary/5 rounded-lg p-2.5 text-center text-sm cursor-pointer text-primary">LangGraph</div>
+              </label>
+              <label class="flex-1">
+                <input type="radio" name="output-fmt" value="temporal" class="sr-only" />
+                <div class="fmt-btn border border-border rounded-lg p-2.5 text-center text-sm cursor-pointer hover:border-primary transition-colors">Temporal</div>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Steps -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">Steps</h2>
+          <button id="add-step" class="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90">+ Add Step</button>
+        </div>
+        <div id="steps-list" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Generated Config</h2>
+        <button id="copy-btn" class="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90 flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+          <span id="copy-label">Copy</span>
+        </button>
+      </div>
+      <pre id="output" class="text-xs font-mono bg-black/20 rounded-lg p-4 overflow-auto whitespace-pre min-h-[520px] text-green-400 leading-relaxed"></pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Workflow Config Generator" relatedTags={['ai', 'workflow', 'n8n', 'langgraph', 'temporal', 'automation', 'llm']} />
+</BaseLayout>
+
+<script is:inline>
+  let stepCounter = 0;
+
+  const LLM_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307', 'gemini-1.5-flash'];
+  const STEP_TYPES = ['llm_call', 'tool_call', 'condition', 'loop', 'http_request', 'code'];
+
+  function makeStepCard(name, type, extras) {
+    stepCounter++;
+    const id = `step-card-${stepCounter}`;
+    const card = document.createElement('div');
+    card.id = id;
+    card.className = 'border border-border rounded-lg p-3 space-y-2 bg-black/5';
+
+    const llmModels = LLM_MODELS.map(m => `<option${(extras && extras.model === m) ? ' selected' : ''}>${m}</option>`).join('');
+    const stepTypeOpts = STEP_TYPES.map(t => `<option value="${t}"${t === type ? ' selected' : ''}>${t.replace('_', ' ')}</option>`).join('');
+
+    card.innerHTML = `
+      <div class="flex gap-2 items-center">
+        <input type="text" value="${name}" placeholder="step_name"
+          class="step-name flex-1 bg-bg-card border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary" />
+        <select class="step-type bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary">
+          ${stepTypeOpts}
+        </select>
+        <button class="remove-step text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button>
+      </div>
+      <div class="step-extras space-y-2"></div>
+    `;
+
+    const extrasEl = card.querySelector('.step-extras');
+
+    function renderExtras() {
+      const t = card.querySelector('.step-type').value;
+      extrasEl.innerHTML = '';
+
+      if (t === 'llm_call') {
+        extrasEl.innerHTML = `
+          <select class="llm-model w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary">
+            ${llmModels}
+          </select>
+          <input type="text" placeholder="System prompt (brief)" value="${extras && extras.systemPrompt || 'You are a helpful assistant.'}"
+            class="llm-prompt w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary" />
+          <input type="number" placeholder="Max tokens" value="${extras && extras.maxTokens || 1024}" min="1" max="32000"
+            class="llm-tokens w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary" />
+        `;
+      } else if (t === 'condition') {
+        extrasEl.innerHTML = `
+          <input type="text" placeholder="Condition expression (e.g. state.score > 0.8)" value="${extras && extras.condition || 'state[\"score\"] > 0.8'}"
+            class="cond-expr w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary" />
+        `;
+      } else if (t === 'http_request') {
+        extrasEl.innerHTML = `
+          <div class="flex gap-2">
+            <select class="http-method bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary">
+              <option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option>
+            </select>
+            <input type="text" placeholder="https://api.example.com/endpoint" value="${extras && extras.url || ''}"
+              class="http-url flex-1 bg-bg-card border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary" />
+          </div>
+        `;
+      } else if (t === 'code') {
+        extrasEl.innerHTML = `
+          <input type="text" placeholder="Brief description of code logic" value="${extras && extras.desc || 'process data'}"
+            class="code-desc w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary" />
+        `;
+      } else if (t === 'tool_call') {
+        extrasEl.innerHTML = `
+          <input type="text" placeholder="Tool name (e.g. web_search, read_file)" value="${extras && extras.toolName || 'web_search'}"
+            class="tool-name w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary" />
+        `;
+      }
+
+      extrasEl.querySelectorAll('input, select').forEach(el => el.addEventListener('input', generate));
+    }
+
+    card.querySelector('.step-type').addEventListener('change', () => { renderExtras(); generate(); });
+    card.querySelector('.remove-step').addEventListener('click', () => { card.remove(); generate(); });
+    card.querySelector('.step-name').addEventListener('input', generate);
+    renderExtras();
+
+    document.getElementById('steps-list').appendChild(card);
+    return card;
+  }
+
+  function getSteps() {
+    return Array.from(document.querySelectorAll('#steps-list > div')).map(card => {
+      const type = card.querySelector('.step-type').value;
+      const name = card.querySelector('.step-name').value.trim() || 'unnamed_step';
+      const extras = {};
+      if (type === 'llm_call') {
+        extras.model = card.querySelector('.llm-model')?.value || 'gpt-4o-mini';
+        extras.systemPrompt = card.querySelector('.llm-prompt')?.value || '';
+        extras.maxTokens = parseInt(card.querySelector('.llm-tokens')?.value) || 1024;
+      } else if (type === 'condition') {
+        extras.condition = card.querySelector('.cond-expr')?.value || 'True';
+      } else if (type === 'http_request') {
+        extras.method = card.querySelector('.http-method')?.value || 'GET';
+        extras.url = card.querySelector('.http-url')?.value || '';
+      } else if (type === 'code') {
+        extras.desc = card.querySelector('.code-desc')?.value || '';
+      } else if (type === 'tool_call') {
+        extras.toolName = card.querySelector('.tool-name')?.value || 'tool';
+      }
+      return { name, type, extras };
+    });
+  }
+
+  function generateLangGraph(wfName, trigger, steps) {
+    const stateFields = steps.map(s => `    ${s.name}_result: Optional[str] = None`).join('\n');
+    const nodeFuncs = steps.map(s => {
+      if (s.type === 'llm_call') {
+        return `
+async def ${s.name}(state: WorkflowState) -> dict:
+    """${s.extras.model} LLM call"""
+    response = await llm_${s.extras.model.replace(/[^a-z0-9]/gi, '_')}.ainvoke([
+        SystemMessage(content="${s.extras.systemPrompt}"),
+        HumanMessage(content=str(state)),
+    ], max_tokens=${s.extras.maxTokens})
+    return {"${s.name}_result": response.content}`;
+      } else if (s.type === 'tool_call') {
+        return `
+async def ${s.name}(state: WorkflowState) -> dict:
+    """Tool call: ${s.extras.toolName}"""
+    result = await tools["${s.extras.toolName}"].ainvoke(state)
+    return {"${s.name}_result": str(result)}`;
+      } else if (s.type === 'condition') {
+        return `
+def ${s.name}(state: WorkflowState) -> str:
+    """Conditional router: ${s.extras.condition}"""
+    if ${s.extras.condition}:
+        return "continue"
+    return "end"`;
+      } else if (s.type === 'http_request') {
+        return `
+async def ${s.name}(state: WorkflowState) -> dict:
+    """HTTP ${s.extras.method} ${s.extras.url}"""
+    async with aiohttp.ClientSession() as session:
+        async with session.${(s.extras.method||'GET').toLowerCase()}("${s.extras.url}") as resp:
+            data = await resp.json()
+    return {"${s.name}_result": str(data)}`;
+      }
+      return `
+async def ${s.name}(state: WorkflowState) -> dict:
+    """${s.type}: ${s.extras.desc || s.name}"""
+    # TODO: implement logic
+    return {"${s.name}_result": "done"}`;
+    }).join('\n');
+
+    const addNodes = steps.map(s =>
+      s.type === 'condition'
+        ? `graph.add_conditional_edges("${s.name}", ${s.name}, {"continue": "${steps[steps.indexOf(s)+1]?.name || 'END'}", "end": END})`
+        : `graph.add_node("${s.name}", ${s.name})`
+    ).join('\n');
+
+    const addEdges = steps
+      .filter(s => s.type !== 'condition')
+      .map((s, i, arr) => {
+        if (i === 0) return `graph.add_edge(START, "${s.name}")`;
+        return `graph.add_edge("${arr[i-1].name}", "${s.name}")`;
+      }).join('\n');
+
+    return `"""
+LangGraph Workflow: ${wfName}
+Trigger: ${trigger}
+Generated by DevPlaybook AI Workflow Generator
+"""
+import asyncio
+import aiohttp
+from typing import Optional, TypedDict
+from langgraph.graph import StateGraph, START, END
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import SystemMessage, HumanMessage
+
+
+# ── State ──────────────────────────────────────────────────
+class WorkflowState(TypedDict):
+    input: str
+${stateFields}
+
+
+# ── LLM Clients ────────────────────────────────────────────
+llm_gpt_4o = ChatOpenAI(model="gpt-4o")
+llm_gpt_4o_mini = ChatOpenAI(model="gpt-4o-mini")
+llm_claude_3_5_sonnet = ChatAnthropic(model="claude-3-5-sonnet-20241022")
+llm_claude_3_haiku = ChatAnthropic(model="claude-3-haiku-20240307")
+
+
+# ── Node Functions ─────────────────────────────────────────
+${nodeFuncs}
+
+
+# ── Build Graph ────────────────────────────────────────────
+def build_graph():
+    graph = StateGraph(WorkflowState)
+    ${addNodes}
+    ${addEdges}
+    return graph.compile()
+
+
+# ── Run ────────────────────────────────────────────────────
+async def main():
+    app = build_graph()
+    result = await app.ainvoke({"input": "your input here"})
+    print(result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+`;
+  }
+
+  function generateN8n(wfName, trigger, steps) {
+    const triggerNode = {
+      webhook: { type: "n8n-nodes-base.webhook", name: "Webhook Trigger", parameters: { path: wfName, httpMethod: "POST" } },
+      cron: { type: "n8n-nodes-base.cron", name: "Schedule Trigger", parameters: { rule: { interval: [{ field: "cronExpression", expression: document.getElementById('wf-cron')?.value || "0 * * * *" }] } } },
+      manual: { type: "n8n-nodes-base.manualTrigger", name: "Manual Trigger", parameters: {} },
+      event: { type: "n8n-nodes-base.rabbitmq", name: "Event Trigger", parameters: { queue: wfName + "_events" } },
+    }[trigger];
+
+    const nodes = [
+      { ...triggerNode, id: "trigger-node", position: [100, 300] },
+      ...steps.map((s, i) => {
+        let nodeType, params;
+        if (s.type === 'llm_call') {
+          nodeType = "@n8n/n8n-nodes-langchain.lmOpenAi";
+          params = { model: s.extras.model, systemMessage: s.extras.systemPrompt, maxTokensToSample: s.extras.maxTokens };
+        } else if (s.type === 'http_request') {
+          nodeType = "n8n-nodes-base.httpRequest";
+          params = { method: s.extras.method, url: s.extras.url, responseFormat: "json" };
+        } else if (s.type === 'condition') {
+          nodeType = "n8n-nodes-base.if";
+          params = { conditions: { string: [{ value1: "={{" + s.extras.condition + "}}", operation: "isTrue" }] } };
+        } else if (s.type === 'code') {
+          nodeType = "n8n-nodes-base.code";
+          params = { jsCode: `// ${s.extras.desc}\nreturn items;` };
+        } else {
+          nodeType = "n8n-nodes-base.executeCommand";
+          params = { command: `echo "Running ${s.name}"` };
+        }
+        return { id: `node-${i}`, name: s.name, type: nodeType, parameters: params, position: [300 + i * 220, 300] };
+      })
+    ];
+
+    const connections = {};
+    nodes.forEach((node, i) => {
+      if (i < nodes.length - 1) {
+        connections[node.name] = { main: [[{ node: nodes[i+1].name, type: "main", index: 0 }]] };
+      }
+    });
+
+    return JSON.stringify({ name: wfName, nodes, connections, active: true, settings: {}, tags: ["ai", "generated"] }, null, 2);
+  }
+
+  function generateTemporal(wfName, trigger, steps) {
+    const activities = steps.map(s => {
+      if (s.type === 'llm_call') {
+        return `
+@activity.defn(name="${s.name}")
+async def ${s.name}(state: dict) -> str:
+    """LLM call using ${s.extras.model}"""
+    client = AsyncOpenAI()
+    response = await client.chat.completions.create(
+        model="${s.extras.model}",
+        messages=[
+            {"role": "system", "content": "${s.extras.systemPrompt}"},
+            {"role": "user", "content": str(state)},
+        ],
+        max_tokens=${s.extras.maxTokens},
+    )
+    return response.choices[0].message.content`;
+      } else if (s.type === 'http_request') {
+        return `
+@activity.defn(name="${s.name}")
+async def ${s.name}(state: dict) -> dict:
+    """HTTP ${s.extras.method} ${s.extras.url}"""
+    async with aiohttp.ClientSession() as session:
+        async with session.${(s.extras.method||'GET').toLowerCase()}("${s.extras.url}") as resp:
+            return await resp.json()`;
+      }
+      return `
+@activity.defn(name="${s.name}")
+async def ${s.name}(state: dict) -> str:
+    """${s.type}: ${s.name}"""
+    # TODO: implement
+    return "completed"`;
+    }).join('\n');
+
+    const workflowSteps = steps.map(s =>
+      `    result_${s.name} = await workflow.execute_activity(
+        ${s.name},
+        state,
+        start_to_close_timeout=timedelta(minutes=5),
+        retry_policy=RetryPolicy(maximum_attempts=3),
+    )`
+    ).join('\n');
+
+    return `"""
+Temporal Workflow: ${wfName}
+Trigger: ${trigger}
+Generated by DevPlaybook AI Workflow Generator
+"""
+import asyncio
+import aiohttp
+from datetime import timedelta
+from openai import AsyncOpenAI
+from temporalio import activity, workflow
+from temporalio.client import Client
+from temporalio.worker import Worker
+from temporalio.common import RetryPolicy
+
+
+# ── Activities ─────────────────────────────────────────────
+${activities}
+
+
+# ── Workflow ───────────────────────────────────────────────
+@workflow.defn(name="${wfName}")
+class ${wfName.replace(/_([a-z])/g, (_, c) => c.toUpperCase()).replace(/^./, c => c.toUpperCase())}Workflow:
+
+    @workflow.run
+    async def run(self, state: dict) -> dict:
+${workflowSteps}
+        return state
+
+
+# ── Worker ────────────────────────────────────────────────
+async def main():
+    client = await Client.connect("localhost:7233")
+    async with Worker(
+        client,
+        task_queue="${wfName}-queue",
+        workflows=[${wfName.replace(/_([a-z])/g, (_, c) => c.toUpperCase()).replace(/^./, c => c.toUpperCase())}Workflow],
+        activities=[${steps.map(s => s.name).join(', ')}],
+    ):
+        print(f"Worker started for '${wfName}'")
+        await asyncio.Future()  # run forever
+
+if __name__ == "__main__":
+    asyncio.run(main())
+`;
+  }
+
+  function generate() {
+    const name = document.getElementById('wf-name').value.trim().replace(/\s+/g, '_') || 'my_workflow';
+    const trigger = document.getElementById('wf-trigger').value;
+    const fmt = document.querySelector('input[name="output-fmt"]:checked')?.value || 'langgraph';
+    const steps = getSteps();
+
+    document.getElementById('cron-field').classList.toggle('hidden', trigger !== 'cron');
+
+    let output = '';
+    if (fmt === 'langgraph') output = generateLangGraph(name, trigger, steps);
+    else if (fmt === 'n8n') output = generateN8n(name, trigger, steps);
+    else output = generateTemporal(name, trigger, steps);
+
+    document.getElementById('output').textContent = output;
+  }
+
+  // Format switcher styling
+  document.querySelectorAll('input[name="output-fmt"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+      document.querySelectorAll('.fmt-btn').forEach(b => {
+        b.className = 'fmt-btn border border-border rounded-lg p-2.5 text-center text-sm cursor-pointer hover:border-primary transition-colors';
+      });
+      this.closest('label').querySelector('.fmt-btn').className = 'fmt-btn border-primary bg-primary/5 rounded-lg p-2.5 text-center text-sm cursor-pointer text-primary';
+      generate();
+    });
+  });
+
+  document.getElementById('wf-name').addEventListener('input', generate);
+  document.getElementById('wf-trigger').addEventListener('change', generate);
+  document.getElementById('add-step').addEventListener('click', () => {
+    makeStepCard(`step_${document.querySelectorAll('#steps-list > div').length + 1}`, 'llm_call', {});
+    generate();
+  });
+  document.getElementById('copy-btn').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('output').textContent).then(() => {
+      const lbl = document.getElementById('copy-label');
+      lbl.textContent = 'Copied!';
+      setTimeout(() => lbl.textContent = 'Copy', 2000);
+    });
+  });
+
+  // Seed defaults
+  makeStepCard('parse_intent', 'llm_call', { model: 'gpt-4o-mini', systemPrompt: 'Extract intent and entities from user input.', maxTokens: 256 });
+  makeStepCard('fetch_context', 'http_request', { method: 'GET', url: 'https://api.example.com/context' });
+  makeStepCard('quality_check', 'condition', { condition: 'state["score"] > 0.8' });
+  makeStepCard('generate_response', 'llm_call', { model: 'claude-3-5-sonnet-20241022', systemPrompt: 'Generate a helpful response using the provided context.', maxTokens: 1024 });
+  generate();
+</script>

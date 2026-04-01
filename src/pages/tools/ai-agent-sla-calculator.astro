@@ -1,0 +1,249 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is P50/P95/P99 latency and why does it matter?", answer: "P50 (median) is the latency that 50% of requests fall under — your typical case. P95 means 95% of requests are faster than this value. P99 is the tail latency — only 1% of requests are slower. For user-facing agents, P95/P99 matter most because slow outliers degrade user experience even if the average looks fine." },
+  { question: "How is multi-step agent chain latency calculated?", answer: "Each step in the chain adds its own latency sequentially (since most chains are linear). Total P50 ≈ sum of per-step P50 estimates. P95 is higher due to variance — modeled as P50 × 1.5 to 2x depending on number of steps. The more steps, the more variance compounds, which is why keeping chains short matters for SLA compliance." },
+  { question: "How much does a tool call add to latency?", answer: "Tool calls add latency for the round-trip to the tool server (typically 100-500ms for APIs, <50ms for local tools) plus parsing and re-prompting. In this calculator we add ~300ms per step that uses tool calls as a conservative estimate. For production systems, profile your actual tool latencies." },
+  { question: "Why are token costs so different between models?", answer: "Model pricing reflects compute cost — larger models with more parameters cost more per token. GPT-4o (~$2.50/$10 per 1M tokens) is more expensive than Claude Haiku (~$0.25/$1.25) or Gemini Flash (~$0.075/$0.30). For cost-sensitive pipelines, use cheaper models for simpler steps and reserve expensive models for reasoning-heavy steps." },
+  { question: "How can I reduce agent chain latency?", answer: "Key techniques: (1) Parallelize independent steps instead of running sequentially. (2) Use faster/cheaper models for simple steps. (3) Cache common sub-queries. (4) Reduce output token limits — most latency comes from generation. (5) Use streaming to show partial results. (6) Keep tool calls minimal — each adds a network round-trip." },
+];
+---
+
+<BaseLayout
+  title="AI Agent SLA Calculator — Latency & Cost Estimator for Multi-Step Agent Chains"
+  description="Calculate latency and cost SLA for multi-step AI agent pipelines. Add steps with GPT-4o, Claude Sonnet, Haiku, or Gemini Flash. Get P50/P95/P99 estimates and per-run cost breakdown."
+  tool="AI Agent SLA Calculator, Agent Chain Latency Estimator, LLM Cost Calculator, Multi-step Agent Cost"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">AI Agent SLA Calculator</h1>
+  <p class="text-text-muted mb-4">Model multi-step AI agent chains. Estimate P50/P95/P99 latency and per-run cost across GPT-4o, Claude, and Gemini models.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> P50 / P95 / P99 latency</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Per-step cost breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 1K-run cost projection</span>
+  </div>
+
+  <!-- Steps Builder -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-semibold">Pipeline Steps</h2>
+      <button id="add-step" class="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:opacity-90">+ Add Step</button>
+    </div>
+
+    <!-- Header -->
+    <div class="hidden md:grid grid-cols-12 gap-2 text-xs text-text-muted font-medium mb-2 px-1">
+      <div class="col-span-2">Step Name</div>
+      <div class="col-span-3">Model</div>
+      <div class="col-span-2">Input Tokens</div>
+      <div class="col-span-2">Output Tokens</div>
+      <div class="col-span-2">Tool Calls?</div>
+      <div class="col-span-1"></div>
+    </div>
+
+    <div id="steps-list" class="space-y-2"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+    <!-- Latency -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-4">Chain Latency Estimates</h2>
+      <div id="latency-results" class="space-y-3"></div>
+    </div>
+    <!-- Cost -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-4">Cost Breakdown</h2>
+      <div id="cost-results" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Per-step detail table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">Per-Step Detail</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[500px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Step</th>
+            <th class="text-left pb-2 pr-4">Model</th>
+            <th class="text-right pb-2 pr-4">Latency</th>
+            <th class="text-right pb-2 pr-4">Input Cost</th>
+            <th class="text-right pb-2">Output Cost</th>
+          </tr>
+        </thead>
+        <tbody id="detail-table" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="AI Agent SLA Calculator" relatedTags={['ai', 'llm', 'agent', 'cost', 'latency', 'gpt4o', 'claude']} />
+</BaseLayout>
+
+<script is:inline>
+  // Model specs: { baseMs, msPerOutputToken, inputPer1M, outputPer1M }
+  const MODELS = {
+    'gpt-4o':          { label: 'GPT-4o',          baseMs: 800,  msPerToken: 15, inputPer1M: 2.50,  outputPer1M: 10.00 },
+    'claude-sonnet':   { label: 'Claude Sonnet',    baseMs: 700,  msPerToken: 12, inputPer1M: 3.00,  outputPer1M: 15.00 },
+    'claude-haiku':    { label: 'Claude Haiku',     baseMs: 300,  msPerToken: 5,  inputPer1M: 0.25,  outputPer1M: 1.25  },
+    'gemini-flash':    { label: 'Gemini Flash',     baseMs: 400,  msPerToken: 8,  inputPer1M: 0.075, outputPer1M: 0.30  },
+    'gpt-4o-mini':     { label: 'GPT-4o Mini',      baseMs: 400,  msPerToken: 8,  inputPer1M: 0.15,  outputPer1M: 0.60  },
+  };
+
+  let stepCount = 0;
+
+  function addStep(name, model, inputTok, outputTok, toolCalls) {
+    stepCount++;
+    const id = `step-${stepCount}`;
+    const row = document.createElement('div');
+    row.id = id;
+    row.className = 'grid grid-cols-12 gap-2 items-center p-2 bg-black/10 rounded-lg';
+    row.innerHTML = `
+      <div class="col-span-12 md:col-span-2">
+        <input type="text" value="${name}" placeholder="Step name"
+          class="step-name w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary" />
+      </div>
+      <div class="col-span-12 md:col-span-3">
+        <select class="step-model w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary">
+          ${Object.entries(MODELS).map(([k,v]) => `<option value="${k}"${k===model?' selected':''}>${v.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="col-span-5 md:col-span-2">
+        <input type="number" value="${inputTok}" min="0"
+          class="step-input w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary" />
+      </div>
+      <div class="col-span-5 md:col-span-2">
+        <input type="number" value="${outputTok}" min="0"
+          class="step-output w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:border-primary" />
+      </div>
+      <div class="col-span-2 md:col-span-2 flex items-center gap-1.5 text-xs">
+        <input type="checkbox" class="step-tools"${toolCalls?' checked':''} id="tc-${id}" />
+        <label for="tc-${id}" class="text-text-muted cursor-pointer select-none">Yes</label>
+      </div>
+      <div class="col-span-12 md:col-span-1 text-right">
+        <button class="remove-step text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+      </div>
+    `;
+    row.querySelector('.remove-step').addEventListener('click', () => { row.remove(); calculate(); });
+    row.querySelectorAll('input, select').forEach(el => el.addEventListener('input', calculate));
+    document.getElementById('steps-list').appendChild(row);
+  }
+
+  function getSteps() {
+    return Array.from(document.querySelectorAll('#steps-list > div')).map(row => ({
+      name: row.querySelector('.step-name').value.trim() || 'Step',
+      model: row.querySelector('.step-model').value,
+      inputTok: parseInt(row.querySelector('.step-input').value) || 0,
+      outputTok: parseInt(row.querySelector('.step-output').value) || 0,
+      toolCalls: row.querySelector('.step-tools').checked,
+    }));
+  }
+
+  function formatMs(ms) {
+    if (ms >= 1000) return `${(ms/1000).toFixed(2)}s`;
+    return `${Math.round(ms)}ms`;
+  }
+
+  function calculate() {
+    const steps = getSteps();
+    if (!steps.length) {
+      document.getElementById('latency-results').innerHTML = '<p class="text-text-muted text-sm">Add steps to see estimates.</p>';
+      document.getElementById('cost-results').innerHTML = '';
+      document.getElementById('detail-table').innerHTML = '';
+      return;
+    }
+
+    let totalLatencyMs = 0;
+    let totalInputCost = 0;
+    let totalOutputCost = 0;
+    const stepDetails = [];
+
+    steps.forEach(s => {
+      const m = MODELS[s.model];
+      const stepMs = m.baseMs + (s.outputTok * m.msPerToken) + (s.toolCalls ? 300 : 0);
+      const inCost = (s.inputTok / 1e6) * m.inputPer1M;
+      const outCost = (s.outputTok / 1e6) * m.outputPer1M;
+      totalLatencyMs += stepMs;
+      totalInputCost += inCost;
+      totalOutputCost += outCost;
+      stepDetails.push({ ...s, stepMs, inCost, outCost, model: m });
+    });
+
+    const p50 = totalLatencyMs;
+    const stepVariance = Math.sqrt(steps.length) * 0.15;
+    const p95 = p50 * (1 + stepVariance + 0.3);
+    const p99 = p50 * (1 + stepVariance + 0.7);
+    const totalCost = totalInputCost + totalOutputCost;
+
+    // Latency
+    document.getElementById('latency-results').innerHTML = `
+      <div class="flex justify-between items-center p-3 bg-black/10 rounded-lg">
+        <span class="text-sm text-text-muted">P50 (typical)</span>
+        <span class="font-mono font-bold text-green-400">${formatMs(p50)}</span>
+      </div>
+      <div class="flex justify-between items-center p-3 bg-black/10 rounded-lg">
+        <span class="text-sm text-text-muted">P95 (slow)</span>
+        <span class="font-mono font-bold text-yellow-400">${formatMs(p95)}</span>
+      </div>
+      <div class="flex justify-between items-center p-3 bg-black/10 rounded-lg">
+        <span class="text-sm text-text-muted">P99 (tail)</span>
+        <span class="font-mono font-bold text-red-400">${formatMs(p99)}</span>
+      </div>
+      <div class="text-xs text-text-muted mt-1">
+        ${steps.length} step${steps.length > 1 ? 's' : ''} sequential chain.
+        ${steps.some(s => s.toolCalls) ? 'Tool calls add ~300ms overhead.' : ''}
+      </div>
+    `;
+
+    // Cost
+    document.getElementById('cost-results').innerHTML = `
+      <div class="flex justify-between p-2.5 bg-black/10 rounded-lg">
+        <span class="text-sm text-text-muted">Input cost / run</span>
+        <span class="font-mono text-sm">$${totalInputCost.toFixed(5)}</span>
+      </div>
+      <div class="flex justify-between p-2.5 bg-black/10 rounded-lg">
+        <span class="text-sm text-text-muted">Output cost / run</span>
+        <span class="font-mono text-sm">$${totalOutputCost.toFixed(5)}</span>
+      </div>
+      <div class="flex justify-between p-2.5 bg-primary/10 rounded-lg border border-primary/20">
+        <span class="text-sm font-semibold">Total / run</span>
+        <span class="font-mono font-bold text-primary">$${totalCost.toFixed(5)}</span>
+      </div>
+      <div class="flex justify-between p-2.5 bg-black/10 rounded-lg">
+        <span class="text-sm text-text-muted">Cost / 1,000 runs</span>
+        <span class="font-mono text-sm font-semibold">$${(totalCost * 1000).toFixed(2)}</span>
+      </div>
+      <div class="flex justify-between p-2.5 bg-black/10 rounded-lg">
+        <span class="text-sm text-text-muted">Cost / 100K runs</span>
+        <span class="font-mono text-sm font-semibold">$${(totalCost * 100000).toFixed(0)}</span>
+      </div>
+    `;
+
+    // Detail table
+    document.getElementById('detail-table').innerHTML = stepDetails.map(s => `
+      <tr>
+        <td class="py-2.5 pr-4 text-sm">${s.name}</td>
+        <td class="py-2.5 pr-4 text-xs text-text-muted">${s.model.label}</td>
+        <td class="py-2.5 pr-4 text-right font-mono text-xs">${formatMs(s.stepMs)}</td>
+        <td class="py-2.5 pr-4 text-right font-mono text-xs">$${s.inCost.toFixed(6)}</td>
+        <td class="py-2.5 text-right font-mono text-xs">$${s.outCost.toFixed(6)}</td>
+      </tr>
+    `).join('');
+  }
+
+  document.getElementById('add-step').addEventListener('click', () => {
+    addStep(`Step ${document.querySelectorAll('#steps-list > div').length + 1}`, 'claude-haiku', 1000, 500, false);
+    calculate();
+  });
+
+  // Seed defaults
+  addStep('Intent Parser', 'claude-haiku', 500, 200, false);
+  addStep('Tool Selection', 'claude-sonnet', 1500, 300, true);
+  addStep('Tool Execution', 'claude-haiku', 800, 100, true);
+  addStep('Response Synthesis', 'claude-sonnet', 2000, 800, false);
+  calculate();
+</script>

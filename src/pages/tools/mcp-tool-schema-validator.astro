@@ -1,0 +1,278 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is MCP (Model Context Protocol)?", answer: "MCP is an open protocol by Anthropic that standardizes how AI assistants connect to external tools, data sources, and services. It defines a JSON-based interface where servers expose 'tools' (actions), 'resources' (data), and 'prompts' (reusable templates) that LLM clients can discover and invoke." },
+  { question: "What makes a valid MCP tool schema?", answer: "A valid MCP tool must have: a 'name' (string, required), a 'description' (string, required), and an 'inputSchema' (object with type: 'object' and a 'properties' object). The inputSchema follows JSON Schema draft-07. Optionally include a 'required' array listing mandatory properties." },
+  { question: "What JSON Schema types are allowed in MCP tool properties?", answer: "MCP tool property types must be valid JSON Schema primitive types: 'string', 'number', 'integer', 'boolean', 'array', or 'object'. You can also use 'null'. Complex types use 'type' arrays (e.g., ['string', 'null'] for nullable fields) or $ref for reusable definitions." },
+  { question: "How should I name MCP tools?", answer: "Tool names should be lowercase with underscores (snake_case), descriptive, and action-oriented. Good examples: 'read_file', 'create_calendar_event', 'search_documents'. Avoid spaces, special characters, or overly generic names like 'do_thing'. The name is used by the LLM to decide which tool to call." },
+  { question: "What is the difference between 'required' in inputSchema and the tool-level required?", answer: "The 'required' array lives inside inputSchema (not at the top level) and lists property names that the caller MUST provide. Properties not in 'required' are optional and the tool handler should provide sensible defaults. Always validate required fields server-side even if marked in the schema." },
+];
+
+const simpleExample = JSON.stringify({
+  name: "get_weather",
+  description: "Get the current weather for a location.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      location: { type: "string", description: "City name or coordinates" },
+      units: { type: "string", enum: ["celsius", "fahrenheit"], description: "Temperature units" }
+    },
+    required: ["location"]
+  }
+}, null, 2);
+
+const complexExample = JSON.stringify({
+  name: "create_github_issue",
+  description: "Create a new GitHub issue in a repository.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      owner: { type: "string", description: "Repository owner (username or org)" },
+      repo: { type: "string", description: "Repository name" },
+      title: { type: "string", description: "Issue title" },
+      body: { type: "string", description: "Issue body in Markdown" },
+      labels: {
+        type: "array",
+        items: { type: "string" },
+        description: "Labels to apply"
+      },
+      milestone: { type: "integer", description: "Milestone number (optional)" }
+    },
+    required: ["owner", "repo", "title"]
+  }
+}, null, 2);
+---
+
+<BaseLayout
+  title="MCP Tool Schema Validator — Validate Model Context Protocol JSON Schemas"
+  description="Validate MCP (Model Context Protocol) tool JSON schemas against the spec. Check name, description, inputSchema structure, property types, and required fields. Get detailed error messages."
+  tool="MCP Tool Schema Validator, Model Context Protocol Validator, MCP JSON Schema Checker, MCP Tool Definition Validator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">MCP Tool Schema Validator</h1>
+  <p class="text-text-muted mb-4">Paste your MCP tool JSON schema and validate it against the Model Context Protocol spec. Get precise error messages and fix suggestions.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> MCP spec validation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Per-rule error messages</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Example presets</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+    <!-- Input -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Tool JSON Schema</h2>
+        <div class="flex gap-2">
+          <button id="preset-simple" class="text-xs border border-border px-2.5 py-1.5 rounded-lg hover:border-primary hover:text-primary transition-colors">Simple</button>
+          <button id="preset-complex" class="text-xs border border-border px-2.5 py-1.5 rounded-lg hover:border-primary hover:text-primary transition-colors">Complex</button>
+        </div>
+      </div>
+      <textarea id="schema-input" rows="22"
+        class="w-full bg-black/20 border border-border rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-primary resize-y"
+        placeholder='{"name": "my_tool", "description": "...", "inputSchema": {...}}'
+        spellcheck="false"></textarea>
+      <button id="validate-btn" class="mt-3 w-full bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+        Validate Schema
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-4">Validation Results</h2>
+      <div id="results-placeholder" class="text-sm text-text-muted text-center py-16">
+        Paste a schema and click Validate to see results.
+      </div>
+      <div id="results" class="hidden space-y-3">
+        <!-- Overall status -->
+        <div id="overall-status" class="flex items-center gap-3 p-3 rounded-lg border text-sm font-semibold"></div>
+        <!-- Rule results -->
+        <div id="rule-list" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="MCP Tool Schema Validator" relatedTags={['ai', 'mcp', 'json', 'schema', 'validation', 'tools']} />
+</BaseLayout>
+
+<script is:inline>
+  const VALID_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object', 'null']);
+
+  const SIMPLE_EXAMPLE = `{
+  "name": "get_weather",
+  "description": "Get the current weather for a location.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "location": { "type": "string", "description": "City name or coordinates" },
+      "units": { "type": "string", "enum": ["celsius", "fahrenheit"] }
+    },
+    "required": ["location"]
+  }
+}`;
+
+  const COMPLEX_EXAMPLE = `{
+  "name": "create_github_issue",
+  "description": "Create a new GitHub issue in a repository.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "owner": { "type": "string", "description": "Repository owner" },
+      "repo": { "type": "string", "description": "Repository name" },
+      "title": { "type": "string", "description": "Issue title" },
+      "body": { "type": "string", "description": "Issue body in Markdown" },
+      "labels": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Labels to apply"
+      },
+      "milestone": { "type": "integer", "description": "Milestone number" }
+    },
+    "required": ["owner", "repo", "title"]
+  }
+}`;
+
+  function validateSchema(text) {
+    const rules = [];
+
+    // Rule helper
+    function rule(id, label, pass, message, fix) {
+      rules.push({ id, label, pass, message: pass ? null : message, fix: pass ? null : fix });
+    }
+
+    // Parse JSON
+    let schema;
+    try {
+      schema = JSON.parse(text);
+    } catch (e) {
+      rules.push({ id: 'json', label: 'Valid JSON', pass: false, message: `JSON parse error: ${e.message}`, fix: 'Fix JSON syntax errors before validating.' });
+      return rules;
+    }
+    rule('json', 'Valid JSON', true);
+
+    // name field
+    rule('name-exists', 'Has "name" field', 'name' in schema, 'Missing required "name" field.', 'Add: "name": "your_tool_name"');
+    rule('name-string', '"name" is a string', typeof schema.name === 'string', `"name" must be a string, got ${typeof schema.name}.`, 'Change "name" to a string value.');
+    if (typeof schema.name === 'string') {
+      rule('name-nonempty', '"name" is non-empty', schema.name.trim().length > 0, '"name" must not be empty.', 'Provide a non-empty tool name.');
+      rule('name-format', '"name" uses valid characters', /^[a-z0-9_]+$/.test(schema.name), `"name" should be lowercase snake_case. Got: "${schema.name}".`, 'Use only lowercase letters, numbers, and underscores. E.g. "get_weather".');
+    }
+
+    // description field
+    rule('desc-exists', 'Has "description" field', 'description' in schema, 'Missing required "description" field.', 'Add: "description": "What this tool does."');
+    rule('desc-string', '"description" is a string', typeof schema.description === 'string', `"description" must be a string, got ${typeof schema.description}.`, 'Change "description" to a string.');
+    if (typeof schema.description === 'string') {
+      rule('desc-nonempty', '"description" is non-empty', schema.description.trim().length > 0, '"description" must not be empty.', 'Describe what the tool does.');
+    }
+
+    // inputSchema field
+    rule('schema-exists', 'Has "inputSchema" field', 'inputSchema' in schema, 'Missing required "inputSchema" field.', 'Add: "inputSchema": { "type": "object", "properties": {} }');
+    if ('inputSchema' in schema) {
+      const is = schema.inputSchema;
+      rule('schema-object', '"inputSchema" is an object', is !== null && typeof is === 'object' && !Array.isArray(is), '"inputSchema" must be a JSON object.', 'Change "inputSchema" to an object: {}');
+      if (is !== null && typeof is === 'object' && !Array.isArray(is)) {
+        rule('schema-type', '"inputSchema" has type: "object"', is.type === 'object', `"inputSchema.type" must be "object", got "${is.type}".`, 'Set "inputSchema": { "type": "object", ... }');
+        rule('schema-props', '"inputSchema" has "properties"', 'properties' in is, 'Missing "properties" in inputSchema.', 'Add: "properties": { "param1": { "type": "string" } }');
+
+        if ('properties' in is && is.properties !== null && typeof is.properties === 'object') {
+          const props = is.properties;
+          const propNames = Object.keys(props);
+
+          // Check each property has a valid type
+          const badTypeProps = propNames.filter(k => {
+            const p = props[k];
+            if (!p || typeof p !== 'object') return true;
+            if (!('type' in p)) return false; // type optional per JSON Schema
+            const t = p.type;
+            if (Array.isArray(t)) return !t.every(x => VALID_TYPES.has(x));
+            return !VALID_TYPES.has(t);
+          });
+          rule('prop-types', 'All property types are valid JSON Schema types',
+            badTypeProps.length === 0,
+            `Invalid types in properties: ${badTypeProps.join(', ')}`,
+            `Valid types: string, number, integer, boolean, array, object, null`);
+
+          // Check required array
+          if ('required' in is) {
+            const req = is.required;
+            rule('required-array', '"required" is an array', Array.isArray(req), '"required" must be an array of strings.', 'Change "required" to an array: ["field1", "field2"]');
+            if (Array.isArray(req)) {
+              const missingFromProps = req.filter(r => !(r in props));
+              rule('required-exists', 'All "required" items exist in "properties"',
+                missingFromProps.length === 0,
+                `Required fields not found in properties: ${missingFromProps.join(', ')}`,
+                'Either add the missing properties or remove them from "required".');
+            }
+          }
+        }
+      }
+    }
+
+    return rules;
+  }
+
+  function renderResults(rules) {
+    document.getElementById('results-placeholder').classList.add('hidden');
+    const resultsEl = document.getElementById('results');
+    resultsEl.classList.remove('hidden');
+
+    const allPass = rules.every(r => r.pass);
+    const passCount = rules.filter(r => r.pass).length;
+
+    const overall = document.getElementById('overall-status');
+    if (allPass) {
+      overall.className = 'flex items-center gap-3 p-3 rounded-lg border text-sm font-semibold border-green-500/30 bg-green-500/10 text-green-400';
+      overall.innerHTML = `<span class="text-xl">✓</span> Valid MCP Tool Schema — all ${passCount} rules passed`;
+    } else {
+      const failCount = rules.filter(r => !r.pass).length;
+      overall.className = 'flex items-center gap-3 p-3 rounded-lg border text-sm font-semibold border-red-500/30 bg-red-500/10 text-red-400';
+      overall.innerHTML = `<span class="text-xl">✗</span> Invalid — ${failCount} rule${failCount > 1 ? 's' : ''} failed, ${passCount} passed`;
+    }
+
+    const ruleList = document.getElementById('rule-list');
+    ruleList.innerHTML = rules.map(r => `
+      <div class="flex gap-3 items-start p-2.5 rounded-lg ${r.pass ? 'bg-green-500/5' : 'bg-red-500/5'}">
+        <span class="text-base mt-0.5 ${r.pass ? 'text-green-500' : 'text-red-500'} flex-shrink-0">${r.pass ? '✓' : '✗'}</span>
+        <div class="min-w-0">
+          <div class="text-sm font-medium">${r.label}</div>
+          ${!r.pass ? `
+            <div class="text-xs text-red-400 mt-0.5">${r.message}</div>
+            <div class="text-xs text-text-muted mt-0.5">Fix: ${r.fix}</div>
+          ` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('validate-btn').addEventListener('click', () => {
+    const text = document.getElementById('schema-input').value.trim();
+    if (!text) return;
+    const rules = validateSchema(text);
+    renderResults(rules);
+  });
+
+  document.getElementById('schema-input').addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      document.getElementById('validate-btn').click();
+    }
+  });
+
+  document.getElementById('preset-simple').addEventListener('click', () => {
+    document.getElementById('schema-input').value = SIMPLE_EXAMPLE;
+    document.getElementById('results-placeholder').classList.remove('hidden');
+    document.getElementById('results').classList.add('hidden');
+  });
+
+  document.getElementById('preset-complex').addEventListener('click', () => {
+    document.getElementById('schema-input').value = COMPLEX_EXAMPLE;
+    document.getElementById('results-placeholder').classList.remove('hidden');
+    document.getElementById('results').classList.add('hidden');
+  });
+
+  // Load simple example by default
+  document.getElementById('schema-input').value = SIMPLE_EXAMPLE;
+</script>
