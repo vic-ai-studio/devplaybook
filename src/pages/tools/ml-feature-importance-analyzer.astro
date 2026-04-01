@@ -1,0 +1,244 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is the difference between feature_importances_ in tree models and SHAP values?",
+    answer: "feature_importances_ in scikit-learn tree models (Random Forest, Gradient Boosting) measures how often and how much each feature reduces impurity across all splits in all trees — it's a global, model-intrinsic metric. SHAP (SHapley Additive exPlanations) computes the marginal contribution of each feature to each individual prediction using game-theory principles. SHAP is more reliable: it handles feature interactions, avoids the cardinality bias that makes high-cardinality features appear artificially important in Gini impurity, and provides both global and per-sample explanations."
+  },
+  {
+    question: "What is permutation importance and when should I use it?",
+    answer: "Permutation importance measures how much model performance drops when a feature's values are randomly shuffled (destroying its relationship with the target). It works on any estimator and measures real predictive contribution, not impurity reduction. Use it when you suspect feature_importances_ is misleading (e.g., correlated features splitting importance between themselves) or when model-agnostic importance is needed. The sklearn implementation is: from sklearn.inspection import permutation_importance; r = permutation_importance(model, X_val, y_val, n_repeats=30). Always run on a held-out validation set, not training data."
+  },
+  {
+    question: "How do I handle correlated features in importance analysis?",
+    answer: "Correlated features split importance between themselves — if two features are highly correlated, each may appear half as important as either one would be alone. SHAP handles this better than Gini importance but still distributes importance across correlated features. Best practice: compute a correlation matrix first and identify groups of correlated features (r > 0.85). Within each group, keep only the feature with highest standalone importance. Alternatively, use the SHAP clustering/grouping feature or compute importance on a decorrelated feature set via PCA or VIF filtering."
+  },
+  {
+    question: "How can I visualize feature importance effectively?",
+    answer: "For global importance, use horizontal bar charts sorted by descending importance — they're clearer than vertical charts for many features. For SHAP, the beeswarm plot (shap.plots.beeswarm) shows both direction and magnitude for all samples simultaneously. The summary plot combines importance ranking with value-impact direction. For individual predictions, the waterfall plot (shap.plots.waterfall) shows exactly how each feature pushed the prediction away from the baseline. Use seaborn.barplot with confidence intervals for permutation importance to show variance across repeats."
+  },
+  {
+    question: "What is mutual information and how does it compare to correlation for feature selection?",
+    answer: "Correlation (Pearson, Spearman) measures linear or monotonic relationships and produces a single number between -1 and 1. Mutual information measures any statistical dependency — linear, non-linear, or complex — and produces a non-negative value where 0 means independence. For non-linear relationships (e.g., a U-shaped relationship between a feature and target), correlation may be near 0 while mutual information is high. Use sklearn.feature_selection.mutual_info_classif or mutual_info_regression. Both metrics are complementary: run both and investigate features where they disagree."
+  },
+  {
+    question: "How do I interpret negative SHAP values?",
+    answer: "A SHAP value represents the contribution of a feature to a specific prediction relative to the model's average prediction (base value). A negative SHAP value means that feature pushed the prediction below the baseline for that particular sample — it decreased the predicted probability or value. It does not mean the feature is unimportant globally; the same feature may have positive SHAP values for other samples. The mean absolute SHAP value across all samples gives global importance. Negative values simply indicate the direction of impact for a specific observation."
+  }
+];
+
+const sklearnImportanceExample = `import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+
+# Load example data
+data = load_breast_cancer()
+X = pd.DataFrame(data.data, columns=data.feature_names)
+y = data.target
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train Random Forest
+rf = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
+rf.fit(X_train, y_train)
+
+# Get feature importances
+importances = pd.Series(rf.feature_importances_, index=X.columns)
+importances_sorted = importances.sort_values(ascending=True)
+
+# Plot
+fig, ax = plt.subplots(figsize=(10, 8))
+importances_sorted.plot(kind='barh', ax=ax)
+ax.set_title('Random Forest Feature Importances (Gini Impurity)')
+ax.set_xlabel('Mean Decrease in Impurity')
+plt.tight_layout()
+plt.savefig('feature_importance_gini.png', dpi=150)
+plt.show()
+
+print(importances.nlargest(10))`;
+
+const permutationImportanceExample = `from sklearn.inspection import permutation_importance
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Compute permutation importance on validation set
+# IMPORTANT: always use held-out data, not training data
+result = permutation_importance(
+    rf,
+    X_test,
+    y_test,
+    n_repeats=30,      # shuffle each feature 30 times
+    random_state=42,
+    n_jobs=-1,
+    scoring='roc_auc'
+)
+
+# Build a DataFrame with mean and std
+perm_df = pd.DataFrame({
+    'feature':    X.columns,
+    'importance': result.importances_mean,
+    'std':        result.importances_std,
+}).sort_values('importance', ascending=False)
+
+# Features with importance <= 0 are likely irrelevant
+useful_features = perm_df[perm_df['importance'] > 0]
+print(f"Useful features: {len(useful_features)}/{len(perm_df)}")
+
+# Plot with error bars
+fig, ax = plt.subplots(figsize=(10, 8))
+ax.barh(
+    useful_features['feature'],
+    useful_features['importance'],
+    xerr=useful_features['std'],
+    align='center',
+    alpha=0.8,
+    color='steelblue',
+)
+ax.set_title('Permutation Importance (ROC-AUC drop)')
+ax.set_xlabel('Mean Accuracy Decrease ± Std')
+plt.tight_layout()
+plt.savefig('permutation_importance.png', dpi=150)`;
+
+const shapExample = `import shap
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Install: pip install shap
+
+# TreeExplainer is fast for tree-based models
+explainer = shap.TreeExplainer(rf)
+shap_values = explainer.shap_values(X_test)
+
+# For binary classification, shap_values is a list [class0, class1]
+# Use index 1 for the positive class
+sv = shap_values[1] if isinstance(shap_values, list) else shap_values
+
+# Global importance: mean absolute SHAP value
+global_importance = pd.DataFrame({
+    'feature':    X.columns,
+    'mean_abs_shap': np.abs(sv).mean(axis=0)
+}).sort_values('mean_abs_shap', ascending=False)
+
+print(global_importance.head(10))
+
+# Beeswarm summary plot — shows direction + magnitude for all samples
+shap.summary_plot(sv, X_test, feature_names=X.columns.tolist())
+
+# Waterfall plot for a single prediction
+shap.plots.waterfall(
+    shap.Explanation(
+        values=sv[0],
+        base_values=explainer.expected_value[1],
+        data=X_test.iloc[0].values,
+        feature_names=X.columns.tolist()
+    )
+)
+
+# Force plot for a single prediction
+shap.force_plot(
+    explainer.expected_value[1],
+    sv[0],
+    X_test.iloc[0],
+    matplotlib=True
+)`;
+
+const mutualInfoExample = `from sklearn.feature_selection import (
+    mutual_info_classif,
+    mutual_info_regression,
+    SelectKBest,
+    f_classif,
+)
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Mutual information — captures non-linear relationships
+mi_scores = mutual_info_classif(X_train, y_train, random_state=42)
+mi_df = pd.DataFrame({
+    'feature': X.columns,
+    'mutual_info': mi_scores,
+}).sort_values('mutual_info', ascending=False)
+
+print("Top features by Mutual Information:")
+print(mi_df.head(10))
+
+# Compare with correlation
+correlation_df = X_train.corrwith(pd.Series(y_train, name='target')).abs()
+correlation_df = correlation_df.reset_index()
+correlation_df.columns = ['feature', 'abs_correlation']
+
+# Merge both metrics
+comparison = mi_df.merge(correlation_df, on='feature').sort_values('mutual_info', ascending=False)
+print("\\nMI vs Correlation — top 10 features:")
+print(comparison.head(10))
+
+# Features where MI and correlation disagree may have non-linear relationships
+disagreement = comparison[
+    (comparison['mutual_info'].rank(ascending=False) -
+     comparison['abs_correlation'].rank(ascending=False)).abs() > 10
+]
+print("\\nFeatures with strong MI-correlation disagreement (non-linear?):")
+print(disagreement)`;
+---
+<BaseLayout
+  title="ML Feature Importance Analyzer — Feature Importance Visualization Guide"
+  description="Complete guide to machine learning feature importance: scikit-learn feature_importances_, SHAP values, permutation importance, mutual information, and visualization with matplotlib and seaborn."
+  tool="ml-feature-importance-analyzer"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">ML Feature Importance Analyzer</h1>
+  <p class="text-text-muted mb-6">Understand which features drive your model predictions using scikit-learn importances, SHAP values, permutation importance, and mutual information.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="text-green-500">✓ scikit-learn importances</span>
+    <span class="text-green-500">✓ SHAP values</span>
+    <span class="text-green-500">✓ permutation importance</span>
+    <span class="text-green-500">✓ mutual information</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Why Feature Importance Analysis Matters</h2>
+  <p class="mb-4">Feature importance analysis serves two distinct purposes: model understanding and feature selection. Understanding which features drive predictions helps you catch data leakage, validate that the model has learned sensible patterns (does it use clinically meaningful features?), build stakeholder trust, and debug unexpected behavior. Feature selection based on importance scores can reduce dimensionality, improve generalization, and speed up inference — especially important when collecting or computing certain features is expensive.</p>
+  <p class="mb-4">No single importance metric is universally correct. Each method has assumptions and failure modes. Best practice is to compute multiple metrics and look for agreement — features that rank highly across Gini impurity, permutation importance, and SHAP are almost certainly important. Features that rank highly in only one metric deserve closer investigation.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">scikit-learn feature_importances_ (Gini Impurity)</h2>
+  <p class="mb-4">Tree-based models in scikit-learn expose <code>feature_importances_</code> after fitting. This measures the total reduction in impurity (Gini or MSE) attributable to each feature across all trees and all splits, normalized to sum to 1.0. It is fast, requires no additional computation, and generally provides a reasonable ranking of important features.</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={sklearnImportanceExample}></code></pre>
+  <p class="mb-4">Known limitations: high-cardinality features (many unique values) get artificially inflated importance because they offer more potential split points. Correlated features split importance between themselves, making each appear less important than they are. For these reasons, treat Gini importance as a quick first-pass filter, not a definitive ranking.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Permutation Importance</h2>
+  <p class="mb-4">Permutation importance directly measures predictive contribution by destroying a feature's relationship with the target via random shuffling. If a feature is truly important, shuffling its values should significantly hurt model performance. If performance barely changes, the feature is either unimportant or redundant with other features.</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={permutationImportanceExample}></code></pre>
+  <p class="mb-4">Key advantages: works with any scikit-learn estimator (not just trees), evaluates the exact metric you care about (AUC, F1, RMSE), and running on validation data reveals actual generalization importance rather than training-fit importance. The standard deviations across repeats indicate stability — high std means the importance estimate is noisy.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">SHAP Values — Gold Standard for Explainability</h2>
+  <p class="mb-4">SHAP (SHapley Additive exPlanations) is the most theoretically rigorous approach to feature importance. Rooted in cooperative game theory, SHAP computes the marginal contribution of each feature by averaging its effect across all possible feature orderings. This satisfies important mathematical properties: efficiency (contributions sum to the prediction), symmetry (equivalent features get equal attribution), and consistency (removing an important feature never increases its measured importance).</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={shapExample}></code></pre>
+  <p class="mb-4">SHAP provides both global importance (mean absolute SHAP) and per-sample explanations. The beeswarm plot is the most information-dense visualization: each dot is one sample, x-position shows the SHAP value (impact on prediction), and color shows the feature value (red = high, blue = low). This immediately reveals the direction and magnitude of each feature's effect.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Mutual Information and Correlation Analysis</h2>
+  <p class="mb-4">Mutual information and correlation are model-agnostic metrics that measure the statistical relationship between each feature and the target variable directly, without training a model first. They are useful for fast initial filtering before training expensive models.</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={mutualInfoExample}></code></pre>
+  <p class="mb-4">Mutual information measures any statistical dependency, including non-linear relationships that correlation misses. A feature with high MI but low correlation likely has a non-linear relationship with the target — a strong signal that non-linear models (trees, neural networks) are needed.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Practical Feature Selection Workflow</h2>
+  <ul class="list-disc pl-6 mb-4 space-y-2">
+    <li><strong>Step 1 — Correlation screening:</strong> Remove features with near-zero variance (<code>VarianceThreshold</code>) and check pairwise correlations. For groups of highly correlated features (r &gt; 0.9), keep one representative per group.</li>
+    <li><strong>Step 2 — Quick mutual information filter:</strong> Rank all features by MI score and consider dropping features with MI ≈ 0 (statistically independent of target).</li>
+    <li><strong>Step 3 — Train baseline model + Gini importance:</strong> Train a Random Forest and review feature_importances_. Identify the top 50–70% of features by cumulative importance.</li>
+    <li><strong>Step 4 — Permutation importance validation:</strong> Run permutation importance on validation data. Features with importance ≤ 0 (shuffling them doesn't hurt) are candidates for removal.</li>
+    <li><strong>Step 5 — SHAP for final interpretation:</strong> Compute SHAP values for the final feature set to understand direction and magnitude of effects. Use for model validation and stakeholder communication.</li>
+    <li><strong>Step 6 — Ablation study:</strong> Train models with progressively smaller feature sets (top-20, top-10, top-5) and compare validation performance. The simplest model within 1–2% of full-feature performance is usually the right choice for production.</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="ml-feature-importance-analyzer" relatedTags={['machine-learning', 'python', 'scikit-learn', 'data-science', 'shap', 'visualization']} />
+</BaseLayout>

@@ -1,0 +1,392 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is the difference between Great Expectations and Pandera?",
+    answer: "Great Expectations is a full data quality platform: it generates data docs (human-readable HTML reports), integrates with orchestrators like Airflow and Prefect, supports checkpoints and data stores, and is designed for team collaboration with versioned expectations. Pandera is a lightweight, code-first schema validation library: you define schemas in Python as classes or DataFrameSchema objects and call schema.validate(df). Pandera is faster to set up for smaller teams, integrates naturally with pytest, and has excellent Pydantic-like syntax. For solo developers or small teams, start with Pandera. For org-wide data quality programs with multiple pipelines and stakeholders, Great Expectations is worth the setup investment."
+  },
+  {
+    question: "How do I validate data schemas without a third-party library?",
+    answer: "You can build basic schema validation with pure Pandas: check dtypes with df.dtypes, null counts with df.isnull().sum(), value ranges with df['col'].between(min_val, max_val).all(), and unique constraints with df['col'].is_unique. Wrap these checks in assertions and raise descriptive ValueError exceptions. While this works for simple pipelines, libraries like Pandera add type inference, better error messages, column-level metadata, reusable schemas, and pytest integration — the incremental cost is low and the long-term maintainability is much higher."
+  },
+  {
+    question: "How do I implement null checks and referential integrity in a data pipeline?",
+    answer: "For null checks: define which columns are required (not nullable) and assert df[required_cols].isnull().sum().eq(0).all(). For referential integrity between tables: df_orders['customer_id'].isin(df_customers['customer_id']).all(). In Pandera, add nullable=False to column definitions and use Check.isin(df_customers['customer_id']) for foreign key validation. In Great Expectations: expect_column_values_to_not_be_null and expect_column_values_to_be_in_set. Schedule these checks as a validation step before downstream transformations."
+  },
+  {
+    question: "What are statistical data quality tests and when should I use them?",
+    answer: "Statistical tests check that data distributions haven't shifted unexpectedly, which indicates upstream data collection or processing issues before they reach ML models or dashboards. Common tests: mean/std drift (alert if current mean > 2 std from historical mean), distribution comparison via Kolmogorov-Smirnov test, null rate drift (alert if null% changes by > 5pp), and cardinality drift for categorical columns. These are especially valuable for ML feature pipelines where silent distribution shift degrades model accuracy without triggering schema errors. Tools like Evidently AI and WhyLogs specialize in this layer."
+  },
+  {
+    question: "How should I alert when a data pipeline validation fails?",
+    answer: "For immediate failures (schema errors, null violations), raise exceptions that halt the pipeline and propagate to your orchestrator's failure notification — Airflow, Prefect, and Dagster all support email/Slack alerts on task failure. For soft warnings (statistical drift that doesn't warrant a pipeline halt), publish metrics to a monitoring system (Prometheus, Datadog) and configure alert rules there. Always include context in alert messages: table name, failed expectation, sample of failing rows, timestamp, and the DAG/task that failed. Without actionable context, alert fatigue sets in and teams start ignoring notifications."
+  },
+  {
+    question: "How do I integrate data validation into an Airflow DAG?",
+    answer: "Use a PythonOperator or a custom Operator as a validation task between extraction and transformation tasks. Pattern: extract → validate → transform → load. If validation fails, raise an AirflowFailException to halt the DAG and trigger notification. With Great Expectations, use the GreatExpectationsOperator from the great_expectations_provider package. With Pandera, call schema.validate(df) in a PythonOperator — Pandera raises SchemaError on failure, which Airflow catches as a task failure. Tag validation tasks with a 'quality' label for easy filtering in the Airflow UI."
+  }
+];
+
+const panderaExample = `import pandas as pd
+import pandera as pa
+from pandera import Column, DataFrameSchema, Check
+from pandera.typing import DataFrame, Series
+import pandera.typing as pt
+
+# Define schema with Pandera DataFrameSchema
+schema = DataFrameSchema(
+    columns={
+        "user_id": Column(
+            pa.Int64,
+            checks=Check.greater_than(0),
+            nullable=False,
+            unique=True,
+        ),
+        "age": Column(
+            pa.Int8,
+            checks=Check.in_range(0, 120),
+            nullable=False,
+        ),
+        "email": Column(
+            pa.String,
+            checks=Check.str_matches(r'^[\\w.+-]+@[\\w-]+\\.[\\w.]+$'),
+            nullable=True,
+        ),
+        "score": Column(
+            pa.Float32,
+            checks=Check.in_range(0.0, 1.0),
+            nullable=False,
+        ),
+        "status": Column(
+            pa.String,
+            checks=Check.isin(['active', 'inactive', 'pending']),
+            nullable=False,
+        ),
+    },
+    index=pa.Index(pa.Int64),
+    strict=True,         # reject columns not in schema
+    coerce=True,         # attempt dtype coercion before validation
+)
+
+# Validate DataFrame — raises SchemaError on failure
+try:
+    validated_df = schema.validate(df, lazy=True)  # lazy=True collects all errors
+    print("Validation passed!")
+except pa.errors.SchemaErrors as e:
+    print("Validation failed:")
+    print(e.failure_cases)  # DataFrame of all failing rows
+
+# Pandera also supports class-based schemas (Pydantic-like)
+class UserSchema(pa.DataFrameModel):
+    user_id: pt.Series[int] = pa.Field(gt=0, unique=True)
+    age:     pt.Series[int] = pa.Field(ge=0, le=120)
+    score:   pt.Series[float] = pa.Field(ge=0.0, le=1.0)
+    status:  pt.Series[str] = pa.Field(isin=['active', 'inactive', 'pending'])
+
+    class Config:
+        coerce = True
+        strict = True`;
+
+const greatExpectationsExample = `import great_expectations as gx
+from great_expectations.core.batch import RuntimeBatchRequest
+import pandas as pd
+
+# Initialize Great Expectations context
+context = gx.get_context()
+
+# Create a validator from a pandas DataFrame
+validator = context.sources.pandas_default.read_dataframe(df)
+
+# Define expectations
+validator.expect_column_to_exist("user_id")
+validator.expect_column_values_to_not_be_null("user_id")
+validator.expect_column_values_to_be_unique("user_id")
+validator.expect_column_values_to_be_between("age", min_value=0, max_value=120)
+validator.expect_column_values_to_be_in_set(
+    "status", value_set=["active", "inactive", "pending"]
+)
+validator.expect_column_values_to_match_regex(
+    "email", regex=r'^[\\w.+-]+@[\\w-]+\\.[\\w.]+$'
+)
+validator.expect_column_mean_to_be_between("score", min_value=0.4, max_value=0.7)
+validator.expect_column_stdev_to_be_between("score", min_value=0.1, max_value=0.3)
+
+# Run validation
+results = validator.validate()
+print(f"Success: {results['success']}")
+print(f"Passed: {results['statistics']['successful_expectations']}")
+print(f"Failed: {results['statistics']['unsuccessful_expectations']}")
+
+# Save expectations suite for reuse
+validator.save_expectation_suite(discard_failed_expectations=False)`;
+
+const customValidationExample = `import pandas as pd
+import numpy as np
+from dataclasses import dataclass, field
+from typing import List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class ValidationResult:
+    check_name: str
+    passed: bool
+    message: str
+    failing_rows: Optional[int] = None
+
+class DataPipelineValidator:
+    """Lightweight data pipeline validator without external dependencies."""
+
+    def __init__(self, df: pd.DataFrame, table_name: str):
+        self.df = df
+        self.table_name = table_name
+        self.results: List[ValidationResult] = []
+
+    def check_null_counts(self, column: str, max_null_pct: float = 0.0) -> 'DataPipelineValidator':
+        null_pct = self.df[column].isnull().mean()
+        passed = null_pct <= max_null_pct
+        self.results.append(ValidationResult(
+            check_name=f"null_check:{column}",
+            passed=passed,
+            message=f"{column}: {null_pct:.2%} nulls (max allowed: {max_null_pct:.2%})",
+            failing_rows=int(self.df[column].isnull().sum()),
+        ))
+        return self
+
+    def check_value_range(self, column: str, min_val, max_val) -> 'DataPipelineValidator':
+        in_range = self.df[column].between(min_val, max_val, inclusive='both')
+        failing = (~in_range).sum()
+        self.results.append(ValidationResult(
+            check_name=f"range_check:{column}",
+            passed=failing == 0,
+            message=f"{column}: {failing} values outside [{min_val}, {max_val}]",
+            failing_rows=int(failing),
+        ))
+        return self
+
+    def check_unique(self, column: str) -> 'DataPipelineValidator':
+        duplicates = self.df[column].duplicated().sum()
+        self.results.append(ValidationResult(
+            check_name=f"unique_check:{column}",
+            passed=duplicates == 0,
+            message=f"{column}: {duplicates} duplicate values",
+            failing_rows=int(duplicates),
+        ))
+        return self
+
+    def check_referential_integrity(
+        self, column: str, reference_series: pd.Series
+    ) -> 'DataPipelineValidator':
+        missing = ~self.df[column].isin(reference_series)
+        failing = missing.sum()
+        self.results.append(ValidationResult(
+            check_name=f"fk_check:{column}",
+            passed=failing == 0,
+            message=f"{column}: {failing} values not in reference table",
+            failing_rows=int(failing),
+        ))
+        return self
+
+    def check_row_count(self, min_rows: int) -> 'DataPipelineValidator':
+        actual = len(self.df)
+        self.results.append(ValidationResult(
+            check_name="row_count",
+            passed=actual >= min_rows,
+            message=f"Row count: {actual} (min: {min_rows})",
+        ))
+        return self
+
+    def validate(self, raise_on_failure: bool = True) -> List[ValidationResult]:
+        failed = [r for r in self.results if not r.passed]
+        passed = [r for r in self.results if r.passed]
+
+        logger.info(f"[{self.table_name}] Passed: {len(passed)}, Failed: {len(failed)}")
+        for r in failed:
+            logger.error(f"FAILED: {r.check_name} — {r.message}")
+
+        if raise_on_failure and failed:
+            raise ValueError(
+                f"Data validation failed for {self.table_name}: "
+                f"{len(failed)} checks failed. "
+                f"First failure: {failed[0].message}"
+            )
+        return self.results
+
+# Usage
+validator = (
+    DataPipelineValidator(df, "users")
+    .check_null_counts("user_id", max_null_pct=0.0)
+    .check_null_counts("email", max_null_pct=0.05)
+    .check_value_range("age", 0, 120)
+    .check_value_range("score", 0.0, 1.0)
+    .check_unique("user_id")
+    .check_row_count(min_rows=1000)
+)
+results = validator.validate(raise_on_failure=True)`;
+
+const statisticalTestsExample = `import pandas as pd
+import numpy as np
+from scipy import stats
+from typing import Dict, Tuple
+import warnings
+
+def statistical_drift_check(
+    current_df: pd.DataFrame,
+    reference_df: pd.DataFrame,
+    numeric_cols: list,
+    categorical_cols: list,
+    alpha: float = 0.05,
+) -> Dict[str, dict]:
+    """
+    Check for statistical drift between current and reference data batches.
+    Returns dict of column -> {passed, statistic, p_value, test_used}
+    """
+    results = {}
+
+    # Numeric columns: Kolmogorov-Smirnov test
+    for col in numeric_cols:
+        curr = current_df[col].dropna()
+        ref = reference_df[col].dropna()
+
+        ks_stat, p_value = stats.ks_2samp(curr, ref)
+        passed = p_value > alpha
+
+        # Also check mean drift
+        mean_shift = abs(curr.mean() - ref.mean()) / (ref.std() + 1e-9)
+
+        results[col] = {
+            'test': 'kolmogorov-smirnov',
+            'passed': passed,
+            'ks_statistic': round(float(ks_stat), 4),
+            'p_value': round(float(p_value), 4),
+            'mean_shift_z': round(float(mean_shift), 4),
+            'alert': not passed or mean_shift > 3.0,
+        }
+
+    # Categorical columns: Chi-squared test
+    for col in categorical_cols:
+        curr_counts = current_df[col].value_counts()
+        ref_counts = reference_df[col].value_counts()
+
+        # Align on same categories
+        all_cats = curr_counts.index.union(ref_counts.index)
+        curr_aligned = curr_counts.reindex(all_cats, fill_value=0)
+        ref_aligned = ref_counts.reindex(all_cats, fill_value=0)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            chi2, p_value, _, _ = stats.chi2_contingency(
+                pd.DataFrame({'current': curr_aligned, 'reference': ref_aligned})
+            )
+
+        results[col] = {
+            'test': 'chi-squared',
+            'passed': p_value > alpha,
+            'chi2_statistic': round(float(chi2), 4),
+            'p_value': round(float(p_value), 4),
+            'alert': p_value <= alpha,
+        }
+
+    # Summary
+    n_alerts = sum(1 for v in results.values() if v['alert'])
+    print(f"Drift check: {len(results)} columns, {n_alerts} alerts")
+    return results`;
+---
+<BaseLayout
+  title="Data Pipeline Validator — Data Pipeline Health Checker Guide"
+  description="Complete guide to validating data pipelines with Great Expectations, Pandera, schema validation, null checks, statistical drift tests, and pipeline monitoring best practices."
+  tool="data-pipeline-validator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Data Pipeline Validator</h1>
+  <p class="text-text-muted mb-6">Validate data pipelines with Great Expectations, Pandera, custom schema checks, statistical drift detection, and alerting best practices.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="text-green-500">✓ Pandera schemas</span>
+    <span class="text-green-500">✓ Great Expectations</span>
+    <span class="text-green-500">✓ statistical drift</span>
+    <span class="text-green-500">✓ null & referential checks</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Why Data Pipeline Validation Is Non-Negotiable</h2>
+  <p class="mb-4">Silent data quality issues are the most dangerous failures in data engineering. A schema error that crashes a pipeline is immediately visible and gets fixed. A subtle null rate increase or an out-of-range value that slips through validation poisons dashboards, corrupts ML model training, and propagates incorrect business metrics for days before anyone notices. By the time the issue surfaces downstream, the damage is done and root-cause analysis becomes a forensic exercise.</p>
+  <p class="mb-4">Data pipeline validation addresses this by making data quality contracts explicit and machine-verifiable. Instead of assuming your upstream data source is well-behaved, you declare exactly what valid data looks like — column types, value ranges, null constraints, referential integrity, and statistical distributions — and verify those properties on every pipeline run. Validation failures halt execution and trigger alerts before bad data propagates.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Pandera: Code-First Schema Validation</h2>
+  <p class="mb-4">Pandera is the fastest way to add schema validation to an existing Python data pipeline. Define schemas as Python objects, call <code>schema.validate(df)</code>, and get structured error reports when data violates contracts. It integrates naturally with pytest, supports both DataFrameSchema and class-based (Pydantic-like) syntax, and can coerce dtypes automatically before validation.</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={panderaExample}></code></pre>
+  <p class="mb-4">The <code>lazy=True</code> flag in <code>validate()</code> is important for production use — it collects all validation failures before raising an exception, giving you a complete picture of data quality issues rather than stopping at the first error. The <code>failure_cases</code> DataFrame shows exactly which rows and values failed each check.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Great Expectations: Enterprise Data Quality Platform</h2>
+  <p class="mb-4">Great Expectations extends validation into a complete data quality platform. Beyond running checks, it generates Data Docs (browsable HTML reports of validation results), versions expectation suites, integrates with data catalogs, and connects to orchestrators like Airflow and Prefect via native operators. It is the right choice when multiple teams share data pipelines and you need audit trails, stakeholder-readable reports, and expectation management at scale.</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={greatExpectationsExample}></code></pre>
+  <p class="mb-4">Key Great Expectations concepts: an <strong>Expectation Suite</strong> is a named collection of expectations for a dataset. A <strong>Checkpoint</strong> bundles an expectation suite with a data batch and a set of actions (save results, send Slack alert, build Data Docs). A <strong>Data Docs</strong> site provides human-readable validation reports that non-technical stakeholders can review. This separation of concerns — data contracts as code, execution as checkpoints, reporting as docs — makes GX powerful for larger organizations.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Custom Validator Without External Dependencies</h2>
+  <p class="mb-4">For smaller pipelines or environments where adding library dependencies is constrained, a custom validator built on pure Pandas covers most practical needs. The builder pattern below makes validation chains readable and produces structured results that integrate with any alerting system:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={customValidationExample}></code></pre>
+  <p class="mb-4">This pattern is easy to extend — add methods for <code>check_cardinality</code>, <code>check_date_range</code>, <code>check_pattern_match</code>, or any domain-specific rule. The <code>ValidationResult</code> dataclass provides a clean interface for logging, metrics, and alerting integrations.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Statistical Drift Detection</h2>
+  <p class="mb-4">Schema validation catches structural errors. Statistical testing catches semantic drift — when data distributions shift in ways that silently degrade model performance or reporting accuracy. Run statistical drift checks daily against a stable reference window (e.g., last 30 days of production data):</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={statisticalTestsExample}></code></pre>
+  <p class="mb-4">The Kolmogorov-Smirnov test is distribution-free and works for any numeric column. The Chi-squared test handles categorical distributions. A p-value below 0.05 suggests statistically significant drift, though the threshold depends on your tolerance for false positives. Always combine statistical significance with practical significance — a tiny p-value from 10 million rows may represent an immaterial distribution shift.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Pipeline Monitoring Best Practices</h2>
+  <ul class="list-disc pl-6 mb-4 space-y-2">
+    <li><strong>Validate early, fail fast:</strong> Place validation immediately after data ingestion, before any transformation. Failing at the source is far cheaper than discovering bad data after 2 hours of complex transformations.</li>
+    <li><strong>Distinguish hard failures from soft warnings:</strong> Schema errors, null violations on primary keys, and referential integrity failures should halt the pipeline. Statistical drift and minor distribution shifts should alert but allow the pipeline to continue pending human review.</li>
+    <li><strong>Log validation results as metrics:</strong> Push null rates, row counts, and validation pass/fail counts to a time-series store (Prometheus, InfluxDB) on every run. Trending metrics reveal gradual degradation before it becomes a hard failure.</li>
+    <li><strong>Include sample failing rows in alerts:</strong> A Slack alert that says "1,247 rows failed age range check" is much more actionable than "validation failed." Include a sample of 3–5 failing rows so the on-call engineer can immediately diagnose the issue.</li>
+    <li><strong>Version your schemas:</strong> Store schema definitions in version control alongside your pipeline code. Schema changes should go through code review — they represent contractual changes that may break downstream consumers.</li>
+    <li><strong>Test your validations:</strong> Write pytest tests that verify your validation logic catches known-bad data. Feed synthetic bad data (nulls, out-of-range values, wrong types) and assert that the validator raises the expected errors.</li>
+  </ul>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Integrating Validation into Airflow / Prefect</h2>
+  <p class="mb-4">Validation tasks should be first-class citizens in your DAG, not afterthoughts bolted onto transformation tasks. The canonical pattern is extract → validate → transform → load, where validation failure halts the DAG and triggers your team's alert channel.</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code>{`# Airflow DAG example
+from airflow.decorators import dag, task
+from airflow.exceptions import AirflowFailException
+import pandas as pd
+import pandera as pa
+
+@dag(schedule='@daily', catchup=False)
+def user_pipeline():
+
+    @task()
+    def extract() -> dict:
+        df = pd.read_sql("SELECT * FROM raw_users", conn)
+        return df.to_dict('records')
+
+    @task()
+    def validate(records: dict) -> dict:
+        df = pd.DataFrame(records)
+        try:
+            validated = schema.validate(df, lazy=True)
+            return validated.to_dict('records')
+        except pa.errors.SchemaErrors as e:
+            raise AirflowFailException(
+                f"Validation failed: {len(e.failure_cases)} errors\\n"
+                f"{e.failure_cases.head(5).to_string()}"
+            )
+
+    @task()
+    def transform(records: dict) -> dict:
+        df = pd.DataFrame(records)
+        # safe to transform — data is validated
+        return df.to_dict('records')
+
+    raw = extract()
+    clean = validate(raw)
+    result = transform(clean)
+
+pipeline = user_pipeline()`}</code></pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="data-pipeline-validator" relatedTags={['data-pipeline', 'python', 'data-quality', 'validation', 'data-engineering', 'etl']} />
+</BaseLayout>

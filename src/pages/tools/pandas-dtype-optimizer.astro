@@ -1,0 +1,241 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "How much memory can dtype optimization actually save in Pandas?",
+    answer: "In practice, dtype optimization routinely reduces DataFrame memory by 50–80%. The biggest wins come from converting int64 to int8/int16/int32 (up to 8x reduction), float64 to float32 (2x), and object columns with low cardinality to category (often 10–50x). A DataFrame that occupies 2 GB can shrink to under 500 MB with careful dtype tuning, allowing you to process it in memory without chunking."
+  },
+  {
+    question: "What is the difference between pd.to_numeric with downcast and astype?",
+    answer: "pd.to_numeric(series, downcast='integer') automatically finds the smallest integer type that can hold the data without overflow — it scans the actual values and picks int8, int16, int32, or int64. astype() is explicit — you specify the exact dtype and Pandas will cast unconditionally, which can silently overflow if your values exceed the target type's range. Use downcast for safe automatic optimization and astype when you have already verified the value range."
+  },
+  {
+    question: "When should I use the category dtype vs string/object?",
+    answer: "Use category when a column has low cardinality — typically fewer than 5–10% unique values relative to total rows. Examples: country, status, product_type, day_of_week. The category dtype stores values as integer codes internally and keeps a small lookup table, so 1 million rows of 'Monday'/'Tuesday'/... becomes 1 million int8 codes + 7 strings instead of 1 million 64-bit pointers. Avoid category for high-cardinality columns like UUIDs or free-text — it will use more memory than object."
+  },
+  {
+    question: "How do I check DataFrame memory usage accurately?",
+    answer: "Use df.memory_usage(deep=True).sum() to get accurate memory in bytes including the actual string data in object columns. The default df.memory_usage() without deep=True only measures the pointer size for object columns (8 bytes per element regardless of string length), which dramatically underestimates real memory. Divide by 1024**2 to convert to MB: df.memory_usage(deep=True).sum() / 1024**2. You can also call df.info(memory_usage='deep') for a per-column breakdown."
+  },
+  {
+    question: "What are sparse arrays in Pandas and when are they useful?",
+    answer: "Sparse arrays store only non-zero (or non-null) values, skipping storage for the fill value. They are ideal for datasets with many zeros or NaNs — for example, a user-item interaction matrix or a one-hot encoded feature matrix. Convert with df['col'].astype(pd.SparseDtype('float32', fill_value=0)). The compression ratio equals the density of non-fill values. A column that is 95% zeros will use roughly 5% of the memory of a dense array. Note that most Pandas operations work on sparse arrays but some functions require densification first."
+  },
+  {
+    question: "How do I optimize memory when reading large CSV files?",
+    answer: "Pass the dtype parameter to pd.read_csv() with a dict mapping column names to types: pd.read_csv('data.csv', dtype={'age': 'int8', 'score': 'float32', 'status': 'category'}). For files larger than available RAM, use chunksize to process in batches: for chunk in pd.read_csv('data.csv', chunksize=100_000): process(chunk). Combine both: specify dtypes in the chunked reader to minimize peak memory per chunk. Also use usecols to load only needed columns and parse_dates to avoid loading dates as strings."
+  }
+];
+
+const memoryCheckExample = `import pandas as pd
+import numpy as np
+
+# Create a sample DataFrame
+df = pd.DataFrame({
+    'user_id': np.random.randint(0, 1_000_000, size=1_000_000),
+    'age': np.random.randint(18, 90, size=1_000_000),
+    'score': np.random.uniform(0, 100, size=1_000_000),
+    'country': np.random.choice(['US', 'UK', 'DE', 'FR', 'JP'], size=1_000_000),
+    'active': np.random.choice([True, False], size=1_000_000),
+})
+
+# Check memory usage (inaccurate for object columns)
+print(df.memory_usage())
+
+# Accurate memory check (includes actual string data)
+total_mb = df.memory_usage(deep=True).sum() / 1024**2
+print(f"Total memory: {total_mb:.2f} MB")
+
+# Per-column breakdown
+print(df.memory_usage(deep=True) / 1024**2)
+
+# Full info with types and memory
+df.info(memory_usage='deep')`;
+
+const downcastingExample = `import pandas as pd
+import numpy as np
+
+def optimize_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    """Automatically downcast numeric columns to save memory."""
+    df = df.copy()
+
+    for col in df.select_dtypes(include=['int64']).columns:
+        df[col] = pd.to_numeric(df[col], downcast='integer')
+
+    for col in df.select_dtypes(include=['float64']).columns:
+        df[col] = pd.to_numeric(df[col], downcast='float')
+
+    return df
+
+# Before
+df_original = pd.DataFrame({
+    'user_id': np.random.randint(0, 1000, size=500_000).astype('int64'),
+    'age': np.random.randint(18, 90, size=500_000).astype('int64'),
+    'score': np.random.uniform(0, 1, size=500_000).astype('float64'),
+})
+
+before_mb = df_original.memory_usage(deep=True).sum() / 1024**2
+print(f"Before: {before_mb:.2f} MB")
+print(df_original.dtypes)
+
+# After
+df_optimized = optimize_dtypes(df_original)
+after_mb = df_optimized.memory_usage(deep=True).sum() / 1024**2
+print(f"After:  {after_mb:.2f} MB")
+print(df_optimized.dtypes)
+print(f"Reduction: {(1 - after_mb/before_mb)*100:.1f}%")`;
+
+const categoryExample = `import pandas as pd
+import numpy as np
+
+# High-cardinality column: bad candidate for category
+df = pd.DataFrame({
+    'user_id': [f'user_{i}' for i in range(100_000)],   # 100k unique -> stay object
+    'country': np.random.choice(['US', 'UK', 'DE', 'FR'], 100_000),  # 4 unique -> category
+    'status':  np.random.choice(['active', 'inactive', 'pending'], 100_000),  # 3 -> category
+    'day':     np.random.choice(['Mon','Tue','Wed','Thu','Fri'], 100_000),     # 5 -> category
+})
+
+print("Before:")
+print(df.memory_usage(deep=True) / 1024)  # KB per column
+
+# Convert low-cardinality columns
+for col in ['country', 'status', 'day']:
+    n_unique = df[col].nunique()
+    n_total = len(df[col])
+    if n_unique / n_total < 0.05:  # less than 5% unique
+        df[col] = df[col].astype('category')
+
+print("\\nAfter:")
+print(df.memory_usage(deep=True) / 1024)
+
+# Access category codes and categories
+print(df['country'].cat.categories)
+print(df['country'].cat.codes.head())`;
+
+const chunkedReaderExample = `import pandas as pd
+from pathlib import Path
+
+def read_optimized_csv(filepath: str, chunksize: int = 100_000) -> pd.DataFrame:
+    """Read large CSV in chunks with dtype optimization."""
+    dtype_map = {
+        'user_id':   'int32',
+        'age':       'int8',
+        'score':     'float32',
+        'country':   'category',
+        'status':    'category',
+        'active':    'bool',
+    }
+
+    chunks = []
+    for chunk in pd.read_csv(
+        filepath,
+        dtype=dtype_map,
+        usecols=list(dtype_map.keys()),
+        chunksize=chunksize,
+        parse_dates=['created_at'],
+    ):
+        chunks.append(chunk)
+
+    df = pd.concat(chunks, ignore_index=True)
+    return df
+
+# For very large files: process chunk by chunk without concat
+def process_large_csv(filepath: str) -> dict:
+    results = {'total_rows': 0, 'mean_score': 0.0}
+    score_sum = 0.0
+
+    for chunk in pd.read_csv(filepath, dtype={'score': 'float32'}, chunksize=100_000):
+        results['total_rows'] += len(chunk)
+        score_sum += chunk['score'].sum()
+
+    results['mean_score'] = score_sum / results['total_rows']
+    return results`;
+---
+<BaseLayout
+  title="Pandas DataFrame Memory Optimizer — dtype Optimization Guide"
+  description="Complete guide to reducing Pandas DataFrame memory usage with dtype downcasting, category types, sparse arrays, chunked reading, and memory_usage(). Save 50-80% memory on large datasets."
+  tool="pandas-dtype-optimizer"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Pandas DataFrame Memory Optimizer</h1>
+  <p class="text-text-muted mb-6">Reduce DataFrame memory by 50–80% using dtype downcasting, category types, sparse arrays, and chunked reading strategies.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="text-green-500">✓ dtype downcasting</span>
+    <span class="text-green-500">✓ category types</span>
+    <span class="text-green-500">✓ sparse arrays</span>
+    <span class="text-green-500">✓ chunked reading</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Why Pandas Memory Optimization Matters</h2>
+  <p class="mb-4">Pandas loads data into RAM, and the default dtype choices are conservative — every integer becomes int64 (8 bytes) and every float becomes float64 (8 bytes) regardless of actual value range. A dataset with 1 million rows and 20 columns can easily consume 1–2 GB under default settings when the same data could fit in 200 MB with proper dtype assignment.</p>
+  <p class="mb-4">Memory pressure causes slow operations (data spills to swap), OOM crashes in production, and long load times. Optimizing dtypes is typically the highest-ROI performance improvement you can make to a data pipeline — it requires no algorithmic changes and benefits every downstream operation: groupby, merge, sort, and vectorized math all get faster when data fits in CPU cache.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Measuring Memory Usage Accurately</h2>
+  <p class="mb-4">Before optimizing, establish a baseline. The key is using <code>deep=True</code> in <code>memory_usage()</code> — without it, object columns are severely underreported.</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={memoryCheckExample}></code></pre>
+  <p class="mb-4">Always profile both before and after optimization to measure actual gains. The dtype column in <code>df.dtypes</code> is your map — int64 and float64 are candidates for downcasting, and object columns with low cardinality are candidates for category conversion.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Automatic Numeric Downcasting</h2>
+  <p class="mb-4">Pandas provides <code>pd.to_numeric(series, downcast='integer')</code> which scans the actual values and selects the smallest safe integer type. Combined with a simple utility function, you can automate optimization for entire DataFrames:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={downcastingExample}></code></pre>
+  <p class="mb-4">Integer type ranges to know:</p>
+  <ul class="list-disc pl-6 mb-4 space-y-1">
+    <li><code>int8</code> — -128 to 127 (1 byte)</li>
+    <li><code>int16</code> — -32,768 to 32,767 (2 bytes)</li>
+    <li><code>int32</code> — -2.1B to 2.1B (4 bytes)</li>
+    <li><code>int64</code> — ±9.2 quintillion (8 bytes, Pandas default)</li>
+    <li><code>float32</code> — 7 decimal digits precision (4 bytes)</li>
+    <li><code>float64</code> — 15 decimal digits precision (8 bytes, Pandas default)</li>
+  </ul>
+  <p class="mb-4">Use float32 carefully — it loses precision for very large or very small values. For financial calculations requiring exact decimals, keep float64 or use Python's Decimal type.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Category dtype for Low-Cardinality Strings</h2>
+  <p class="mb-4">The category dtype is Pandas' most powerful memory optimization for string data. It encodes unique values as integers internally and stores a tiny lookup table. A column with 1 million rows and only 5 unique values stores 1 million int8 codes instead of 1 million Python string objects.</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={categoryExample}></code></pre>
+  <p class="mb-4">The 5% rule is a practical heuristic — if the number of unique values is less than 5% of total rows, category is usually beneficial. Verify with actual memory measurements. Category also speeds up groupby and value_counts operations significantly because they operate on integer codes rather than string comparison.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Chunked Reading for Large Files</h2>
+  <p class="mb-4">When a file is larger than available RAM, the chunked reader pattern processes data in batches without ever loading the full dataset. Combining chunked reading with explicit dtype specification minimizes peak memory per chunk:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code set:html={chunkedReaderExample}></code></pre>
+  <p class="mb-4">For aggregation tasks (sum, mean, count), the streaming pattern — process each chunk and accumulate results — avoids the need to concatenate chunks at all. For operations requiring random access across the full dataset, consider using Dask (which manages chunking transparently) or PyArrow (which supports memory-mapped files).</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Sparse Arrays for Mostly-Zero Data</h2>
+  <p class="mb-4">Sparse arrays are ideal for one-hot encoded matrices, user-item interaction matrices, or any column where most values are the same (zero, NaN, or False). Convert individual columns with:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto text-sm mb-6"><code>{`import pandas as pd
+import numpy as np
+
+# Create sparse data (95% zeros)
+data = np.zeros(1_000_000)
+data[np.random.choice(1_000_000, 50_000, replace=False)] = 1.0
+
+series_dense = pd.Series(data, dtype='float32')
+series_sparse = pd.Series(data, dtype=pd.SparseDtype('float32', fill_value=0))
+
+print(f"Dense:  {series_dense.memory_usage(deep=True) / 1024:.1f} KB")
+print(f"Sparse: {series_sparse.memory_usage(deep=True) / 1024:.1f} KB")
+print(f"Density: {series_sparse.sparse.density:.2%}")
+
+# For a full DataFrame of sparse columns
+from scipy.sparse import csr_matrix
+# Convert to scipy sparse for sklearn compatibility
+X_sparse = csr_matrix(df[feature_cols].values)`}</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Additional Memory Reduction Techniques</h2>
+  <ul class="list-disc pl-6 mb-4 space-y-2">
+    <li><strong>Drop unused columns immediately:</strong> Use <code>usecols</code> in read_csv or call <code>df.drop()</code> as soon as columns are confirmed unnecessary. Every column you load costs memory for its lifetime.</li>
+    <li><strong>Use nullable integer dtypes:</strong> <code>pd.Int8Dtype()</code>, <code>pd.Int16Dtype()</code> etc. support NaN without converting to float. Useful when integer columns have missing values.</li>
+    <li><strong>Parse dates properly:</strong> Store dates as datetime64[ns] (8 bytes) not as strings (object, 50–200 bytes per value). Pass <code>parse_dates=['col']</code> to read_csv.</li>
+    <li><strong>Use boolean dtype:</strong> A boolean column stored as object uses ~50 bytes/row. As bool it uses 1 byte/row. Convert with <code>df['col'].astype(bool)</code>.</li>
+    <li><strong>Consider PyArrow backend:</strong> Pandas 2.0+ supports <code>dtype_backend='pyarrow'</code> in read_csv for Arrow-native memory layout, which can be significantly more efficient for large datasets with mixed types.</li>
+    <li><strong>Delete intermediate DataFrames:</strong> Call <code>del df_temp</code> followed by <code>gc.collect()</code> after creating intermediate DataFrames in a pipeline to reclaim memory immediately.</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="pandas-dtype-optimizer" relatedTags={['pandas', 'python', 'data-science', 'performance', 'memory', 'optimization']} />
+</BaseLayout>

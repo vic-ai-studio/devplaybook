@@ -1,0 +1,273 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is the difference between app.json and app.config.js in Expo?",
+    answer: "app.json is a static JSON configuration file — simple and readable but cannot contain dynamic values or programmatic logic. app.config.js (or app.config.ts) is a JavaScript module that exports a configuration object, allowing you to use environment variables, conditional logic, and dynamic values. For example, you can set a different bundle identifier for staging vs production builds, or read API endpoints from environment variables. When both files exist, app.config.js takes precedence over app.json."
+  },
+  {
+    question: "How do I use environment variables in Expo app.config.js?",
+    answer: "Reference process.env in your app.config.js and provide values through a .env file (using expo-dotenv or dotenv package), EAS Secret environment variables, or shell environment. For example: 'extra: { apiUrl: process.env.API_URL }'. Access them at runtime via Constants.expoConfig.extra.apiUrl from expo-constants. For EAS Build, define variables in eas.json under each build profile's 'env' key or mark them as secrets in the EAS dashboard."
+  },
+  {
+    question: "What is the Expo plugins array and how does it work?",
+    answer: "The plugins array in app.json/app.config.js lets you apply config plugins that modify the native iOS and Android project files during the prebuild step ('npx expo prebuild'). Plugins are functions that receive the app config and ExpoConfig and return a modified config. Many third-party packages (like expo-camera, expo-notifications) ship their own config plugin. You can also write custom plugins using the @expo/config-plugins package to add custom entitlements, permissions, or native code without ejecting."
+  },
+  {
+    question: "How do I configure different bundle IDs for iOS development and production?",
+    answer: "Use app.config.js with a conditional based on an environment variable: set ios.bundleIdentifier to 'com.yourapp.dev' when process.env.APP_ENV === 'development' and 'com.yourapp' for production. In eas.json, set 'APP_ENV=development' in the dev build profile's env section. This way 'eas build --profile development' automatically uses the dev bundle identifier, allowing both builds to be installed simultaneously on a device."
+  },
+  {
+    question: "How do I configure OTA (Over-the-Air) updates with EAS Update?",
+    answer: "Install expo-updates and add 'runtimeVersion' to your app.config.js (use { 'policy': 'sdkVersion' } for automatic versioning or a manual string). Set 'updates.url' to your EAS project URL. In eas.json, configure 'channel' per build profile (e.g., 'production' or 'staging'). After publishing with 'eas update --branch production', apps running on that channel will download the update on next launch. Use the 'expo-updates' API to check and apply updates programmatically."
+  },
+  {
+    question: "What splash screen and icon configurations are required for App Store submission?",
+    answer: "For iOS, provide a 1024x1024 PNG icon (no transparency, no rounded corners — Apple adds rounding) via 'icon' field. For the splash screen, use a 1284x2778 PNG at minimum via 'splash.image'; set 'splash.resizeMode' to 'contain' or 'cover'. For Android, 'android.adaptiveIcon.foregroundImage' should be 1024x1024 with transparent background, and 'android.adaptiveIcon.backgroundColor' sets the background color. The Play Store requires a 512x512 icon uploaded separately in the console."
+  }
+];
+---
+<BaseLayout
+  title="Expo Config Generator — app.json / app.config.js Guide"
+  description="Complete reference for Expo app.json and app.config.js configuration: plugins, splash screen, icons, permissions, build settings, OTA updates, and EAS Build config."
+  tool="expo-config-generator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Expo Config Generator</h1>
+  <p class="text-text-muted mb-6">Master Expo's app.json and app.config.js configuration system. Covers plugins, splash screens, icons, permissions, EAS Build profiles, and OTA update setup.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span>✅ app.json / app.config.js</span>
+    <span>✅ EAS Build & Updates</span>
+    <span>✅ Config Plugins</span>
+    <span>✅ iOS & Android Settings</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Understanding Expo Configuration</h2>
+  <p class="mb-4">Expo's configuration file is the single source of truth for your app's metadata, native settings, build behavior, and update channels. It replaces the need to manually edit <code>Info.plist</code>, <code>AndroidManifest.xml</code>, and Xcode project settings — the Expo prebuild system generates these native files from your config during the build process.</p>
+  <p class="mb-4">Whether you're using Expo Go for rapid prototyping, EAS Build for production binaries, or bare workflow for full native control, the app config drives the output. Getting it right from the start saves hours of debugging native configuration issues later.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Basic app.json Structure</h2>
+  <p class="mb-4">A minimal but complete <code>app.json</code> covers identity, versioning, and platform-specific settings:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto mb-4"><code class="text-sm">{
+  "expo": {
+    "name": "My App",
+    "slug": "my-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.myapp",
+      "buildNumber": "1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.yourcompany.myapp",
+      "versionCode": 1
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Dynamic Config with app.config.js</h2>
+  <p class="mb-4">Migrate to <code>app.config.js</code> when you need environment-specific values, programmatic logic, or secrets management. The file exports a function or plain object:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto mb-4"><code class="text-sm">// app.config.js
+const IS_DEV = process.env.APP_ENV === 'development';
+const IS_PREVIEW = process.env.APP_ENV === 'preview';
+
+export default ({ config }) => ({
+  ...config,
+  name: IS_DEV ? 'My App (Dev)' : 'My App',
+  slug: 'my-app',
+  version: '1.0.0',
+  ios: {
+    bundleIdentifier: IS_DEV
+      ? 'com.yourcompany.myapp.dev'
+      : 'com.yourcompany.myapp',
+    buildNumber: process.env.BUILD_NUMBER ?? '1',
+  },
+  android: {
+    package: IS_DEV
+      ? 'com.yourcompany.myapp.dev'
+      : 'com.yourcompany.myapp',
+    versionCode: parseInt(process.env.VERSION_CODE ?? '1'),
+  },
+  extra: {
+    apiUrl: process.env.API_URL ?? 'https://api.example.com',
+    sentryDsn: process.env.SENTRY_DSN,
+    eas: {
+      projectId: 'your-eas-project-id',
+    },
+  },
+  updates: {
+    url: 'https://u.expo.dev/your-eas-project-id',
+  },
+  runtimeVersion: {
+    policy: 'sdkVersion',
+  },
+});</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Config Plugins</h2>
+  <p class="mb-4">Config plugins let you modify native project files without ejecting. Many npm packages ship their own plugin, which you simply reference in the plugins array:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto mb-4"><code class="text-sm">// app.json — using third-party and custom plugins
+{
+  "expo": {
+    "plugins": [
+      "expo-camera",
+      "expo-location",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff",
+          "sounds": ["./assets/notification.wav"]
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.0"
+          },
+          "android": {
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 24
+          }
+        }
+      ],
+      "./plugins/withCustomPermission.js"
+    ]
+  }
+}</code></pre>
+  <p class="mb-4">Writing a custom plugin with <code>@expo/config-plugins</code>:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto mb-4"><code class="text-sm">// plugins/withCustomPermission.js
+const { withInfoPlist } = require('@expo/config-plugins');
+
+module.exports = (config) =>
+  withInfoPlist(config, (config) => {
+    config.modResults.NSFaceIDUsageDescription =
+      'We use Face ID for secure authentication.';
+    return config;
+  });</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">EAS Build Configuration (eas.json)</h2>
+  <p class="mb-4">EAS Build uses <code>eas.json</code> alongside <code>app.config.js</code> to define build profiles for development, staging, and production:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto mb-4"><code class="text-sm">// eas.json
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "development",
+        "API_URL": "https://dev.api.example.com"
+      },
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "preview",
+        "API_URL": "https://staging.api.example.com"
+      }
+    },
+    "production": {
+      "env": {
+        "APP_ENV": "production",
+        "API_URL": "https://api.example.com"
+      },
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "you@example.com",
+        "ascAppId": "1234567890"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-service-account.json",
+        "track": "internal"
+      }
+    }
+  }
+}</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Permissions Configuration</h2>
+  <p class="mb-4">Permissions must be declared in the config before they can be requested at runtime. iOS requires usage description strings; Android requires permission entries:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto mb-4"><code class="text-sm">{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "We need camera access to scan QR codes.",
+        "NSMicrophoneUsageDescription": "We need microphone access for video calls.",
+        "NSLocationWhenInUseUsageDescription": "We show nearby results based on your location.",
+        "NSPhotoLibraryUsageDescription": "We save photos to your library."
+      }
+    },
+    "android": {
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
+    }
+  }
+}</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">OTA Updates with expo-updates</h2>
+  <p class="mb-4">Configure seamless over-the-air updates so users always have the latest JavaScript bundle without a full App Store submission:</p>
+  <pre class="bg-surface rounded-lg p-4 overflow-x-auto mb-4"><code class="text-sm">// app.config.js — updates configuration
+export default {
+  updates: {
+    enabled: true,
+    fallbackToCacheTimeout: 0,
+    checkAutomatically: 'ON_LOAD',
+    url: 'https://u.expo.dev/YOUR_PROJECT_ID',
+  },
+  runtimeVersion: {
+    policy: 'sdkVersion', // or 'nativeVersion' or a manual string
+  },
+};
+
+// Publish an update to the production channel:
+// eas update --branch production --message "Fix login screen crash"
+
+// Check for updates manually in your app:
+import * as Updates from 'expo-updates';
+
+async function checkForUpdate() {
+  const update = await Updates.checkForUpdateAsync();
+  if (update.isAvailable) {
+    await Updates.fetchUpdateAsync();
+    await Updates.reloadAsync();
+  }
+}</code></pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="expo-config-generator" relatedTags={['expo', 'react-native', 'mobile', 'javascript', 'configuration', 'ios', 'android']} />
+</BaseLayout>
