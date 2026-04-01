@@ -1,0 +1,348 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What does this CI pipeline visualizer do?",
+    answer: "The CI pipeline visualizer lets you build a GitHub Actions workflow visually by adding jobs and steps. It generates a valid .github/workflows/ci.yml file you can copy directly into your repository. It also estimates total pipeline duration based on typical step execution times.",
+  },
+  {
+    question: "What GitHub Actions triggers does this support?",
+    answer: "The visualizer supports the most common triggers: push (on commits to a branch), pull_request (on PR open/update/sync), workflow_dispatch (manual trigger from the GitHub UI), and schedule (cron-based). Multiple triggers can be combined on the same workflow.",
+  },
+  {
+    question: "How do I add parallel jobs to my pipeline?",
+    answer: "Add multiple jobs — they run in parallel by default. To make one job depend on another (sequential), use the 'needs' configuration. In the generated YAML, this appears as 'needs: [job-name]'. For example, a deploy job that needs the test and build jobs to complete first.",
+  },
+  {
+    question: "What are the most common GitHub Actions steps?",
+    answer: "The essential steps for most pipelines: actions/checkout (clone your repo), actions/setup-node or setup-python (install runtime), install dependencies (npm ci, pip install), run tests (npm test, pytest), build (npm run build), and optional deploy steps. The visualizer provides a quick-insert menu for all common steps.",
+  },
+  {
+    question: "How long should a CI pipeline take?",
+    answer: "Industry best practice: under 10 minutes for developer feedback loop. Fast pipelines encourage more frequent commits. Strategies to reduce time: parallel jobs, dependency caching (actions/cache), skipping expensive checks on draft PRs, splitting test suites, and using matrix strategies for cross-platform testing.",
+  },
+];
+---
+
+<BaseLayout
+  title="CI Pipeline Visualizer — Build GitHub Actions Workflows Visually"
+  description="Design GitHub Actions CI/CD pipelines with a visual builder. Add jobs and steps, see the workflow structure, and export valid YAML. Includes timing estimates and common step templates."
+  tool="CI Pipeline Visualizer, GitHub Actions Builder, CI/CD Workflow Generator, GitHub Actions YAML Generator, Pipeline Designer"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "CI Pipeline Visualizer",
+    "url": "https://devplaybook.cc/tools/ci-pipeline-visualizer",
+    "description": "Build GitHub Actions CI/CD workflows visually. Add jobs and steps, configure triggers, and export valid YAML ready to commit.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">CI Pipeline Visualizer</h1>
+  <p class="text-text-muted mb-4">
+    Build <strong class="text-text">GitHub Actions</strong> workflows visually.
+    Add jobs and steps, configure triggers, see the pipeline structure, and export
+    valid <code class="font-mono bg-surface px-1 rounded text-sm">ci.yml</code> ready to commit.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual job builder</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> YAML export</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Duration estimate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Common step templates</span>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+    <!-- Builder panel -->
+    <div class="flex flex-col gap-4">
+      <!-- Triggers -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold text-sm uppercase tracking-wide text-text-muted mb-3">Triggers</h2>
+        <div class="flex flex-wrap gap-3">
+          {['push', 'pull_request', 'workflow_dispatch', 'schedule'].map(t => (
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" class="trigger-cb rounded border-border" value={t} checked={t === 'push' || t === 'pull_request'} />
+              <span class="font-mono text-xs">{t}</span>
+            </label>
+          ))}
+        </div>
+        <div id="schedule-input" class="mt-3 hidden">
+          <label class="block text-xs text-text-muted mb-1">Cron expression</label>
+          <input id="cron-expr" type="text" value="0 2 * * 1-5" class="w-full px-3 py-2 rounded-lg bg-bg border border-border text-text text-sm font-mono focus:outline-none focus:border-accent transition-colors" />
+        </div>
+      </div>
+
+      <!-- Jobs -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-sm uppercase tracking-wide text-text-muted">Jobs</h2>
+          <button id="add-job-btn" class="px-3 py-1 rounded text-xs bg-accent text-white hover:bg-accent/90 transition-colors">+ Add Job</button>
+        </div>
+        <div id="jobs-container" class="flex flex-col gap-3"></div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="flex flex-col gap-4">
+      <!-- Pipeline diagram -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="font-semibold text-sm uppercase tracking-wide text-text-muted mb-3">Pipeline Structure</h2>
+        <div id="pipeline-diagram" class="flex flex-col gap-2 min-h-[100px]"></div>
+        <div id="duration-estimate" class="mt-3 text-xs text-text-muted"></div>
+      </div>
+
+      <!-- YAML output -->
+      <div class="bg-bg-card border border-border rounded-xl p-5 flex flex-col flex-1">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-sm uppercase tracking-wide text-text-muted">Generated YAML</h2>
+          <button id="copy-yaml-btn" class="px-3 py-1 rounded text-xs bg-bg border border-border text-text-muted hover:text-text transition-colors">Copy</button>
+        </div>
+        <pre id="yaml-output" class="text-xs font-mono bg-bg rounded-lg p-3 overflow-auto max-h-80 text-text whitespace-pre"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    interface Step { name: string; run: string; uses?: string; minutes: number }
+    interface Job { id: string; name: string; runsOn: string; steps: Step[]; needs: string[] }
+
+    const STEP_TEMPLATES: Step[] = [
+      { name: 'Checkout code', uses: 'actions/checkout@v4', run: '', minutes: 0.3 },
+      { name: 'Setup Node.js 20', uses: 'actions/setup-node@v4', run: '', minutes: 0.5 },
+      { name: 'Setup Python 3.12', uses: 'actions/setup-python@v5', run: '', minutes: 0.5 },
+      { name: 'Install dependencies (npm ci)', uses: '', run: 'npm ci', minutes: 1.5 },
+      { name: 'Install dependencies (pip)', uses: '', run: 'pip install -r requirements.txt', minutes: 1.5 },
+      { name: 'Run tests (npm test)', uses: '', run: 'npm test', minutes: 3 },
+      { name: 'Run tests (pytest)', uses: '', run: 'pytest --tb=short', minutes: 3 },
+      { name: 'Build (npm run build)', uses: '', run: 'npm run build', minutes: 2 },
+      { name: 'Lint (eslint)', uses: '', run: 'npm run lint', minutes: 1 },
+      { name: 'Type check (tsc)', uses: '', run: 'npx tsc --noEmit', minutes: 1 },
+      { name: 'Cache node_modules', uses: 'actions/cache@v4', run: '', minutes: 0.3 },
+    ];
+
+    let jobs: Job[] = [];
+    let jobCounter = 0;
+
+    function generateJobId(name: string): string {
+      return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `job-${++jobCounter}`;
+    }
+
+    function addDefaultJob() {
+      const job: Job = {
+        id: 'test',
+        name: 'Test',
+        runsOn: 'ubuntu-latest',
+        steps: [
+          STEP_TEMPLATES[0], // checkout
+          STEP_TEMPLATES[1], // node
+          STEP_TEMPLATES[3], // npm ci
+          STEP_TEMPLATES[5], // npm test
+        ],
+        needs: [],
+      };
+      jobs.push(job);
+      renderJobs();
+    }
+
+    function renderJobs() {
+      const container = document.getElementById('jobs-container')!;
+      if (jobs.length === 0) {
+        container.innerHTML = '<p class="text-sm text-text-muted text-center py-4">No jobs yet. Click "+ Add Job" to start.</p>';
+        generateOutput();
+        return;
+      }
+
+      container.innerHTML = jobs.map((job, ji) => `
+        <div class="border border-border rounded-lg p-4 bg-bg" data-job-index="${ji}">
+          <div class="flex items-center gap-2 mb-3">
+            <input class="job-name flex-1 px-2 py-1 rounded bg-bg-card border border-border text-text text-sm font-medium focus:outline-none focus:border-accent" value="${job.name}" data-job="${ji}" placeholder="Job name" />
+            <select class="job-runner px-2 py-1 rounded bg-bg-card border border-border text-text text-xs focus:outline-none" data-job="${ji}">
+              ${['ubuntu-latest', 'windows-latest', 'macos-latest'].map(r => `<option ${job.runsOn === r ? 'selected' : ''}>${r}</option>`).join('')}
+            </select>
+            <button class="remove-job px-2 py-1 rounded text-xs text-red-400 hover:text-red-300 border border-border transition-colors" data-job="${ji}">✕</button>
+          </div>
+          <div class="flex flex-col gap-1 mb-2">
+            ${job.steps.map((step, si) => `
+              <div class="flex items-center gap-2 text-xs">
+                <span class="flex-1 font-mono bg-bg-card px-2 py-1 rounded border border-border text-text-muted truncate">${step.name}</span>
+                <button class="remove-step text-red-400/60 hover:text-red-400 transition-colors" data-job="${ji}" data-step="${si}">✕</button>
+              </div>
+            `).join('')}
+          </div>
+          <select class="add-step-select w-full px-2 py-1 rounded bg-bg-card border border-border text-text-muted text-xs focus:outline-none" data-job="${ji}">
+            <option value="">+ Add step...</option>
+            ${STEP_TEMPLATES.map((t, ti) => `<option value="${ti}">${t.name}</option>`).join('')}
+          </select>
+        </div>
+      `).join('');
+
+      // Attach events
+      container.querySelectorAll('.job-name').forEach(el => {
+        el.addEventListener('input', (e) => {
+          const ji = parseInt((e.target as HTMLElement).dataset.job!);
+          jobs[ji].name = (e.target as HTMLInputElement).value;
+          jobs[ji].id = generateJobId(jobs[ji].name);
+          generateOutput();
+        });
+      });
+      container.querySelectorAll('.job-runner').forEach(el => {
+        el.addEventListener('change', (e) => {
+          const ji = parseInt((e.target as HTMLElement).dataset.job!);
+          jobs[ji].runsOn = (e.target as HTMLSelectElement).value;
+          generateOutput();
+        });
+      });
+      container.querySelectorAll('.remove-job').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const ji = parseInt((e.target as HTMLElement).dataset.job!);
+          jobs.splice(ji, 1);
+          renderJobs();
+        });
+      });
+      container.querySelectorAll('.remove-step').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const ji = parseInt((e.target as HTMLElement).dataset.job!);
+          const si = parseInt((e.target as HTMLElement).dataset.step!);
+          jobs[ji].steps.splice(si, 1);
+          renderJobs();
+        });
+      });
+      container.querySelectorAll('.add-step-select').forEach(el => {
+        el.addEventListener('change', (e) => {
+          const ji = parseInt((e.target as HTMLElement).dataset.job!);
+          const ti = parseInt((e.target as HTMLSelectElement).value);
+          if (!isNaN(ti)) {
+            jobs[ji].steps.push({ ...STEP_TEMPLATES[ti] });
+            renderJobs();
+          }
+        });
+      });
+
+      generateOutput();
+    }
+
+    function getTriggers(): string[] {
+      return Array.from(document.querySelectorAll('.trigger-cb:checked')).map(el => (el as HTMLInputElement).value);
+    }
+
+    function generateYAML(): string {
+      const triggers = getTriggers();
+      const cronExpr = (document.getElementById('cron-expr') as HTMLInputElement).value;
+
+      let yaml = `name: CI\n\non:\n`;
+      for (const t of triggers) {
+        if (t === 'push') yaml += `  push:\n    branches: [main, develop]\n`;
+        else if (t === 'pull_request') yaml += `  pull_request:\n    branches: [main]\n`;
+        else if (t === 'workflow_dispatch') yaml += `  workflow_dispatch:\n`;
+        else if (t === 'schedule') yaml += `  schedule:\n    - cron: '${cronExpr}'\n`;
+      }
+
+      yaml += `\njobs:\n`;
+
+      for (const job of jobs) {
+        yaml += `  ${job.id || generateJobId(job.name)}:\n`;
+        yaml += `    name: ${job.name}\n`;
+        yaml += `    runs-on: ${job.runsOn}\n`;
+        if (job.needs.length > 0) {
+          yaml += `    needs: [${job.needs.join(', ')}]\n`;
+        }
+        yaml += `    steps:\n`;
+        for (const step of job.steps) {
+          yaml += `      - name: ${step.name}\n`;
+          if (step.uses) {
+            yaml += `        uses: ${step.uses}\n`;
+            if (step.uses.includes('setup-node')) {
+              yaml += `        with:\n          node-version: '20'\n`;
+            } else if (step.uses.includes('setup-python')) {
+              yaml += `        with:\n          python-version: '3.12'\n`;
+            } else if (step.uses.includes('cache')) {
+              yaml += `        with:\n          path: node_modules\n          key: \${{ runner.os }}-node-\${{ hashFiles('package-lock.json') }}\n`;
+            }
+          } else if (step.run) {
+            yaml += `        run: ${step.run}\n`;
+          }
+        }
+        yaml += '\n';
+      }
+
+      return yaml.trimEnd();
+    }
+
+    function generateDiagram() {
+      const diagram = document.getElementById('pipeline-diagram')!;
+      if (jobs.length === 0) {
+        diagram.innerHTML = '<p class="text-sm text-text-muted">No jobs configured.</p>';
+        return;
+      }
+
+      let totalMinutes = 0;
+      diagram.innerHTML = jobs.map(job => {
+        const jobMinutes = job.steps.reduce((sum, s) => sum + s.minutes, 0);
+        totalMinutes = Math.max(totalMinutes, jobMinutes);
+        const barWidth = Math.min(100, Math.max(10, (jobMinutes / 10) * 100));
+        return `
+          <div class="flex items-center gap-3">
+            <span class="w-28 text-xs font-medium truncate">${job.name}</span>
+            <div class="flex-1 bg-bg rounded-full h-5 overflow-hidden relative">
+              <div class="h-full bg-accent/60 rounded-full" style="width: ${barWidth}%"></div>
+              <span class="absolute inset-0 flex items-center justify-center text-xs text-text font-mono">${jobMinutes.toFixed(1)} min</span>
+            </div>
+            <span class="text-xs text-text-muted w-16 text-right">${job.runsOn.replace('-latest', '')}</span>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('duration-estimate')!.textContent =
+        `Estimated total duration: ~${totalMinutes.toFixed(0)} minutes (parallel jobs)`;
+    }
+
+    function generateOutput() {
+      const yaml = generateYAML();
+      (document.getElementById('yaml-output') as HTMLPreElement).textContent = yaml;
+      generateDiagram();
+    }
+
+    document.getElementById('add-job-btn')!.addEventListener('click', () => {
+      jobCounter++;
+      jobs.push({
+        id: `job-${jobCounter}`,
+        name: `Job ${jobCounter}`,
+        runsOn: 'ubuntu-latest',
+        steps: [STEP_TEMPLATES[0]],
+        needs: [],
+      });
+      renderJobs();
+    });
+
+    document.querySelectorAll('.trigger-cb').forEach(el => {
+      el.addEventListener('change', () => {
+        const hasSchedule = (document.querySelector('.trigger-cb[value="schedule"]') as HTMLInputElement)?.checked;
+        document.getElementById('schedule-input')!.classList.toggle('hidden', !hasSchedule);
+        generateOutput();
+      });
+    });
+
+    document.getElementById('cron-expr')!.addEventListener('input', generateOutput);
+
+    document.getElementById('copy-yaml-btn')!.addEventListener('click', () => {
+      const text = (document.getElementById('yaml-output') as HTMLPreElement).textContent || '';
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copy-yaml-btn') as HTMLButtonElement;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    });
+
+    addDefaultJob();
+  </script>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="CI Pipeline Visualizer" relatedTags={['ci-cd', 'github-actions', 'devops', 'automation', 'developer-tools']} />
+</BaseLayout>
