@@ -1,0 +1,151 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How do I set up Husky with lint-staged and ESLint?", answer: "Install the packages: npm install --save-dev husky lint-staged eslint. Run npx husky init to create the .husky directory and add a prepare script. Edit .husky/pre-commit to contain: npx lint-staged. In package.json, add a lint-staged key: { '*.{js,ts,tsx}': ['eslint --fix', 'git add'] }. Now every commit automatically lints and auto-fixes staged files before the commit is recorded." },
+  { question: "What changed in Husky v9?", answer: "Husky v9 (released 2024) dropped the .huskyrc config file in favour of placing hook scripts directly in the .husky/ directory as plain shell scripts. The husky install command was replaced by husky init. Shell scripts no longer need #!/bin/sh at the top — Husky injects a source file automatically. The husky.sh helper was removed; if you need to skip hooks in CI, set HUSKY=0 as an environment variable." },
+  { question: "How do I bypass Husky hooks with --no-verify?", answer: "Run git commit --no-verify (or the short form -n) to skip all client-side hooks including pre-commit and commit-msg. This is intentionally an escape hatch, not a standard workflow. In CI pipelines where Husky should not run at all, set the environment variable HUSKY=0 — Husky reads this flag and skips hook installation entirely, which is cleaner than --no-verify." },
+  { question: "How do I use Husky in a monorepo?", answer: "Place Husky in the root package.json of the monorepo. Run npx husky init from the root. Because .git is at the root, all hooks fire regardless of which workspace triggered the commit. Use lint-staged with workspace-aware glob patterns like packages/*/src/**/*.ts. For per-package linting you can use the --cwd flag in lint-staged commands, or configure individual commands per glob in lint-staged config." },
+  { question: "What is the difference between Husky and Lefthook?", answer: "Husky is the most popular choice: minimal, widely documented, and integrates with npm prepare scripts automatically. Lefthook is a Go binary with no Node.js dependency, making it faster on large repos and suitable for polyglot monorepos (Python/Ruby/Go). Lefthook has built-in parallel execution across hook commands and a single YAML config file. If your team is Node-only, Husky is the simpler default. If you need cross-language hooks or raw speed, Lefthook is worth evaluating." },
+  { question: "How do I add a commit-msg hook for Commitlint?", answer: "After installing @commitlint/cli and @commitlint/config-conventional, create .husky/commit-msg with the content: npx --no -- commitlint --edit $1. The $1 argument is the path to the temporary commit message file that Git passes to the hook. Commitlint reads that file and validates the message against your configured rules. If validation fails, Husky exits non-zero and the commit is rejected." },
+];
+---
+
+<BaseLayout
+  title="Husky Git Hooks: Setup, pre-commit & commit-msg Automation"
+  description="Husky git hooks setup: automate pre-commit linting, commit-msg validation, lint-staged integration, Commitlint setup, and prevent bad commits from entering your repo."
+  tool="Husky, git hooks, pre-commit, lint-staged, Commitlint, conventional commits, git workflow"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Husky Git Hooks: Setup, pre-commit & commit-msg Automation",
+    "url": "https://devplaybook.cc/tools/husky-git-hooks",
+    "description": "Husky git hooks setup: automate pre-commit linting, commit-msg validation, lint-staged integration, Commitlint setup, and prevent bad commits from entering your repo.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Husky Git Hooks: Setup, pre-commit & commit-msg Automation</h1>
+  <p class="text-text-muted mb-6">Husky makes Git hooks easy. Instead of manually managing scripts in .git/hooks (which are not committed to your repo), Husky stores hooks in .husky/, versions them with your code, and installs them automatically for every developer via the npm prepare script. This guide covers the full setup: lint-staged, Commitlint, and Husky v9 changes.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Versioned hooks committed to your repo</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs ESLint/Prettier only on staged files</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Blocks malformed commit messages</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Zero config for new team members</span>
+  </div>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">What Are Git Hooks and Why Use Husky?</h2>
+  <p class="text-text-muted mb-4">Git hooks are shell scripts that Git runs automatically at specific points in the commit workflow — before a commit is recorded (pre-commit), after the message is entered (commit-msg), before a push (pre-push). The problem with native hooks is they live in .git/hooks, which is not tracked by Git, so every developer must install them manually.</p>
+  <p class="text-text-muted mb-6">Husky solves this by storing hooks in the .husky/ directory (tracked by Git) and using the npm prepare lifecycle script to run husky on every npm install. New developers get working hooks automatically after cloning the repo.</p>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Installation (Husky v9)</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400">npm install --save-dev husky
+npx husky init
+# Creates .husky/pre-commit and adds "prepare": "husky" to package.json
+
+# .husky/pre-commit is now a plain shell script:
+cat .husky/pre-commit
+# npm test   ← replace with your command</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">pre-commit Hook with lint-staged</h2>
+  <p class="text-text-muted mb-3">Running ESLint on the entire codebase before every commit is slow. lint-staged solves this by running linters only on files that are staged for commit:</p>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-3"><code class="text-green-400">npm install --save-dev lint-staged</code></pre>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-3"><code class="text-green-400"># .husky/pre-commit
+npx lint-staged</code></pre>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400">// package.json
+&#123;
+  "lint-staged": &#123;
+    "*.&#123;js,ts,tsx&#125;": ["eslint --fix", "prettier --write"],
+    "*.&#123;css,md&#125;": "prettier --write"
+  &#125;
+&#125;</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">commit-msg Hook with Commitlint</h2>
+  <p class="text-text-muted mb-3">Commitlint validates that your commit messages follow the Conventional Commits format (feat:, fix:, chore:, etc.):</p>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-3"><code class="text-green-400">npm install --save-dev @commitlint/cli @commitlint/config-conventional
+echo "export default &#123; extends: ['@commitlint/config-conventional'] &#125;" > commitlint.config.js</code></pre>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400"># .husky/commit-msg
+npx --no -- commitlint --edit $1</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Husky v9 Changes from v8</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-gray-800 text-white">
+          <th class="border border-gray-700 px-4 py-2 text-left">Feature</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">v8</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">v9</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">Init command</td>
+          <td class="border border-gray-700 px-4 py-2">husky install</td>
+          <td class="border border-gray-700 px-4 py-2">husky init</td>
+        </tr>
+        <tr class="bg-gray-800/30">
+          <td class="border border-gray-700 px-4 py-2">Hook format</td>
+          <td class="border border-gray-700 px-4 py-2">Required #!/bin/sh + source</td>
+          <td class="border border-gray-700 px-4 py-2">Plain shell — Husky injects header</td>
+        </tr>
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">Skip in CI</td>
+          <td class="border border-gray-700 px-4 py-2">is-ci package or HUSKY=0</td>
+          <td class="border border-gray-700 px-4 py-2">HUSKY=0 only</td>
+        </tr>
+        <tr class="bg-gray-800/30">
+          <td class="border border-gray-700 px-4 py-2">Config file</td>
+          <td class="border border-gray-700 px-4 py-2">.huskyrc supported</td>
+          <td class="border border-gray-700 px-4 py-2">No .huskyrc — scripts only</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Bypassing Hooks</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400"># Skip hooks for a single commit (use sparingly):
+git commit --no-verify -m "wip: skip hooks"
+
+# Disable Husky entirely in CI environments:
+HUSKY=0 npm ci</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Husky vs Lefthook vs pre-commit</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-gray-800 text-white">
+          <th class="border border-gray-700 px-4 py-2 text-left">Tool</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">Language</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">Best For</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">Parallel Execution</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">Husky</td>
+          <td class="border border-gray-700 px-4 py-2">Node.js</td>
+          <td class="border border-gray-700 px-4 py-2">JS/TS projects</td>
+          <td class="border border-gray-700 px-4 py-2">Via lint-staged</td>
+        </tr>
+        <tr class="bg-gray-800/30">
+          <td class="border border-gray-700 px-4 py-2">Lefthook</td>
+          <td class="border border-gray-700 px-4 py-2">Go binary</td>
+          <td class="border border-gray-700 px-4 py-2">Polyglot monorepos</td>
+          <td class="border border-gray-700 px-4 py-2">Built-in</td>
+        </tr>
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">pre-commit</td>
+          <td class="border border-gray-700 px-4 py-2">Python</td>
+          <td class="border border-gray-700 px-4 py-2">Python projects</td>
+          <td class="border border-gray-700 px-4 py-2">Limited</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>

@@ -1,0 +1,167 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the Conventional Commits specification?", answer: "Conventional Commits is a lightweight convention on top of commit messages. The format is: type(scope): description. Common types are feat (new feature), fix (bug fix), docs, style, refactor, test, and chore. An optional ! after the type marks breaking changes, which map to a MAJOR version bump in semantic versioning. The spec is designed so tooling can parse commit history to generate changelogs and determine version bumps automatically." },
+  { question: "How do I configure custom types in Commitlint?", answer: "In commitlint.config.js, extend the base config and override the type-enum rule: export default { extends: ['@commitlint/config-conventional'], rules: { 'type-enum': [2, 'always', ['feat', 'fix', 'docs', 'chore', 'perf', 'ci', 'revert', 'build', 'wip']] } }. The first element is severity (2 = error), the second is 'always' or 'never', and the third is the list of allowed values. You can also add scope-enum and footer-max-line-length rules." },
+  { question: "How do I generate a CHANGELOG from Conventional Commits?", answer: "Run npx standard-version or npx release-please. standard-version reads git log since the last tag, groups commits by type, and writes a CHANGELOG.md section with links to each commit. It also bumps package.json version based on commit types (feat → minor, fix → patch, breaking → major) and creates a version tag. Run it locally with: npx standard-version --dry-run to preview changes before committing." },
+  { question: "What is the difference between standard-version and release-please?", answer: "standard-version is a local CLI tool: you run it manually (or in CI), it bumps the version, updates CHANGELOG.md, commits, and tags. It is simple but requires manual triggering. release-please is a GitHub Action maintained by Google that automates the full release cycle: it opens a 'Release PR' that updates CHANGELOG and version, and merges it when you are ready. release-please is better for teams that want a fully automated, PR-based release workflow." },
+  { question: "How do I enforce Commitlint in GitHub Actions?", answer: "Add a workflow that checks out with full depth (fetch-depth: 0) and runs commitlint on the range of commits in the PR. Use the action: uses: wagoid/commitlint-github-action@v6. This action reads your commitlint.config.js and validates every commit in the pull request. If any commit fails the rules, the check fails and the PR cannot be merged." },
+  { question: "How do I add Commitlint to an existing project?", answer: "Install: npm install --save-dev @commitlint/cli @commitlint/config-conventional. Create commitlint.config.js with: export default { extends: ['@commitlint/config-conventional'] }. Add the commit-msg hook via Husky: echo 'npx --no -- commitlint --edit $1' > .husky/commit-msg. Your existing commit history is not affected — Commitlint only validates new commits from this point forward." },
+];
+---
+
+<BaseLayout
+  title="Commitlint: Conventional Commits Setup & Team Enforcement Guide"
+  description="Commitlint setup guide: enforce Conventional Commits, configure commit rules, integrate with Husky, generate changelogs with standard-version, and set up in CI."
+  tool="Commitlint, Conventional Commits, semantic versioning, changelog, Husky, standard-version, release-please"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Commitlint: Conventional Commits Setup & Team Enforcement Guide",
+    "url": "https://devplaybook.cc/tools/commitlint-conventional-commits",
+    "description": "Commitlint setup guide: enforce Conventional Commits, configure commit rules, integrate with Husky, generate changelogs with standard-version, and set up in CI.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Commitlint: Conventional Commits Setup & Team Enforcement Guide</h1>
+  <p class="text-text-muted mb-6">Commitlint validates that your commit messages follow a consistent format. Combined with the Conventional Commits specification and Husky, it ensures every commit in your repo is machine-readable — enabling automated CHANGELOGs, semantic version bumps, and clean release notes without manual work.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Blocks malformed commits at the hook level</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Automated CHANGELOG generation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Semantic versioning from commit types</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CI enforcement via GitHub Actions</span>
+  </div>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">The Conventional Commits Format</h2>
+  <p class="text-text-muted mb-3">Every commit message follows this structure:</p>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-4"><code class="text-green-400">type(scope): short description
+
+[optional body]
+
+[optional footer: BREAKING CHANGE: description]</code></pre>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-gray-800 text-white">
+          <th class="border border-gray-700 px-4 py-2 text-left">Type</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">Meaning</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">Version Bump</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">feat</td>
+          <td class="border border-gray-700 px-4 py-2">New feature</td>
+          <td class="border border-gray-700 px-4 py-2">MINOR (1.x.0)</td>
+        </tr>
+        <tr class="bg-gray-800/30">
+          <td class="border border-gray-700 px-4 py-2">fix</td>
+          <td class="border border-gray-700 px-4 py-2">Bug fix</td>
+          <td class="border border-gray-700 px-4 py-2">PATCH (1.0.x)</td>
+        </tr>
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">feat! / fix!</td>
+          <td class="border border-gray-700 px-4 py-2">Breaking change</td>
+          <td class="border border-gray-700 px-4 py-2">MAJOR (x.0.0)</td>
+        </tr>
+        <tr class="bg-gray-800/30">
+          <td class="border border-gray-700 px-4 py-2">chore / docs / refactor</td>
+          <td class="border border-gray-700 px-4 py-2">No user-facing change</td>
+          <td class="border border-gray-700 px-4 py-2">No bump</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Commitlint Installation and Config</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-4"><code class="text-green-400">npm install --save-dev @commitlint/cli @commitlint/config-conventional</code></pre>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400">// commitlint.config.js
+export default &#123;
+  extends: ['@commitlint/config-conventional'],
+  rules: &#123;
+    'type-enum': [2, 'always', ['feat', 'fix', 'docs', 'style', 'refactor', 'test', 'chore', 'perf', 'ci', 'revert']],
+    'subject-case': [2, 'never', ['upper-case', 'pascal-case', 'start-case']],
+    'header-max-length': [2, 'always', 100],
+  &#125;
+&#125;;</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Integrating with Husky commit-msg Hook</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400"># After npx husky init:
+# .husky/commit-msg
+npx --no -- commitlint --edit $1
+
+# Test it manually:
+echo "bad commit message" | npx commitlint
+# ✖ type may not be empty [type-empty]
+echo "feat: add dark mode toggle" | npx commitlint
+# ✔ all rules pass</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">Generating CHANGELOGs with standard-version</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-4"><code class="text-green-400">npm install --save-dev standard-version
+
+# Preview what would be released:
+npx standard-version --dry-run
+
+# Cut a release (bumps version, updates CHANGELOG.md, commits, tags):
+npx standard-version
+
+# Force a specific bump:
+npx standard-version --release-as minor</code></pre>
+  <p class="text-text-muted mb-6">standard-version reads commits since the last git tag and groups them by type in CHANGELOG.md. feat commits go under Features, fix under Bug Fixes. BREAKING CHANGE footer entries get their own section.</p>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">CI Enforcement via GitHub Actions</h2>
+  <pre class="bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm mb-6"><code class="text-green-400"># .github/workflows/commitlint.yml
+name: Commitlint
+on: [pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v6</code></pre>
+
+  <h2 class="text-2xl font-bold mt-8 mb-3">standard-version vs release-please</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-gray-800 text-white">
+          <th class="border border-gray-700 px-4 py-2 text-left">Feature</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">standard-version</th>
+          <th class="border border-gray-700 px-4 py-2 text-left">release-please</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">Trigger</td>
+          <td class="border border-gray-700 px-4 py-2">Manual CLI</td>
+          <td class="border border-gray-700 px-4 py-2">Automatic GitHub Action</td>
+        </tr>
+        <tr class="bg-gray-800/30">
+          <td class="border border-gray-700 px-4 py-2">Release PR</td>
+          <td class="border border-gray-700 px-4 py-2">No</td>
+          <td class="border border-gray-700 px-4 py-2">Yes (reviewable before merge)</td>
+        </tr>
+        <tr>
+          <td class="border border-gray-700 px-4 py-2">Maintenance</td>
+          <td class="border border-gray-700 px-4 py-2">Deprecated (use standard-version v5)</td>
+          <td class="border border-gray-700 px-4 py-2">Actively maintained by Google</td>
+        </tr>
+        <tr class="bg-gray-800/30">
+          <td class="border border-gray-700 px-4 py-2">Best for</td>
+          <td class="border border-gray-700 px-4 py-2">Simple projects, local control</td>
+          <td class="border border-gray-700 px-4 py-2">Teams, fully automated pipelines</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
