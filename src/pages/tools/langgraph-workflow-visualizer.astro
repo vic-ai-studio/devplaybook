@@ -1,0 +1,420 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is LangGraph?",
+    answer: "LangGraph is a library from LangChain for building stateful, multi-actor AI applications as directed graphs. Each node in the graph is a function or LLM call, edges define control flow, and state is shared across the entire graph. It enables complex agent behaviors like loops, branches, human-in-the-loop, and parallel execution that are difficult to express with linear chains."
+  },
+  {
+    question: "How is LangGraph different from LangChain?",
+    answer: "LangChain provides linear chains of operations (input → step1 → step2 → output). LangGraph adds graph-based control flow where nodes can loop, branch based on state, run in parallel, and maintain persistent state across turns. LangGraph is designed for production agents that need sophisticated routing logic, while LangChain is better for simple sequential pipelines."
+  },
+  {
+    question: "What is a StateGraph in LangGraph?",
+    answer: "StateGraph is the core LangGraph class. It defines a graph where each node receives the current state and returns state updates. You define: (1) State schema — a TypedDict of fields. (2) Nodes — functions that read/write state. (3) Edges — connections between nodes, either direct or conditional. (4) Entry/exit points — where the graph starts and ends. Compiled graphs can be invoked, streamed, or run asynchronously."
+  },
+  {
+    question: "What are conditional edges in LangGraph?",
+    answer: "Conditional edges dynamically route between nodes based on the current state. Instead of always going to the same next node, you provide a function that examines state and returns the name of the next node (or END). This enables branching logic — for example: after a tools node, if there are pending tool calls, go to the tool executor; otherwise, go to END."
+  },
+  {
+    question: "What is the difference between nodes and edges in LangGraph?",
+    answer: "Nodes are the computation units — they receive state, do work (LLM call, tool execution, data transformation), and return state updates. Edges define routing — which node runs next. Edges can be direct (always go to X) or conditional (examine state and choose X or Y). The START and END special nodes mark graph entry and exit points."
+  }
+];
+---
+
+<BaseLayout
+  title="LangGraph Workflow Visualizer — Visualize State Graph JSON as Visual Diagrams"
+  description="Paste LangGraph state graph definitions and visualize nodes, edges, and control flow. Supports conditional edges, parallel branches, and START/END points. Build LangGraph agents faster."
+  tool="langgraph workflow visualizer, langgraph state graph visualizer, langgraph diagram, langgraph agent builder, langgraph json visualizer"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "LangGraph Workflow Visualizer",
+    "url": "https://devplaybook.cc/tools/langgraph-workflow-visualizer",
+    "description": "Visualize LangGraph state graphs as interactive diagrams. Paste graph definition JSON and see nodes, edges, conditional routing, and control flow.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">LangGraph Workflow Visualizer</h1>
+  <p class="text-text-muted mb-4">
+    Paste your LangGraph state graph definition and visualize nodes, edges, and control flow as an interactive diagram.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Visual graph rendering</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Conditional edges</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Code generation</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Input -->
+    <div class="space-y-3">
+      <div class="flex items-center justify-between">
+        <label class="text-sm font-medium">Graph Definition (JSON)</label>
+        <div class="flex gap-2">
+          <button class="example-btn text-xs text-primary hover:underline" data-example="simple">Simple Agent</button>
+          <button class="example-btn text-xs text-primary hover:underline" data-example="react">ReAct Agent</button>
+          <button class="example-btn text-xs text-primary hover:underline" data-example="parallel">Parallel</button>
+        </div>
+      </div>
+      <textarea
+        id="graph-input"
+        class="w-full h-80 px-3 py-2 bg-surface border border-border rounded-lg text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-primary/50"
+        placeholder='{"nodes": [...], "edges": [...]}'
+      ></textarea>
+      <button id="btn-visualize" class="w-full px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+        Visualize Graph
+      </button>
+    </div>
+
+    <!-- Visualization -->
+    <div class="space-y-3">
+      <label class="text-sm font-medium">Graph Visualization</label>
+      <div id="graph-canvas" class="border border-border rounded-lg bg-surface min-h-80 p-4 overflow-auto relative">
+        <div id="graph-placeholder" class="flex items-center justify-center h-72 text-sm text-text-muted">
+          ← Paste a graph definition and click Visualize
+        </div>
+        <svg id="graph-svg" class="hidden w-full" style="min-height: 300px;"></svg>
+      </div>
+      <div id="graph-legend" class="hidden flex flex-wrap gap-3 text-xs text-text-muted">
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-green-500/30 border border-green-500"></span> START</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-red-500/30 border border-red-500"></span> END</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-primary/30 border border-primary"></span> Node</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-8 h-0.5 bg-yellow-500"></span> Conditional</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Code output -->
+  <div id="code-section" class="hidden border border-border rounded-xl p-5 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">Generated LangGraph Code</h2>
+      <button id="btn-copy-code" class="text-xs px-3 py-1 bg-surface border border-border rounded hover:border-primary hover:text-primary transition-colors">Copy</button>
+    </div>
+    <pre id="code-output" class="text-xs font-mono text-accent bg-surface rounded-lg p-4 overflow-x-auto whitespace-pre"></pre>
+  </div>
+
+  <AdUnit />
+  <ToolPageCta />
+
+<script>
+(() => {
+  const EXAMPLES = {
+    simple: {
+      nodes: [
+        { id: 'START', type: 'start' },
+        { id: 'agent', label: 'Agent (LLM)', type: 'agent' },
+        { id: 'END', type: 'end' }
+      ],
+      edges: [
+        { from: 'START', to: 'agent' },
+        { from: 'agent', to: 'END' }
+      ]
+    },
+    react: {
+      nodes: [
+        { id: 'START', type: 'start' },
+        { id: 'agent', label: 'LLM Agent', type: 'agent' },
+        { id: 'tools', label: 'Tool Executor', type: 'tool' },
+        { id: 'END', type: 'end' }
+      ],
+      edges: [
+        { from: 'START', to: 'agent' },
+        { from: 'agent', to: 'tools', condition: 'has_tool_calls' },
+        { from: 'agent', to: 'END', condition: 'no_tool_calls' },
+        { from: 'tools', to: 'agent' }
+      ]
+    },
+    parallel: {
+      nodes: [
+        { id: 'START', type: 'start' },
+        { id: 'router', label: 'Router', type: 'agent' },
+        { id: 'researcher', label: 'Researcher', type: 'agent' },
+        { id: 'writer', label: 'Writer', type: 'agent' },
+        { id: 'reviewer', label: 'Reviewer', type: 'agent' },
+        { id: 'END', type: 'end' }
+      ],
+      edges: [
+        { from: 'START', to: 'router' },
+        { from: 'router', to: 'researcher' },
+        { from: 'router', to: 'writer' },
+        { from: 'researcher', to: 'reviewer' },
+        { from: 'writer', to: 'reviewer' },
+        { from: 'reviewer', to: 'END', condition: 'approved' },
+        { from: 'reviewer', to: 'writer', condition: 'needs_revision' }
+      ]
+    }
+  };
+
+  function parseGraph(input) {
+    try {
+      return JSON.parse(input);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function layoutGraph(graph) {
+    const nodes = graph.nodes || [];
+    const edges = graph.edges || [];
+    // Simple layered layout
+    const layers = [];
+    const assigned = new Set();
+    const inDegree = {};
+    nodes.forEach(n => inDegree[n.id] = 0);
+    edges.forEach(e => { if (inDegree[e.to] !== undefined) inDegree[e.to]++; });
+
+    // Layer 0: START or nodes with no incoming
+    const layer0 = nodes.filter(n => n.type === 'start' || inDegree[n.id] === 0);
+    layers.push(layer0.map(n => n.id));
+    layer0.forEach(n => assigned.add(n.id));
+
+    // Subsequent layers
+    for (let i = 0; i < 10 && assigned.size < nodes.length; i++) {
+      const prevLayer = layers[layers.length - 1];
+      const nextLayer = [];
+      edges.forEach(e => {
+        if (prevLayer.includes(e.from) && !assigned.has(e.to)) {
+          if (!nextLayer.includes(e.to)) nextLayer.push(e.to);
+        }
+      });
+      if (nextLayer.length === 0) {
+        // Add remaining unassigned
+        nodes.forEach(n => { if (!assigned.has(n.id) && n.type !== 'end') nextLayer.push(n.id); });
+      }
+      if (nextLayer.length > 0) {
+        layers.push(nextLayer);
+        nextLayer.forEach(id => assigned.add(id));
+      }
+    }
+    // END nodes last
+    const endNodes = nodes.filter(n => n.type === 'end' && !assigned.has(n.id));
+    if (endNodes.length > 0) layers.push(endNodes.map(n => n.id));
+
+    const W = 700, nodeW = 130, nodeH = 40;
+    const layerH = 90;
+    const positions = {};
+    layers.forEach((layer, li) => {
+      const total = layer.length;
+      layer.forEach((id, ni) => {
+        positions[id] = {
+          x: (W / (total + 1)) * (ni + 1) - nodeW / 2,
+          y: li * layerH + 20
+        };
+      });
+    });
+
+    return { nodes, edges, positions, layers, W, layerH, nodeW, nodeH };
+  }
+
+  function renderGraph(graph) {
+    const { nodes, edges, positions, W, layerH, nodeW, nodeH, layers } = layoutGraph(graph);
+    const totalH = (layers.length) * layerH + nodeH + 40;
+
+    const svg = document.getElementById('graph-svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${totalH}`);
+    svg.style.height = totalH + 'px';
+    svg.innerHTML = '';
+
+    // Defs (arrowhead)
+    svg.innerHTML = `<defs>
+      <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#6366f1"/>
+      </marker>
+      <marker id="arrow-cond" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#eab308"/>
+      </marker>
+    </defs>`;
+
+    // Draw edges
+    edges.forEach(edge => {
+      const from = positions[edge.from];
+      const to = positions[edge.to];
+      if (!from || !to) return;
+      const x1 = from.x + nodeW / 2, y1 = from.y + nodeH;
+      const x2 = to.x + nodeW / 2, y2 = to.y;
+      const midY = (y1 + y2) / 2;
+      const isConditional = !!edge.condition;
+      const color = isConditional ? '#eab308' : '#6366f1';
+      const marker = isConditional ? 'arrow-cond' : 'arrow';
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('marker-end', `url(#${marker})`);
+      if (isConditional) path.setAttribute('stroke-dasharray', '5,3');
+      svg.appendChild(path);
+
+      if (edge.condition) {
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', (x1 + x2) / 2 + 4);
+        text.setAttribute('y', midY - 3);
+        text.setAttribute('fill', '#eab308');
+        text.setAttribute('font-size', '9');
+        text.textContent = edge.condition;
+        svg.appendChild(text);
+      }
+    });
+
+    // Draw nodes
+    nodes.forEach(node => {
+      const pos = positions[node.id];
+      if (!pos) return;
+      const isStart = node.type === 'start';
+      const isEnd = node.type === 'end';
+      const isTool = node.type === 'tool';
+      const fill = isStart ? '#166534' : isEnd ? '#7f1d1d' : isTool ? '#1e3a5f' : '#1e1b4b';
+      const stroke = isStart ? '#22c55e' : isEnd ? '#ef4444' : isTool ? '#3b82f6' : '#6366f1';
+      const label = node.label || node.id;
+
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', pos.x);
+      rect.setAttribute('y', pos.y);
+      rect.setAttribute('width', nodeW);
+      rect.setAttribute('height', nodeH);
+      rect.setAttribute('rx', isStart || isEnd ? '20' : '6');
+      rect.setAttribute('fill', fill);
+      rect.setAttribute('stroke', stroke);
+      rect.setAttribute('stroke-width', '1.5');
+      g.appendChild(rect);
+
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', pos.x + nodeW / 2);
+      text.setAttribute('y', pos.y + nodeH / 2 + 4);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('fill', '#e2e8f0');
+      text.setAttribute('font-size', '11');
+      text.setAttribute('font-family', 'monospace');
+      text.textContent = label.length > 16 ? label.slice(0, 14) + '…' : label;
+      g.appendChild(text);
+
+      svg.appendChild(g);
+    });
+
+    document.getElementById('graph-placeholder').classList.add('hidden');
+    svg.classList.remove('hidden');
+    document.getElementById('graph-legend').classList.remove('hidden');
+  }
+
+  function generateCode(graph) {
+    const nodes = (graph.nodes || []).filter(n => n.type !== 'start' && n.type !== 'end');
+    const edges = graph.edges || [];
+    const conditionalEdges = {};
+
+    edges.forEach(e => {
+      if (e.condition) {
+        if (!conditionalEdges[e.from]) conditionalEdges[e.from] = [];
+        conditionalEdges[e.from].push(e);
+      }
+    });
+
+    let code = `from langgraph.graph import StateGraph, END
+from typing import TypedDict, Annotated
+import operator
+
+class AgentState(TypedDict):
+    messages: Annotated[list, operator.add]
+    # Add your state fields here
+
+`;
+
+    nodes.forEach(n => {
+      const fnName = (n.id || 'node').replace(/-/g, '_');
+      code += `def ${fnName}(state: AgentState) -> AgentState:
+    """${n.label || n.id} node"""
+    # TODO: implement ${n.label || n.id} logic
+    return state\n\n`;
+    });
+
+    Object.entries(conditionalEdges).forEach(([from, targets]) => {
+      code += `def route_from_${from.replace(/-/g, '_')}(state: AgentState) -> str:
+    """Conditional routing from ${from}"""
+    # TODO: implement routing logic
+    # Return one of: ${targets.map(t => `"${t.to}"`).join(', ')}
+    return "${targets[0].to}"\n\n`;
+    });
+
+    code += `# Build graph\nworkflow = StateGraph(AgentState)\n\n`;
+    nodes.forEach(n => {
+      const fnName = (n.id || 'node').replace(/-/g, '_');
+      code += `workflow.add_node("${n.id}", ${fnName})\n`;
+    });
+
+    code += '\n';
+    const directEdges = edges.filter(e => !e.condition && e.from !== 'START');
+    const conditionalFroms = new Set(Object.keys(conditionalEdges));
+
+    // Entry point
+    const startEdge = edges.find(e => e.from === 'START');
+    if (startEdge) code += `workflow.set_entry_point("${startEdge.to}")\n\n`;
+
+    directEdges.forEach(e => {
+      if (e.to === 'END') {
+        code += `workflow.add_edge("${e.from}", END)\n`;
+      } else if (!conditionalFroms.has(e.from)) {
+        code += `workflow.add_edge("${e.from}", "${e.to}")\n`;
+      }
+    });
+
+    Object.entries(conditionalEdges).forEach(([from, targets]) => {
+      const routeMap = targets.reduce((acc, t) => { acc[t.condition] = t.to === 'END' ? 'END' : t.to; return acc; }, {});
+      code += `\nworkflow.add_conditional_edges(\n    "${from}",\n    route_from_${from.replace(/-/g, '_')},\n    {\n`;
+      Object.entries(routeMap).forEach(([k, v]) => {
+        code += `        "${k}": ${v === 'END' ? 'END' : '"' + v + '"'},\n`;
+      });
+      code += `    }\n)\n`;
+    });
+
+    code += `\n# Compile and run\napp = workflow.compile()\nresult = app.invoke({"messages": []})\n`;
+    return code;
+  }
+
+  document.getElementById('btn-visualize').addEventListener('click', () => {
+    const input = document.getElementById('graph-input').value.trim();
+    const graph = parseGraph(input);
+    if (!graph) {
+      alert('Invalid JSON. Please check your graph definition.');
+      return;
+    }
+    renderGraph(graph);
+    const code = generateCode(graph);
+    document.getElementById('code-output').textContent = code;
+    document.getElementById('code-section').classList.remove('hidden');
+  });
+
+  document.querySelectorAll('.example-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ex = EXAMPLES[btn.dataset.example];
+      document.getElementById('graph-input').value = JSON.stringify(ex, null, 2);
+    });
+  });
+
+  document.getElementById('btn-copy-code').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('code-output').textContent).then(() => {
+      const btn = document.getElementById('btn-copy-code');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  });
+
+  // Load default example
+  document.getElementById('graph-input').value = JSON.stringify(EXAMPLES.react, null, 2);
+})();
+</script>
+
+  <FaqSection faq={faq} />
+</BaseLayout>
