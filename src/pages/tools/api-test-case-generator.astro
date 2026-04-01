@@ -1,0 +1,345 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Supertest and how does it work?", answer: "Supertest is a Node.js HTTP testing library built on top of superagent. It lets you make HTTP requests to your Express/Fastify/Koa app without starting a real server. You pass your app to request(app), chain HTTP methods, set headers and body, then assert on status codes, response bodies, and headers. It works seamlessly with Jest and Mocha." },
+  { question: "What test cases should I generate for a REST API endpoint?", answer: "For every endpoint, cover: (1) Happy path — valid input, expected 200/201 response. (2) Validation errors — missing required fields, invalid types, out-of-range values (400). (3) Authentication — no token (401), invalid token (401), insufficient permissions (403). (4) Not found — invalid ID (404). (5) Edge cases — empty strings, max length, special characters, SQL injection attempts." },
+  { question: "What is the difference between unit tests and integration tests for APIs?", answer: "Unit tests test individual functions/middleware in isolation with mocked dependencies. Integration tests test the full HTTP request/response cycle — real database, real middleware chain. For APIs, integration tests with Supertest catch real issues (SQL errors, auth middleware bugs, serialization problems) that unit tests with mocks miss. A good strategy: unit test business logic, integration test HTTP layer." },
+  { question: "How do I handle authentication in API tests?", answer: "Common patterns: (1) JWT — generate a test token in beforeAll(), include it as Authorization: Bearer <token> in test requests. (2) API keys — set as env var TEST_API_KEY, include in x-api-key header. (3) Session cookies — use a helper function to log in and extract the session cookie. Store auth state in describe-level beforeAll() to avoid re-authenticating per test." },
+  { question: "How do I test error responses and status codes?", answer: "Supertest: expect(res.status).toBe(400) or chained .expect(400). For response body: expect(res.body.error).toBe('Validation failed'). For headers: expect(res.headers['content-type']).toMatch(/json/). For error cases, test both the status code AND the error message structure — this ensures your error middleware formats errors correctly and consistently." },
+];
+---
+
+<BaseLayout
+  title="API Test Case Generator — Jest & Supertest Tests from Endpoint Definition"
+  description="Generate Jest and Supertest test cases from your API endpoint definition. Define method, path, auth, and request/response schema to get copy-ready test suites."
+  tool="API test case generator, Jest Supertest tests, REST API testing, API test suite generator, integration test generator, Node.js API tests"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">API Test Case Generator</h1>
+  <p class="text-text-muted mb-4">Define your API endpoint and generate a complete Jest + Supertest test suite covering happy paths, validation errors, auth, and edge cases.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Jest + Supertest</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Happy path + error cases</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auth test patterns</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> TypeScript ready</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Endpoint definition -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Endpoint Definition</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-12 gap-4">
+        <div class="sm:col-span-2">
+          <label class="block text-sm text-text-muted mb-1" for="http-method">Method</label>
+          <select id="http-method" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="GET">GET</option>
+            <option value="POST" selected>POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+        </div>
+        <div class="sm:col-span-5">
+          <label class="block text-sm text-text-muted mb-1" for="endpoint-path">Path</label>
+          <input id="endpoint-path" type="text" value="/api/users" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40" placeholder="/api/resource/:id" />
+        </div>
+        <div class="sm:col-span-3">
+          <label class="block text-sm text-text-muted mb-1" for="auth-type">Auth</label>
+          <select id="auth-type" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="none">None</option>
+            <option value="jwt" selected>JWT Bearer</option>
+            <option value="apikey">API Key</option>
+            <option value="session">Session Cookie</option>
+          </select>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm text-text-muted mb-1" for="success-status">Success Status</label>
+          <select id="success-status" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <option value="200">200 OK</option>
+            <option value="201" selected>201 Created</option>
+            <option value="204">204 No Content</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Request body fields -->
+    <div class="bg-bg-card border border-border rounded-xl p-5" id="body-section">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold">Request Body Fields</h2>
+        <button id="add-field-btn" class="text-xs bg-primary/10 text-primary border border-primary/30 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors">+ Add Field</button>
+      </div>
+      <div id="fields-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Test cases to generate -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h2 class="font-semibold mb-4">Test Cases to Include</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="test-cases-grid"></div>
+    </div>
+
+    <!-- Generated code -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Generated Test Suite</h2>
+        <button id="copy-code-btn" class="text-xs bg-bg border border-border px-3 py-1.5 rounded-lg hover:border-primary hover:text-primary transition-colors">Copy</button>
+      </div>
+      <pre id="test-output" class="bg-bg rounded-lg p-4 text-xs font-mono overflow-x-auto text-green-400 whitespace-pre max-h-[500px] overflow-y-auto"></pre>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="API Test Case Generator" relatedTags={['testing', 'api', 'jest', 'nodejs', 'typescript', 'supertest']} />
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var fields = [
+    { name: 'email', type: 'string', required: true, example: 'user@example.com' },
+    { name: 'password', type: 'string', required: true, example: 'SecurePass123' },
+    { name: 'name', type: 'string', required: false, example: 'John Doe' },
+  ];
+
+  var TEST_CASE_OPTIONS = [
+    { id: 'happy', label: 'Happy path (valid input)', checked: true },
+    { id: 'missing', label: 'Missing required fields (400)', checked: true },
+    { id: 'invalid_type', label: 'Invalid field types (400)', checked: true },
+    { id: 'auth_missing', label: 'No auth token (401)', checked: true },
+    { id: 'auth_invalid', label: 'Invalid auth token (401)', checked: true },
+    { id: 'not_found', label: 'Resource not found (404)', checked: false },
+    { id: 'conflict', label: 'Duplicate resource (409)', checked: false },
+    { id: 'empty_body', label: 'Empty request body', checked: true },
+  ];
+
+  var fieldsList = document.getElementById('fields-list');
+  var addFieldBtn = document.getElementById('add-field-btn');
+  var testCasesGrid = document.getElementById('test-cases-grid');
+  var testOutput = document.getElementById('test-output');
+  var copyCodeBtn = document.getElementById('copy-code-btn');
+  var bodySection = document.getElementById('body-section');
+
+  function renderFields() {
+    fieldsList.innerHTML = fields.map(function (f, i) {
+      return '<div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center p-3 border border-border rounded-lg bg-bg">' +
+        '<div class="sm:col-span-3"><input class="field-name w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/40" data-idx="' + i + '" value="' + f.name + '" placeholder="fieldName" /></div>' +
+        '<div class="sm:col-span-2"><select class="field-type w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40" data-idx="' + i + '">' +
+        ['string', 'number', 'boolean', 'email', 'uuid', 'date'].map(function (t) { return '<option value="' + t + '"' + (f.type === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="sm:col-span-4"><input class="field-example w-full bg-bg-card border border-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/40" data-idx="' + i + '" value="' + f.example + '" placeholder="Example value" /></div>' +
+        '<div class="sm:col-span-2 flex items-center gap-2"><label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="field-required accent-primary" data-idx="' + i + '"' + (f.required ? ' checked' : '') + ' /> Required</label></div>' +
+        '<div class="sm:col-span-1"><button class="remove-field text-xs text-text-muted hover:text-red-400" data-idx="' + i + '">✕</button></div>' +
+        '</div>';
+    }).join('');
+
+    fieldsList.querySelectorAll('.field-name').forEach(function (el) { el.addEventListener('input', function () { fields[+el.dataset.idx].name = el.value; updateOutput(); }); });
+    fieldsList.querySelectorAll('.field-type').forEach(function (el) { el.addEventListener('change', function () { fields[+el.dataset.idx].type = el.value; updateOutput(); }); });
+    fieldsList.querySelectorAll('.field-example').forEach(function (el) { el.addEventListener('input', function () { fields[+el.dataset.idx].example = el.value; updateOutput(); }); });
+    fieldsList.querySelectorAll('.field-required').forEach(function (el) { el.addEventListener('change', function () { fields[+el.dataset.idx].required = el.checked; updateOutput(); }); });
+    fieldsList.querySelectorAll('.remove-field').forEach(function (btn) { btn.addEventListener('click', function () { fields.splice(+btn.dataset.idx, 1); renderFields(); updateOutput(); }); });
+  }
+
+  function renderTestCases() {
+    testCasesGrid.innerHTML = TEST_CASE_OPTIONS.map(function (tc) {
+      return '<label class="flex items-center gap-2 cursor-pointer text-sm p-2 rounded hover:bg-bg/50">' +
+        '<input type="checkbox" class="tc-check accent-primary" data-id="' + tc.id + '"' + (tc.checked ? ' checked' : '') + ' />' +
+        tc.label + '</label>';
+    }).join('');
+    testCasesGrid.querySelectorAll('.tc-check').forEach(function (cb) {
+      cb.addEventListener('change', updateOutput);
+    });
+  }
+
+  function getSelectedTests() {
+    var sel = new Set();
+    document.querySelectorAll('.tc-check:checked').forEach(function (cb) { sel.add(cb.dataset.id); });
+    return sel;
+  }
+
+  function getAuthHeader(authType) {
+    if (authType === 'jwt') return "    .set('Authorization', `Bearer ${authToken}`)";
+    if (authType === 'apikey') return "    .set('x-api-key', process.env.TEST_API_KEY || 'test-api-key')";
+    if (authType === 'session') return "    .set('Cookie', `session=${sessionCookie}`)";
+    return '';
+  }
+
+  function buildValidBody() {
+    var obj = {};
+    fields.forEach(function (f) { obj[f.name] = f.type === 'number' ? 42 : (f.type === 'boolean' ? true : f.example); });
+    return obj;
+  }
+
+  function updateOutput() {
+    var method = document.getElementById('http-method').value.toLowerCase();
+    var path = document.getElementById('endpoint-path').value || '/api/resource';
+    var authType = document.getElementById('auth-type').value;
+    var successStatus = document.getElementById('success-status').value;
+    var selectedTests = getSelectedTests();
+    var hasBody = ['post', 'put', 'patch'].includes(method);
+    var validBody = buildValidBody();
+    var authHeader = getAuthHeader(authType);
+    var requiredFields = fields.filter(function (f) { return f.required; });
+
+    var lines = [];
+    lines.push("import request from 'supertest';");
+    lines.push("import { app } from '../app';  // your Express/Fastify app");
+    if (authType === 'jwt') {
+      lines.push("import { generateTestToken } from '../test-utils';");
+    }
+    lines.push('');
+    lines.push("describe('" + method.toUpperCase() + " " + path + "', () => {");
+
+    if (authType === 'jwt') {
+      lines.push('  let authToken: string;');
+      lines.push('');
+      lines.push('  beforeAll(async () => {');
+      lines.push("    authToken = generateTestToken({ userId: 'test-user-id', role: 'user' });");
+      lines.push('  });');
+      lines.push('');
+    }
+
+    if (selectedTests.has('happy') && method !== 'delete') {
+      lines.push("  it('should return " + successStatus + " for valid input', async () => {");
+      lines.push("    const res = await request(app)");
+      lines.push("      ." + method + "('" + path + "')");
+      if (authHeader) lines.push(authHeader + ';');
+      if (hasBody && fields.length) lines.push("      .send(" + JSON.stringify(validBody) + ");");
+      lines.push('');
+      lines.push("    expect(res.status).toBe(" + successStatus + ");");
+      if (successStatus !== '204') {
+        lines.push("    expect(res.body).toBeDefined();");
+        if (method === 'post' || method === 'put') lines.push("    expect(res.headers['content-type']).toMatch(/json/);");
+      }
+      lines.push('  });');
+      lines.push('');
+    }
+
+    if (selectedTests.has('missing') && hasBody && requiredFields.length) {
+      requiredFields.slice(0, 2).forEach(function (f) {
+        var bodyWithout = Object.assign({}, validBody);
+        delete bodyWithout[f.name];
+        lines.push("  it('should return 400 when " + f.name + " is missing', async () => {");
+        lines.push("    const res = await request(app)");
+        lines.push("      ." + method + "('" + path + "')");
+        if (authHeader) lines.push(authHeader + ';');
+        lines.push("      .send(" + JSON.stringify(bodyWithout) + ");");
+        lines.push('');
+        lines.push("    expect(res.status).toBe(400);");
+        lines.push("    expect(res.body.error).toBeDefined();");
+        lines.push('  });');
+        lines.push('');
+      });
+    }
+
+    if (selectedTests.has('invalid_type') && hasBody && fields.length) {
+      lines.push("  it('should return 400 for invalid field types', async () => {");
+      lines.push("    const res = await request(app)");
+      lines.push("      ." + method + "('" + path + "')");
+      if (authHeader) lines.push(authHeader + ';');
+      var invalidBody = Object.assign({}, validBody);
+      if (fields[0]) invalidBody[fields[0].name] = 12345;
+      lines.push("      .send(" + JSON.stringify(invalidBody) + ");");
+      lines.push('');
+      lines.push("    expect(res.status).toBe(400);");
+      lines.push('  });');
+      lines.push('');
+    }
+
+    if (selectedTests.has('auth_missing') && authType !== 'none') {
+      lines.push("  it('should return 401 when auth token is missing', async () => {");
+      lines.push("    const res = await request(app)");
+      lines.push("      ." + method + "('" + path + "')");
+      if (hasBody && fields.length) lines.push("      .send(" + JSON.stringify(validBody) + ");");
+      lines.push('');
+      lines.push("    expect(res.status).toBe(401);");
+      lines.push('  });');
+      lines.push('');
+    }
+
+    if (selectedTests.has('auth_invalid') && authType === 'jwt') {
+      lines.push("  it('should return 401 for an invalid JWT token', async () => {");
+      lines.push("    const res = await request(app)");
+      lines.push("      ." + method + "('" + path + "')");
+      lines.push("      .set('Authorization', 'Bearer invalid.token.here')");
+      if (hasBody && fields.length) lines.push("      .send(" + JSON.stringify(validBody) + ");");
+      lines.push('');
+      lines.push("    expect(res.status).toBe(401);");
+      lines.push('  });');
+      lines.push('');
+    }
+
+    if (selectedTests.has('not_found') && path.includes(':id')) {
+      lines.push("  it('should return 404 for a non-existent resource', async () => {");
+      var notFoundPath = path.replace(':id', 'non-existent-id-000');
+      lines.push("    const res = await request(app)");
+      lines.push("      ." + method + "('" + notFoundPath + "')");
+      if (authHeader) lines.push(authHeader + ';');
+      lines.push('');
+      lines.push("    expect(res.status).toBe(404);");
+      lines.push('  });');
+      lines.push('');
+    }
+
+    if (selectedTests.has('conflict') && method === 'post') {
+      lines.push("  it('should return 409 for a duplicate resource', async () => {");
+      lines.push("    // Create the resource once");
+      lines.push("    await request(app)." + method + "('" + path + "')" + (authHeader ? authHeader.trimStart() : '') + ".send(" + JSON.stringify(validBody) + ");");
+      lines.push("    // Attempt to create it again");
+      lines.push("    const res = await request(app)");
+      lines.push("      ." + method + "('" + path + "')");
+      if (authHeader) lines.push(authHeader + ';');
+      lines.push("      .send(" + JSON.stringify(validBody) + ");");
+      lines.push('');
+      lines.push("    expect(res.status).toBe(409);");
+      lines.push('  });');
+      lines.push('');
+    }
+
+    if (selectedTests.has('empty_body') && hasBody) {
+      lines.push("  it('should return 400 for an empty request body', async () => {");
+      lines.push("    const res = await request(app)");
+      lines.push("      ." + method + "('" + path + "')");
+      if (authHeader) lines.push(authHeader + ';');
+      lines.push("      .send({});");
+      lines.push('');
+      lines.push("    expect(res.status).toBe(400);");
+      lines.push('  });');
+      lines.push('');
+    }
+
+    lines.push('});');
+
+    testOutput.textContent = lines.join('\n');
+  }
+
+  var methodSel = document.getElementById('http-method');
+  methodSel.addEventListener('change', function () {
+    var noBody = ['GET', 'DELETE'].includes(methodSel.value);
+    bodySection.style.opacity = noBody ? '0.5' : '1';
+    updateOutput();
+  });
+
+  ['http-method', 'endpoint-path', 'auth-type', 'success-status'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', updateOutput);
+  });
+  document.getElementById('endpoint-path').addEventListener('input', updateOutput);
+
+  addFieldBtn.addEventListener('click', function () {
+    fields.push({ name: 'field_' + (fields.length + 1), type: 'string', required: false, example: 'value' });
+    renderFields(); updateOutput();
+  });
+
+  copyCodeBtn.addEventListener('click', function () {
+    navigator.clipboard.writeText(testOutput.textContent).then(function () {
+      copyCodeBtn.textContent = 'Copied!'; setTimeout(function () { copyCodeBtn.textContent = 'Copy'; }, 2000);
+    });
+  });
+
+  renderFields();
+  renderTestCases();
+  updateOutput();
+})();
+</script>
