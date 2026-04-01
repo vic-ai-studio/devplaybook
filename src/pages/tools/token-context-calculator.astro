@@ -1,0 +1,258 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "How are tokens counted in LLMs?",
+    answer: "Tokens are the basic units LLMs process. One token is roughly 4 characters or 0.75 words in English. Common words like 'the', 'is', 'a' are single tokens. Longer words like 'understanding' may be 2-3 tokens. Code and non-English text often use more tokens per word. Most API providers use BPE (Byte Pair Encoding) tokenization, with slight differences per model family."
+  },
+  {
+    question: "What happens when I exceed the context window?",
+    answer: "When your input exceeds the model's context window, you get an error (context length exceeded) or the model silently truncates older parts of the conversation. The model cannot 'remember' anything outside its context window — it's stateless per API call. For long documents, use chunking, RAG, or models with large context windows (Gemini 1.5 Pro: 1M tokens, Claude: 200K tokens)."
+  },
+  {
+    question: "What is the difference between input and output tokens?",
+    answer: "Input tokens are everything you send to the model: system prompt + conversation history + current user message. Output tokens are what the model generates in its response. APIs bill them separately, with output typically 3-5x more expensive than input. A 1000-token input generating a 500-token output costs: (1000 × input_price) + (500 × output_price)."
+  },
+  {
+    question: "How can I reduce token usage and costs?",
+    answer: "Key strategies: (1) Compress system prompts — remove redundant instructions. (2) Summarize chat history instead of sending full logs. (3) Use structured data formats (JSON vs prose) — JSON is often more token-efficient. (4) Enable prompt caching (Anthropic, OpenAI) for repeated system prompts. (5) Use smaller models for simple tasks. (6) Truncate retrieved documents to relevant sections only."
+  },
+  {
+    question: "What does 'context utilization' mean?",
+    answer: "Context utilization is the percentage of a model's maximum context window that your current input uses. At 50%, you have headroom for conversation history or long outputs. At 90%+, you risk truncation or errors. A healthy target for most applications is keeping inputs under 70% of the context window to leave room for the model's response."
+  }
+];
+---
+
+<BaseLayout
+  title="Token Context Calculator — Estimate LLM Token Count and Context Usage"
+  description="Calculate token counts for any text, estimate LLM API costs, and check context window utilization across GPT-4, Claude, Gemini, and Llama models. Free token counter."
+  tool="token context calculator, llm token counter, gpt token estimator, context window calculator, ai api cost estimator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Token Context Calculator",
+    "url": "https://devplaybook.cc/tools/token-context-calculator",
+    "description": "Estimate token counts, context window usage, and API costs for LLM requests across GPT-4, Claude, Gemini, and other models.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Token Context Calculator</h1>
+  <p class="text-text-muted mb-4">
+    Estimate token counts, context window utilization, and API costs for your LLM requests. Supports all major models.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real-time token count</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 12 models supported</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost estimation</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <!-- Text inputs -->
+    <div class="lg:col-span-2 space-y-4">
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-sm font-medium">System Prompt</label>
+          <span id="sys-tokens" class="text-xs text-text-muted font-mono">0 tokens</span>
+        </div>
+        <textarea id="sys-prompt" class="w-full h-24 px-3 py-2 bg-surface border border-border rounded-lg text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-text-muted" placeholder="You are a helpful assistant..."></textarea>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-sm font-medium">User Message / Conversation History</label>
+          <span id="user-tokens" class="text-xs text-text-muted font-mono">0 tokens</span>
+        </div>
+        <textarea id="user-msg" class="w-full h-32 px-3 py-2 bg-surface border border-border rounded-lg text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-text-muted" placeholder="User: How do I...&#10;Assistant: ...&#10;User: Can you elaborate?"></textarea>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-sm font-medium">Expected Output (optional)</label>
+          <span id="out-tokens" class="text-xs text-text-muted font-mono">0 tokens</span>
+        </div>
+        <textarea id="out-msg" class="w-full h-20 px-3 py-2 bg-surface border border-border rounded-lg text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-text-muted" placeholder="Expected response or estimated length..."></textarea>
+      </div>
+    </div>
+
+    <!-- Model selector & stats -->
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-2">Model</label>
+        <select id="model-select" class="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
+        </select>
+      </div>
+
+      <!-- Stats cards -->
+      <div class="border border-border rounded-xl p-4 space-y-3">
+        <h3 class="text-sm font-semibold">Token Summary</h3>
+        <div class="space-y-2">
+          <div class="flex justify-between text-sm">
+            <span class="text-text-muted">Total input</span>
+            <span id="total-input" class="font-mono font-medium">0</span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-text-muted">Output estimate</span>
+            <span id="total-output" class="font-mono font-medium">0</span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-text-muted">Context window</span>
+            <span id="ctx-window" class="font-mono font-medium text-text-muted">—</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs text-text-muted mb-1">
+            <span>Context utilization</span>
+            <span id="ctx-pct">0%</span>
+          </div>
+          <div class="h-2 bg-surface rounded-full overflow-hidden border border-border">
+            <div id="ctx-bar" class="h-full rounded-full transition-all duration-300 bg-green-500" style="width:0%"></div>
+          </div>
+          <div id="ctx-warning" class="hidden text-xs text-yellow-400 mt-1">⚠ Approaching context limit</div>
+          <div id="ctx-danger" class="hidden text-xs text-red-400 mt-1">✗ Exceeds context window</div>
+        </div>
+      </div>
+
+      <div class="border border-border rounded-xl p-4 space-y-3">
+        <h3 class="text-sm font-semibold">Estimated Cost</h3>
+        <div class="space-y-2">
+          <div class="flex justify-between text-sm">
+            <span class="text-text-muted">Input cost</span>
+            <span id="input-cost" class="font-mono font-medium">$0.000000</span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-text-muted">Output cost</span>
+            <span id="output-cost" class="font-mono font-medium">$0.000000</span>
+          </div>
+          <div class="flex justify-between text-sm border-t border-border pt-2">
+            <span class="font-medium">Total</span>
+            <span id="total-cost" class="font-mono font-bold">$0.000000</span>
+          </div>
+        </div>
+        <p class="text-xs text-text-muted">Per single API call. 1000 calls = <span id="cost-1k">$0.00</span></p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-2">Words → Tokens (quick ref)</label>
+        <div class="border border-border rounded-lg p-3 text-xs space-y-1 text-text-muted">
+          <div class="flex justify-between"><span>100 words</span><span class="font-mono">≈ 133 tokens</span></div>
+          <div class="flex justify-between"><span>500 words</span><span class="font-mono">≈ 667 tokens</span></div>
+          <div class="flex justify-between"><span>1,000 words</span><span class="font-mono">≈ 1,333 tokens</span></div>
+          <div class="flex justify-between"><span>10 pages (2500w)</span><span class="font-mono">≈ 3,333 tokens</span></div>
+          <div class="flex justify-between"><span>1 novel (80,000w)</span><span class="font-mono">≈ 106,667 tokens</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit />
+  <ToolPageCta />
+
+<script>
+(() => {
+  const MODELS = [
+    { name: 'GPT-4o', group: 'OpenAI', contextK: 128, inputPerM: 5.00, outputPerM: 15.00 },
+    { name: 'GPT-4o Mini', group: 'OpenAI', contextK: 128, inputPerM: 0.15, outputPerM: 0.60 },
+    { name: 'o1', group: 'OpenAI', contextK: 200, inputPerM: 15.00, outputPerM: 60.00 },
+    { name: 'o1-mini', group: 'OpenAI', contextK: 128, inputPerM: 3.00, outputPerM: 12.00 },
+    { name: 'Claude 3.5 Sonnet', group: 'Anthropic', contextK: 200, inputPerM: 3.00, outputPerM: 15.00 },
+    { name: 'Claude 3.5 Haiku', group: 'Anthropic', contextK: 200, inputPerM: 0.80, outputPerM: 4.00 },
+    { name: 'Claude 3 Opus', group: 'Anthropic', contextK: 200, inputPerM: 15.00, outputPerM: 75.00 },
+    { name: 'Gemini 1.5 Pro', group: 'Google', contextK: 1000, inputPerM: 3.50, outputPerM: 10.50 },
+    { name: 'Gemini 2.0 Flash', group: 'Google', contextK: 1000, inputPerM: 0.10, outputPerM: 0.40 },
+    { name: 'Llama 3.3 70B (API)', group: 'Meta', contextK: 128, inputPerM: 0.59, outputPerM: 0.79 },
+    { name: 'Llama 3.1 8B (API)', group: 'Meta', contextK: 128, inputPerM: 0.10, outputPerM: 0.10 },
+    { name: 'Mistral Large 2', group: 'Mistral', contextK: 128, inputPerM: 3.00, outputPerM: 9.00 },
+  ];
+
+  // Populate select
+  const sel = document.getElementById('model-select');
+  let lastGroup = '';
+  MODELS.forEach((m, i) => {
+    if (m.group !== lastGroup) {
+      const og = document.createElement('optgroup');
+      og.label = m.group;
+      sel.appendChild(og);
+      lastGroup = m.group;
+    }
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = m.name;
+    sel.lastChild.appendChild(opt);
+  });
+
+  // Rough tokenizer: ~1 token per 4 chars (heuristic)
+  function countTokens(text) {
+    if (!text.trim()) return 0;
+    // Better heuristic: count words and multiply
+    const words = text.trim().split(/\s+/).length;
+    const chars = text.length;
+    return Math.round((words * 1.33 + chars / 4) / 2);
+  }
+
+  function update() {
+    const sys = document.getElementById('sys-prompt').value;
+    const user = document.getElementById('user-msg').value;
+    const out = document.getElementById('out-msg').value;
+
+    const sysTok = countTokens(sys);
+    const userTok = countTokens(user);
+    const outTok = countTokens(out) || Math.round((sysTok + userTok) * 0.3);
+
+    document.getElementById('sys-tokens').textContent = sysTok.toLocaleString() + ' tokens';
+    document.getElementById('user-tokens').textContent = userTok.toLocaleString() + ' tokens';
+    document.getElementById('out-tokens').textContent = countTokens(out).toLocaleString() + ' tokens';
+
+    const totalIn = sysTok + userTok;
+    document.getElementById('total-input').textContent = totalIn.toLocaleString();
+    document.getElementById('total-output').textContent = outTok.toLocaleString();
+
+    const modelIdx = parseInt(sel.value);
+    const model = MODELS[modelIdx];
+    const ctxTokens = model.contextK * 1000;
+    document.getElementById('ctx-window').textContent = model.contextK >= 1000
+      ? (model.contextK / 1000) + 'M tokens'
+      : model.contextK + 'K tokens';
+
+    const pct = Math.round((totalIn / ctxTokens) * 100);
+    document.getElementById('ctx-pct').textContent = pct + '%';
+    const bar = document.getElementById('ctx-bar');
+    bar.style.width = Math.min(100, pct) + '%';
+    bar.className = 'h-full rounded-full transition-all duration-300 ' +
+      (pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-green-500');
+
+    document.getElementById('ctx-warning').classList.toggle('hidden', pct < 80 || pct >= 100);
+    document.getElementById('ctx-danger').classList.toggle('hidden', pct < 100);
+
+    const inputCost = (totalIn / 1_000_000) * model.inputPerM;
+    const outputCost = (outTok / 1_000_000) * model.outputPerM;
+    const totalCost = inputCost + outputCost;
+
+    document.getElementById('input-cost').textContent = '$' + inputCost.toFixed(6);
+    document.getElementById('output-cost').textContent = '$' + outputCost.toFixed(6);
+    document.getElementById('total-cost').textContent = '$' + totalCost.toFixed(6);
+    document.getElementById('cost-1k').textContent = '$' + (totalCost * 1000).toFixed(2);
+  }
+
+  ['sys-prompt', 'user-msg', 'out-msg'].forEach(id => {
+    document.getElementById(id).addEventListener('input', update);
+  });
+  sel.addEventListener('change', update);
+
+  // Preload example
+  document.getElementById('sys-prompt').value = 'You are a helpful developer assistant. Answer questions about JavaScript, TypeScript, and web development. Be concise and accurate. If unsure, say so.';
+  document.getElementById('user-msg').value = 'Can you explain how async/await works in JavaScript and when I should use it instead of promises?';
+  update();
+})();
+</script>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

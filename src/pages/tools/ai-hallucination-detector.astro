@@ -1,0 +1,353 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  {
+    question: "What is LLM hallucination?",
+    answer: "LLM hallucination refers to when an AI model generates text that sounds confident and plausible but contains false, fabricated, or unverifiable information. This can include made-up citations, incorrect facts, non-existent URLs, or fabricated statistics. Hallucinations occur because LLMs predict text based on patterns rather than retrieving verified facts from a knowledge base."
+  },
+  {
+    question: "What patterns does this tool detect?",
+    answer: "This tool scans for common hallucination risk signals: overly precise statistics without sources, citation patterns (e.g., '[Author et al., 2023]'), URL mentions that can't be verified, absolute confidence language ('definitely', 'certainly', 'always'), vague hedge phrases masking uncertainty, and numeric precision anomalies like suspiciously round or unverifiable percentages."
+  },
+  {
+    question: "How can I reduce hallucinations in production?",
+    answer: "Key strategies: (1) Retrieval Augmented Generation (RAG) — ground the model in verified documents. (2) Ask the model to cite sources and then verify them. (3) Use temperature 0 for factual queries. (4) Prompt the model to say 'I don't know' when uncertain. (5) Add a verification step with a second LLM call asking 'Is this claim verifiable?'. (6) Use structured output formats to constrain responses."
+  },
+  {
+    question: "Which LLMs hallucinate the most?",
+    answer: "All LLMs hallucinate to some degree. Smaller models (7B-13B parameters) tend to hallucinate more than frontier models. Models optimized for factual accuracy like GPT-4 with browsing, Claude with documents, or Gemini with Google Search integration hallucinate less on verifiable claims. Fine-tuned models trained on domain-specific data also reduce hallucination in their target domain."
+  },
+  {
+    question: "What is the difference between hallucination and confabulation?",
+    answer: "These terms are often used interchangeably in AI contexts. Technically, confabulation (from neuroscience) refers to generating plausible-sounding but false memories without intent to deceive — which maps well to LLM behavior. 'Hallucination' has become the industry standard term for LLM-generated falsehoods. Both describe the same phenomenon: confident generation of unverifiable or false information."
+  }
+];
+---
+
+<BaseLayout
+  title="AI Hallucination Detector — Check LLM Responses for Factual Risks"
+  description="Scan AI-generated text for hallucination risk signals: fabricated citations, unverifiable statistics, overconfident language, and suspect factual claims. Free tool for LLM quality assurance."
+  tool="ai hallucination detector, llm hallucination checker, ai fact checker, llm response validator, ai output quality"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "AI Hallucination Detector",
+    "url": "https://devplaybook.cc/tools/ai-hallucination-detector",
+    "description": "Scan LLM-generated text for hallucination risk signals including fabricated citations, overconfident claims, and unverifiable statistics.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">AI Hallucination Detector</h1>
+  <p class="text-text-muted mb-4">
+    Paste an AI-generated response to scan for hallucination risk signals — fabricated citations, overconfident claims, suspect statistics, and verification gaps.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 8 risk signal categories</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Risk score 0–100</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Highlighted problem spans</span>
+  </div>
+
+  <div class="space-y-4 mb-6">
+    <div>
+      <label class="block text-sm font-medium mb-2">AI-Generated Text to Analyze</label>
+      <textarea
+        id="input-text"
+        class="w-full h-48 px-3 py-2 bg-surface border border-border rounded-lg text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-text-muted"
+        placeholder="Paste an LLM response here to check for hallucination risk signals..."
+      ></textarea>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+      <button id="btn-analyze" class="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+        Analyze for Hallucinations
+      </button>
+      <button id="btn-example" class="px-4 py-2 bg-surface border border-border text-sm rounded-lg hover:border-primary hover:text-primary transition-colors">
+        Load Example
+      </button>
+      <button id="btn-clear" class="px-4 py-2 bg-surface border border-border text-sm rounded-lg hover:border-primary hover:text-primary transition-colors">
+        Clear
+      </button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="hidden space-y-6">
+    <!-- Risk Score -->
+    <div class="border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold">Hallucination Risk Score</h2>
+        <span id="risk-label" class="text-sm font-medium px-3 py-1 rounded-full"></span>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="flex-1 h-3 bg-surface rounded-full overflow-hidden border border-border">
+          <div id="risk-bar" class="h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+        <span id="risk-score" class="text-2xl font-bold font-mono w-16 text-right"></span>
+      </div>
+      <p id="risk-summary" class="text-sm text-text-muted mt-3"></p>
+    </div>
+
+    <!-- Detected Signals -->
+    <div id="signals-section" class="hidden border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-3">Detected Risk Signals</h2>
+      <div id="signals-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Highlighted Text -->
+    <div class="border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-3">Annotated Response</h2>
+      <div id="highlighted-text" class="text-sm leading-7 font-mono whitespace-pre-wrap break-words"></div>
+      <div class="mt-3 flex flex-wrap gap-3 text-xs text-text-muted">
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-red-500/30 border border-red-500/50"></span> High risk</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-yellow-500/30 border border-yellow-500/50"></span> Medium risk</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-blue-500/30 border border-blue-500/50"></span> Low risk / Note</span>
+      </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="border border-border rounded-xl p-5">
+      <h2 class="text-base font-semibold mb-3">Verification Recommendations</h2>
+      <div id="recommendations-list" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <AdUnit />
+  <ToolPageCta />
+
+<script>
+(() => {
+  const PATTERNS = [
+    {
+      id: 'citation',
+      name: 'Academic Citations',
+      severity: 'high',
+      regex: /\b[A-Z][a-z]+ et al\.,?\s*\d{4}\b|\b[A-Z][a-z]+,\s*[A-Z]\.,\s*\d{4}\b|\(\d{4}\)/g,
+      description: 'Academic citations that may reference non-existent papers',
+      recommendation: 'Verify each citation on Google Scholar, Semantic Scholar, or the publisher\'s website. LLMs frequently generate plausible-sounding but fabricated references.'
+    },
+    {
+      id: 'precise_stats',
+      name: 'Precise Statistics',
+      severity: 'high',
+      regex: /\b\d{1,3}(?:\.\d+)?%\b(?!\s*(?:of\s+)?(?:the\s+)?(?:time|cases|users|respondents)?)/g,
+      description: 'Specific percentages that may be fabricated or taken out of context',
+      recommendation: 'Trace each statistic to its original source. Round numbers (50%, 75%) may be generalizations; oddly specific ones (73.2%) often signal fabrication.'
+    },
+    {
+      id: 'url_mention',
+      name: 'URL / Domain References',
+      severity: 'high',
+      regex: /https?:\/\/[^\s)>\"]+|(?:www\.)[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s)>\".]*/g,
+      description: 'URLs that may point to non-existent resources',
+      recommendation: 'Manually visit each URL. LLMs often fabricate plausible-looking links, especially documentation pages, research papers, and product URLs.'
+    },
+    {
+      id: 'overconfident',
+      name: 'Overconfident Language',
+      severity: 'medium',
+      regex: /\b(?:definitely|certainly|always|never|absolutely|without\s+(?:a\s+)?doubt|it\s+is\s+(?:a\s+)?fact|proven|universally|guaranteed|undoubtedly)\b/gi,
+      description: 'Absolute certainty language that may mask uncertainty',
+      recommendation: 'Treat absolute claims with skepticism. LLMs trained to be helpful often project more confidence than warranted. Ask the model to rate its own confidence or rephrase using hedged language.'
+    },
+    {
+      id: 'year_claim',
+      name: 'Year / Date Claims',
+      severity: 'medium',
+      regex: /\bin\s+(?:19|20)\d{2}\b|\b(?:19|20)\d{2}\s+(?:study|research|paper|report|survey|article)\b/gi,
+      description: 'Year-specific claims about publications, events, or data',
+      recommendation: 'Verify date-specific claims. LLMs may confuse years, mix up publication dates, or reference events from after their training cutoff.'
+    },
+    {
+      id: 'named_person',
+      name: 'Named Individuals / Quotes',
+      severity: 'medium',
+      regex: /(?:according\s+to|as\s+(?:stated|said|noted|written)\s+by|(?:Dr|Prof|Mr|Ms|Mrs)\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/gi,
+      description: 'Attributions to specific individuals that may be misquoted or fabricated',
+      recommendation: 'Verify quotes and attributions directly. LLMs frequently generate plausible-sounding quotes attributed to real people that were never said.'
+    },
+    {
+      id: 'hedge_uncertainty',
+      name: 'Uncertainty Hedges',
+      severity: 'low',
+      regex: /\b(?:it\s+(?:may|might|could|should)|I\s+(?:believe|think|assume)|(?:likely|probably|possibly|perhaps|seemingly|apparently))\b/gi,
+      description: 'Hedging language that signals the model is uncertain',
+      recommendation: 'These phrases are positive signals — the model is flagging its own uncertainty. However, verify the underlying claim anyway, as the hedge may not be strong enough.'
+    },
+    {
+      id: 'round_numbers',
+      name: 'Round Number Claims',
+      severity: 'low',
+      regex: /\b(?:over|about|around|approximately|nearly|more\s+than)\s+\d+(?:,000|\s*(?:thousand|million|billion))?\b/gi,
+      description: 'Vague quantity claims that may be approximations or fabrications',
+      recommendation: 'Round numbers often indicate the model is estimating rather than citing a verified figure. Look for primary sources to confirm the actual magnitude.'
+    }
+  ];
+
+  const RECOMMENDATIONS = {
+    high: [
+      'Use Retrieval Augmented Generation (RAG) to ground responses in verified documents',
+      'Ask the model to provide sources, then independently verify each one',
+      'Run a second LLM pass asking: "Are any claims in this text unverifiable or potentially false?"',
+    ],
+    medium: [
+      'Set temperature to 0 for factual queries to reduce creative generation',
+      'Prompt the model explicitly: "If you are uncertain, say \'I don\'t know\' rather than guessing"',
+      'Cross-reference key facts with authoritative sources before publishing',
+    ],
+    low: [
+      'This response has a low hallucination signal count — still verify any specific claims before using in production',
+      'Consider adding source citations to the prompt: "Include a verifiable source for each factual claim"',
+    ]
+  };
+
+  function analyze(text) {
+    const findings = [];
+    let totalMatches = 0;
+    const annotated = text;
+    const matchRanges = [];
+
+    for (const pattern of PATTERNS) {
+      const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        totalMatches++;
+        matchRanges.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          severity: pattern.severity,
+          id: pattern.id,
+          name: pattern.name,
+          matched: match[0]
+        });
+      }
+      const count = (text.match(new RegExp(pattern.regex.source, pattern.regex.flags)) || []).length;
+      if (count > 0) {
+        findings.push({ ...pattern, count });
+      }
+    }
+
+    // Score: high=15pts each (cap 60), medium=8pts each (cap 24), low=3pts each (cap 9) + length factor
+    let score = 0;
+    const highCount = findings.filter(f => f.severity === 'high').reduce((s, f) => s + f.count, 0);
+    const medCount = findings.filter(f => f.severity === 'medium').reduce((s, f) => s + f.count, 0);
+    const lowCount = findings.filter(f => f.severity === 'low').reduce((s, f) => s + f.count, 0);
+    score = Math.min(60, highCount * 15) + Math.min(24, medCount * 8) + Math.min(9, lowCount * 3);
+    // Normalize by text length — shorter texts with same signals = higher risk ratio
+    const wordCount = text.split(/\s+/).length;
+    if (wordCount < 50 && score > 0) score = Math.min(100, score * 1.3);
+    score = Math.round(Math.min(100, score));
+
+    return { findings, score, matchRanges, highCount, medCount, lowCount };
+  }
+
+  function getRiskLevel(score) {
+    if (score >= 60) return { label: 'High Risk', color: 'text-red-400', bg: 'bg-red-500/20 text-red-400', bar: 'bg-red-500' };
+    if (score >= 30) return { label: 'Medium Risk', color: 'text-yellow-400', bg: 'bg-yellow-500/20 text-yellow-400', bar: 'bg-yellow-500' };
+    if (score >= 10) return { label: 'Low Risk', color: 'text-blue-400', bg: 'bg-blue-500/20 text-blue-400', bar: 'bg-blue-500' };
+    return { label: 'Minimal Risk', color: 'text-green-400', bg: 'bg-green-500/20 text-green-400', bar: 'bg-green-500' };
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function renderHighlighted(text, matchRanges) {
+    // Sort by start position, resolve overlaps
+    const sorted = [...matchRanges].sort((a, b) => a.start - b.start);
+    let result = '';
+    let pos = 0;
+    for (const r of sorted) {
+      if (r.start < pos) continue;
+      result += escapeHtml(text.slice(pos, r.start));
+      const cls = r.severity === 'high'
+        ? 'bg-red-500/20 border-b border-red-500/70 cursor-help'
+        : r.severity === 'medium'
+          ? 'bg-yellow-500/20 border-b border-yellow-500/70 cursor-help'
+          : 'bg-blue-500/20 border-b border-blue-500/70 cursor-help';
+      result += `<mark class="${cls}" title="${r.name}">${escapeHtml(text.slice(r.start, r.end))}</mark>`;
+      pos = r.end;
+    }
+    result += escapeHtml(text.slice(pos));
+    return result;
+  }
+
+  function renderResults(text, analysis) {
+    const { findings, score, matchRanges, highCount, medCount } = analysis;
+    const risk = getRiskLevel(score);
+
+    document.getElementById('risk-label').className = `text-sm font-medium px-3 py-1 rounded-full ${risk.bg}`;
+    document.getElementById('risk-label').textContent = risk.label;
+    document.getElementById('risk-score').textContent = score;
+    document.getElementById('risk-bar').className = `h-full rounded-full transition-all duration-500 ${risk.bar}`;
+    document.getElementById('risk-bar').style.width = score + '%';
+
+    const wordCount = text.split(/\s+/).length;
+    document.getElementById('risk-summary').textContent = findings.length === 0
+      ? `No hallucination signals detected in ${wordCount} words. This response appears to use cautious, unverifiable-claim-free language.`
+      : `Found ${findings.reduce((s, f) => s + f.count, 0)} risk signal(s) across ${findings.length} category(ies) in ${wordCount} words. ${highCount > 0 ? `${highCount} high-risk pattern(s) require immediate verification.` : ''}`;
+
+    // Signals
+    if (findings.length > 0) {
+      document.getElementById('signals-section').classList.remove('hidden');
+      document.getElementById('signals-list').innerHTML = findings.map(f => {
+        const sev = f.severity === 'high' ? 'text-red-400 bg-red-500/10 border-red-500/30'
+          : f.severity === 'medium' ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30'
+          : 'text-blue-400 bg-blue-500/10 border-blue-500/30';
+        return `
+          <div class="border border-border rounded-lg p-3">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-sm font-medium">${f.name}</span>
+              <span class="text-xs px-2 py-0.5 rounded border ${sev}">${f.severity} · ${f.count}×</span>
+            </div>
+            <p class="text-xs text-text-muted">${f.description}</p>
+          </div>
+        `;
+      }).join('');
+    } else {
+      document.getElementById('signals-section').classList.add('hidden');
+    }
+
+    // Highlighted text
+    document.getElementById('highlighted-text').innerHTML = renderHighlighted(text, matchRanges);
+
+    // Recommendations
+    const level = score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low';
+    document.getElementById('recommendations-list').innerHTML = RECOMMENDATIONS[level].map(r =>
+      `<div class="flex gap-2 text-sm"><span class="text-primary mt-0.5 shrink-0">→</span><span>${r}</span></div>`
+    ).join('');
+
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  const EXAMPLE = `According to Smith et al., 2023, transformer models hallucinate in approximately 23.7% of factual queries. This is definitely a well-established finding in the NLP literature. Dr. Johnson from MIT stated that "hallucination rates will certainly decrease as models scale." The study published at https://arxiv.org/abs/2024.12345 found that over 10 million users experience AI hallucinations daily. As of 2022, GPT-4 was considered the gold standard, achieving 97.3% accuracy on the MMLU benchmark.`;
+
+  document.getElementById('btn-analyze').addEventListener('click', () => {
+    const text = document.getElementById('input-text').value.trim();
+    if (!text) return;
+    renderResults(text, analyze(text));
+  });
+
+  document.getElementById('btn-example').addEventListener('click', () => {
+    document.getElementById('input-text').value = EXAMPLE;
+    document.getElementById('results').classList.add('hidden');
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    document.getElementById('input-text').value = '';
+    document.getElementById('results').classList.add('hidden');
+  });
+})();
+</script>
+
+  <FaqSection faq={faq} />
+</BaseLayout>
