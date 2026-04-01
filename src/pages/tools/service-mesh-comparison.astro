@@ -1,0 +1,165 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "Do I actually need a service mesh for my Kubernetes cluster?", answer: "Most teams don't need a service mesh until they hit specific pain points. You need a service mesh when: (1) you need mTLS between all services for compliance or zero-trust security, (2) you need fine-grained traffic management (canary releases, traffic shifting by percentage, circuit breaking), (3) you need deep observability across all service-to-service calls without instrumenting each service individually, or (4) you have 10+ microservices where distributed tracing is hard to manage manually. If you're running fewer than 5-10 services, Kubernetes built-in networking plus proper use of NetworkPolicy and your ingress controller is usually sufficient." },
+  { question: "What is the performance overhead of a service mesh sidecar?", answer: "Performance overhead depends on the mesh. Linkerd's Rust-based micro-proxy adds approximately 1-3ms P99 latency and 30-50MB memory per pod. Istio with Envoy adds 3-10ms P99 latency and 50-100MB memory per pod — more features, more overhead. Cilium uses eBPF in the kernel and adds minimal latency (sub-millisecond) and memory since it doesn't use a sidecar at all. CPU overhead: Linkerd is consistently lower than Istio under load. For latency-sensitive applications where P99 matters, benchmark your specific traffic patterns — synthetic benchmarks don't always reflect real workload behavior. Cilium is the clear winner on raw performance." },
+  { question: "How does Cilium differ from Istio and Linkerd architecturally?", answer: "Istio and Linkerd use the sidecar proxy pattern — they inject a small proxy container (Envoy or linkerd-proxy) into every pod. All network traffic goes through these proxies, which add capabilities. Cilium is fundamentally different: it uses eBPF (extended Berkeley Packet Filter) in the Linux kernel to enforce network policies, load balancing, and observability at the kernel level — no sidecar, no proxy. This means lower overhead and higher throughput. Cilium can also replace kube-proxy entirely. The tradeoff: Cilium requires a Linux kernel ≥ 5.4 and provides less L7 HTTP/gRPC visibility than sidecar meshes by default (though Hubble adds much of this)." },
+  { question: "Can I migrate from Istio to Linkerd without downtime?", answer: "Yes, with a blue-green approach. The strategy: (1) Install Linkerd alongside Istio. (2) Label new namespaces for Linkerd injection while keeping existing namespaces under Istio. (3) Gradually migrate namespaces — update the inject annotation from istio-injection=enabled to linkerd.io/inject=enabled. (4) Roll pods to pick up new sidecars. (5) After all namespaces migrate, remove Istio. The main challenges: Istio-specific resources (VirtualService, DestinationRule) need to be recreated as Linkerd equivalents (HTTPRoute, ServiceProfile). Traffic policies, auth policies, and telemetry integrations need to be rebuilt. Plan 1-3 months for a medium-sized cluster." },
+];
+---
+
+<BaseLayout
+  title="Service Mesh Comparison — Istio vs Linkerd vs Cilium 2026"
+  description="Compare Istio, Linkerd, and Cilium service meshes: performance benchmarks, mTLS setup, complexity, eBPF vs sidecar architecture, and when to choose each for your Kubernetes cluster."
+  tool="Istio vs Linkerd vs Cilium, service mesh comparison, Kubernetes service mesh, mTLS Kubernetes, eBPF networking, Envoy proxy"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Service Mesh Comparison: Istio vs Linkerd vs Cilium",
+    "url": "https://devplaybook.cc/tools/service-mesh-comparison",
+    "description": "Detailed comparison of Istio, Linkerd, and Cilium service meshes with performance benchmarks, mTLS examples, and decision guide.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Service Mesh Comparison: Istio vs Linkerd vs Cilium</h1>
+  <p class="text-text-muted mb-6">
+    Choose the right <strong>service mesh</strong> for your Kubernetes cluster. Compare Istio's full-featured approach, Linkerd's simplicity, and Cilium's eBPF-based performance — with real overhead benchmarks and mTLS examples.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Feature comparison table</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> mTLS setup</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Performance benchmarks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Decision guide</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Feature Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Feature</th>
+          <th class="text-left py-2 pr-4 font-semibold">Istio</th>
+          <th class="text-left py-2 pr-4 font-semibold">Linkerd</th>
+          <th class="text-left py-2 font-semibold">Cilium</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Proxy type</td><td class="py-2 pr-4">Envoy sidecar</td><td class="py-2 pr-4">linkerd-proxy (Rust) sidecar</td><td class="py-2">eBPF (no sidecar)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">mTLS</td><td class="py-2 pr-4">✓ Automatic</td><td class="py-2 pr-4">✓ Automatic</td><td class="py-2">✓ Via WireGuard</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Traffic management</td><td class="py-2 pr-4">✓ Full (VirtualService)</td><td class="py-2 pr-4">HTTPRoute (Gateway API)</td><td class="py-2">Basic L4</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Circuit breaking</td><td class="py-2 pr-4">✓</td><td class="py-2 pr-4">✓</td><td class="py-2">✗</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Observability</td><td class="py-2 pr-4">Full L7 (traces/metrics)</td><td class="py-2 pr-4">L7 Prometheus metrics</td><td class="py-2">Hubble (eBPF flows)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">P99 latency overhead</td><td class="py-2 pr-4">3–10ms</td><td class="py-2 pr-4">1–3ms</td><td class="py-2">&lt;1ms</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Memory per pod</td><td class="py-2 pr-4">50–100MB</td><td class="py-2 pr-4">30–50MB</td><td class="py-2">~0 (kernel)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Learning curve</td><td class="py-2 pr-4">High</td><td class="py-2 pr-4">Low</td><td class="py-2">Medium</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">CNCF status</td><td class="py-2 pr-4">Graduated</td><td class="py-2 pr-4">Graduated</td><td class="py-2">Graduated</td></tr>
+        <tr><td class="py-2 pr-4">Best for</td><td class="py-2 pr-4">Full-featured, enterprise</td><td class="py-2 pr-4">Simplicity, low overhead</td><td class="py-2">Performance, networking</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Linkerd — Install and Enable mTLS</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install Linkerd CLI
+curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install | sh
+
+# Validate cluster compatibility
+linkerd check --pre
+
+# Install Linkerd control plane
+linkerd install --crds | kubectl apply -f -
+linkerd install | kubectl apply -f -
+
+# Verify installation
+linkerd check
+
+# Enable mTLS for a namespace (inject sidecar proxy)
+kubectl annotate namespace production \
+  linkerd.io/inject=enabled
+
+# Roll deployments to pick up the sidecar
+kubectl rollout restart deployment -n production
+
+# Verify mTLS is active
+linkerd viz install | kubectl apply -f -
+linkerd viz edges deployment -n production
+
+# Output shows: src → dst, secured=true for mTLS connections</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Istio — mTLS Strict Mode</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install Istio with minimal profile
+istioctl install --set profile=minimal -y
+
+# Enable sidecar injection for a namespace
+kubectl label namespace production istio-injection=enabled
+
+# Enforce strict mTLS for the entire mesh
+kubectl apply -f - &lt;&lt;EOF
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: istio-system
+spec:
+  mtls:
+    mode: STRICT
+EOF
+
+# Namespace-scoped strict mTLS
+kubectl apply -f - &lt;&lt;EOF
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: production
+spec:
+  mtls:
+    mode: STRICT
+EOF
+
+# Verify mTLS with Kiali or:
+istioctl x authz check &lt;pod-name&gt;.production</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cilium — eBPF Install + WireGuard Encryption</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install Cilium (replaces kube-proxy)
+helm repo add cilium https://helm.cilium.io/
+helm install cilium cilium/cilium \
+  --namespace kube-system \
+  --set kubeProxyReplacement=true \
+  --set k8sServiceHost=&lt;API_SERVER_IP&gt; \
+  --set k8sServicePort=6443 \
+  --set encryption.enabled=true \
+  --set encryption.type=wireguard
+
+# Verify Cilium status
+cilium status
+cilium connectivity test
+
+# Enable Hubble observability
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --set hubble.relay.enabled=true \
+  --set hubble.ui.enabled=true
+
+# View service flows
+hubble observe --namespace production --follow
+
+# Check encryption status
+cilium encrypt status</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">When to Choose Each Mesh</h2>
+  <ul class="list-disc pl-6 text-text-muted space-y-2 mb-6">
+    <li><strong>Istio</strong>: Complex traffic management (canary, blue-green, fault injection), full distributed tracing, authorization policies at L7, enterprise compliance requirements, multi-cluster deployments.</li>
+    <li><strong>Linkerd</strong>: Team wants zero-config mTLS with minimal overhead, simplicity is valued, small to medium clusters, Rust proxy reliability, no complex traffic routing needs.</li>
+    <li><strong>Cilium</strong>: Performance-critical workloads, replacing kube-proxy for kernel-level efficiency, high-throughput data plane, CNI replacement needs, large-scale clusters where sidecar memory adds up.</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="service-mesh-comparison" relatedTags={["kubernetes", "istio", "linkerd", "cilium", "service-mesh", "devops", "networking"]} />
+</BaseLayout>

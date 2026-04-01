@@ -1,0 +1,208 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is GitOps and how is it different from traditional CI/CD?", answer: "GitOps is a deployment model where the Git repository is the single source of truth for the desired state of your infrastructure and applications. Traditional CI/CD pushes changes: a pipeline runs tests, builds an image, and uses kubectl apply or helm upgrade to push the change to the cluster. GitOps pulls changes: an agent (Flux or ArgoCD) runs inside the cluster, watches the Git repo, and continuously reconciles — pulling in changes when the desired state in Git differs from the actual cluster state. Benefits: full audit trail via Git history, rollback via git revert, cluster state is always reproducible from the repo, and no CI system needs cluster credentials." },
+  { question: "Does ArgoCD or Flux have better multi-tenancy support?", answer: "Both support multi-tenancy but differently. ArgoCD uses Projects to isolate teams — a Project defines which repos, clusters, and namespaces a team can deploy to, with RBAC rules. It has a full UI where teams can manage their applications. Flux uses a multi-tenant model via namespaced Flux resources — each tenant has their own Kustomization and HelmRelease objects scoped to their namespace, and you use Kubernetes RBAC to prevent cross-namespace access. Flux also supports 'sharding' where multiple Flux instances handle different tenants. ArgoCD's UI makes multi-tenancy operationally easier for teams without kubectl access; Flux's model is more Kubernetes-native and requires less centralized infrastructure." },
+  { question: "How does secret management work with GitOps?", answer: "You can't store plain secrets in Git. The main patterns: (1) Sealed Secrets — encrypt secrets with a controller's public key; the encrypted SealedSecret is safe to commit and only decryptable by the in-cluster controller. (2) External Secrets Operator (ESO) — sync secrets from Vault, AWS Secrets Manager, or GCP Secret Manager into Kubernetes Secrets; the ESO manifest (safe to commit) references external secret sources. (3) SOPS — encrypt secrets at the file level using age or GPG; Flux has native SOPS decryption support. (4) Vault Agent Injector — inject secrets directly into pods at runtime. Most teams with GitOps use ESO or SOPS. ArgoCD also supports Vault plugin and ESO well." },
+  { question: "Can I use Flux and ArgoCD on the same cluster?", answer: "Yes, but it's not recommended except for migration periods. Both tools watch and reconcile cluster state — having two controllers reconciling the same resources creates conflicts. If you're migrating from one to the other, run them side by side with non-overlapping namespace scopes: have ArgoCD manage some namespaces and Flux manage others. Complete the migration, validate, then remove the old tool. Some organizations use ArgoCD for application deployments and Flux for platform/infrastructure components (cert-manager, ingress, monitoring) — this can work if you're careful about non-overlapping resource ownership." },
+];
+---
+
+<BaseLayout
+  title="Flux vs ArgoCD — GitOps Feature Matrix: Sync, Rollback, Multi-tenancy, Secrets"
+  description="Compare Flux and ArgoCD for GitOps: sync mechanisms, rollback, multi-tenancy, UI, secrets management, and decision guide. Includes HelmRelease and Application examples."
+  tool="Flux vs ArgoCD, GitOps, Flux HelmRelease, ArgoCD Application, Kubernetes GitOps, continuous delivery, GitOps secrets"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Flux vs ArgoCD GitOps Comparison",
+    "url": "https://devplaybook.cc/tools/gitops-flux-vs-argocd",
+    "description": "Detailed Flux vs ArgoCD comparison with feature matrix, HelmRelease and Application examples, and decision guide.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Flux vs ArgoCD — GitOps Comparison</h1>
+  <p class="text-text-muted mb-6">
+    Choose between <strong>Flux</strong> and <strong>ArgoCD</strong> for GitOps deployments. Compare sync mechanisms, rollback, multi-tenancy, UI capabilities, and secrets integration with practical examples.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Feature comparison table</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Flux HelmRelease example</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> ArgoCD Application example</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Decision guide</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Feature Matrix</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Feature</th>
+          <th class="text-left py-2 pr-4 font-semibold">Flux v2</th>
+          <th class="text-left py-2 font-semibold">ArgoCD</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Architecture</td><td class="py-2 pr-4">Multi-controller (source/kustomize/helm)</td><td class="py-2">Single server + repo server</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">UI</td><td class="py-2 pr-4">Weave GitOps (separate), limited built-in</td><td class="py-2">✓ Rich built-in web UI</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Sync interval</td><td class="py-2 pr-4">Configurable per resource</td><td class="py-2">Configurable per app (default 3m)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Rollback</td><td class="py-2 pr-4">Git revert (manual) or suspend + prev version</td><td class="py-2">✓ One-click rollback to any history</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Multi-tenancy</td><td class="py-2 pr-4">K8s RBAC + namespace scoping</td><td class="py-2">Projects + RBAC (UI-managed)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Secrets</td><td class="py-2 pr-4">SOPS native support</td><td class="py-2">Plugins (argocd-vault-plugin, ESO)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Multi-cluster</td><td class="py-2 pr-4">✓ Fleet of clusters</td><td class="py-2">✓ ApplicationSets</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Helm support</td><td class="py-2 pr-4">HelmRelease CRD</td><td class="py-2">Native Helm (or raw manifest)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Progressive delivery</td><td class="py-2 pr-4">Flagger integration</td><td class="py-2">Argo Rollouts (separate install)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">CNCF status</td><td class="py-2 pr-4">Graduated</td><td class="py-2">Graduated</td></tr>
+        <tr><td class="py-2 pr-4">GitLab/GitHub webhooks</td><td class="py-2 pr-4">✓ Receiver webhook</td><td class="py-2">✓ Native webhook</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Flux — Bootstrap and HelmRelease Example</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Bootstrap Flux onto your cluster (points to your Git repo)
+flux bootstrap github \
+  --owner=my-org \
+  --repository=fleet-infra \
+  --branch=main \
+  --path=clusters/production \
+  --personal
+
+# HelmRelease resource — clusters/production/apps/nginx/helmrelease.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: nginx-ingress
+  namespace: ingress-nginx
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: ingress-nginx
+      version: "4.x"
+      sourceRef:
+        kind: HelmRepository
+        name: ingress-nginx
+        namespace: flux-system
+  values:
+    controller:
+      replicaCount: 3
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+  upgrade:
+    remediation:
+      retries: 3
+  rollback:
+    timeout: 5m
+
+# HelmRepository source
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: ingress-nginx
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://kubernetes.github.io/ingress-nginx</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">ArgoCD — Install and Application Example</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install ArgoCD
+kubectl create namespace argocd
+kubectl apply -n argocd -f \
+  https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Access UI (port-forward)
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# ArgoCD Application manifest
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-ingress
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://kubernetes.github.io/ingress-nginx
+    chart: ingress-nginx
+    targetRevision: 4.9.0
+    helm:
+      values: |
+        controller:
+          replicaCount: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ingress-nginx
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        maxDuration: 3m
+        factor: 2</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Flux SOPS Secrets Integration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Generate age key pair
+age-keygen -o age.agekey
+
+# Add private key to Flux as a secret
+kubectl create secret generic sops-age \
+  --namespace=flux-system \
+  --from-file=age.agekey=./age.agekey
+
+# Encrypt a secret with SOPS
+sops --age=$(cat age.agekey | grep "public key" | sed 's/.*: //') \
+  --encrypt --in-place mysecret.yaml
+
+# .sops.yaml — auto-encrypt any file matching the pattern
+creation_rules:
+  - path_regex: .*/secrets/.*\.yaml
+    age: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Flux Kustomization with SOPS decryption
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./clusters/production/apps
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Decision Guide</h2>
+  <ul class="list-disc pl-6 text-text-muted space-y-2 mb-6">
+    <li><strong>Choose ArgoCD</strong> when: teams need self-service deployments via UI, strong RBAC needed for multiple teams, one-click rollback is important, Argo Rollouts for canary/blue-green, or you want a polished UI experience.</li>
+    <li><strong>Choose Flux</strong> when: pure GitOps without UI dependencies preferred, SOPS secrets integration needed, Kubernetes-native resource model, smaller ops overhead (no UI to maintain), or multi-cluster fleet management with Flux's sharding model.</li>
+    <li><strong>Both are CNCF graduated</strong> — there's no wrong choice. Many large organizations use ArgoCD for developer-facing app deployments and Flux for platform bootstrapping.</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="gitops-flux-vs-argocd" relatedTags={["kubernetes", "gitops", "flux", "argocd", "devops", "ci-cd", "helm"]} />
+</BaseLayout>

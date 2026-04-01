@@ -1,0 +1,139 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is OpenCost and how is it different from Kubecost?", answer: "OpenCost is the open-source, CNCF-incubating project that originated as Kubecost's core cost allocation engine. Kubecost is the commercial product built on top of it. OpenCost provides the core cost allocation logic — breaking down cluster costs by namespace, deployment, pod, and label — and exposes a REST API and basic UI. Kubecost adds a richer UI, multi-cluster support, savings recommendations, RBAC, SSO, and 15-day metric retention in the free tier. For teams that want open-source with no vendor dependency, OpenCost is the right choice. For teams that need the recommendations engine and multi-cluster UI, Kubecost free tier (or commercial) is better." },
+  { question: "How does OpenCost calculate the cost of each pod?", answer: "OpenCost models costs by allocating node costs proportionally to each pod's resource requests (CPU and memory). It queries the cloud provider's pricing API (or a custom on-prem price sheet) to get the hourly cost of each node. Then it divides that cost proportionally: if your pod requests 0.5 of a 2-CPU node, it's allocated 25% of the node's cost. Network and storage costs are also tracked. The key insight is that OpenCost uses requests (not actual utilization) for allocation, which means over-provisioned pods show up as expensive even if idle — a feature, not a bug." },
+  { question: "How do I query OpenCost for namespace costs via the API?", answer: "OpenCost exposes a REST API at /model/allocation on port 9090. The key parameters are: window (time range, e.g., '7d' or 'lastmonth'), aggregate (dimension to group by: namespace, pod, deployment, label:team), and accumulate (true to sum the window, false for daily breakdown). Example: GET http://localhost:9090/model/allocation?window=7d&aggregate=namespace&accumulate=true returns total cost per namespace for the last 7 days. Add &filter=namespace:production to scope to one namespace. The API is the foundation for building custom dashboards in Grafana." },
+  { question: "Can OpenCost track costs for on-premises Kubernetes clusters?", answer: "Yes. For on-prem clusters, OpenCost uses a custom pricing configuration instead of cloud pricing APIs. You define CPU and RAM costs per core/GB-hour in a ConfigMap, and OpenCost uses those rates for allocation. This is useful for bare-metal or private cloud environments where you want to do internal chargeback — showing each team their 'bill' based on resource consumption even if it's not a real cloud bill. Set pricingModel.defaultSpotCPUCoreHours and similar fields in the OpenCost ConfigMap." },
+];
+---
+
+<BaseLayout
+  title="OpenCost Kubernetes Cost Tracking — CNCF Cost Allocation by Namespace & Workload"
+  description="Track Kubernetes costs by namespace, deployment, and label with OpenCost (CNCF). Helm install guide, REST API examples, namespace cost queries, and comparison with Kubecost."
+  tool="OpenCost, Kubernetes cost tracking, K8s cost allocation, CNCF, Kubecost, namespace cost, FinOps Kubernetes"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "OpenCost Kubernetes Cost Tracking Guide",
+    "url": "https://devplaybook.cc/tools/opencost-kubernetes-cost-tracking",
+    "description": "Install and use OpenCost to track Kubernetes costs by namespace, workload, and label with the REST API.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">OpenCost — Kubernetes Cost Tracking</h1>
+  <p class="text-text-muted mb-6">
+    <strong>OpenCost</strong> (CNCF incubating) breaks down your Kubernetes cluster costs by namespace, deployment, pod, and custom labels. See exactly which teams and services are consuming your cloud budget.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CNCF open-source</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Namespace cost breakdown</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> REST API</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Prometheus compatible</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Helm Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Add the OpenCost Helm repo
+helm repo add opencost https://opencost.github.io/opencost-helm-chart
+helm repo update
+
+# Install OpenCost in the opencost namespace
+helm install opencost opencost/opencost \
+  --namespace opencost \
+  --create-namespace \
+  --set opencost.exporter.cloudProviderApiKey="AIzaSyD-9tSrke72..." \  # GCP only
+  --set opencost.prometheus.internal.enabled=true
+
+# For AWS, set the cluster region and node pricing
+helm install opencost opencost/opencost \
+  --namespace opencost \
+  --create-namespace \
+  --set opencost.exporter.aws.region=us-east-1 \
+  --set opencost.prometheus.internal.enabled=true
+
+# Access the UI (port-forward)
+kubectl port-forward -n opencost svc/opencost 9090:9090 9003:9003 &amp;
+open http://localhost:9090</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">REST API — Query Namespace Costs</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Cost by namespace, last 7 days, accumulated total
+curl "http://localhost:9090/model/allocation?window=7d&amp;aggregate=namespace&amp;accumulate=true" \
+  | jq '.data[0] | to_entries | map(&#123;namespace: .key, cost: .value.totalCost&#125;) | sort_by(-.cost)'
+
+# Cost by deployment in a specific namespace
+curl "http://localhost:9090/model/allocation?window=30d&amp;aggregate=deployment&amp;accumulate=true&amp;filter=namespace:production" \
+  | jq '.data[0] | to_entries[] | &#123;deployment: .key, cost: .value.totalCost&#125;'
+
+# Cost by team label (requires pods to have label app.kubernetes.io/team)
+curl "http://localhost:9090/model/allocation?window=7d&amp;aggregate=label:team&amp;accumulate=true"
+
+# Daily cost breakdown for a namespace (accumulate=false)
+curl "http://localhost:9090/model/allocation?window=14d&amp;aggregate=namespace&amp;accumulate=false&amp;filter=namespace:staging" \
+  | jq '.data[] | &#123;date: .window.start, cost: .["staging"].totalCost&#125;'
+
+# Assets API — raw node/disk costs
+curl "http://localhost:9090/model/assets?window=7d&amp;aggregate=type&amp;accumulate=true"</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Python Script — Weekly Cost Report</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">import requests
+import json
+
+OPENCOST_URL = "http://localhost:9090"
+
+def get_namespace_costs(window="7d"):
+    resp = requests.get(f"&#123;OPENCOST_URL&#125;/model/allocation", params=&#123;
+        "window": window,
+        "aggregate": "namespace",
+        "accumulate": "true"
+    &#125;)
+    data = resp.json()["data"][0]
+    costs = [
+        &#123;"namespace": k, "cost": round(v["totalCost"], 2), "cpu": round(v["cpuCost"], 2), "memory": round(v["ramCost"], 2)&#125;
+        for k, v in data.items()
+    ]
+    return sorted(costs, key=lambda x: x["cost"], reverse=True)
+
+def print_report():
+    costs = get_namespace_costs("30d")
+    total = sum(c["cost"] for c in costs)
+    print(f"\\n=== Kubernetes Cost Report (Last 30 Days) ===")
+    print(f"Total cluster cost: $&#123;total:.2f&#125;\\n")
+    print(f"&#123;'Namespace':<30&#125; &#123;'Total':>10&#125; &#123;'CPU':>10&#125; &#123;'Memory':>10&#125;")
+    print("-" * 65)
+    for c in costs[:15]:
+        print(f"&#123;c['namespace']:<30&#125; $&#123;c['cost']:>9.2f&#125; $&#123;c['cpu']:>9.2f&#125; $&#123;c['memory']:>9.2f&#125;")
+
+print_report()</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">OpenCost vs Kubecost Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Feature</th>
+          <th class="text-left py-2 pr-4 font-semibold">OpenCost (free)</th>
+          <th class="text-left py-2 font-semibold">Kubecost Free</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Cost allocation API</td><td class="py-2 pr-4">✓ Full REST API</td><td class="py-2">✓ Full REST API</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Basic UI</td><td class="py-2 pr-4">✓ Minimal dashboard</td><td class="py-2">✓ Rich dashboard</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Savings recommendations</td><td class="py-2 pr-4">✗ Not included</td><td class="py-2">✓ Basic rightsizing</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Multi-cluster</td><td class="py-2 pr-4">Manual aggregation</td><td class="py-2">✗ Paid only</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Metric retention</td><td class="py-2 pr-4">Prometheus-backed</td><td class="py-2">15 days free</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">RBAC / SSO</td><td class="py-2 pr-4">✗</td><td class="py-2">✗ Paid only</td></tr>
+        <tr><td class="py-2 pr-4">License</td><td class="py-2 pr-4">Apache 2.0</td><td class="py-2">BSL / proprietary</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="opencost-kubernetes-cost-tracking" relatedTags={["kubernetes", "cloud", "devops", "cost-optimization", "finops"]} />
+</BaseLayout>

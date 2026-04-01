@@ -1,0 +1,178 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Infracost and how does it work with Terraform?", answer: "Infracost is an open-source tool that parses Terraform plan files and maps resource configurations to cloud pricing APIs to estimate monthly costs before you apply changes. It reads your .tf files or a terraform plan JSON output, looks up pricing for each resource type (EC2 instance size, RDS instance class, S3 storage tier, etc.), and produces a cost breakdown. The key value is seeing cost impact in pull requests — a reviewer can see 'this change adds $340/month' before merging. Infracost supports AWS, GCP, and Azure." },
+  { question: "How accurate are Infracost estimates?", answer: "Infracost estimates are directionally accurate for compute and storage costs but have limitations. It doesn't account for data transfer costs (which can be significant), API call volumes for Lambda/DynamoDB, or actual utilization. Estimates assume 730 hours/month (full month) for all resources. For resources billed per-request or by usage (Lambda invocations, DynamoDB read units), Infracost uses usage estimates you provide in a usage file. Treat estimates as a floor — actual costs will be higher once you include data transfer and usage-based billing. They're most valuable for comparing two configurations, not predicting exact bills." },
+  { question: "Can I block a PR if costs exceed a threshold?", answer: "Yes. Infracost supports a policy-as-code approach using the --policy-output flag and OPA (Open Policy Agent) or a built-in threshold check. In GitHub Actions, you can use the infracost/actions/comment action and add a step that reads the total monthly cost from the JSON output and fails the workflow if it exceeds a threshold. For example: if the diff shows an increase of more than $500/month, fail the PR and require finance approval. This creates a cost gate alongside your security and quality gates." },
+  { question: "Does Infracost support Terragrunt and Terraform modules?", answer: "Yes. For Terragrunt, use infracost breakdown --path . with the INFRACOST_TERRAFORM_BINARY=terragrunt environment variable set, or use the --terraform-init-flags to pass required variables. For modules, Infracost recursively processes module calls and inlines the cost of module resources into the parent module's estimate. If a module uses a for_each or count to create multiple resources, Infracost evaluates the full count. Remote module sources (GitHub, Terraform Registry) are fetched during the breakdown run." },
+];
+---
+
+<BaseLayout
+  title="Infracost Cloud Cost Estimation — Terraform CI/CD PR Cost Diffs"
+  description="Add cloud cost estimates to every Terraform pull request with Infracost. Setup guide for GitHub Actions integration, cost policies, PR comments with cost diffs, and usage-based estimates."
+  tool="Infracost, Terraform cost estimation, infrastructure cost, CI/CD cost gate, FinOps, Terraform PR cost diff"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Infracost Cloud Cost Estimation Guide",
+    "url": "https://devplaybook.cc/tools/infracost-cloud-cost-estimation",
+    "description": "Complete Infracost setup guide: Terraform integration, GitHub Actions workflow, PR cost comments, and cost policies.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Infracost Cloud Cost Estimation</h1>
+  <p class="text-text-muted mb-6">
+    Show <strong>estimated monthly cloud costs</strong> in every Terraform pull request before merging. Catch expensive misconfigurations early, compare configuration options by cost, and enforce cost policies in CI.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Terraform integration</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GitHub Actions PR comments</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost diff on every PR</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost policy enforcement</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Installation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># macOS
+brew install infracost
+
+# Linux / CI
+curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+
+# Authenticate (get free API key at infracost.io)
+infracost auth login
+
+# Verify installation
+infracost --version</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Basic Terraform Integration</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Run a cost breakdown on your Terraform directory
+infracost breakdown --path ./terraform
+
+# Generate a plan file and use it (more accurate)
+cd terraform
+terraform init
+terraform plan -out tfplan.binary
+terraform show -json tfplan.binary &gt; tfplan.json
+infracost breakdown --path tfplan.json --format table
+
+# Compare two branches
+infracost diff --path . \
+  --compare-to infracost-base.json \
+  --format diff</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Usage File for Variable Costs</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># infracost-usage.yml — provide usage estimates for pay-per-use resources
+version: 0.1
+resource_usage:
+  aws_lambda_function.api_handler:
+    monthly_requests: 5000000          # 5M requests/month
+    request_duration_ms: 150           # average 150ms execution
+    memory_mb: 512
+  aws_dynamodb_table.events:
+    monthly_read_request_units: 1000000
+    monthly_write_request_units: 100000
+    storage_gb: 50
+  aws_s3_bucket.assets:
+    storage_gb: 500
+    monthly_get_requests: 2000000
+    monthly_put_requests: 50000
+
+# Run with usage file
+infracost breakdown --path . --usage-file infracost-usage.yml</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">GitHub Actions Workflow</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># .github/workflows/infracost.yml
+name: Infracost Cost Estimate
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+
+jobs:
+  infracost:
+    name: Run Infracost
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: '$&#123;&#123; github.event.pull_request.base.ref &#125;&#125;'
+
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: $&#123;&#123; secrets.INFRACOST_API_KEY &#125;&#125;
+
+      - name: Generate Infracost cost estimate for base branch
+        run: |
+          infracost breakdown \
+            --path=./terraform \
+            --format=json \
+            --out-file=/tmp/infracost-base.json
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Generate Infracost cost estimate for PR branch
+        run: |
+          infracost breakdown \
+            --path=./terraform \
+            --format=json \
+            --out-file=/tmp/infracost-pr.json
+
+      - name: Post Infracost comment on PR
+        uses: infracost/actions/comment@v1
+        with:
+          path: /tmp/infracost-pr.json
+          compare-to: /tmp/infracost-base.json
+          behavior: update  # update existing comment on re-run</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cost Policy — Block PRs Over Threshold</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">      # Add this step after the PR comment step
+      - name: Check cost increase threshold
+        run: |
+          DIFF=$(infracost diff \
+            --path /tmp/infracost-pr.json \
+            --compare-to /tmp/infracost-base.json \
+            --format json | jq '.diffTotalMonthlyCost | tonumber')
+          echo "Monthly cost increase: $$DIFF"
+          if (( $(echo "$DIFF > 500" | bc -l) )); then
+            echo "ERROR: Cost increase $&#123;DIFF&#125;/month exceeds $500 threshold."
+            echo "Please get finance approval before merging."
+            exit 1
+          fi</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What Infracost Supports</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Cloud</th>
+          <th class="text-left py-2 pr-4 font-semibold">Well Supported</th>
+          <th class="text-left py-2 font-semibold">Partial / Usage-based</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">AWS</td><td class="py-2 pr-4">EC2, RDS, EKS, S3, ElastiCache</td><td class="py-2">Lambda, DynamoDB, data transfer</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">GCP</td><td class="py-2 pr-4">Compute Engine, Cloud SQL, GKE</td><td class="py-2">Cloud Functions, BigQuery</td></tr>
+        <tr><td class="py-2 pr-4">Azure</td><td class="py-2 pr-4">VMs, SQL Database, AKS</td><td class="py-2">Functions, Cosmos DB</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="infracost-cloud-cost-estimation" relatedTags={["terraform", "devops", "cloud", "cost-optimization", "finops", "ci-cd"]} />
+</BaseLayout>

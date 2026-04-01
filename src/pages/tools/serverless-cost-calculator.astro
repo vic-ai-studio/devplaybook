@@ -1,0 +1,169 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "At what scale does Lambda become more expensive than a dedicated server?", answer: "The crossover point depends on memory allocation and invocation patterns. For a 512MB Lambda running 100ms average, the free tier covers 1M requests and 400,000 GB-seconds per month. At steady-state traffic (millions of requests/day), Lambda cost typically exceeds a t3.small EC2 instance around 5-10M requests/month at 100ms execution. However, Lambda's operational advantage (no capacity planning, zero idle cost, automatic scaling) often justifies higher per-unit costs. Use Lambda for spiky or unpredictable traffic. Use containers or EC2 for steady-state high-volume workloads where you can predict utilization above 50%." },
+  { question: "How does Cloudflare Workers pricing compare to Lambda?", answer: "Cloudflare Workers is often 10-30x cheaper than Lambda for CPU-bound workloads at scale. Workers charges $0.30 per million requests after the first 10M/month (on the $5/month paid plan) with 30ms CPU time included. Lambda charges $0.20 per million requests plus compute time — at 128MB/100ms, that's $0.0000002083/request, or $0.21 per million plus the request fee. Workers runs at the edge globally with no cold starts. The tradeoff: Workers is limited to 30ms CPU time (up to 30s wall time), no persistent disk, limited Node.js compatibility, and no access to AWS services. For edge-computed responses, Workers wins on cost and latency; for complex backend logic with AWS dependencies, Lambda wins on capability." },
+  { question: "What is Lambda Power Tuning and how do I use it?", answer: "Lambda Power Tuning is an open-source AWS Step Functions state machine that runs your Lambda function at multiple memory configurations (128MB to 10GB) and measures execution time and cost at each level. It produces a visualization showing the optimal memory setting for either minimum cost or minimum duration. Run it by deploying the SAR app from the AWS Serverless Application Repository (search 'aws-lambda-power-tuning'), invoke the state machine with your function ARN, number of iterations, and payload. Results often surprise teams — many functions run 3-5x faster at 1024MB vs 128MB with only 2x the memory cost, making them cheaper due to shorter duration billing." },
+  { question: "How significant are cold starts and can I eliminate them?", answer: "Cold start latency ranges from 100ms (Python/Node.js) to 1-3 seconds (Java/.NET) and occurs when a new execution environment is initialized. For user-facing APIs, cold starts above 200ms are perceptible. Mitigation strategies: (1) Provisioned Concurrency — pre-warm a set number of instances, eliminates cold starts but costs the same as always-on. (2) Lambda SnapStart — available for Java, reduces cold start to under 1 second by pre-initializing and snapshotting. (3) Keep functions warm — invoke every 5-10 minutes with a ping (EventBridge rule). (4) Use lighter runtimes — Python and Node.js cold starts are much shorter than JVM-based. (5) Reduce package size — smaller packages initialize faster." },
+];
+---
+
+<BaseLayout
+  title="Serverless Cost Calculator — Lambda vs Cloudflare Workers vs Vercel Functions"
+  description="Compare serverless platform costs: Lambda vs Cloudflare Workers vs Vercel Functions. Cost formulas, Lambda Power Tuning, memory vs duration tradeoffs, and cold start optimization."
+  tool="Lambda cost calculator, serverless cost comparison, Cloudflare Workers pricing, Vercel Functions cost, Lambda Power Tuning, cold start optimization"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Serverless Cost Calculator and Comparison",
+    "url": "https://devplaybook.cc/tools/serverless-cost-calculator",
+    "description": "Compare Lambda, Cloudflare Workers, and Vercel Functions costs with formulas, optimization tips, and Lambda Power Tuning guide.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Serverless Cost Calculator</h1>
+  <p class="text-text-muted mb-6">
+    Compare <strong>AWS Lambda</strong>, <strong>Cloudflare Workers</strong>, and <strong>Vercel Functions</strong> costs across different traffic patterns. Includes cost formulas, Lambda Power Tuning, and cold start optimization strategies.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost formula table</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Lambda Power Tuning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cold start guide</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Memory vs duration</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Platform Cost Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Platform</th>
+          <th class="text-left py-2 pr-4 font-semibold">Request Cost</th>
+          <th class="text-left py-2 pr-4 font-semibold">Compute Cost</th>
+          <th class="text-left py-2 pr-4 font-semibold">Free Tier</th>
+          <th class="text-left py-2 font-semibold">Cold Starts</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">AWS Lambda</td><td class="py-2 pr-4">$0.20/1M req</td><td class="py-2 pr-4">$0.0000166667/GB-s</td><td class="py-2 pr-4">1M req + 400K GB-s</td><td class="py-2">100ms–3s</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">CF Workers</td><td class="py-2 pr-4">$0.30/1M req</td><td class="py-2 pr-4">$0.02/M CPU-ms</td><td class="py-2 pr-4">100K req/day</td><td class="py-2">~0ms (V8)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Vercel Functions</td><td class="py-2 pr-4">Free to 100GB-hrs</td><td class="py-2 pr-4">$0.18/GB-hr</td><td class="py-2 pr-4">100 GB-hrs/month</td><td class="py-2">50–200ms</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Netlify Functions</td><td class="py-2 pr-4">Free to 125K req</td><td class="py-2 pr-4">$25/M req after</td><td class="py-2 pr-4">125K req/month</td><td class="py-2">100–500ms</td></tr>
+        <tr><td class="py-2 pr-4">Fly.io Machines</td><td class="py-2 pr-4">Per-second billing</td><td class="py-2 pr-4">~$0.0000019/vCPU-s</td><td class="py-2 pr-4">3 shared VMs</td><td class="py-2">~1s (container)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Lambda Cost Formula</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Lambda cost calculation
+# Cost = (requests × $0.0000002) + (GB-seconds × $0.0000000166667)
+# GB-seconds = (memory_mb / 1024) × duration_ms / 1000 × monthly_requests
+
+def calculate_lambda_cost(monthly_requests, memory_mb, avg_duration_ms):
+    request_cost = monthly_requests * 0.0000002
+    gb_seconds = (memory_mb / 1024) * (avg_duration_ms / 1000) * monthly_requests
+    compute_cost = gb_seconds * 0.0000000166667
+
+    # Subtract free tier
+    free_requests = 1_000_000
+    free_gb_seconds = 400_000
+    billable_requests = max(0, monthly_requests - free_requests)
+    billable_gb_seconds = max(0, gb_seconds - free_gb_seconds)
+
+    total = (billable_requests * 0.0000002) + (billable_gb_seconds * 0.0000000166667)
+    return &#123;
+        "monthly_requests": monthly_requests,
+        "gb_seconds": round(gb_seconds, 2),
+        "monthly_cost_usd": round(total, 4)
+    &#125;
+
+# Examples
+configs = [
+    (1_000_000, 128, 100),
+    (10_000_000, 256, 200),
+    (100_000_000, 512, 50),
+]
+for req, mem, dur in configs:
+    result = calculate_lambda_cost(req, mem, dur)
+    print(f"&#123;req/1e6:.0f&#125;M req @ &#123;mem&#125;MB/&#123;dur&#125;ms = $&#123;result['monthly_cost_usd']&#125;/month")</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Lambda Power Tuning Setup</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Deploy Lambda Power Tuning via SAR
+aws serverlessrepo create-cloud-formation-change-set \
+  --application-id arn:aws:serverlessrepo:us-east-1:451282441545:applications/aws-lambda-power-tuning \
+  --stack-name lambda-power-tuning \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides '[&#123;"name":"lambdaResource","value":"*"&#125;]'
+
+# After deploy, invoke the Step Functions state machine
+aws stepfunctions start-execution \
+  --state-machine-arn "arn:aws:states:us-east-1:YOUR_ACCOUNT:stateMachine:powerTuningStateMachine" \
+  --input '&#123;
+    "lambdaARN": "arn:aws:lambda:us-east-1:YOUR_ACCOUNT:function:my-api-handler",
+    "powerValues": [128, 256, 512, 1024, 2048, 3008],
+    "num": 10,
+    "payload": "&#123;\"path\":\"/health\"&#125;",
+    "parallelInvocation": true,
+    "strategy": "cost"
+  &#125;'
+
+# strategy options: "cost" | "speed" | "balanced"
+# Results visualized at: https://lambda-power-tuning.show/</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Memory vs Duration Tradeoff</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Memory</th>
+          <th class="text-left py-2 pr-4 font-semibold">Typical Duration</th>
+          <th class="text-left py-2 pr-4 font-semibold">GB-seconds</th>
+          <th class="text-left py-2 font-semibold">Relative Cost</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">128 MB</td><td class="py-2 pr-4">800ms</td><td class="py-2 pr-4">0.1 GB-s</td><td class="py-2">1.0x (baseline)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">256 MB</td><td class="py-2 pr-4">420ms</td><td class="py-2 pr-4">0.105 GB-s</td><td class="py-2">1.05x</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">512 MB</td><td class="py-2 pr-4">200ms</td><td class="py-2 pr-4">0.1 GB-s</td><td class="py-2">1.0x (same cost!)</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">1024 MB</td><td class="py-2 pr-4">110ms</td><td class="py-2 pr-4">0.11 GB-s</td><td class="py-2">1.1x</td></tr>
+        <tr><td class="py-2 pr-4">2048 MB</td><td class="py-2 pr-4">60ms</td><td class="py-2 pr-4">0.12 GB-s</td><td class="py-2">1.2x</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-text-muted text-sm mb-6">Higher memory often runs faster enough that total GB-seconds is similar or lower. Always measure with Power Tuning — never guess.</p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Cold Start Mitigation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Option 1: Provisioned Concurrency (eliminates cold starts, costs more)
+aws lambda put-provisioned-concurrency-config \
+  --function-name my-api-handler \
+  --qualifier prod \
+  --provisioned-concurrent-executions 10
+
+# Option 2: EventBridge keep-warm rule (free, reduces cold starts)
+# Create rule to invoke every 5 minutes
+aws events put-rule \
+  --name KeepWarmRule \
+  --schedule-expression "rate(5 minutes)"
+
+aws lambda add-permission \
+  --function-name my-api-handler \
+  --statement-id KeepWarmPermission \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --source-arn arn:aws:events:us-east-1:YOUR_ACCOUNT:rule/KeepWarmRule
+
+# Option 3: Lambda SnapStart (Java 21 runtime)
+# In function configuration:
+# SnapStart: ApplyOn: PublishedVersions
+# Then invoke by version alias, not $LATEST</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="serverless-cost-calculator" relatedTags={["serverless", "aws", "lambda", "cost-optimization", "cloud", "finops"]} />
+</BaseLayout>

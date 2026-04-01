@@ -1,0 +1,185 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "How do Cost Allocation Tags actually reduce my AWS bill?", answer: "Cost Allocation Tags don't reduce your bill directly — they give you the visibility to find what's costing money and where. By tagging resources by team, project, environment, and service, you can see in Cost Explorer which team's Lambda functions are running all month, which staging environment was left on, or which S3 bucket is storing terabytes nobody uses. Without tags, you see a total bill; with tags you see a breakdown that makes rightsizing and shutdown decisions obvious. The savings come from acting on that data." },
+  { question: "What is Cost Anomaly Detection and how do I set it up?", answer: "Cost Anomaly Detection is an AWS service that uses machine learning to detect unusual spending patterns and alert you via SNS or email. It establishes a baseline of your historical spend patterns and flags deviations above a threshold you configure (e.g., $100 or 20% above baseline). Set up a monitor for each service type or linked account, then create an alert subscription with a dollar threshold. It's free for the detection itself — you only pay for SNS/email delivery. It's far more useful than static budget alerts because it accounts for seasonal patterns." },
+  { question: "When should I choose Reserved Instances vs Savings Plans?", answer: "Savings Plans are almost always the better choice for most workloads in 2026. Compute Savings Plans apply to EC2, Fargate, and Lambda across any region, instance family, OS, and tenancy — giving you flexibility to change instance types as you optimize. Reserved Instances require you to commit to a specific instance family and region. Use Reserved Instances when you have database workloads (RDS, Redshift, ElastiCache) that aren't covered by Savings Plans, or when you need capacity reservations in a specific AZ. For EC2 compute, start with Compute Savings Plans." },
+  { question: "How do I use the Cost Explorer API to automate cost reporting?", answer: "The Cost Explorer API (aws ce get-cost-and-usage) lets you pull spend data programmatically by service, tag, account, and time range. Use it to build daily Slack reports, populate Grafana dashboards, or trigger alerts. Key parameters: TimePeriod (start/end dates), Granularity (DAILY/MONTHLY), Filter (by tag, service, account), GroupBy (dimension or tag key), and Metrics (BlendedCost, UnblendedCost, UsageQuantity). The API costs $0.01 per request after 100/month, so cache results aggressively. Use the Python boto3 client or AWS CLI — the CLI is great for quick one-off queries." },
+];
+---
+
+<BaseLayout
+  title="AWS Cost Explorer Guide — Tags, Savings Plans, Anomaly Detection & API"
+  description="Master AWS Cost Explorer: enforce Cost Allocation Tags, set up Cost Anomaly Detection, compare Reserved Instances vs Savings Plans, and automate cost reporting with the Cost Explorer API."
+  tool="AWS Cost Explorer, Cost Allocation Tags, Savings Plans, Reserved Instances, Cost Anomaly Detection, AWS cost management"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "AWS Cost Explorer Guide",
+    "url": "https://devplaybook.cc/tools/aws-cost-explorer-guide",
+    "description": "Complete guide to AWS Cost Explorer: tagging strategies, Savings Plans, anomaly detection, and Cost Explorer API automation.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">AWS Cost Explorer Guide</h1>
+  <p class="text-text-muted mb-6">
+    Gain full visibility into your AWS spend with <strong>Cost Allocation Tags</strong>, <strong>Cost Anomaly Detection</strong>, and the Cost Explorer API. Cut costs by finding idle resources, rightsizing instances, and committing to Savings Plans with data.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost Allocation Tags</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Savings Plans vs RIs</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Anomaly Detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost Explorer API</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Step 1 — Activate Cost Allocation Tags</h2>
+  <p class="text-text-muted mb-3">Tags must be activated in the Billing console before they appear in Cost Explorer. Navigate to <strong>Billing → Cost allocation tags → AWS-generated tags</strong> and activate <code>aws:createdBy</code>. Then activate your user-defined tags.</p>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Tag enforcement via AWS Config rule (detect untagged resources)
+aws configservice put-config-rule --config-rule '&#123;
+  "ConfigRuleName": "required-tags",
+  "Source": &#123;
+    "Owner": "AWS",
+    "SourceIdentifier": "REQUIRED_TAGS"
+  &#125;,
+  "InputParameters": "&#123;\"tag1Key\":\"Environment\",\"tag2Key\":\"Team\",\"tag3Key\":\"Project\"&#125;"
+&#125;'
+
+# Tag all EC2 instances in a region using tag-editor (console) or CLI
+aws ec2 describe-instances --query 'Reservations[*].Instances[*].InstanceId' \
+  --output text | xargs -I &#123;&#125; aws ec2 create-tags \
+  --resources &#123;&#125; \
+  --tags Key=Environment,Value=production Key=Team,Value=platform</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Recommended Tag Schema</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Tag Key</th>
+          <th class="text-left py-2 pr-4 font-semibold">Example Values</th>
+          <th class="text-left py-2 font-semibold">Purpose</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border"><td class="py-2 pr-4">Environment</td><td class="py-2 pr-4">production, staging, dev</td><td class="py-2">Identify non-prod waste</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Team</td><td class="py-2 pr-4">platform, backend, data</td><td class="py-2">Chargeback / showback</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">Project</td><td class="py-2 pr-4">checkout-v2, ml-pipeline</td><td class="py-2">Per-project cost tracking</td></tr>
+        <tr class="border-b border-border"><td class="py-2 pr-4">CostCenter</td><td class="py-2 pr-4">cc-1042, cc-2011</td><td class="py-2">Finance reconciliation</td></tr>
+        <tr><td class="py-2 pr-4">AutoShutdown</td><td class="py-2 pr-4">true, false</td><td class="py-2">Scheduled stop/start</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Step 2 — Cost Anomaly Detection Setup</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Create a monitor for all AWS services
+aws ce create-anomaly-monitor --anomaly-monitor '&#123;
+  "MonitorName": "AllServicesMonitor",
+  "MonitorType": "DIMENSIONAL",
+  "MonitorDimension": "SERVICE"
+&#125;'
+
+# Create an alert subscription (SNS + email)
+aws ce create-anomaly-subscription --anomaly-subscription '&#123;
+  "SubscriptionName": "DailyAnomalyAlert",
+  "MonitorArnList": ["arn:aws:ce::123456789012:anomalymonitor/MONITOR_ID"],
+  "Subscribers": [
+    &#123;
+      "Address": "devops@yourcompany.com",
+      "Type": "EMAIL"
+    &#125;,
+    &#123;
+      "Address": "arn:aws:sns:us-east-1:123456789012:cost-alerts",
+      "Type": "SNS"
+    &#125;
+  ],
+  "Threshold": 100,
+  "Frequency": "DAILY"
+&#125;'</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Step 3 — Savings Plans Purchase via CLI</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># View Savings Plan recommendations
+aws savingsplans describe-savings-plans-offering-rates \
+  --savings-plan-offering-ids &lt;offering-id&gt; \
+  --filters '[&#123;"name":"tenancy","values":["Shared"]&#125;]'
+
+# Get hourly commitment recommendation for 1-year Compute Savings Plan
+aws ce get-savings-plans-purchase-recommendation \
+  --savings-plans-type COMPUTE_SP \
+  --term-in-years ONE_YEAR \
+  --payment-option NO_UPFRONT \
+  --lookback-period-in-days SIXTY_DAYS
+
+# Purchase a Savings Plan ($10/hour commitment, 1-year, no upfront)
+aws savingsplans create-savings-plan \
+  --savings-plan-offering-id &lt;offering-id&gt; \
+  --commitment 10.00 \
+  --client-token "purchase-$(date +%s)"</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Step 4 — Cost Explorer API Automation</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">import boto3
+from datetime import datetime, timedelta
+import json
+
+ce = boto3.client('ce', region_name='us-east-1')
+
+def get_daily_cost_by_team(days=30):
+    end = datetime.today().strftime('%Y-%m-%d')
+    start = (datetime.today() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+    response = ce.get_cost_and_usage(
+        TimePeriod=&#123;'Start': start, 'End': end&#125;,
+        Granularity='DAILY',
+        Filter=&#123;
+            'Tags': &#123;
+                'Key': 'Environment',
+                'Values': ['production']
+            &#125;
+        &#125;,
+        GroupBy=[&#123;'Type': 'TAG', 'Key': 'Team'&#125;],
+        Metrics=['UnblendedCost']
+    )
+    return response['ResultsByTime']
+
+# Get top services by cost this month
+def get_top_services():
+    today = datetime.today()
+    start = today.replace(day=1).strftime('%Y-%m-%d')
+    end = today.strftime('%Y-%m-%d')
+
+    response = ce.get_cost_and_usage(
+        TimePeriod=&#123;'Start': start, 'End': end&#125;,
+        Granularity='MONTHLY',
+        GroupBy=[&#123;'Type': 'DIMENSION', 'Key': 'SERVICE'&#125;],
+        Metrics=['UnblendedCost']
+    )
+    groups = response['ResultsByTime'][0]['Groups']
+    sorted_groups = sorted(groups,
+        key=lambda x: float(x['Metrics']['UnblendedCost']['Amount']),
+        reverse=True)
+    for g in sorted_groups[:10]:
+        print(f"&#123;g['Keys'][0]&#125;: $&#123;float(g['Metrics']['UnblendedCost']['Amount']):.2f&#125;")
+
+get_top_services()</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Monthly Cost Review Checklist</h2>
+  <ul class="list-disc pl-6 text-text-muted space-y-1 mb-6">
+    <li>Check Cost Anomaly Detection alerts from prior 30 days</li>
+    <li>Review top 5 services by cost — any unexpected growth?</li>
+    <li>Run EC2 rightsizing recommendations in Cost Explorer</li>
+    <li>Check Savings Plan utilization — target &gt;90%</li>
+    <li>Identify untagged resources via AWS Config or Tag Editor</li>
+    <li>Review idle RDS instances (0 connections over 7 days)</li>
+    <li>Check S3 storage lens for buckets with no reads in 90 days</li>
+    <li>Review NAT Gateway costs — often a surprise top-5 service</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="aws-cost-explorer-guide" relatedTags={["cloud", "devops", "aws", "cost-optimization", "finops"]} />
+</BaseLayout>

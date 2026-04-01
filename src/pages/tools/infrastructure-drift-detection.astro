@@ -1,0 +1,161 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is infrastructure drift and why is it dangerous?", answer: "Infrastructure drift occurs when the actual state of your cloud infrastructure diverges from the state defined in your infrastructure-as-code (Terraform, Pulumi, etc.). It happens when someone manually changes a resource in the cloud console, when a resource is modified by an automated process outside IaC, or when resources are created outside Terraform. Drift is dangerous for several reasons: your IaC no longer accurately represents what's running (so terraform apply can destroy manual changes), security configurations may have been altered manually (opening ports, changing IAM policies), and incident response becomes harder because the 'ground truth' is unclear. Regular drift detection is an essential operational discipline." },
+  { question: "How does driftctl differ from terraform plan for drift detection?", answer: "terraform plan detects drift only for resources Terraform already manages (those in the state file). driftctl detects both: managed resources that have drifted (differ from state) AND unmanaged resources — cloud resources that exist but have no corresponding Terraform state at all. Unmanaged resources are often the more important finding: shadow infrastructure, forgotten resources running up bills, or security risks. driftctl also provides a coverage score showing what percentage of your cloud infrastructure is under IaC management. terraform plan is a prerequisite for every apply; driftctl is a periodic audit tool that answers 'what's out there that we don't control?'" },
+  { question: "How should I handle drift when it's detected?", answer: "Drift handling depends on type. For managed resource drift (Terraform knows about it but actual state differs): determine if the manual change was intentional. If yes, update your Terraform code to match and run apply (or use terraform import if needed). If no, run terraform apply to restore the desired state. For unmanaged resources: decide to either import into Terraform (terraform import) so it's managed going forward, or use driftctl's ignore file (.driftignore) to explicitly acknowledge it. Never just delete unmanaged resources without investigation — they may be critical. Build a drift triage process: high-severity (security group changes, IAM policy changes) trigger immediate alerts; low-severity (tag changes) are batched for weekly review." },
+  { question: "Can I detect drift in Kubernetes resources with these tools?", answer: "Yes, but different tools are better suited. CloudQuery can query Kubernetes resources alongside cloud resources and detect configuration drift via SQL comparisons. For Kubernetes-specific drift, consider: (1) Flux and ArgoCD both detect drift natively — they show 'OutOfSync' status when the cluster state differs from Git. (2) config-sync (Google) does the same. (3) kubectl diff can show differences between running state and your local manifests. For Helm-managed resources, helm diff (a Helm plugin) shows what a helm upgrade would change. GitOps tools solve the Kubernetes drift problem fundamentally by continuously reconciling." },
+];
+---
+
+<BaseLayout
+  title="Infrastructure Drift Detection — Terraform Plan, driftctl, CloudQuery"
+  description="Detect and alert on infrastructure drift using Terraform plan, driftctl, and CloudQuery. CI integration, SQL queries for drift analysis, and automated drift alert setup."
+  tool="infrastructure drift detection, driftctl, Terraform plan drift, CloudQuery, IaC drift, cloud configuration drift, terraform import"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Infrastructure Drift Detection Guide",
+    "url": "https://devplaybook.cc/tools/infrastructure-drift-detection",
+    "description": "Practical guide to detecting infrastructure drift with Terraform plan, driftctl, and CloudQuery — including CI integration and alert setup.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Infrastructure Drift Detection</h1>
+  <p class="text-text-muted mb-6">
+    Detect when your cloud infrastructure diverges from your IaC definitions using <strong>Terraform plan</strong>, <strong>driftctl</strong>, and <strong>CloudQuery</strong>. Set up automated drift alerts before manual changes cause incidents.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Terraform plan analysis</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> driftctl unmanaged resources</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CloudQuery SQL queries</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CI drift alerts</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Method 1 — Terraform Plan as Drift Detector</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Run terraform plan in CI and parse for unexpected changes
+cd terraform/
+
+# Refresh state to pull latest cloud state, then plan
+terraform init -reconfigure
+terraform refresh  # or use -refresh=true in plan
+
+# Generate machine-readable plan output
+terraform plan -refresh=true -out=tfplan.binary -detailed-exitcode
+EXIT_CODE=$?
+# Exit code: 0 = no changes, 1 = error, 2 = changes detected (drift!)
+
+terraform show -json tfplan.binary &gt; tfplan.json
+
+# Parse for changes using jq
+jq '[.resource_changes[] | select(.change.actions | contains(["update"]) or contains(["delete"]))] |
+  map(&#123;resource: .address, actions: .change.actions, before: .change.before, after: .change.after&#125;)' \
+  tfplan.json
+
+# Count drift by type
+jq '[.resource_changes[] | .change.actions[]] |
+  group_by(.) | map(&#123;action: .[0], count: length&#125;)' tfplan.json
+
+# Exit 1 in CI if drift detected
+if [ $EXIT_CODE -eq 2 ]; then
+  echo "DRIFT DETECTED: $(jq '.resource_changes | length' tfplan.json) resources changed"
+  exit 1
+fi</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Method 2 — driftctl for Unmanaged Resources</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install driftctl
+curl -L https://github.com/snyk/driftctl/releases/latest/download/driftctl_linux_amd64 \
+  -o /usr/local/bin/driftctl &amp;&amp; chmod +x /usr/local/bin/driftctl
+
+# Scan AWS resources against Terraform state
+export AWS_PROFILE=production
+driftctl scan \
+  --from tfstate+s3://my-terraform-state/prod/terraform.tfstate \
+  --output json://drift-report.json
+
+# View coverage and drift summary
+driftctl scan \
+  --from tfstate+s3://my-terraform-state/prod/terraform.tfstate \
+  --output console
+
+# Example output:
+# Found 14 resource(s) not covered by IaC: (unmanaged)
+#   - aws_s3_bucket.manual-uploads-2024
+#   - aws_security_group.sg-0abc1234
+#   - aws_iam_role.manual-role
+# Coverage: 87.3% (127 managed / 14 unmanaged)
+
+# Scan multiple state files (multi-env)
+driftctl scan \
+  --from tfstate+s3://state-bucket/prod/terraform.tfstate \
+  --from tfstate+s3://state-bucket/staging/terraform.tfstate
+
+# Ignore known unmanaged resources in .driftignore
+cat &gt; .driftignore &lt;&lt;EOF
+# Intentionally unmanaged — created by EKS node group
+aws_instance.*
+aws_volume_attachment.*
+# Managed by external team
+aws_iam_role.external-team-role
+EOF</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Method 3 — CloudQuery SQL for Drift Analysis</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install CloudQuery
+curl -L https://github.com/cloudquery/cloudquery/releases/latest/download/cloudquery_linux_amd64 \
+  -o /usr/local/bin/cloudquery &amp;&amp; chmod +x /usr/local/bin/cloudquery
+
+# cloudquery.yml — sync AWS to PostgreSQL
+kind: source
+spec:
+  name: aws
+  registry: cloudquery
+  path: cloudquery/aws
+  version: "v23.0.0"
+  tables: ["aws_ec2_instances", "aws_ec2_security_groups",
+           "aws_iam_roles", "aws_s3_buckets"]
+  destinations: ["postgresql"]
+---
+kind: destination
+spec:
+  name: postgresql
+  registry: cloudquery
+  path: cloudquery/postgresql
+  version: "v7.0.0"
+  spec:
+    connection_string: "postgresql://user:pass@localhost:5432/cloudquery"
+
+# Run sync
+cloudquery sync cloudquery.yml
+
+# SQL: Find EC2 instances without required tags (drift from policy)
+SELECT
+  instance_id,
+  instance_type,
+  state_name,
+  tags
+FROM aws_ec2_instances
+WHERE
+  state_name = 'running'
+  AND (tags -&gt;&gt; 'Environment' IS NULL
+       OR tags -&gt;&gt; 'Team' IS NULL
+       OR tags -&gt;&gt; 'Project' IS NULL);
+
+-- Security groups with 0.0.0.0/0 inbound rules (unexpected open ports)
+SELECT
+  sg.group_id,
+  sg.group_name,
+  perm.from_port,
+  perm.to_port,
+  perm.ip_protocol
+FROM aws_ec2_security_groups sg,
+  jsonb_array_elements(sg.ip_permissions) AS perm,
+  jsonb_array_elements(perm -&gt; 'IpRanges') AS ip_range
+WHERE ip_range -&gt;&gt; 'CidrIp' = '0.0.0.0/0'
+  AND perm -&gt;&gt; 'IpProtocol' != '-1'
+ORDER BY perm -&gt;&gt; 'FromPort';
