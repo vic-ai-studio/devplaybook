@@ -1,0 +1,205 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "How do I validate my .gitlab-ci.yml before pushing?",
+    answer: "GitLab has a built-in CI Lint tool at https://gitlab.com/your-group/your-project/-/ci/lint. Paste your YAML config to get instant validation, see the expanded job list after include templates are resolved, and dry-run the pipeline. You can also use the GitLab CLI: glab ci lint. For local validation, the schema is available as a JSON Schema file you can wire into VS Code for inline red squiggles."
+  },
+  {
+    question: "What is the difference between stages and needs in GitLab CI?",
+    answer: "Stages define the order in which groups of jobs run — all jobs in a stage complete before the next stage begins. The 'needs' keyword overrides this, allowing a job to start as soon as its listed dependencies pass, regardless of stage ordering. This creates a DAG (directed acyclic graph) pipeline that can run much faster since you are not waiting for entire stages when only specific jobs are needed."
+  },
+  {
+    question: "What are GitLab Runners and how do I choose one?",
+    answer: "Runners are the agents that execute your pipeline jobs. GitLab.com provides shared runners (Linux, macOS, Windows) on the free tier. Group or project runners are dedicated machines you register with the gitlab-runner binary — ideal for jobs needing specific hardware, large caches, or network access to internal services. For open source projects, shared runners are sufficient. Self-hosted GitLab installations always need their own runners."
+  },
+  {
+    question: "How does caching work vs artifacts in GitLab CI?",
+    answer: "Cache stores files between pipeline runs for the same branch — typically package manager dependencies (node_modules, .pip-cache). Artifacts pass files between jobs within the same pipeline — a build stage producing a dist/ folder that the deploy stage then uses. Set cache.key to '$CI_COMMIT_REF_SLUG' to scope the cache per branch. Artifacts are automatically expired (default 30 days) while caches are replaced on each successful upload."
+  },
+  {
+    question: "How do I use include to share pipeline templates?",
+    answer: "The include keyword pulls in external YAML files, avoiding copy-paste across repositories. Use include.project to reference templates from another GitLab repo, include.remote for URLs, or include.template for GitLab's built-in Auto DevOps templates. All included files are merged with your .gitlab-ci.yml at pipeline creation time. The !reference tag lets you reuse specific sections (scripts, rules) from included files without duplicating them."
+  },
+  {
+    question: "GitLab CI vs GitHub Actions — key differences?",
+    answer: "GitLab CI is tightly integrated with GitLab's merge requests, environments, and security scanning — the entire DevSecOps lifecycle lives in one platform. GitHub Actions has a larger marketplace of community actions and is the natural choice for GitHub repos. GitLab CI's rules keyword is more expressive than GitHub Actions' if conditions for complex branching logic. If you are already on GitLab, GitLab CI is the obvious choice; for GitHub-hosted code, GitHub Actions wins on ecosystem and simplicity."
+  }
+];
+---
+
+<BaseLayout
+  title="GitLab CI/CD: .gitlab-ci.yml Config, Runners & Pipeline Guide"
+  description="Complete GitLab CI/CD reference: .gitlab-ci.yml structure, stages, jobs, rules, GitLab Runners, caching, artifacts, include templates, and environment deployments. With GitLab CI vs GitHub Actions comparison."
+  tool="GitLab CI, .gitlab-ci.yml, pipeline, GitLab Runner, CI/CD, GitLab stages, include templates"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"GitLab CI/CD: .gitlab-ci.yml Config, Runners & Pipeline Guide","url":"https://devplaybook.cc/tools/gitlab-ci-validator","description":"Complete GitLab CI/CD reference covering .gitlab-ci.yml structure, GitLab Runners, caching, artifacts, include templates, and environment deployments."})} />
+
+  <h1 class="text-3xl font-bold mb-2">GitLab CI/CD: .gitlab-ci.yml Config & Pipeline Guide</h1>
+  <p class="text-text-muted mb-6">GitLab CI/CD lives directly in your repository as a single <code class="font-mono text-sm bg-bg-card px-1 rounded">.gitlab-ci.yml</code> file. From defining stages and caching dependencies to deploying to multiple environments with manual approval gates, this guide covers the full pipeline authoring workflow with copy-ready examples.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Stages, jobs, rules &amp; variables</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GitLab Runners &amp; executors</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cache vs artifacts explained</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Include templates &amp; !reference</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> GitLab CI vs GitHub Actions</span>
+  </div>
+
+  <ToolPageCta />
+
+  <div class="mt-8 space-y-8">
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">.gitlab-ci.yml Structure</h2>
+      <p class="text-text-muted mb-4">Every GitLab CI pipeline starts with a <code class="font-mono text-sm bg-bg-card px-1 rounded">.gitlab-ci.yml</code> in your repo root. Define global <code class="font-mono text-sm bg-bg-card px-1 rounded">stages</code>, then each job specifies which stage it belongs to, its script, and any rules controlling when it runs.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code># .gitlab-ci.yml
+stages:
+  - install
+  - test
+  - build
+  - deploy
+
+variables:
+  NODE_VERSION: "20"
+  DOCKER_DRIVER: overlay2
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - node_modules/
+    - .npm/
+
+install-deps:
+  stage: install
+  image: node:20-alpine
+  script:
+    - npm ci --cache .npm --prefer-offline
+  artifacts:
+    paths:
+      - node_modules/
+    expire_in: 1 hour
+
+unit-tests:
+  stage: test
+  image: node:20-alpine
+  needs: [install-deps]
+  script:
+    - npm run test:ci
+  coverage: '/Lines\s*:\s*(\d+\.?\d*)%/'
+  artifacts:
+    reports:
+      junit: coverage/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+
+deploy-staging:
+  stage: deploy
+  script:
+    - ./scripts/deploy.sh staging
+  environment:
+    name: staging
+    url: https://staging.example.com
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">DAG Pipelines with needs</h2>
+      <p class="text-text-muted mb-4">The <code class="font-mono text-sm bg-bg-card px-1 rounded">needs</code> keyword unlocks directed acyclic graph (DAG) execution. A job can start the moment its listed dependencies pass — even if other jobs in the same stage are still running. This can cut pipeline time by 30–60% on complex pipelines.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code># DAG: build-backend and build-frontend run in parallel
+# deploy only needs build-frontend to finish, not build-backend
+build-backend:
+  stage: build
+  script: make build-api
+  artifacts:
+    paths: [bin/api]
+
+build-frontend:
+  stage: build
+  script: npm run build
+  artifacts:
+    paths: [dist/]
+
+deploy-frontend:
+  stage: deploy
+  needs: [build-frontend]   # starts immediately after build-frontend passes
+  script: aws s3 sync dist/ s3://my-bucket/
+  environment:
+    name: production</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-3">Include Templates &amp; Reuse</h2>
+      <p class="text-text-muted mb-4">Avoid duplicating pipeline logic across repositories. The <code class="font-mono text-sm bg-bg-card px-1 rounded">include</code> keyword merges external YAML into your pipeline at runtime. Use GitLab's built-in security scanning templates to add SAST, dependency scanning, and container scanning with two lines.</p>
+      <pre class="bg-bg-card border border-gray-700 rounded-lg p-4 overflow-x-auto text-sm font-mono text-gray-300"><code># Include built-in GitLab templates
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  # Include from another project in the same GitLab instance
+  - project: 'myorg/ci-templates'
+    ref: main
+    file: '/templates/node-pipeline.yml'
+
+# Override variables from the included template
+sast:
+  variables:
+    SAST_EXCLUDED_PATHS: "spec, test, tests, tmp"</code></pre>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">GitLab CI vs GitHub Actions</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-gray-700">
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">GitLab CI</th>
+              <th class="text-left py-3 px-4 text-gray-300 font-semibold">GitHub Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Config file</td>
+              <td class="py-3 px-4 text-gray-400">.gitlab-ci.yml</td>
+              <td class="py-3 px-4 text-gray-400">.github/workflows/*.yml</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Conditional logic</td>
+              <td class="py-3 px-4 text-gray-400">rules (powerful expressions)</td>
+              <td class="py-3 px-4 text-gray-400">if conditions (simpler)</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Reusable logic</td>
+              <td class="py-3 px-4 text-gray-400">include + !reference</td>
+              <td class="py-3 px-4 text-gray-400">Reusable Workflows / Actions</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Security scanning</td>
+              <td class="py-3 px-4 text-gray-400">Built-in SAST/DAST/secret detection</td>
+              <td class="py-3 px-4 text-gray-400">Marketplace (CodeQL, Snyk)</td>
+            </tr>
+            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Parallel execution</td>
+              <td class="py-3 px-4 text-gray-400">parallel + needs (DAG)</td>
+              <td class="py-3 px-4 text-gray-400">matrix strategy</td>
+            </tr>
+            <tr class="hover:bg-gray-800/30">
+              <td class="py-3 px-4 text-gray-300">Free private minutes</td>
+              <td class="py-3 px-4 text-gray-400">400 min/mo (Free tier)</td>
+              <td class="py-3 px-4 text-gray-400">2,000 min/mo (Free tier)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>
