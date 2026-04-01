@@ -1,0 +1,276 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What CORS headers do I need for a public API?", answer: "For a fully public API (no credentials): Access-Control-Allow-Origin: *, Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, and Access-Control-Allow-Headers for any custom headers. Add Access-Control-Max-Age to cache the preflight response. Never use * with credentials." },
+  { question: "Why use Access-Control-Max-Age?", answer: "Browsers send an OPTIONS preflight before non-simple cross-origin requests. Access-Control-Max-Age tells the browser how long (in seconds) to cache the preflight result, avoiding repeated OPTIONS requests. A value of 86400 (24 hours) is common for APIs that rarely change their CORS policy." },
+  { question: "Can I allow multiple origins?", answer: "The CORS spec allows only one origin value per response (or *). To support multiple origins, check the incoming Origin header against a server-side allowlist and reflect it back if it matches. This tool generates the headers for a single origin — implement allowlist logic in your server code." },
+  { question: "What is the difference between Allow-Headers and Expose-Headers?", answer: "Access-Control-Allow-Headers lists which request headers browsers can send (checked during preflight). Access-Control-Expose-Headers lists which response headers JavaScript can read via fetch response.headers.get(). By default, only a small set of 'safe' response headers are readable." },
+  { question: "When is a preflight triggered?", answer: "Preflight (OPTIONS) is triggered when: the method is PUT/DELETE/PATCH, the Content-Type is application/json (or anything other than form types), or custom headers like Authorization are sent. GET with only standard headers is 'simple' and doesn't require a preflight." },
+];
+---
+
+<BaseLayout
+  title="CORS Header Generator — Generate Access-Control Headers for Any Scenario"
+  description="Generate correct CORS response headers for APIs, CDNs, and SPAs. Configure origin, methods, headers, credentials, and max-age. Get headers for Express, Nginx, Apache, and Cloudflare Workers."
+  tool="CORS Header Generator, CORS Configuration Generator, Access-Control Headers, CORS Policy Generator, Express CORS Setup"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">CORS Header Generator</h1>
+  <p class="text-text-muted mb-4">Configure your CORS policy and get ready-to-use headers for Express, Nginx, Apache, and Cloudflare Workers. Handles credentials, preflight caching, and wildcard restrictions.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Handles credentials & wildcard conflict</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Code for 4 platforms</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Preflight (OPTIONS) included</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- Config -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Configuration</h2>
+        <div class="space-y-4">
+          <!-- Scenario -->
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Scenario</label>
+            <select id="scenario" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+              <option value="public-api">Public API (no credentials)</option>
+              <option value="spa-api">SPA + API (with credentials)</option>
+              <option value="cdn">CDN / Static Assets</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+
+          <!-- Origin -->
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Allowed Origin</label>
+            <input id="origin" type="text" placeholder="https://example.com or *"
+              class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+            <p class="text-xs text-text-muted mt-1">Use * for public APIs. Use specific origin when credentials=true.</p>
+          </div>
+
+          <!-- Methods -->
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Allowed Methods</label>
+            <div class="flex flex-wrap gap-2" id="methods-group">
+              {['GET','POST','PUT','PATCH','DELETE','OPTIONS','HEAD'].map(m => (
+                <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+                  <input type="checkbox" class="method-cb" value={m} />
+                  <span class="font-mono text-xs">{m}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <!-- Headers -->
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Allowed Request Headers</label>
+            <input id="allow-headers" type="text" placeholder="Content-Type, Authorization, X-Request-Id"
+              class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+
+          <!-- Expose Headers -->
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Expose Response Headers (optional)</label>
+            <input id="expose-headers" type="text" placeholder="X-RateLimit-Remaining, X-Request-Id"
+              class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" />
+          </div>
+
+          <!-- Credentials + Max-Age -->
+          <div class="flex gap-4">
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" id="credentials" />
+              <span>Allow Credentials</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <label class="text-sm" for="max-age">Max-Age (s)</label>
+              <input id="max-age" type="number" value="86400" min="0"
+                class="w-24 bg-bg border border-border rounded-lg px-2 py-1 text-sm font-mono focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div id="warn-credentials" class="hidden bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-red-400 text-xs">
+        ⚠ Cannot use <code>Access-Control-Allow-Origin: *</code> with <code>Allow-Credentials: true</code>. Change origin to a specific URL.
+      </div>
+
+      <!-- HTTP Headers -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold">HTTP Headers</h2>
+          <button id="copy-headers" class="text-xs text-text-muted border border-border px-2 py-1 rounded hover:bg-bg transition-colors">Copy</button>
+        </div>
+        <pre id="output-headers" class="text-xs font-mono bg-bg rounded-lg p-3 overflow-auto text-text-muted whitespace-pre"></pre>
+      </div>
+
+      <!-- Platform Tabs -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex gap-2 mb-3 border-b border-border pb-3">
+          {['express','nginx','apache','cloudflare'].map((p,i) => (
+            <button class={`platform-tab text-xs px-2 py-1 rounded font-mono ${i===0?'bg-primary text-white':'text-text-muted border border-border hover:bg-bg'}`} data-platform={p}>{p}</button>
+          ))}
+        </div>
+        <div class="flex items-center justify-between mb-2">
+          <span id="platform-label" class="text-xs text-text-muted">Express.js</span>
+          <button id="copy-code" class="text-xs text-text-muted border border-border px-2 py-1 rounded hover:bg-bg transition-colors">Copy</button>
+        </div>
+        <pre id="output-code" class="text-xs font-mono bg-bg rounded-lg p-3 overflow-auto text-text-muted whitespace-pre max-h-64"></pre>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="in-content" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="CORS Header Generator" relatedTags={['security', 'api', 'http', 'backend', 'web']} />
+</BaseLayout>
+
+<script>
+let currentPlatform = 'express';
+
+const scenarios: Record<string, { origin: string; methods: string[]; headers: string; credentials: boolean }> = {
+  'public-api': { origin: '*', methods: ['GET','POST','PUT','DELETE','OPTIONS'], headers: 'Content-Type, Accept', credentials: false },
+  'spa-api': { origin: 'https://app.example.com', methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], headers: 'Content-Type, Authorization', credentials: true },
+  'cdn': { origin: '*', methods: ['GET','HEAD','OPTIONS'], headers: 'Content-Type', credentials: false },
+  'custom': { origin: '*', methods: ['GET'], headers: 'Content-Type', credentials: false },
+};
+
+function getConfig() {
+  const origin = (document.getElementById('origin') as HTMLInputElement).value.trim() || '*';
+  const methods = Array.from(document.querySelectorAll<HTMLInputElement>('.method-cb:checked')).map(cb => cb.value);
+  const allowHeaders = (document.getElementById('allow-headers') as HTMLInputElement).value.trim();
+  const exposeHeaders = (document.getElementById('expose-headers') as HTMLInputElement).value.trim();
+  const credentials = (document.getElementById('credentials') as HTMLInputElement).checked;
+  const maxAge = (document.getElementById('max-age') as HTMLInputElement).value;
+  return { origin, methods, allowHeaders, exposeHeaders, credentials, maxAge };
+}
+
+function generateHeaders(cfg: ReturnType<typeof getConfig>): string {
+  const lines: string[] = [];
+  lines.push(`Access-Control-Allow-Origin: ${cfg.origin}`);
+  if (cfg.methods.length) lines.push(`Access-Control-Allow-Methods: ${cfg.methods.join(', ')}`);
+  if (cfg.allowHeaders) lines.push(`Access-Control-Allow-Headers: ${cfg.allowHeaders}`);
+  if (cfg.exposeHeaders) lines.push(`Access-Control-Expose-Headers: ${cfg.exposeHeaders}`);
+  if (cfg.credentials) lines.push(`Access-Control-Allow-Credentials: true`);
+  if (cfg.maxAge) lines.push(`Access-Control-Max-Age: ${cfg.maxAge}`);
+  return lines.join('\n');
+}
+
+function generateCode(cfg: ReturnType<typeof getConfig>, platform: string): string {
+  const o = cfg.origin, m = cfg.methods.join(', '), h = cfg.allowHeaders, maxAge = cfg.maxAge;
+  const cred = cfg.credentials;
+
+  if (platform === 'express') {
+    return `// npm install cors
+const cors = require('cors');
+
+app.use(cors({
+  origin: ${o === '*' ? "'*'" : `'${o}'`},
+  methods: [${cfg.methods.map(x=>`'${x}'`).join(', ')}],${h ? `\n  allowedHeaders: [${h.split(',').map(x=>`'${x.trim()}'`).join(', ')}],` : ''}${cfg.exposeHeaders ? `\n  exposedHeaders: [${cfg.exposeHeaders.split(',').map(x=>`'${x.trim()}'`).join(', ')}],` : ''}${cred ? `\n  credentials: true,` : ''}${maxAge ? `\n  maxAge: ${maxAge},` : ''}
+}));`;
+  }
+  if (platform === 'nginx') {
+    return `# nginx.conf
+add_header 'Access-Control-Allow-Origin' '${o}' always;
+add_header 'Access-Control-Allow-Methods' '${m}' always;${h ? `\nadd_header 'Access-Control-Allow-Headers' '${h}' always;` : ''}${cfg.exposeHeaders ? `\nadd_header 'Access-Control-Expose-Headers' '${cfg.exposeHeaders}' always;` : ''}${cred ? `\nadd_header 'Access-Control-Allow-Credentials' 'true' always;` : ''}${maxAge ? `\nadd_header 'Access-Control-Max-Age' '${maxAge}' always;` : ''}
+
+# Handle preflight
+if ($request_method = 'OPTIONS') {
+  add_header 'Access-Control-Allow-Origin' '${o}';
+  add_header 'Access-Control-Allow-Methods' '${m}';${maxAge ? `\n  add_header 'Access-Control-Max-Age' '${maxAge}';` : ''}
+  return 204;
+}`;
+  }
+  if (platform === 'apache') {
+    return `# .htaccess or VirtualHost
+Header always set Access-Control-Allow-Origin "${o}"
+Header always set Access-Control-Allow-Methods "${m}"${h ? `\nHeader always set Access-Control-Allow-Headers "${h}"` : ''}${cfg.exposeHeaders ? `\nHeader always set Access-Control-Expose-Headers "${cfg.exposeHeaders}"` : ''}${cred ? `\nHeader always set Access-Control-Allow-Credentials "true"` : ''}${maxAge ? `\nHeader always set Access-Control-Max-Age "${maxAge}"` : ''}
+
+# Handle preflight
+RewriteEngine On
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=204,L]`;
+  }
+  if (platform === 'cloudflare') {
+    return `// Cloudflare Worker
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request));
+});
+
+async function handleRequest(request) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '${o}',
+    'Access-Control-Allow-Methods': '${m}',${h ? `\n    'Access-Control-Allow-Headers': '${h}',` : ''}${cfg.exposeHeaders ? `\n    'Access-Control-Expose-Headers': '${cfg.exposeHeaders}',` : ''}${cred ? `\n    'Access-Control-Allow-Credentials': 'true',` : ''}${maxAge ? `\n    'Access-Control-Max-Age': '${maxAge}',` : ''}
+  };
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+  const response = await fetch(request);
+  const newHeaders = new Headers(response.headers);
+  Object.entries(corsHeaders).forEach(([k, v]) => newHeaders.set(k, v));
+  return new Response(response.body, { ...response, headers: newHeaders });
+}`;
+  }
+  return '';
+}
+
+function update() {
+  const cfg = getConfig();
+  const warnEl = document.getElementById('warn-credentials')!;
+  if (cfg.credentials && cfg.origin === '*') {
+    warnEl.classList.remove('hidden');
+  } else {
+    warnEl.classList.add('hidden');
+  }
+  document.getElementById('output-headers')!.textContent = generateHeaders(cfg);
+  document.getElementById('output-code')!.textContent = generateCode(cfg, currentPlatform);
+}
+
+function applyScenario(name: string) {
+  const s = scenarios[name];
+  (document.getElementById('origin') as HTMLInputElement).value = s.origin;
+  document.querySelectorAll<HTMLInputElement>('.method-cb').forEach(cb => {
+    cb.checked = s.methods.includes(cb.value);
+  });
+  (document.getElementById('allow-headers') as HTMLInputElement).value = s.headers;
+  (document.getElementById('credentials') as HTMLInputElement).checked = s.credentials;
+  update();
+}
+
+document.getElementById('scenario')!.addEventListener('change', e => {
+  applyScenario((e.target as HTMLSelectElement).value);
+});
+
+document.querySelectorAll('.platform-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentPlatform = btn.getAttribute('data-platform')!;
+    document.querySelectorAll('.platform-tab').forEach(b => {
+      b.className = 'platform-tab text-xs px-2 py-1 rounded font-mono text-text-muted border border-border hover:bg-bg';
+    });
+    btn.className = 'platform-tab text-xs px-2 py-1 rounded font-mono bg-primary text-white';
+    const labels: Record<string,string> = { express: 'Express.js', nginx: 'Nginx', apache: 'Apache', cloudflare: 'Cloudflare Workers' };
+    document.getElementById('platform-label')!.textContent = labels[currentPlatform];
+    update();
+  });
+});
+
+document.getElementById('copy-headers')!.addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('output-headers')!.textContent || '');
+});
+document.getElementById('copy-code')!.addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('output-code')!.textContent || '');
+});
+
+document.querySelectorAll<HTMLElement>('#origin, #allow-headers, #expose-headers, #max-age').forEach(el => el.addEventListener('input', update));
+document.getElementById('credentials')!.addEventListener('change', update);
+document.querySelectorAll('.method-cb').forEach(cb => cb.addEventListener('change', update));
+
+// Init with public API scenario
+applyScenario('public-api');
+</script>

@@ -1,0 +1,222 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is a JWT?", answer: "A JSON Web Token (JWT) is a compact, URL-safe token format used for authentication and information exchange. It has three Base64url-encoded parts separated by dots: header (algorithm + type), payload (claims), and signature. The signature verifies the token hasn't been tampered with." },
+  { question: "What are standard JWT claims?", answer: "Standard registered claims include: iss (issuer), sub (subject), aud (audience), exp (expiration time), nbf (not before), iat (issued at), and jti (JWT ID). All are optional but widely used for auth flows. Custom claims can be added freely." },
+  { question: "Can this tool validate the signature?", answer: "No. Signature validation requires your private/public key or secret, which you should never paste into any online tool. This decoder shows header and payload contents and validates structural claims (expiry, not-before). Always validate signatures server-side." },
+  { question: "What is the 'alg: none' attack?", answer: "Some JWT libraries accept tokens with alg: none in the header, bypassing signature verification entirely. This is a critical vulnerability. Always explicitly whitelist allowed algorithms in your JWT library and reject 'none' as an algorithm." },
+  { question: "What does token expiry mean?", answer: "The exp claim is a Unix timestamp (seconds since epoch). When the current time exceeds exp, the token is expired and should be rejected by your server. This decoder shows how much time remains (or how long ago it expired) relative to your local clock." },
+];
+---
+
+<BaseLayout
+  title="JWT Decoder & Validator — Decode JWT Header, Payload & Check Expiry"
+  description="Decode any JWT token to inspect header, payload, and claims. Check expiration, not-before, issued-at. Validate standard claims and spot common JWT vulnerabilities. Runs in browser."
+  tool="JWT Decoder, JWT Validator, JSON Web Token Decoder, JWT Claims Checker, JWT Expiry Checker"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">JWT Decoder & Validator</h1>
+  <p class="text-text-muted mb-4">Paste a JWT to instantly decode the header and payload, check time-based claims (exp, nbf, iat), and spot common structural issues. Signature is not verified — never share your secret key.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Decode header & payload</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Expiry & time claim checks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in browser</span>
+  </div>
+
+  <div class="space-y-5">
+    <!-- Input -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <label class="block text-sm font-medium mb-2">Paste JWT Token</label>
+      <textarea id="jwt-input" rows="4" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        class="w-full bg-bg border border-border rounded-lg px-4 py-3 text-sm font-mono focus:outline-none focus:border-primary resize-none"></textarea>
+      <div class="flex gap-2 mt-3">
+        <button id="decode-btn" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors">Decode</button>
+        <button id="clear-btn" class="text-sm text-text-muted border border-border px-4 py-2 rounded-lg hover:bg-bg-card transition-colors">Clear</button>
+        <button id="sample-btn" class="text-sm text-text-muted border border-border px-4 py-2 rounded-lg hover:bg-bg-card transition-colors">Load Sample</button>
+      </div>
+    </div>
+
+    <div id="error-box" class="hidden bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm"></div>
+
+    <div id="result-section" class="hidden space-y-4">
+      <!-- Token Parts -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Token Structure</h2>
+        <div class="flex gap-1 font-mono text-xs break-all leading-relaxed">
+          <span id="part-header" class="text-red-400"></span>
+          <span class="text-text-muted">.</span>
+          <span id="part-payload" class="text-amber-400"></span>
+          <span class="text-text-muted">.</span>
+          <span id="part-sig" class="text-blue-400"></span>
+        </div>
+        <div class="flex gap-4 mt-2 text-xs">
+          <span class="text-red-400">■ Header</span>
+          <span class="text-amber-400">■ Payload</span>
+          <span class="text-blue-400">■ Signature</span>
+        </div>
+      </div>
+
+      <!-- Header + Payload -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-bg-card border border-border rounded-xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-semibold text-red-400">Header</h2>
+            <span id="alg-badge" class="text-xs font-mono bg-bg border border-border rounded px-2 py-0.5"></span>
+          </div>
+          <pre id="header-json" class="text-xs font-mono bg-bg rounded-lg p-3 overflow-auto text-text-muted whitespace-pre-wrap"></pre>
+        </div>
+        <div class="bg-bg-card border border-border rounded-xl p-5">
+          <h2 class="text-sm font-semibold mb-3 text-amber-400">Payload</h2>
+          <pre id="payload-json" class="text-xs font-mono bg-bg rounded-lg p-3 overflow-auto text-text-muted whitespace-pre-wrap"></pre>
+        </div>
+      </div>
+
+      <!-- Claims Validation -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Claims Validation</h2>
+        <div id="claims-checks" class="space-y-2"></div>
+      </div>
+
+      <!-- Warnings -->
+      <div id="warnings-box" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+        <h2 class="text-sm font-semibold mb-2 text-amber-400">Security Warnings</h2>
+        <ul id="warnings-list" class="text-sm text-text-muted space-y-1 list-disc list-inside"></ul>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="in-content" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="JWT Decoder & Validator" relatedTags={['security', 'auth', 'jwt', 'oauth', 'api']} />
+</BaseLayout>
+
+<script>
+const SAMPLE_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyIsIm5hbWUiOiJKYW5lIERvZSIsImVtYWlsIjoiamFuZUBleGFtcGxlLmNvbSIsImlhdCI6MTcxMDAwMDAwMCwiZXhwIjoxODAwMDAwMDAwLCJpc3MiOiJodHRwczovL2F1dGguZXhhbXBsZS5jb20iLCJhdWQiOiJteS1hcHAifQ.signature';
+
+function b64urlDecode(str: string): string {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  try { return atob(str); } catch { return ''; }
+}
+
+function decode() {
+  const raw = (document.getElementById('jwt-input') as HTMLTextAreaElement).value.trim();
+  const errBox = document.getElementById('error-box')!;
+  const resultSection = document.getElementById('result-section')!;
+  errBox.classList.add('hidden');
+  resultSection.classList.add('hidden');
+
+  if (!raw) return;
+
+  const parts = raw.split('.');
+  if (parts.length !== 3) {
+    errBox.textContent = 'Invalid JWT: must have exactly 3 parts separated by dots.';
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  let header: any, payload: any;
+  try { header = JSON.parse(b64urlDecode(parts[0])); } catch {
+    errBox.textContent = 'Invalid JWT: could not decode header.';
+    errBox.classList.remove('hidden');
+    return;
+  }
+  try { payload = JSON.parse(b64urlDecode(parts[1])); } catch {
+    errBox.textContent = 'Invalid JWT: could not decode payload.';
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  resultSection.classList.remove('hidden');
+
+  // Token parts coloring
+  document.getElementById('part-header')!.textContent = parts[0];
+  document.getElementById('part-payload')!.textContent = parts[1];
+  document.getElementById('part-sig')!.textContent = parts[2];
+
+  // Header
+  document.getElementById('header-json')!.textContent = JSON.stringify(header, null, 2);
+  document.getElementById('alg-badge')!.textContent = header.alg || '?';
+
+  // Payload
+  const payloadPretty = JSON.parse(JSON.stringify(payload));
+  // Convert timestamps to readable
+  ['exp','nbf','iat'].forEach(k => {
+    if (payloadPretty[k]) payloadPretty[k + '_readable'] = new Date(payloadPretty[k] * 1000).toISOString();
+  });
+  document.getElementById('payload-json')!.textContent = JSON.stringify(payloadPretty, null, 2);
+
+  // Claims checks
+  const now = Math.floor(Date.now() / 1000);
+  const checks: Array<{ label: string; value: string; status: 'ok' | 'error' | 'warn' | 'info' }> = [];
+
+  if (payload.exp !== undefined) {
+    const diff = payload.exp - now;
+    if (diff < 0) {
+      checks.push({ label: 'exp (Expiration)', value: `Expired ${Math.abs(diff)} seconds ago`, status: 'error' });
+    } else if (diff < 300) {
+      checks.push({ label: 'exp (Expiration)', value: `Expires in ${diff} seconds (< 5 min)`, status: 'warn' });
+    } else {
+      checks.push({ label: 'exp (Expiration)', value: `Valid — expires in ${Math.round(diff/3600*10)/10} hours`, status: 'ok' });
+    }
+  } else {
+    checks.push({ label: 'exp (Expiration)', value: 'Not set — token never expires', status: 'warn' });
+  }
+
+  if (payload.nbf !== undefined) {
+    const diff = now - payload.nbf;
+    checks.push({ label: 'nbf (Not Before)', value: diff >= 0 ? `Active since ${new Date(payload.nbf*1000).toISOString()}` : `Not yet valid (in ${-diff}s)`, status: diff >= 0 ? 'ok' : 'error' });
+  }
+
+  if (payload.iat !== undefined) {
+    checks.push({ label: 'iat (Issued At)', value: new Date(payload.iat*1000).toISOString(), status: 'info' });
+  }
+  if (payload.iss) checks.push({ label: 'iss (Issuer)', value: payload.iss, status: 'info' });
+  if (payload.sub) checks.push({ label: 'sub (Subject)', value: payload.sub, status: 'info' });
+  if (payload.aud) checks.push({ label: 'aud (Audience)', value: Array.isArray(payload.aud) ? payload.aud.join(', ') : payload.aud, status: 'info' });
+  if (payload.jti) checks.push({ label: 'jti (JWT ID)', value: payload.jti, status: 'info' });
+
+  const statusColor = { ok: 'text-green-500', error: 'text-red-400', warn: 'text-amber-400', info: 'text-blue-400' };
+  const statusIcon = { ok: '✓', error: '✗', warn: '⚠', info: 'ℹ' };
+
+  document.getElementById('claims-checks')!.innerHTML = checks.map(c => `
+    <div class="flex items-start gap-2 text-sm">
+      <span class="${statusColor[c.status]} mt-0.5">${statusIcon[c.status]}</span>
+      <span class="font-mono text-xs text-text-muted w-40 flex-shrink-0">${c.label}</span>
+      <span class="text-text-muted">${c.value}</span>
+    </div>
+  `).join('');
+
+  // Security warnings
+  const warnings: string[] = [];
+  if (header.alg === 'none' || header.alg === 'NONE') warnings.push('Algorithm "none" detected — this token has NO signature. Any JWT library accepting this is critically vulnerable.');
+  if (header.alg === 'HS256' || header.alg === 'HS384' || header.alg === 'HS512') warnings.push('HMAC algorithm: the same secret signs and verifies. Ensure the secret is long (≥256 bits), random, and never exposed to clients.');
+  if (!payload.exp) warnings.push('No expiration claim (exp) — this token is valid forever. Add exp for security.');
+  if (payload.exp && payload.exp - now > 86400 * 30) warnings.push('Token expires in more than 30 days. Short-lived tokens (< 24h) are a security best practice.');
+
+  const warnBox = document.getElementById('warnings-box')!;
+  const warnList = document.getElementById('warnings-list')!;
+  if (warnings.length) {
+    warnBox.classList.remove('hidden');
+    warnList.innerHTML = warnings.map(w => `<li>${w}</li>`).join('');
+  } else {
+    warnBox.classList.add('hidden');
+  }
+}
+
+document.getElementById('decode-btn')!.addEventListener('click', decode);
+document.getElementById('jwt-input')!.addEventListener('input', decode);
+document.getElementById('clear-btn')!.addEventListener('click', () => {
+  (document.getElementById('jwt-input') as HTMLTextAreaElement).value = '';
+  document.getElementById('result-section')!.classList.add('hidden');
+  document.getElementById('error-box')!.classList.add('hidden');
+});
+document.getElementById('sample-btn')!.addEventListener('click', () => {
+  (document.getElementById('jwt-input') as HTMLTextAreaElement).value = SAMPLE_JWT;
+  decode();
+});
+</script>
