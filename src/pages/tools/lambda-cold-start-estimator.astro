@@ -1,0 +1,233 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What causes AWS Lambda cold starts?", answer: "A cold start occurs when Lambda must initialize a new execution environment for your function — downloading code, starting the runtime, and running initialization code outside the handler. This adds latency ranging from ~100ms for small Node.js functions to 3s+ for large Java/C# functions with heavy dependencies." },
+  { question: "Which runtime has the fastest cold starts?", answer: "Node.js and Python have the fastest cold starts (typically 100-500ms for small packages). Go and Rust are also fast. Java, .NET, and Kotlin have the slowest cold starts (500ms-3s+) due to JVM/CLR startup overhead. Using Lambda SnapStart (Java) or GraalVM native image can dramatically reduce Java cold starts." },
+  { question: "Does increasing memory reduce cold start time?", answer: "Yes — Lambda allocates CPU proportional to memory. More memory means more CPU for initialization, which reduces cold start duration. Going from 128MB to 1024MB can halve cold start time. Beyond 1769MB you get 2 vCPUs and gains diminish. The trade-off is higher cost per invocation." },
+  { question: "How does package size affect cold starts?", answer: "Larger deployment packages take longer to download and extract during initialization. Packages under 5MB have minimal impact. 50-100MB packages add 200-500ms. Reducing dependencies with tree-shaking or using Lambda Layers (shared cached dependencies) significantly reduces cold start times." },
+  { question: "What is Lambda SnapStart and when should I use it?", answer: "Lambda SnapStart (Java only) takes a snapshot of the initialized execution environment and restores it on cold starts, reducing Java cold starts to under 1 second. Use it for Java functions in production where cold start latency impacts user experience. It requires Java 11+ and Corretto runtime." },
+];
+---
+
+<BaseLayout
+  title="AWS Lambda Cold Start Estimator — Estimate Cold Start Latency by Runtime & Memory"
+  description="Estimate AWS Lambda cold start latency based on runtime, memory allocation, and package size. Compare runtimes, see optimization tips, and calculate expected p50/p99 cold start times. Free browser tool."
+  tool="lambda cold start estimator, aws lambda latency calculator, serverless cold start calculator, lambda performance estimator, aws lambda runtime comparison"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "AWS Lambda Cold Start Estimator",
+    "url": "https://devplaybook.cc/tools/lambda-cold-start-estimator",
+    "description": "Estimate AWS Lambda cold start latency by runtime, memory, and package size.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">AWS Lambda Cold Start Estimator</h1>
+  <p class="text-text-muted mb-4">Estimate cold start latency for AWS Lambda based on runtime, memory allocation, and deployment package size. Get p50/p99 estimates and optimization recommendations.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runtime comparison</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> p50 / p99 estimates</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Optimization tips</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs 100% in browser</span>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-semibold mb-3">Configuration</h2>
+
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">Runtime</label>
+        <select id="runtime" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="nodejs20">Node.js 20.x</option>
+          <option value="nodejs18">Node.js 18.x</option>
+          <option value="python312">Python 3.12</option>
+          <option value="python311">Python 3.11</option>
+          <option value="go121">Go 1.21</option>
+          <option value="java21">Java 21 (Corretto)</option>
+          <option value="java11">Java 11 (Corretto)</option>
+          <option value="dotnet8">dotnet 8</option>
+          <option value="ruby32">Ruby 3.2</option>
+          <option value="rust">Rust (custom)</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">Memory Allocation</label>
+        <select id="memory" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="128">128 MB</option>
+          <option value="256">256 MB</option>
+          <option value="512" selected>512 MB</option>
+          <option value="1024">1024 MB (1 GB)</option>
+          <option value="1769">1769 MB (2 vCPUs)</option>
+          <option value="3008">3008 MB</option>
+          <option value="10240">10240 MB (10 GB)</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">Deployment Package Size</label>
+        <select id="packageSize" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="small">Small (&lt; 5 MB)</option>
+          <option value="medium" selected>Medium (5–50 MB)</option>
+          <option value="large">Large (50–100 MB)</option>
+          <option value="xlarge">Extra Large (&gt; 100 MB)</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">Initialization Work</label>
+        <select id="initWork" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="minimal">Minimal (no DB connections)</option>
+          <option value="light" selected>Light (env vars, simple setup)</option>
+          <option value="moderate">Moderate (DB pool, SDK clients)</option>
+          <option value="heavy">Heavy (multiple DB + external calls)</option>
+        </select>
+      </div>
+
+      <div class="mb-1">
+        <label class="block text-xs text-text-muted mb-1">VPC Enabled?</label>
+        <select id="vpc" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="no" selected>No VPC</option>
+          <option value="yes">Yes (adds ~600ms historically, now improved)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-semibold mb-3">Estimated Cold Start Latency</h2>
+      <div class="space-y-3 mb-4">
+        <div class="flex justify-between items-center border-b border-border pb-2">
+          <span class="text-sm text-text-muted">p50 (median)</span>
+          <span id="p50" class="text-xl font-bold text-primary">—</span>
+        </div>
+        <div class="flex justify-between items-center border-b border-border pb-2">
+          <span class="text-sm text-text-muted">p99 (worst case)</span>
+          <span id="p99" class="text-xl font-bold text-yellow-400">—</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-text-muted">Severity</span>
+          <span id="severity" class="text-sm font-semibold px-2 py-0.5 rounded">—</span>
+        </div>
+      </div>
+
+      <div id="tips" class="space-y-2 text-xs text-text-muted"></div>
+    </div>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <h2 class="text-sm font-semibold mb-3">Runtime Comparison (your memory setting)</h2>
+    <div id="comparison" class="space-y-2"></div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Lambda Cold Start Estimator" relatedTags={['aws', 'serverless', 'lambda', 'performance', 'cloud']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  const BASE = {
+    nodejs20:  { p50: 120, p99: 350,  label: 'Node.js 20.x',  color: '#68d391' },
+    nodejs18:  { p50: 130, p99: 380,  label: 'Node.js 18.x',  color: '#68d391' },
+    python312: { p50: 150, p99: 400,  label: 'Python 3.12',   color: '#f6ad55' },
+    python311: { p50: 160, p99: 420,  label: 'Python 3.11',   color: '#f6ad55' },
+    go121:     { p50: 90,  p99: 220,  label: 'Go 1.21',       color: '#76e4f7' },
+    java21:    { p50: 700, p99: 2200, label: 'Java 21',       color: '#fc8181' },
+    java11:    { p50: 900, p99: 2800, label: 'Java 11',       color: '#fc8181' },
+    dotnet8:   { p50: 500, p99: 1500, label: '.NET 8',        color: '#b794f4' },
+    ruby32:    { p50: 300, p99: 800,  label: 'Ruby 3.2',      color: '#fbb6ce' },
+    rust:      { p50: 60,  p99: 180,  label: 'Rust (custom)', color: '#90cdf4' },
+  };
+
+  const MEM_FACTOR = { 128: 1.8, 256: 1.4, 512: 1.0, 1024: 0.75, 1769: 0.6, 3008: 0.55, 10240: 0.5 };
+  const PKG_ADD    = { small: 0, medium: 80, large: 300, xlarge: 600 };
+  const INIT_ADD   = { minimal: 0, light: 50, moderate: 200, heavy: 500 };
+  const VPC_ADD    = { no: 0, yes: 200 };
+
+  function estimate(rt, mem, pkg, init, vpc) {
+    const b = BASE[rt];
+    const mf = MEM_FACTOR[mem] || 1;
+    const p50 = Math.round((b.p50 * mf) + PKG_ADD[pkg] + INIT_ADD[init] + VPC_ADD[vpc]);
+    const p99 = Math.round((b.p99 * mf) + PKG_ADD[pkg] * 2 + INIT_ADD[init] * 1.5 + VPC_ADD[vpc]);
+    return { p50, p99 };
+  }
+
+  function fmt(ms) { return ms >= 1000 ? (ms/1000).toFixed(1) + 's' : ms + 'ms'; }
+
+  function severity(p50) {
+    if (p50 < 200) return { label: 'Excellent', cls: 'bg-green-500/20 text-green-400' };
+    if (p50 < 500) return { label: 'Good', cls: 'bg-blue-500/20 text-blue-400' };
+    if (p50 < 1000) return { label: 'Moderate', cls: 'bg-yellow-500/20 text-yellow-400' };
+    return { label: 'High — optimize!', cls: 'bg-red-500/20 text-red-400' };
+  }
+
+  function getTips(rt, pkg, init, vpc) {
+    const tips = [];
+    if (['java21','java11'].includes(rt)) tips.push('💡 Use Lambda SnapStart (Java 11+) to reduce Java cold starts to &lt;1s');
+    if (['java21','java11','dotnet8'].includes(rt)) tips.push('💡 Consider migrating hot paths to Node.js or Go for faster cold starts');
+    if (pkg === 'large' || pkg === 'xlarge') tips.push('📦 Reduce package size: use Lambda Layers, tree-shaking, or esbuild bundling');
+    if (init === 'heavy') tips.push('🔌 Move heavy initialization to lazy loading — connect DB on first invocation, not at module load');
+    if (vpc === 'yes') tips.push('🌐 VPC cold starts improved in 2020; ensure Hyperplane ENI is enabled for your account');
+    tips.push('🔥 Use Provisioned Concurrency to eliminate cold starts for latency-sensitive workloads');
+    tips.push('⚡ Keep functions warm with scheduled pings if Provisioned Concurrency is too costly');
+    return tips;
+  }
+
+  function update() {
+    const rt = document.getElementById('runtime').value;
+    const mem = parseInt(document.getElementById('memory').value);
+    const pkg = document.getElementById('packageSize').value;
+    const init = document.getElementById('initWork').value;
+    const vpc = document.getElementById('vpc').value;
+
+    const { p50, p99 } = estimate(rt, mem, pkg, init, vpc);
+    const sv = severity(p50);
+
+    document.getElementById('p50').textContent = fmt(p50);
+    document.getElementById('p99').textContent = fmt(p99);
+    const sevEl = document.getElementById('severity');
+    sevEl.textContent = sv.label;
+    sevEl.className = 'text-sm font-semibold px-2 py-0.5 rounded ' + sv.cls;
+
+    const tipsEl = document.getElementById('tips');
+    const tips = getTips(rt, pkg, init, vpc);
+    tipsEl.innerHTML = '<p class="font-medium text-text mb-1">Optimization Tips:</p>' +
+      tips.map(t => `<p class="flex gap-1.5">${t}</p>`).join('');
+
+    // Comparison
+    const compEl = document.getElementById('comparison');
+    const runtimes = Object.keys(BASE);
+    const results = runtimes.map(r => {
+      const { p50: rp50 } = estimate(r, mem, pkg, init, vpc);
+      return { r, rp50, label: BASE[r].label, color: BASE[r].color };
+    }).sort((a, b) => a.rp50 - b.rp50);
+    const maxVal = results[results.length - 1].rp50;
+
+    compEl.innerHTML = results.map(({ r, rp50, label, color }) => {
+      const pct = Math.round((rp50 / maxVal) * 100);
+      const isCurrent = r === rt;
+      return `<div class="flex items-center gap-2 ${isCurrent ? 'font-semibold' : ''}">
+        <span class="text-xs w-28 shrink-0 ${isCurrent ? 'text-primary' : 'text-text-muted'}">${label}${isCurrent ? ' ◀' : ''}</span>
+        <div class="flex-1 bg-surface rounded h-4 overflow-hidden">
+          <div class="h-4 rounded" style="width:${pct}%;background:${color};opacity:${isCurrent?1:0.6}"></div>
+        </div>
+        <span class="text-xs w-16 text-right shrink-0">${fmt(rp50)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  ['runtime','memory','packageSize','initWork','vpc'].forEach(id => {
+    document.getElementById(id).addEventListener('change', update);
+  });
+
+  update();
+})();
+</script>

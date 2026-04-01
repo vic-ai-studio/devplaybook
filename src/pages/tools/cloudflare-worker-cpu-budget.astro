@@ -1,0 +1,272 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is the Cloudflare Workers CPU time limit?", answer: "Cloudflare Workers on the free plan have a 10ms CPU time limit per request. The paid Workers Paid plan raises this to 50ms CPU time (30s wall clock time) on the Bundled pricing, or up to 30 seconds CPU time on Unbound pricing. CPU time measures active computation, not waiting for I/O like fetch() calls." },
+  { question: "What is the difference between CPU time and wall clock time?", answer: "CPU time counts only the time your Worker's JavaScript is actively running. Wall clock time includes waiting for external fetch() calls, KV reads, and other I/O. A Worker can take 30 seconds of wall clock time but only 50ms of CPU time. Most Workers that do I/O spend very little CPU time relative to wall clock time." },
+  { question: "What happens if I exceed the CPU time limit?", answer: "Workers that exceed their CPU time limit receive a 1101 error (Worker threw exception). Your Worker is terminated mid-execution. This cannot be caught with try/catch inside the Worker. You need to either optimize your code, upgrade to Unbound pricing, or offload heavy computation to Durable Objects or other services." },
+  { question: "How do I measure CPU time in a Cloudflare Worker?", answer: "Use Date.now() or performance.now() to measure elapsed time. Within a Worker, you can implement a budget tracker that periodically checks elapsed CPU time and either completes early or returns a partial result. The Cloudflare dashboard also shows P50/P99 CPU time metrics for your deployed Workers." },
+  { question: "When should I use Workers Unbound vs Bundled pricing?", answer: "Use Bundled ($5/month flat, 10M req/month) when requests are short and CPU time stays under 50ms. Use Unbound (billed per CPU-ms) for compute-intensive tasks like image processing, data transformation, or AI inference that need more than 50ms CPU time. Unbound is also better for unpredictable workloads." },
+];
+---
+
+<BaseLayout
+  title="Cloudflare Worker CPU Time Budget Calculator — Check 10ms / 50ms Limit"
+  description="Calculate Cloudflare Worker CPU time usage against free (10ms) and paid (50ms) limits. Add operations with CPU cost estimates, see remaining budget, and get optimization tips. Free browser tool."
+  tool="cloudflare worker cpu time calculator, workers cpu budget, cloudflare worker 10ms limit, worker cpu time estimator, cloudflare workers performance"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Cloudflare Worker CPU Time Budget Calculator",
+    "url": "https://devplaybook.cc/tools/cloudflare-worker-cpu-budget",
+    "description": "Calculate Cloudflare Worker CPU time usage against free and paid limits.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Cloudflare Worker CPU Time Budget Calculator</h1>
+  <p class="text-text-muted mb-4">Estimate CPU time consumption for your Cloudflare Worker. Add operations, see budget usage against free (10ms) and paid (50ms) limits, and get optimization recommendations.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Free vs Paid plan limits</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Operation cost library</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Budget visualization</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runs in browser</span>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-semibold mb-3">Add Operations</h2>
+
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">Operation Type</label>
+        <select id="opType" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <optgroup label="Parsing &amp; Serialization">
+            <option value="json_parse_small">JSON.parse (small, ~1KB)</option>
+            <option value="json_parse_medium">JSON.parse (medium, ~10KB)</option>
+            <option value="json_parse_large">JSON.parse (large, ~100KB)</option>
+            <option value="json_stringify">JSON.stringify (any size)</option>
+          </optgroup>
+          <optgroup label="Crypto">
+            <option value="crypto_sha256">crypto.subtle SHA-256</option>
+            <option value="crypto_hmac">crypto.subtle HMAC sign</option>
+            <option value="crypto_aes_enc">AES-GCM encrypt (1KB)</option>
+            <option value="crypto_aes_dec">AES-GCM decrypt (1KB)</option>
+            <option value="crypto_rsa">RSA sign/verify</option>
+            <option value="crypto_bcrypt">bcrypt hash (NOT recommended in Workers)</option>
+          </optgroup>
+          <optgroup label="Text &amp; Regex">
+            <option value="regex_simple">Regex match (simple)</option>
+            <option value="regex_complex">Regex match (complex/global)</option>
+            <option value="string_concat_heavy">Heavy string concatenation</option>
+          </optgroup>
+          <optgroup label="Compression">
+            <option value="decompress_gzip">Decompress gzip (1KB)</option>
+            <option value="decompress_gzip_large">Decompress gzip (100KB)</option>
+          </optgroup>
+          <optgroup label="Computation">
+            <option value="loop_10k">Loop 10,000 iterations</option>
+            <option value="loop_100k">Loop 100,000 iterations</option>
+            <option value="sort_1k">Sort array 1,000 items</option>
+            <option value="sort_10k">Sort array 10,000 items</option>
+            <option value="html_parse">Parse HTML (basic DOM)</option>
+          </optgroup>
+          <optgroup label="Custom">
+            <option value="custom">Custom (enter ms below)</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-xs text-text-muted mb-1">Quantity / Repetitions</label>
+        <input id="opQty" type="number" min="1" value="1" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+
+      <div class="mb-3" id="customMsRow" style="display:none">
+        <label class="block text-xs text-text-muted mb-1">Custom CPU time (ms)</label>
+        <input id="customMs" type="number" min="0.01" step="0.01" value="1" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+
+      <button id="addOp" class="w-full px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">Add Operation</button>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <h2 class="text-sm font-semibold mb-3">CPU Budget Status</h2>
+
+      <div class="mb-4">
+        <div class="flex justify-between text-xs mb-1">
+          <span class="text-text-muted">Free Plan (10ms limit)</span>
+          <span id="freeLabel">0ms / 10ms</span>
+        </div>
+        <div class="bg-surface rounded h-5 overflow-hidden mb-1">
+          <div id="freeBar" class="h-5 rounded transition-all duration-300 bg-green-500" style="width:0%"></div>
+        </div>
+        <div id="freeStatus" class="text-xs text-green-400">✓ Within free plan limit</div>
+      </div>
+
+      <div class="mb-4">
+        <div class="flex justify-between text-xs mb-1">
+          <span class="text-text-muted">Paid Plan (50ms limit)</span>
+          <span id="paidLabel">0ms / 50ms</span>
+        </div>
+        <div class="bg-surface rounded h-5 overflow-hidden mb-1">
+          <div id="paidBar" class="h-5 rounded transition-all duration-300 bg-blue-500" style="width:0%"></div>
+        </div>
+        <div id="paidStatus" class="text-xs text-blue-400">✓ Within paid plan limit</div>
+      </div>
+
+      <div class="text-center border-t border-border pt-3">
+        <div class="text-3xl font-bold text-primary" id="totalMs">0ms</div>
+        <div class="text-xs text-text-muted mt-1">Total estimated CPU time</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-lg p-4 mb-4">
+    <div class="flex justify-between items-center mb-2">
+      <h2 class="text-sm font-semibold">Operations</h2>
+      <button id="clearAll" class="text-xs text-red-400 hover:text-red-300">Clear all</button>
+    </div>
+    <div id="opList" class="space-y-1.5 min-h-10">
+      <p class="text-xs text-text-muted italic">No operations added yet.</p>
+    </div>
+  </div>
+
+  <div id="tipsBox" class="bg-bg-card border border-border rounded-lg p-4 mb-4 hidden">
+    <h2 class="text-sm font-semibold mb-2">Optimization Tips</h2>
+    <div id="tipsContent" class="space-y-1.5 text-xs text-text-muted"></div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Cloudflare Worker CPU Budget Calculator" relatedTags={['cloudflare', 'workers', 'serverless', 'edge', 'performance']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  const OPS = {
+    json_parse_small:    { label: 'JSON.parse (small ~1KB)',      ms: 0.05 },
+    json_parse_medium:   { label: 'JSON.parse (medium ~10KB)',    ms: 0.2  },
+    json_parse_large:    { label: 'JSON.parse (large ~100KB)',    ms: 1.5  },
+    json_stringify:      { label: 'JSON.stringify',               ms: 0.1  },
+    crypto_sha256:       { label: 'SHA-256 hash',                 ms: 0.3  },
+    crypto_hmac:         { label: 'HMAC sign',                    ms: 0.4  },
+    crypto_aes_enc:      { label: 'AES-GCM encrypt (1KB)',        ms: 0.5  },
+    crypto_aes_dec:      { label: 'AES-GCM decrypt (1KB)',        ms: 0.5  },
+    crypto_rsa:          { label: 'RSA sign/verify',              ms: 3.0  },
+    crypto_bcrypt:       { label: 'bcrypt hash (⚠️ HEAVY)',       ms: 15.0 },
+    regex_simple:        { label: 'Regex match (simple)',         ms: 0.01 },
+    regex_complex:       { label: 'Regex match (complex/global)', ms: 0.2  },
+    string_concat_heavy: { label: 'Heavy string concat',          ms: 0.5  },
+    decompress_gzip:     { label: 'Decompress gzip (1KB)',        ms: 0.3  },
+    decompress_gzip_large: { label: 'Decompress gzip (100KB)',    ms: 2.0  },
+    loop_10k:            { label: 'Loop 10K iterations',          ms: 0.1  },
+    loop_100k:           { label: 'Loop 100K iterations',         ms: 0.8  },
+    sort_1k:             { label: 'Sort array 1,000 items',       ms: 0.2  },
+    sort_10k:            { label: 'Sort array 10,000 items',      ms: 2.0  },
+    html_parse:          { label: 'Parse HTML (basic DOM)',        ms: 1.5  },
+    custom:              { label: 'Custom operation',             ms: 1.0  },
+  };
+
+  let items = [];
+
+  function totalMs() { return items.reduce((s, i) => s + i.ms * i.qty, 0); }
+
+  function render() {
+    const total = totalMs();
+    const FREE_LIMIT = 10, PAID_LIMIT = 50;
+
+    document.getElementById('totalMs').textContent = total.toFixed(2) + 'ms';
+
+    const freePct = Math.min((total / FREE_LIMIT) * 100, 100);
+    const paidPct = Math.min((total / PAID_LIMIT) * 100, 100);
+    const freeBar = document.getElementById('freeBar');
+    const paidBar = document.getElementById('paidBar');
+    freeBar.style.width = freePct + '%';
+    paidBar.style.width = paidPct + '%';
+    freeBar.className = 'h-5 rounded transition-all duration-300 ' + (total > FREE_LIMIT ? 'bg-red-500' : total > FREE_LIMIT * 0.8 ? 'bg-yellow-500' : 'bg-green-500');
+    paidBar.className = 'h-5 rounded transition-all duration-300 ' + (total > PAID_LIMIT ? 'bg-red-500' : total > PAID_LIMIT * 0.8 ? 'bg-yellow-500' : 'bg-blue-500');
+
+    document.getElementById('freeLabel').textContent = total.toFixed(2) + 'ms / ' + FREE_LIMIT + 'ms';
+    document.getElementById('paidLabel').textContent = total.toFixed(2) + 'ms / ' + PAID_LIMIT + 'ms';
+
+    const freeStatus = document.getElementById('freeStatus');
+    const paidStatus = document.getElementById('paidStatus');
+    if (total > FREE_LIMIT) {
+      freeStatus.textContent = '✗ Exceeds free plan — upgrade to paid or optimize';
+      freeStatus.className = 'text-xs text-red-400';
+    } else if (total > FREE_LIMIT * 0.8) {
+      freeStatus.textContent = '⚠ Near free plan limit — monitor closely';
+      freeStatus.className = 'text-xs text-yellow-400';
+    } else {
+      freeStatus.textContent = '✓ Within free plan limit';
+      freeStatus.className = 'text-xs text-green-400';
+    }
+    if (total > PAID_LIMIT) {
+      paidStatus.textContent = '✗ Exceeds paid Bundled — switch to Unbound pricing';
+      paidStatus.className = 'text-xs text-red-400';
+    } else if (total > PAID_LIMIT * 0.8) {
+      paidStatus.textContent = '⚠ Near paid plan limit';
+      paidStatus.className = 'text-xs text-yellow-400';
+    } else {
+      paidStatus.textContent = '✓ Within paid plan limit';
+      paidStatus.className = 'text-xs text-blue-400';
+    }
+
+    const listEl = document.getElementById('opList');
+    if (items.length === 0) {
+      listEl.innerHTML = '<p class="text-xs text-text-muted italic">No operations added yet.</p>';
+    } else {
+      listEl.innerHTML = items.map((item, idx) => `
+        <div class="flex items-center justify-between bg-surface rounded p-2 text-xs">
+          <span class="text-text">${item.label} × ${item.qty}</span>
+          <div class="flex items-center gap-3">
+            <span class="text-primary font-mono">${(item.ms * item.qty).toFixed(2)}ms</span>
+            <button onclick="removeOp(${idx})" class="text-red-400 hover:text-red-300 text-xs">✕</button>
+          </div>
+        </div>`).join('');
+    }
+
+    // Tips
+    const hasBcrypt = items.some(i => i.type === 'crypto_bcrypt');
+    const hasRSA = items.some(i => i.type === 'crypto_rsa' && i.qty > 2);
+    const hasHeavySort = items.some(i => i.type === 'sort_10k');
+    const tips = [];
+    if (hasBcrypt) tips.push('⚠️ bcrypt is CPU-intensive and should NOT run in Workers — use it in a backend service or Durable Object');
+    if (hasRSA) tips.push('🔑 Multiple RSA operations are expensive — cache verified tokens (JWT) in KV instead of re-verifying each request');
+    if (hasHeavySort) tips.push('📊 Heavy sorting suggests data processing — consider moving this to a D1 database query (sorted at SQL level) or Durable Object');
+    if (total > FREE_LIMIT) tips.push('💰 Exceeds free plan: upgrade to Workers Paid ($5/mo) for 50ms CPU time per request');
+    if (total > PAID_LIMIT) tips.push('⚡ Exceeds paid Bundled: switch to Unbound pricing (billed per CPU-ms) for up to 30s CPU time');
+    tips.push('📦 Move heavy computation to Durable Objects or offload to a backend (Workers are best for <10ms routing/auth logic)');
+    const tipsBox = document.getElementById('tipsBox');
+    if (total > 0) {
+      tipsBox.classList.remove('hidden');
+      document.getElementById('tipsContent').innerHTML = tips.map(t => `<p>${t}</p>`).join('');
+    }
+  }
+
+  window.removeOp = function(idx) { items.splice(idx, 1); render(); };
+
+  document.getElementById('opType').addEventListener('change', function() {
+    document.getElementById('customMsRow').style.display = this.value === 'custom' ? 'block' : 'none';
+  });
+
+  document.getElementById('addOp').addEventListener('click', function() {
+    const type = document.getElementById('opType').value;
+    const qty = parseInt(document.getElementById('opQty').value) || 1;
+    const ms = type === 'custom' ? parseFloat(document.getElementById('customMs').value) || 1 : OPS[type].ms;
+    const label = type === 'custom' ? 'Custom operation' : OPS[type].label;
+    items.push({ type, label, ms, qty });
+    render();
+  });
+
+  document.getElementById('clearAll').addEventListener('click', function() { items = []; render(); });
+
+  render();
+})();
+</script>
