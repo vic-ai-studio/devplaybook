@@ -1,0 +1,344 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is the Django ORM and how does it work?", answer: "The Django ORM (Object-Relational Mapper) translates Python method calls into SQL queries. You work with Python classes (models) and chain methods like .filter(), .exclude(), .annotate() — Django generates the SQL automatically. This lets you write database queries without raw SQL while staying portable across PostgreSQL, MySQL, SQLite, and Oracle." },
+  { question: "What is the difference between filter() and get()?", answer: "filter() returns a QuerySet (potentially multiple objects) and never raises an exception if no match is found — it returns an empty QuerySet. get() returns a single object and raises DoesNotExist if nothing matches or MultipleObjectsReturned if more than one matches. Use get() only when you expect exactly one result (e.g., lookup by primary key or unique field)." },
+  { question: "What are double underscores (__) in Django queryset lookups?", answer: "Double underscores are the Django ORM's field lookup separator. They enable two things: (1) field traversal across relationships — e.g., author__name filters via a ForeignKey to the related model's name field; (2) lookup types — e.g., name__icontains for case-insensitive LIKE, age__gte for greater-than-or-equal. You can chain them: order__customer__country__iexact='US'." },
+  { question: "What is select_related vs prefetch_related?", answer: "select_related performs a SQL JOIN and fetches related objects in a single query — best for ForeignKey and OneToOne relations. prefetch_related performs a separate query for each related model and joins in Python — best for ManyToMany and reverse ForeignKey relations. Both avoid the N+1 query problem where you'd otherwise execute one query per row to fetch related data." },
+  { question: "What is Q() and when should I use it?", answer: "Q() objects let you build complex OR/AND/NOT conditions in Django querysets. Normal .filter() chains are always AND conditions. For OR: Model.objects.filter(Q(status='active') | Q(is_admin=True)). For NOT: filter(~Q(status='deleted')). Q objects can be combined with &, |, and ~ operators and passed as arguments to filter(), exclude(), or get()." },
+  { question: "What is values() vs values_list() in Django?", answer: "values() returns a QuerySet of dictionaries instead of model instances — useful when you only need specific fields and want to avoid instantiating full objects. values_list() returns tuples instead of dicts. Both accept field names to restrict which columns are fetched. values_list('id', flat=True) returns a flat list of IDs — very efficient for bulk operations." },
+];
+---
+
+<BaseLayout
+  title="Django ORM Query Builder — Generate Django QuerySet Code"
+  description="Visually build Django ORM queries. Select model, choose filter conditions, add ordering and annotations, and get production-ready Django QuerySet Python code instantly."
+  tool="Django ORM query builder, Django QuerySet generator, Django filter code, Django ORM examples, Django database query"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Django ORM Query Builder",
+    "url": "https://devplaybook.cc/tools/django-orm-query-builder",
+    "description": "Generate Django ORM QuerySet code visually. Choose filters, lookups, ordering, select_related, and aggregations.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Django ORM Query Builder</h1>
+  <p class="text-text-muted mb-4">
+    Build <strong>Django QuerySet</strong> code visually. Add filters, lookups, ordering, annotations, and related object fetching — get Python code instantly.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 20+ field lookups</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Q() objects, select_related, prefetch</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Ordering, slicing & aggregations</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- Config -->
+    <div class="space-y-4">
+      <!-- Model -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Model</h2>
+        <input id="model-name" type="text" value="Article"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary" placeholder="Model name" />
+        <p class="text-xs text-text-muted mt-1.5">e.g. User, Article, Order, Product</p>
+      </div>
+
+      <!-- Base queryset -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Base QuerySet</h2>
+        <select id="base-qs" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="all">.objects.all()</option>
+          <option value="filter_only">.objects.filter()</option>
+          <option value="none">.objects.none()</option>
+        </select>
+      </div>
+
+      <!-- Filters -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold">Filters</h2>
+          <button id="add-filter" class="text-xs text-primary hover:underline">+ Add filter</button>
+        </div>
+        <div id="filter-rows" class="space-y-2">
+          <div class="filter-row flex gap-2">
+            <input type="text" placeholder="field (e.g. status)" value="status"
+              class="flex-1 bg-bg-card border border-border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary filter-field" />
+            <select class="bg-bg-card border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-primary filter-lookup">
+              <option value="exact">exact (=)</option>
+              <option value="iexact">iexact (=, case-insensitive)</option>
+              <option value="contains">contains (LIKE)</option>
+              <option value="icontains">icontains</option>
+              <option value="startswith">startswith</option>
+              <option value="endswith">endswith</option>
+              <option value="gt">gt (&gt;)</option>
+              <option value="gte">gte (&gt;=)</option>
+              <option value="lt">lt (&lt;)</option>
+              <option value="lte">lte (&lt;=)</option>
+              <option value="in">in (list)</option>
+              <option value="isnull">isnull</option>
+              <option value="range">range</option>
+              <option value="year">year</option>
+              <option value="month">month</option>
+              <option value="day">day</option>
+            </select>
+            <input type="text" placeholder="value" value="published"
+              class="flex-1 bg-bg-card border border-border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary filter-value" />
+            <select class="bg-bg-card border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-primary filter-logic">
+              <option value="and">AND</option>
+              <option value="or">OR</option>
+              <option value="not">NOT</option>
+            </select>
+            <button class="text-red-400 hover:text-red-300 text-xs px-1 remove-filter">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Related objects -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Related Objects</h2>
+        <div class="space-y-2">
+          <div>
+            <label class="text-xs text-text-muted">select_related (FK/OneToOne)</label>
+            <input id="select-related" type="text" placeholder="e.g. author, category"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-1.5 text-xs font-mono mt-1 focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="text-xs text-text-muted">prefetch_related (M2M/reverse FK)</label>
+            <input id="prefetch-related" type="text" placeholder="e.g. tags, comments"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-1.5 text-xs font-mono mt-1 focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Ordering & slicing -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Ordering & Slicing</h2>
+        <div class="space-y-2">
+          <div>
+            <label class="text-xs text-text-muted">Order by (comma-separated, prefix - for DESC)</label>
+            <input id="order-by" type="text" placeholder="e.g. -created_at, title"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-1.5 text-xs font-mono mt-1 focus:outline-none focus:border-primary" />
+          </div>
+          <div class="flex gap-2">
+            <div class="flex-1">
+              <label class="text-xs text-text-muted">Limit (slice end)</label>
+              <input id="slice-limit" type="number" placeholder="e.g. 10"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-1.5 text-xs font-mono mt-1 focus:outline-none focus:border-primary" />
+            </div>
+            <div class="flex-1">
+              <label class="text-xs text-text-muted">Offset (slice start)</label>
+              <input id="slice-offset" type="number" placeholder="e.g. 0"
+                class="w-full bg-bg-card border border-border rounded-lg px-3 py-1.5 text-xs font-mono mt-1 focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Output format -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Output Format</h2>
+        <select id="output-fmt" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="qs">QuerySet (model instances)</option>
+          <option value="values">values() — dicts</option>
+          <option value="values_list">values_list() — tuples</option>
+          <option value="count">count()</option>
+          <option value="exists">exists()</option>
+          <option value="first">first()</option>
+          <option value="last">last()</option>
+        </select>
+      </div>
+
+      <button id="gen-btn" class="w-full py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        Generate Query
+      </button>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold">Generated Code</h2>
+          <button id="copy-code" class="text-xs border border-border px-3 py-1 rounded-lg hover:bg-bg-page transition-colors">Copy</button>
+        </div>
+        <pre id="code-out" class="text-xs font-mono bg-bg-page border border-border rounded-lg p-4 overflow-x-auto whitespace-pre min-h-[300px] text-text-muted"></pre>
+      </div>
+
+      <!-- Quick reference -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Quick Lookup Reference</h2>
+        <div class="space-y-1 text-xs font-mono">
+          <div class="flex gap-2"><span class="text-primary w-32">__exact</span><span class="text-text-muted">= (default)</span></div>
+          <div class="flex gap-2"><span class="text-primary w-32">__icontains</span><span class="text-text-muted">LIKE %value% (case-insensitive)</span></div>
+          <div class="flex gap-2"><span class="text-primary w-32">__gt / __gte</span><span class="text-text-muted">&gt; / &gt;= comparison</span></div>
+          <div class="flex gap-2"><span class="text-primary w-32">__in</span><span class="text-text-muted">IN (list, queryset)</span></div>
+          <div class="flex gap-2"><span class="text-primary w-32">__isnull</span><span class="text-text-muted">IS NULL / IS NOT NULL</span></div>
+          <div class="flex gap-2"><span class="text-primary w-32">__range</span><span class="text-text-muted">BETWEEN a AND b</span></div>
+          <div class="flex gap-2"><span class="text-primary w-32">__year</span><span class="text-text-muted">DATE_PART('year', ...)</span></div>
+          <div class="flex gap-2"><span class="text-primary w-32">related__field</span><span class="text-text-muted">JOIN across ForeignKey</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Django ORM Query Builder" relatedTags={['python', 'django', 'database', 'backend', 'orm']} />
+</BaseLayout>
+
+<script is:inline>
+function generateQuery() {
+  const model = document.getElementById('model-name').value.trim() || 'MyModel';
+  const baseQs = document.getElementById('base-qs').value;
+  const selectRelated = document.getElementById('select-related').value.trim();
+  const prefetchRelated = document.getElementById('prefetch-related').value.trim();
+  const orderBy = document.getElementById('order-by').value.trim();
+  const sliceLimit = document.getElementById('slice-limit').value.trim();
+  const sliceOffset = document.getElementById('slice-offset').value.trim();
+  const outputFmt = document.getElementById('output-fmt').value;
+
+  const filterRows = document.querySelectorAll('.filter-row');
+  const andFilters = [];
+  const orFilters = [];
+  const notFilters = [];
+
+  filterRows.forEach(row => {
+    const field = row.querySelector('.filter-field').value.trim();
+    const lookup = row.querySelector('.filter-lookup').value;
+    const value = row.querySelector('.filter-value').value.trim();
+    const logic = row.querySelector('.filter-logic').value;
+    if (!field || !value) return;
+    const lookupKey = lookup === 'exact' ? field : `${field}__${lookup}`;
+    let val = value;
+    if (lookup === 'isnull') val = value === 'true' ? 'True' : 'False';
+    else if (lookup === 'in') val = `[${value}]`;
+    else if (lookup === 'range') val = `(${value})`;
+    else if (!isNaN(value) && value !== '') val = value;
+    else val = `"${value}"`;
+    const expr = `${lookupKey}=${val}`;
+    if (logic === 'or') orFilters.push(expr);
+    else if (logic === 'not') notFilters.push(expr);
+    else andFilters.push(expr);
+  });
+
+  const lines = [];
+  const needsQ = orFilters.length > 0 || notFilters.length > 0;
+  if (needsQ) lines.push('from django.db.models import Q');
+  lines.push('');
+
+  let chain = `${model}.objects`;
+
+  if (baseQs === 'none') {
+    chain += '.none()';
+  } else if (baseQs === 'filter_only' && andFilters.length === 0 && orFilters.length === 0 && notFilters.length === 0) {
+    chain += '.all()';
+  } else {
+    chain += '.all()';
+  }
+
+  // Build filter conditions
+  const allConditions = [];
+  andFilters.forEach(f => allConditions.push(f));
+  const qParts = [];
+  orFilters.forEach(f => qParts.push(`Q(${f})`));
+  notFilters.forEach(f => qParts.push(`~Q(${f})`));
+
+  if (allConditions.length > 0 && qParts.length === 0) {
+    chain += `\n    .filter(${allConditions.join(', ')})`;
+  } else if (allConditions.length === 0 && qParts.length > 0) {
+    chain += `\n    .filter(${qParts.join(' | ')})`;
+  } else if (allConditions.length > 0 && qParts.length > 0) {
+    chain += `\n    .filter(${allConditions.join(', ')}, ${qParts.join(' | ')})`;
+  }
+
+  if (selectRelated) {
+    const fields = selectRelated.split(',').map(s => `"${s.trim()}"`).join(', ');
+    chain += `\n    .select_related(${fields})`;
+  }
+  if (prefetchRelated) {
+    const fields = prefetchRelated.split(',').map(s => `"${s.trim()}"`).join(', ');
+    chain += `\n    .prefetch_related(${fields})`;
+  }
+  if (orderBy) {
+    const fields = orderBy.split(',').map(s => `"${s.trim()}"`).join(', ');
+    chain += `\n    .order_by(${fields})`;
+  }
+
+  // Output format
+  if (outputFmt === 'values') {
+    chain += '\n    .values()';
+  } else if (outputFmt === 'values_list') {
+    chain += '\n    .values_list()';
+  } else if (outputFmt === 'count') {
+    chain += '\n    .count()';
+  } else if (outputFmt === 'exists') {
+    chain += '\n    .exists()';
+  } else if (outputFmt === 'first') {
+    chain += '\n    .first()';
+  } else if (outputFmt === 'last') {
+    chain += '\n    .last()';
+  }
+
+  lines.push(`queryset = (`);
+  lines.push(`    ${chain}`);
+
+  // Slicing
+  if (sliceOffset || sliceLimit) {
+    const start = sliceOffset || '0';
+    const end = sliceLimit ? `${start}:${sliceLimit}` : `${start}:`;
+    lines.push(`)[${end}]`);
+  } else {
+    lines.push(')');
+  }
+
+  document.getElementById('code-out').textContent = lines.join('\n');
+}
+
+document.getElementById('gen-btn').addEventListener('click', generateQuery);
+
+document.getElementById('add-filter').addEventListener('click', () => {
+  const container = document.getElementById('filter-rows');
+  const row = document.createElement('div');
+  row.className = 'filter-row flex gap-2';
+  row.innerHTML = `
+    <input type="text" placeholder="field" class="flex-1 bg-bg-card border border-border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary filter-field" />
+    <select class="bg-bg-card border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-primary filter-lookup">
+      <option value="exact">exact (=)</option><option value="iexact">iexact</option>
+      <option value="contains">contains</option><option value="icontains">icontains</option>
+      <option value="startswith">startswith</option><option value="endswith">endswith</option>
+      <option value="gt">gt (&gt;)</option><option value="gte">gte (&gt;=)</option>
+      <option value="lt">lt (&lt;)</option><option value="lte">lte (&lt;=)</option>
+      <option value="in">in</option><option value="isnull">isnull</option>
+      <option value="range">range</option><option value="year">year</option>
+    </select>
+    <input type="text" placeholder="value" class="flex-1 bg-bg-card border border-border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-primary filter-value" />
+    <select class="bg-bg-card border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-primary filter-logic">
+      <option value="and">AND</option><option value="or">OR</option><option value="not">NOT</option>
+    </select>
+    <button class="text-red-400 hover:text-red-300 text-xs px-1 remove-filter">✕</button>
+  `;
+  container.appendChild(row);
+  row.querySelector('.remove-filter').addEventListener('click', () => row.remove());
+});
+
+document.querySelectorAll('.remove-filter').forEach(btn => {
+  btn.addEventListener('click', () => btn.closest('.filter-row').remove());
+});
+
+document.getElementById('copy-code').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('code-out').textContent).catch(() => {});
+  const btn = document.getElementById('copy-code');
+  btn.textContent = 'Copied!';
+  setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+});
+
+generateQuery();
+</script>

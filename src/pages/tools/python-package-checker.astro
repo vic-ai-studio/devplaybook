@@ -1,0 +1,237 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "Where does this tool get package data?", answer: "All data is fetched live from the official PyPI JSON API (pypi.org/pypi/{package}/json). No server is involved — your browser calls PyPI directly. The data reflects the current state of the package on PyPI at the time of your query." },
+  { question: "What does 'Requires-Python' mean?", answer: "The Requires-Python field specifies the minimum Python version the package supports. For example, '>=3.8' means the package only works on Python 3.8 or newer. Always check this before installing in a project that targets an older Python version." },
+  { question: "What are package classifiers?", answer: "Classifiers are standardized metadata tags that describe the package — things like development status (Alpha, Beta, Production), license, programming language, and topic. They help users discover packages and understand compatibility at a glance on PyPI." },
+  { question: "How do I check a package's dependencies before installing?", answer: "This tool shows the 'Requires-Dist' field from package metadata — the list of runtime dependencies. You can compare the latest vs a specific version's dependencies to understand how they evolved. For a full transitive dependency tree, use 'pip install pipdeptree' locally." },
+  { question: "What is the difference between sdist and wheel?", answer: "sdist (source distribution) is the raw Python source code packaged as a tarball — it must be compiled/built during install. wheel (.whl) is a pre-built binary package that installs faster since no compilation is needed. Most modern packages provide wheels for common platforms. If only sdist is available, you may need a C compiler." },
+  { question: "Why does this tool show 'Yanked' releases?", answer: "A yanked release is a version that the maintainer has marked as broken or unsafe. pip will not install a yanked version unless explicitly requested with ==version. It's different from deletion — the version remains on PyPI for existing users but is excluded from normal version resolution." },
+];
+---
+
+<BaseLayout
+  title="Python Package Checker — PyPI Info, Versions & Dependencies"
+  description="Instantly look up any PyPI package: latest version, release history, dependencies, Python version requirements, license, classifiers, and download stats. Free, browser-based."
+  tool="Python Package Checker, PyPI Package Lookup, pip package info, Python dependency checker, PyPI version history"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Python Package Checker",
+    "url": "https://devplaybook.cc/tools/python-package-checker",
+    "description": "Look up any PyPI package: latest version, dependencies, Python requirements, license, and release history.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Python Package Checker</h1>
+  <p class="text-text-muted mb-4">
+    Look up any <strong>PyPI package</strong> — latest version, dependencies, Python version requirements, license, release history, and classifiers. Data fetched live from PyPI.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Live PyPI data</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Version history & yanked releases</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dependencies & classifiers</span>
+  </div>
+
+  <!-- Search -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex gap-3">
+      <input id="pkg-input" type="text" placeholder="e.g. requests, fastapi, pydantic, numpy..." value="requests"
+        class="flex-1 bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      <button id="search-btn"
+        class="px-5 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+        Check
+      </button>
+    </div>
+    <p id="error-msg" class="mt-2 text-sm text-red-400 hidden"></p>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" class="hidden text-center py-8 text-text-muted text-sm">Fetching from PyPI…</div>
+
+  <!-- Result -->
+  <div id="result" class="hidden space-y-4">
+    <!-- Header card -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 id="pkg-name" class="text-xl font-bold"></h2>
+          <p id="pkg-summary" class="text-text-muted text-sm mt-1"></p>
+        </div>
+        <div class="text-right">
+          <span id="pkg-version" class="text-lg font-semibold text-primary"></span>
+          <p class="text-xs text-text-muted mt-0.5">Latest version</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-border">
+        <div>
+          <p class="text-xs text-text-muted">License</p>
+          <p id="pkg-license" class="text-sm font-medium mt-0.5">—</p>
+        </div>
+        <div>
+          <p class="text-xs text-text-muted">Requires Python</p>
+          <p id="pkg-python" class="text-sm font-medium mt-0.5">—</p>
+        </div>
+        <div>
+          <p class="text-xs text-text-muted">Author</p>
+          <p id="pkg-author" class="text-sm font-medium mt-0.5 truncate">—</p>
+        </div>
+        <div>
+          <p class="text-xs text-text-muted">Home Page</p>
+          <a id="pkg-home" href="#" target="_blank" rel="noopener" class="text-sm font-medium mt-0.5 text-primary hover:underline truncate block">—</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Install command -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h3 class="text-sm font-semibold mb-3">Install Command</h3>
+      <div class="flex gap-2">
+        <code id="install-cmd" class="flex-1 bg-bg-page border border-border rounded-lg px-3 py-2 text-sm font-mono text-primary"></code>
+        <button id="copy-btn" class="px-3 py-2 border border-border rounded-lg text-xs hover:bg-bg-page transition-colors">Copy</button>
+      </div>
+    </div>
+
+    <!-- Dependencies -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h3 class="text-sm font-semibold mb-3">Dependencies (<span id="dep-count">0</span>)</h3>
+      <div id="dep-list" class="flex flex-wrap gap-2"></div>
+      <p id="no-deps" class="text-sm text-text-muted hidden">No runtime dependencies.</p>
+    </div>
+
+    <!-- Release history -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h3 class="text-sm font-semibold mb-3">Recent Releases</h3>
+      <div id="release-list" class="space-y-1 max-h-64 overflow-y-auto"></div>
+    </div>
+
+    <!-- Classifiers -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <h3 class="text-sm font-semibold mb-3">Classifiers</h3>
+      <div id="classifier-list" class="flex flex-wrap gap-1.5"></div>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Python Package Checker" relatedTags={['python', 'pypi', 'packages', 'dependencies', 'backend']} />
+</BaseLayout>
+
+<script is:inline>
+const input = document.getElementById('pkg-input');
+const btn = document.getElementById('search-btn');
+const loading = document.getElementById('loading');
+const result = document.getElementById('result');
+const errMsg = document.getElementById('error-msg');
+
+async function fetchPackage(name) {
+  loading.classList.remove('hidden');
+  result.classList.add('hidden');
+  errMsg.classList.add('hidden');
+  try {
+    const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(name.trim())}/json`);
+    if (!res.ok) throw new Error(`Package "${name}" not found on PyPI.`);
+    const data = await res.json();
+    renderResult(data);
+  } catch (e) {
+    errMsg.textContent = e.message;
+    errMsg.classList.remove('hidden');
+  } finally {
+    loading.classList.add('hidden');
+  }
+}
+
+function renderResult(data) {
+  const info = data.info;
+  const releases = data.releases;
+
+  document.getElementById('pkg-name').textContent = info.name;
+  document.getElementById('pkg-summary').textContent = info.summary || '';
+  document.getElementById('pkg-version').textContent = `v${info.version}`;
+  document.getElementById('pkg-license').textContent = info.license || '—';
+  document.getElementById('pkg-python').textContent = info.requires_python || '—';
+  document.getElementById('pkg-author').textContent = info.author || info.maintainer || '—';
+  const homeEl = document.getElementById('pkg-home');
+  const homeUrl = info.home_page || info.project_url || '';
+  homeEl.textContent = homeUrl ? new URL(homeUrl).hostname : '—';
+  homeEl.href = homeUrl || '#';
+
+  document.getElementById('install-cmd').textContent = `pip install ${info.name}`;
+
+  // Dependencies
+  const deps = info.requires_dist || [];
+  const depCount = document.getElementById('dep-count');
+  depCount.textContent = deps.length;
+  const depList = document.getElementById('dep-list');
+  const noDeps = document.getElementById('no-deps');
+  depList.innerHTML = '';
+  if (deps.length === 0) {
+    noDeps.classList.remove('hidden');
+  } else {
+    noDeps.classList.add('hidden');
+    deps.forEach(d => {
+      const span = document.createElement('span');
+      span.className = 'px-2 py-1 bg-bg-page border border-border rounded text-xs font-mono';
+      span.textContent = d;
+      depList.appendChild(span);
+    });
+  }
+
+  // Release history (latest 15)
+  const releaseList = document.getElementById('release-list');
+  releaseList.innerHTML = '';
+  const versions = Object.entries(releases)
+    .map(([v, files]) => {
+      const date = files[0]?.upload_time?.slice(0, 10) ?? '';
+      const yanked = files.some(f => f.yanked);
+      return { v, date, yanked };
+    })
+    .filter(r => r.date)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 20);
+
+  versions.forEach(({ v, date, yanked }) => {
+    const div = document.createElement('div');
+    div.className = 'flex items-center justify-between py-1.5 border-b border-border/50 last:border-0 text-sm';
+    div.innerHTML = `
+      <span class="font-mono">${v} ${yanked ? '<span class="text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded ml-1">yanked</span>' : ''}</span>
+      <span class="text-text-muted text-xs">${date}</span>
+    `;
+    releaseList.appendChild(div);
+  });
+
+  // Classifiers
+  const classifiers = info.classifiers || [];
+  const cl = document.getElementById('classifier-list');
+  cl.innerHTML = '';
+  classifiers.forEach(c => {
+    const span = document.createElement('span');
+    span.className = 'px-2 py-0.5 bg-bg-page border border-border rounded text-xs text-text-muted';
+    span.textContent = c;
+    cl.appendChild(span);
+  });
+
+  result.classList.remove('hidden');
+}
+
+btn.addEventListener('click', () => fetchPackage(input.value));
+input.addEventListener('keydown', e => { if (e.key === 'Enter') fetchPackage(input.value); });
+document.getElementById('copy-btn').addEventListener('click', () => {
+  const cmd = document.getElementById('install-cmd').textContent;
+  navigator.clipboard.writeText(cmd).catch(() => {});
+  const copyBtn = document.getElementById('copy-btn');
+  copyBtn.textContent = 'Copied!';
+  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+});
+
+// Auto-load on page open
+fetchPackage('requests');
+</script>

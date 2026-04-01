@@ -1,0 +1,256 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Pydantic and why should I use it?", answer: "Pydantic is a Python data validation library that uses type annotations to define data schemas. When you create a model, Pydantic automatically validates input data, converts types (e.g. '123' to int), and raises descriptive errors for invalid data. It's the foundation of FastAPI's request/response handling and is widely used for config management, data parsing, and API clients." },
+  { question: "What changed between Pydantic v1 and v2?", answer: "Pydantic v2 (released 2023) was rewritten in Rust via pydantic-core, making it 5-50x faster than v1. Key API changes: validators now use @field_validator and @model_validator decorators (replacing @validator and @root_validator); orm_mode is now model_config = ConfigDict(from_attributes=True); class Config is replaced by model_config. Many v1 APIs still work via compatibility shim but are deprecated." },
+  { question: "How do I handle optional vs required fields in Pydantic?", answer: "A field without a default is required. Use Optional[T] with a default of None for nullable optional fields: name: Optional[str] = None. Use a default value for non-nullable optionals: count: int = 0. Pydantic v2 uses from __future__ import annotations or explicit Optional to handle None. The Field() function provides richer defaults: field: str = Field(default='hello', min_length=1)." },
+  { question: "What is model_config and ConfigDict in Pydantic v2?", answer: "model_config replaces the inner Config class from v1. It accepts a ConfigDict with options like: from_attributes=True (replaces orm_mode, allows model creation from ORM objects), str_strip_whitespace=True (auto-strip strings), validate_default=True (validate default values), populate_by_name=True (allow both alias and field name). Example: model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)." },
+  { question: "How do I add custom validators in Pydantic v2?", answer: "@field_validator('field_name') validates a single field. @model_validator(mode='after') runs after all fields are validated and has access to the full model. Validators must be classmethods decorated with @classmethod. For simple value constraints, use Field(gt=0, le=100) instead of writing a validator." },
+  { question: "What is the difference between model.dict() and model.model_dump() in Pydantic v2?", answer: "model.model_dump() is the v2 method (replaces v1's .dict()). It returns a dictionary representation of the model. You can exclude fields: model.model_dump(exclude={'password'}), include only certain fields: model.model_dump(include={'id', 'name'}), or serialize aliases: model.model_dump(by_alias=True). model.model_dump_json() returns a JSON string directly." },
+];
+---
+
+<BaseLayout
+  title="Pydantic Model Generator — Generate Pydantic v2 Models from JSON"
+  description="Paste any JSON object and instantly get a Pydantic v2 BaseModel class with proper type annotations, Optional fields, nested models, Field validators, and model_config. Free, browser-based."
+  tool="Pydantic model generator, JSON to Pydantic model, Pydantic v2 schema generator, Python data model generator, Pydantic BaseModel from JSON"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Pydantic Model Generator",
+    "url": "https://devplaybook.cc/tools/pydantic-model-generator",
+    "description": "Generate Pydantic v2 BaseModel classes from JSON. Handles nested objects, arrays, Optional fields, and model_config.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Pydantic Model Generator</h1>
+  <p class="text-text-muted mb-4">
+    Paste any <strong>JSON object</strong> and get a <strong>Pydantic v2 BaseModel</strong> with type annotations, Optional fields, nested models, and model_config instantly.
+  </p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pydantic v2 syntax</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Nested JSON → nested models</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Optional, List, Dict detection</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- Input -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">JSON Input</h2>
+        <textarea id="json-input" rows="16"
+          class="w-full bg-bg-page border border-border rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-primary resize-y"
+          placeholder='Paste your JSON here...'>{JSON.stringify({
+  "id": 1,
+  "name": "Alice",
+  "email": "alice@example.com",
+  "age": 30,
+  "is_active": true,
+  "score": 9.5,
+  "tags": ["python", "backend"],
+  "address": {
+    "street": "123 Main St",
+    "city": "San Francisco",
+    "zip": "94102"
+  },
+  "metadata": null
+}, null, 2)}</textarea>
+        <p id="json-err" class="text-xs text-red-400 mt-1.5 hidden"></p>
+      </div>
+
+      <!-- Options -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Options</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-text-muted">Root model name</label>
+            <input id="model-name" type="text" value="MyModel"
+              class="w-full bg-bg-card border border-border rounded-lg px-3 py-1.5 text-sm font-mono mt-1 focus:outline-none focus:border-primary" />
+          </div>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" id="opt-from-attrs" class="w-4 h-4" />
+            <span>Add <code class="text-xs">from_attributes=True</code> (ORM mode)</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" id="opt-strip-ws" class="w-4 h-4" />
+            <span>Add <code class="text-xs">str_strip_whitespace=True</code></span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" id="opt-field-desc" class="w-4 h-4" />
+            <span>Add <code class="text-xs">Field(description=...)</code> stubs</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" id="opt-null-optional" checked class="w-4 h-4" />
+            <span>null values → <code class="text-xs">Optional[str] = None</code></span>
+          </label>
+        </div>
+        <button id="gen-btn" class="w-full mt-4 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+          Generate Model
+        </button>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="bg-bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold">Generated Pydantic v2 Model</h2>
+        <button id="copy-btn" class="text-xs border border-border px-3 py-1 rounded-lg hover:bg-bg-page transition-colors">Copy</button>
+      </div>
+      <pre id="code-out" class="text-xs font-mono bg-bg-page border border-border rounded-lg p-4 overflow-x-auto whitespace-pre min-h-[500px] text-text-muted"></pre>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Pydantic Model Generator" relatedTags={['python', 'pydantic', 'fastapi', 'validation', 'backend']} />
+</BaseLayout>
+
+<script is:inline>
+function toClassName(str) {
+  return str.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^[0-9]/, '_$&')
+    .split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('');
+}
+
+function toSnakeCase(str) {
+  return str.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`).replace(/^_/, '');
+}
+
+function inferType(val, key, classes, addFieldDesc, nullOptional) {
+  if (val === null || val === undefined) {
+    return nullOptional ? 'Optional[str] = None' : 'Any = None';
+  }
+  if (typeof val === 'boolean') return 'bool';
+  if (typeof val === 'number') return Number.isInteger(val) ? 'int' : 'float';
+  if (typeof val === 'string') return 'str';
+  if (Array.isArray(val)) {
+    if (val.length === 0) return 'list';
+    const itemType = inferType(val[0], key + '_item', classes, addFieldDesc, nullOptional).split(' =')[0];
+    return `list[${itemType}]`;
+  }
+  if (typeof val === 'object') {
+    const nestedName = toClassName(key);
+    generateClass(val, nestedName, classes, addFieldDesc, nullOptional);
+    return nestedName;
+  }
+  return 'Any';
+}
+
+function generateClass(obj, className, classes, addFieldDesc, nullOptional) {
+  if (classes.has(className)) return;
+  const lines = [];
+  lines.push(`class ${className}(BaseModel):`);
+  const entries = Object.entries(obj);
+  if (entries.length === 0) {
+    lines.push('    pass');
+  } else {
+    entries.forEach(([k, v]) => {
+      const snakeKey = toSnakeCase(k);
+      let typeStr = inferType(v, k, classes, addFieldDesc, nullOptional);
+      let fieldPart = '';
+      if (addFieldDesc) {
+        if (typeStr.includes('= None')) {
+          const t = typeStr.split(' =')[0];
+          fieldPart = `    ${snakeKey}: ${t} = Field(None, description="${k}")`;
+        } else {
+          fieldPart = `    ${snakeKey}: ${typeStr} = Field(..., description="${k}")`;
+        }
+      } else {
+        if (typeStr.includes('= None')) {
+          fieldPart = `    ${snakeKey}: ${typeStr}`;
+        } else {
+          fieldPart = `    ${snakeKey}: ${typeStr}`;
+        }
+      }
+      if (snakeKey !== k) {
+        // Keep original key as alias hint (comment)
+        fieldPart += `  # JSON key: "${k}"`;
+      }
+      lines.push(fieldPart);
+    });
+  }
+  classes.set(className, lines.join('\n'));
+}
+
+function generateModel() {
+  const jsonStr = document.getElementById('json-input').value.trim();
+  const modelName = document.getElementById('model-name').value.trim() || 'MyModel';
+  const fromAttrs = document.getElementById('opt-from-attrs').checked;
+  const stripWs = document.getElementById('opt-strip-ws').checked;
+  const addFieldDesc = document.getElementById('opt-field-desc').checked;
+  const nullOptional = document.getElementById('opt-null-optional').checked;
+  const errEl = document.getElementById('json-err');
+
+  let obj;
+  try {
+    obj = JSON.parse(jsonStr);
+    errEl.classList.add('hidden');
+  } catch (e) {
+    errEl.textContent = `Invalid JSON: ${e.message}`;
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const classes = new Map(); // ordered map
+
+  if (Array.isArray(obj)) {
+    if (obj.length > 0 && typeof obj[0] === 'object') {
+      generateClass(obj[0], modelName, classes, addFieldDesc, nullOptional);
+    }
+  } else {
+    generateClass(obj, modelName, classes, addFieldDesc, nullOptional);
+  }
+
+  // Build output
+  const lines = [];
+  lines.push('from __future__ import annotations');
+  lines.push('from typing import Optional, Any');
+  lines.push('from pydantic import BaseModel, Field');
+  if (fromAttrs || stripWs) {
+    lines.push('from pydantic import ConfigDict');
+  }
+  lines.push('');
+
+  // Nested classes first, then root
+  const entries = [...classes.entries()];
+  const rootEntry = entries.find(([k]) => k === modelName);
+  const nestedEntries = entries.filter(([k]) => k !== modelName);
+
+  nestedEntries.forEach(([, code]) => {
+    lines.push(code);
+    lines.push('');
+  });
+
+  if (rootEntry) {
+    const rootLines = rootEntry[1].split('\n');
+    lines.push(rootLines[0]); // class declaration
+    if (fromAttrs || stripWs) {
+      const configParts = [];
+      if (fromAttrs) configParts.push('from_attributes=True');
+      if (stripWs) configParts.push('str_strip_whitespace=True');
+      lines.push(`    model_config = ConfigDict(${configParts.join(', ')})`);
+      lines.push('');
+    }
+    rootLines.slice(1).forEach(l => lines.push(l));
+  }
+
+  document.getElementById('code-out').textContent = lines.join('\n');
+}
+
+document.getElementById('gen-btn').addEventListener('click', generateModel);
+document.getElementById('copy-btn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('code-out').textContent).catch(() => {});
+  const btn = document.getElementById('copy-btn');
+  btn.textContent = 'Copied!';
+  setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+});
+
+generateModel();
+</script>
