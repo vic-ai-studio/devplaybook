@@ -1,0 +1,262 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How does GitHub Actions cache pricing work?", answer: "GitHub Actions provides 10 GB of cache storage per repository for free. Beyond 10 GB, GitHub charges $0.008 per GB per month. Cache entries are evicted automatically after 7 days of no access, or when the repository cache storage exceeds 10 GB (oldest entries removed first)." },
+  { question: "How is cache hit rate calculated?", answer: "Cache hit rate is the percentage of workflow runs that successfully restore a previously saved cache. A 70% hit rate means 70 out of 100 runs skip the full rebuild and use cached dependencies. Higher hit rates reduce both CI time and compute costs. Typical Node.js/Python projects achieve 60–85% hit rates." },
+  { question: "What counts toward GitHub Actions cache storage?", answer: "All saved caches across all branches count toward the 10 GB limit. Each cache entry has a unique key (e.g., based on lockfile hash). Multiple branches maintain separate caches. When the total exceeds 10 GB, the least recently used caches are evicted automatically." },
+  { question: "How do concurrent jobs affect cache savings?", answer: "With concurrent jobs, each job independently restores cache at the start of its run. If all jobs have a cache hit, you multiply the time savings by the number of concurrent jobs. However, only one job can save a new cache entry for a given key — others write to a new key or are skipped." },
+  { question: "What is the best strategy to maximize cache hit rate?", answer: "Use deterministic cache keys based on lockfiles (package-lock.json, Pipfile.lock, etc.) rather than timestamps. Use restore-keys as a fallback for partial matches. Cache dependency directories (node_modules, .pip, .gradle) rather than build artifacts. Split caches by OS and Node/Python version." },
+];
+---
+
+<BaseLayout
+  title="GitHub Actions Cache Calculator — Hit Rate, Storage Cost & Time Savings"
+  description="Calculate GitHub Actions cache hit rates, storage costs, and CI time savings. Input workflow frequency, build times, and cache size to get monthly value estimates."
+  tool="GitHub Actions cache calculator, CI cache hit rate, GitHub Actions cost savings, cache storage estimator"
+  keywords={["github actions cache", "ci cache calculator", "cache hit rate", "github actions cost", "ci time savings", "actions cache storage"]}
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">GitHub Actions Cache Calculator</h1>
+  <p class="text-text-muted mb-4">Estimate cache hit savings, CI time reduction, and storage costs. Enter your workflow parameters to see the full monthly value breakdown.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Time saved per day & month</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Storage cost estimate</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real-time calculation</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Input Panel -->
+    <div class="bg-bg-card border border-border rounded-xl p-5 space-y-4">
+      <h2 class="text-base font-semibold">Workflow Configuration</h2>
+
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Workflow Runs per Day</label>
+        <input id="runs-per-day" type="number" min="1" value="20"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <div class="flex gap-2 mt-2 flex-wrap">
+          <button class="runs-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="5">5/day</button>
+          <button class="runs-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="20">20/day</button>
+          <button class="runs-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="50">50/day</button>
+          <button class="runs-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="200">200/day</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Avg Build Time Without Cache (minutes)</label>
+        <input id="build-time" type="number" min="1" value="8"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <div class="flex gap-2 mt-2 flex-wrap">
+          <button class="build-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="3">3 min</button>
+          <button class="build-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="8">8 min</button>
+          <button class="build-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="15">15 min</button>
+          <button class="build-preset text-xs px-2.5 py-1 rounded-full border border-border text-text-muted hover:border-primary hover:text-primary transition-all" data-v="30">30 min</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-1.5">
+          Estimated Cache Hit Rate: <span id="hit-rate-label" class="text-primary font-semibold">70%</span>
+        </label>
+        <input id="hit-rate" type="range" min="0" max="100" value="70" step="5"
+          class="w-full accent-primary" />
+        <div class="flex justify-between text-xs text-text-muted mt-1">
+          <span>0%</span><span>50%</span><span>100%</span>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Cache Size (GB)</label>
+        <input id="cache-size" type="number" min="0.1" step="0.1" value="2"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">First 10 GB free. $0.008/GB/month thereafter.</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Number of Concurrent Jobs</label>
+        <select id="concurrent-jobs" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="1" selected>1 job</option>
+          <option value="2">2 jobs</option>
+          <option value="3">3 jobs</option>
+          <option value="5">5 jobs</option>
+          <option value="10">10 jobs</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div class="space-y-4">
+      <!-- Summary Card -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Monthly Summary</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-primary/10 border border-primary/30 rounded-lg p-3 col-span-2">
+            <p class="text-xs text-text-muted mb-1">Total Monthly Value (time + storage)</p>
+            <p id="total-value" class="text-2xl font-mono font-bold text-primary">$0.00</p>
+          </div>
+          <div class="bg-bg border border-border rounded-lg p-3">
+            <p class="text-xs text-text-muted mb-1">Time Saved / Day</p>
+            <p id="time-saved-day" class="font-mono font-semibold text-green-400">0 min</p>
+          </div>
+          <div class="bg-bg border border-border rounded-lg p-3">
+            <p class="text-xs text-text-muted mb-1">Time Saved / Month</p>
+            <p id="time-saved-month" class="font-mono font-semibold text-green-400">0 hrs</p>
+          </div>
+          <div class="bg-bg border border-border rounded-lg p-3">
+            <p class="text-xs text-text-muted mb-1">Cache Hits / Month</p>
+            <p id="cache-hits-month" class="font-mono font-semibold">0</p>
+          </div>
+          <div class="bg-bg border border-border rounded-lg p-3">
+            <p class="text-xs text-text-muted mb-1">Cache Misses / Month</p>
+            <p id="cache-misses-month" class="font-mono font-semibold">0</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cost Breakdown -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-4">Cost Breakdown</h2>
+        <div class="space-y-3">
+          <div class="flex justify-between items-center py-2 border-b border-border">
+            <span class="text-sm text-text-muted">Cache storage (monthly)</span>
+            <span id="storage-cost" class="text-sm font-mono font-medium">$0.00</span>
+          </div>
+          <div class="flex justify-between items-center py-2 border-b border-border">
+            <span class="text-sm text-text-muted">Minutes saved × compute rate</span>
+            <span id="compute-savings" class="text-sm font-mono font-medium text-green-400">$0.00 saved</span>
+          </div>
+          <div class="flex justify-between items-center py-2 border-b border-border">
+            <span class="text-sm text-text-muted">Effective runs (with cache)</span>
+            <span id="effective-runs" class="text-sm font-mono font-medium">0 min avg</span>
+          </div>
+          <div class="flex justify-between items-center py-2">
+            <span class="text-sm font-semibold">Storage over free tier</span>
+            <span id="over-free" class="text-sm font-mono font-medium">0 GB</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hit Rate Bar -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-base font-semibold mb-3">Cache Efficiency</h2>
+        <div class="space-y-2">
+          <div class="flex justify-between text-xs text-text-muted mb-1">
+            <span>Hit rate</span>
+            <span id="efficiency-pct">70%</span>
+          </div>
+          <div class="w-full bg-bg rounded-full h-2.5">
+            <div id="hit-bar" class="h-2.5 rounded-full bg-primary transition-all duration-300" style="width: 70%"></div>
+          </div>
+          <p id="efficiency-verdict" class="text-xs text-text-muted mt-2">Good cache efficiency. Most runs skip full dependency install.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faq={faq} />
+</BaseLayout>
+
+<script>
+  // GitHub Actions compute rate: ~$0.008/minute for Linux runners
+  const COMPUTE_RATE_PER_MIN = 0.008;
+  const FREE_CACHE_GB = 10;
+  const CACHE_STORAGE_RATE = 0.008; // per GB/month
+  const DAYS_PER_MONTH = 30;
+
+  function fmt(n: number) {
+    if (n === 0) return '$0.00';
+    if (n < 0.01) return '$' + n.toFixed(4);
+    return '$' + n.toFixed(2);
+  }
+  function fmtTime(minutes: number) {
+    if (minutes >= 60) return (minutes / 60).toFixed(1) + ' hrs';
+    return minutes.toFixed(0) + ' min';
+  }
+
+  function calculate() {
+    const runsPerDay = parseFloat((document.getElementById('runs-per-day') as HTMLInputElement).value) || 0;
+    const buildTime = parseFloat((document.getElementById('build-time') as HTMLInputElement).value) || 0;
+    const hitRate = parseFloat((document.getElementById('hit-rate') as HTMLInputElement).value) / 100;
+    const cacheSizeGB = parseFloat((document.getElementById('cache-size') as HTMLInputElement).value) || 0;
+    const concurrentJobs = parseFloat((document.getElementById('concurrent-jobs') as HTMLSelectElement).value) || 1;
+
+    // Update slider label
+    const hitRatePct = Math.round(hitRate * 100);
+    (document.getElementById('hit-rate-label') as HTMLElement).textContent = hitRatePct + '%';
+    (document.getElementById('efficiency-pct') as HTMLElement).textContent = hitRatePct + '%';
+    (document.getElementById('hit-bar') as HTMLElement).style.width = hitRatePct + '%';
+
+    // Monthly runs
+    const monthlyRuns = runsPerDay * DAYS_PER_MONTH;
+    const cacheHitsMonth = Math.round(monthlyRuns * hitRate);
+    const cacheMissesMonth = monthlyRuns - cacheHitsMonth;
+
+    // Cache typically saves ~80% of build time on a hit (still does checkout, job setup etc.)
+    const timeSavedPerHit = buildTime * 0.8 * concurrentJobs; // minutes
+    const timeSavedPerDay = runsPerDay * hitRate * buildTime * 0.8 * concurrentJobs;
+    const timeSavedPerMonth = timeSavedPerDay * DAYS_PER_MONTH;
+
+    // Effective avg run time with cache
+    const effectiveAvgTime = buildTime * (1 - hitRate * 0.8);
+
+    // Storage cost
+    const overFreeGB = Math.max(0, cacheSizeGB - FREE_CACHE_GB);
+    const storageCost = overFreeGB * CACHE_STORAGE_RATE;
+
+    // Compute savings value
+    const computeSavings = timeSavedPerMonth * COMPUTE_RATE_PER_MIN;
+
+    // Total value = compute savings - storage cost
+    const totalValue = computeSavings - storageCost;
+
+    // Update DOM
+    (document.getElementById('total-value') as HTMLElement).textContent = totalValue > 0 ? fmt(totalValue) + '/mo' : fmt(storageCost) + '/mo cost';
+    (document.getElementById('time-saved-day') as HTMLElement).textContent = fmtTime(timeSavedPerDay);
+    (document.getElementById('time-saved-month') as HTMLElement).textContent = fmtTime(timeSavedPerMonth);
+    (document.getElementById('cache-hits-month') as HTMLElement).textContent = cacheHitsMonth.toLocaleString();
+    (document.getElementById('cache-misses-month') as HTMLElement).textContent = cacheMissesMonth.toLocaleString();
+    (document.getElementById('storage-cost') as HTMLElement).textContent = storageCost === 0 ? 'Free (within 10 GB)' : fmt(storageCost) + '/mo';
+    (document.getElementById('compute-savings') as HTMLElement).textContent = fmt(computeSavings) + ' saved';
+    (document.getElementById('effective-runs') as HTMLElement).textContent = effectiveAvgTime.toFixed(1) + ' min avg';
+    (document.getElementById('over-free') as HTMLElement).textContent = overFreeGB > 0 ? overFreeGB.toFixed(2) + ' GB over free' : 'Within free tier';
+
+    // Efficiency verdict
+    const verdict = document.getElementById('efficiency-verdict') as HTMLElement;
+    if (hitRatePct >= 80) {
+      verdict.textContent = 'Excellent cache efficiency. You\'re saving significant CI time on most runs.';
+      verdict.className = 'text-xs text-green-400 mt-2';
+    } else if (hitRatePct >= 60) {
+      verdict.textContent = 'Good cache efficiency. Most runs skip full dependency install.';
+      verdict.className = 'text-xs text-text-muted mt-2';
+    } else if (hitRatePct >= 30) {
+      verdict.textContent = 'Moderate efficiency. Consider more stable cache keys based on lockfiles.';
+      verdict.className = 'text-xs text-yellow-400 mt-2';
+    } else {
+      verdict.textContent = 'Low cache hit rate. Review your cache key strategy — too many unique keys?';
+      verdict.className = 'text-xs text-red-400 mt-2';
+    }
+  }
+
+  document.querySelectorAll('.runs-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      (document.getElementById('runs-per-day') as HTMLInputElement).value = btn.getAttribute('data-v') || '';
+      calculate();
+    });
+  });
+  document.querySelectorAll('.build-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      (document.getElementById('build-time') as HTMLInputElement).value = btn.getAttribute('data-v') || '';
+      calculate();
+    });
+  });
+
+  ['runs-per-day', 'build-time', 'hit-rate', 'cache-size', 'concurrent-jobs'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', calculate);
+  });
+
+  calculate();
+</script>
