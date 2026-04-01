@@ -1,0 +1,216 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "Why is SELECT * bad for performance?", answer: "SELECT * fetches all columns, including large text/blob columns you may not need, increasing I/O, network transfer, and memory usage. It also breaks if the table schema changes. Always select only the columns you need." },
+  { question: "What is a missing WHERE clause risk?", answer: "A query without a WHERE clause on a large table performs a full table scan — it reads every row. On a table with millions of rows this can take minutes and cause lock contention. Always add WHERE conditions indexed columns for production queries." },
+  { question: "Why should SELECT queries have a LIMIT?", answer: "Without LIMIT, a query returns every matching row. If a bug causes a WHERE clause to be too broad (or missing), the application may receive millions of rows, causing memory exhaustion and timeouts. LIMIT provides a safety boundary." },
+  { question: "What are N+1 query patterns?", answer: "An N+1 problem occurs when you run one query to get N records, then run 1 more query per record (N queries total). For example: get all users, then for each user get their orders. This is extremely slow at scale. Fix by using JOINs or batch queries." },
+  { question: "What are implicit type conversions in SQL WHERE clauses?", answer: "When you compare a column to a value of a different type (e.g., WHERE user_id = '123' when user_id is INT), the database must cast every value in the column to compare them, bypassing indexes. Always match types in WHERE conditions." },
+];
+---
+
+<BaseLayout
+  title="SQL Query Analyzer — Detect Performance Issues in SQL Queries"
+  description="Paste a SQL query to detect potential performance issues: missing WHERE, SELECT *, no LIMIT, implicit type conversions, and more. Free browser SQL analyzer tool."
+  tool="SQL Query Analyzer, SQL Performance Checker, SQL query optimizer, SELECT * detector, missing WHERE clause, SQL best practices"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">SQL Query Analyzer</h1>
+  <p class="text-text-muted mb-4">Paste a SQL query to detect potential performance issues: <code class="font-mono bg-surface px-1 rounded text-sm">SELECT *</code>, missing <code class="font-mono bg-surface px-1 rounded text-sm">WHERE</code>, no <code class="font-mono bg-surface px-1 rounded text-sm">LIMIT</code>, and other common anti-patterns. Runs entirely in your browser.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SELECT * detection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Missing WHERE / LIMIT</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> N+1 & index hints</span>
+  </div>
+
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-2">
+      <label class="text-sm font-medium">SQL Query</label>
+      <button id="sqa-sample" class="text-xs text-primary hover:underline">Load Sample</button>
+    </div>
+    <textarea id="sqa-input" rows="10"
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono resize-y mb-3"
+      placeholder="SELECT * FROM users WHERE created_at > '2024-01-01'"></textarea>
+    <div class="flex gap-2 flex-wrap">
+      <button id="sqa-analyze" class="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity">Analyze</button>
+      <button id="sqa-clear" class="border border-border rounded-lg px-4 py-2 text-sm hover:bg-surface transition-colors">Clear</button>
+    </div>
+  </div>
+
+  <div id="sqa-results" class="hidden">
+    <div class="grid grid-cols-3 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="sqa-cnt-error" class="text-2xl font-bold text-red-400 mb-1">0</div>
+        <div class="text-xs text-text-muted">Errors</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="sqa-cnt-warn" class="text-2xl font-bold text-yellow-400 mb-1">0</div>
+        <div class="text-xs text-text-muted">Warnings</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-4 text-center">
+        <div id="sqa-cnt-info" class="text-2xl font-bold text-blue-400 mb-1">0</div>
+        <div class="text-xs text-text-muted">Info</div>
+      </div>
+    </div>
+
+    <div id="sqa-clean" class="hidden bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-5 text-green-400 text-sm font-semibold text-center">
+      ✓ No major issues detected — looks good!
+    </div>
+
+    <div id="sqa-issue-list" class="space-y-3 mb-5"></div>
+
+    <div id="sqa-stats" class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+      <h2 class="text-sm font-semibold mb-3">Query Stats</h2>
+      <div id="sqa-stats-content" class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center font-mono text-xs"></div>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('sqa-input') as HTMLTextAreaElement;
+    const analyzeBtn = document.getElementById('sqa-analyze') as HTMLButtonElement;
+    const clearBtn = document.getElementById('sqa-clear') as HTMLButtonElement;
+    const sampleBtn = document.getElementById('sqa-sample') as HTMLButtonElement;
+    const results = document.getElementById('sqa-results') as HTMLDivElement;
+
+    const SAMPLE = `SELECT *
+FROM users u, orders o, products p
+WHERE u.created_at > '2024-01-01'
+AND u.status = 1
+ORDER BY u.created_at DESC`;
+
+    sampleBtn.addEventListener('click', () => { input.value = SAMPLE; });
+    clearBtn.addEventListener('click', () => { input.value = ''; results.classList.add('hidden'); });
+
+    interface SQLIssue {
+      level: 'error' | 'warning' | 'info';
+      message: string;
+      fix: string;
+    }
+
+    function analyzeSQL(sql: string): SQLIssue[] {
+      const issues: SQLIssue[] = [];
+      const upper = sql.toUpperCase().replace(/\s+/g, ' ').trim();
+
+      // SELECT *
+      if (/SELECT\s+\*/.test(upper)) {
+        issues.push({ level: 'warning', message: 'SELECT * fetches all columns — often wastes I/O, memory, and network bandwidth.', fix: 'Explicitly name only the columns you need: SELECT id, name, email FROM ...' });
+      }
+
+      // No WHERE clause on SELECT/UPDATE/DELETE
+      const isSelect = /^\s*SELECT/.test(upper);
+      const isUpdate = /^\s*UPDATE/.test(upper);
+      const isDelete = /^\s*DELETE/.test(upper);
+      if ((isSelect || isUpdate || isDelete) && !/\bWHERE\b/.test(upper)) {
+        const severity: 'error' | 'warning' = isUpdate || isDelete ? 'error' : 'warning';
+        issues.push({ level: severity, message: `${isDelete ? 'DELETE' : isUpdate ? 'UPDATE' : 'SELECT'} without WHERE clause — affects/returns ALL rows.`, fix: isUpdate || isDelete ? 'CRITICAL: Add a WHERE clause or this will modify every row.' : 'Add a WHERE clause or at minimum a LIMIT to bound results.' });
+      }
+
+      // No LIMIT on SELECT
+      if (isSelect && !/\bLIMIT\b/.test(upper) && !/\bTOP\b/.test(upper) && !/\bFETCH\s+FIRST\b/.test(upper)) {
+        issues.push({ level: 'info', message: 'No LIMIT clause — query may return unbounded result sets.', fix: 'Add LIMIT N for user-facing queries. E.g.: LIMIT 100' });
+      }
+
+      // Implicit comma JOIN (old style)
+      if (/FROM\s+\w+\s*,\s*\w+/.test(upper)) {
+        issues.push({ level: 'warning', message: 'Old-style comma JOIN detected — harder to read and can produce cartesian products.', fix: 'Use explicit JOIN syntax: FROM users u JOIN orders o ON u.id = o.user_id' });
+      }
+
+      // OR in WHERE (index hint)
+      if (/WHERE.*\bOR\b/.test(upper)) {
+        issues.push({ level: 'info', message: 'OR in WHERE clause may prevent index usage depending on column distribution.', fix: 'Consider UNION ALL of two queries on separate indexed columns instead of OR.' });
+      }
+
+      // LIKE with leading wildcard
+      if (/LIKE\s+'%/.test(upper)) {
+        issues.push({ level: 'warning', message: "LIKE '%...' with leading wildcard cannot use a B-tree index — full scan.", fix: "If possible, use LIKE 'prefix%' (no leading %). For full-text search, consider FULLTEXT indexes." });
+      }
+
+      // Functions on indexed columns in WHERE
+      if (/WHERE.*\b(LOWER|UPPER|DATE|YEAR|MONTH|DAY|CONVERT|CAST)\s*\(/.test(upper)) {
+        issues.push({ level: 'warning', message: 'Function applied to column in WHERE — may bypass index.', fix: 'Store computed values or use function-based indexes. Avoid wrapping indexed columns in functions.' });
+      }
+
+      // NOT IN with subquery
+      if (/NOT\s+IN\s*\(SELECT/.test(upper)) {
+        issues.push({ level: 'info', message: 'NOT IN with subquery can be slow and breaks on NULL values.', fix: 'Consider NOT EXISTS or LEFT JOIN ... WHERE right.id IS NULL instead.' });
+      }
+
+      // SELECT DISTINCT
+      if (/SELECT\s+DISTINCT/.test(upper)) {
+        issues.push({ level: 'info', message: 'SELECT DISTINCT may indicate a JOIN producing duplicates (missing constraint).', fix: 'Check if DISTINCT is masking a bad JOIN. Fix the JOIN or add GROUP BY instead.' });
+      }
+
+      // ORDER BY without LIMIT (large table risk)
+      if (/ORDER\s+BY/.test(upper) && !/\bLIMIT\b/.test(upper)) {
+        issues.push({ level: 'info', message: 'ORDER BY without LIMIT sorts the entire result set in memory.', fix: 'Add LIMIT N when you only need top results, or ensure ORDER BY column is indexed.' });
+      }
+
+      return issues;
+    }
+
+    function countTokens(sql: string): Record<string, number> {
+      const upper = sql.toUpperCase();
+      return {
+        joins: (upper.match(/\bJOIN\b/g) || []).length,
+        subqueries: (upper.match(/\(SELECT/g) || []).length,
+        conditions: (upper.match(/\bAND\b|\bOR\b/g) || []).length,
+        tables: (upper.match(/\bFROM\b|\bJOIN\b/g) || []).length,
+      };
+    }
+
+    analyzeBtn.addEventListener('click', () => {
+      const sql = input.value.trim();
+      if (!sql) return;
+      const issues = analyzeSQL(sql);
+      const errors = issues.filter(i => i.level === 'error').length;
+      const warnings = issues.filter(i => i.level === 'warning').length;
+      const info = issues.filter(i => i.level === 'info').length;
+
+      (document.getElementById('sqa-cnt-error') as HTMLElement).textContent = errors.toString();
+      (document.getElementById('sqa-cnt-warn') as HTMLElement).textContent = warnings.toString();
+      (document.getElementById('sqa-cnt-info') as HTMLElement).textContent = info.toString();
+
+      const cleanEl = document.getElementById('sqa-clean') as HTMLElement;
+      const issueList = document.getElementById('sqa-issue-list') as HTMLElement;
+      issueList.innerHTML = '';
+
+      if (issues.length === 0) {
+        cleanEl.classList.remove('hidden');
+      } else {
+        cleanEl.classList.add('hidden');
+        const styles: Record<string, string> = { error: 'text-red-400', warning: 'text-yellow-400', info: 'text-blue-400' };
+        for (const issue of issues) {
+          const div = document.createElement('div');
+          div.className = 'bg-bg-card border border-border rounded-xl p-4';
+          div.innerHTML = `<div class="flex gap-3 items-start">
+            <span class="${styles[issue.level]} font-bold text-xs uppercase shrink-0 mt-0.5">${issue.level}</span>
+            <div>
+              <div class="text-sm">${escHtml(issue.message)}</div>
+              <div class="text-xs text-text-muted mt-1">💡 ${escHtml(issue.fix)}</div>
+            </div>
+          </div>`;
+          issueList.appendChild(div);
+        }
+      }
+
+      const tokens = countTokens(sql);
+      const statsEl = document.getElementById('sqa-stats-content') as HTMLElement;
+      statsEl.innerHTML = Object.entries({ 'JOINs': tokens.joins, 'Subqueries': tokens.subqueries, 'Conditions (AND/OR)': tokens.conditions, 'Tables/Sources': tokens.tables })
+        .map(([k, v]) => `<div class="bg-surface rounded p-3"><div class="text-lg font-bold text-primary">${v}</div><div class="text-text-muted">${k}</div></div>`)
+        .join('');
+
+      results.classList.remove('hidden');
+    });
+
+    function escHtml(s: string): string {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="SQL Query Analyzer" relatedTags={['sql', 'database', 'performance', 'optimization', 'developer-tools']} />
+</BaseLayout>
