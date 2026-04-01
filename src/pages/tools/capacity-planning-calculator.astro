@@ -1,0 +1,267 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is capacity planning and why does it matter?", answer: "Capacity planning is the process of determining the computational resources (CPU, memory, pods/instances) needed to handle projected traffic — both current and future. Without it, services either under-provision (leading to performance degradation and outages) or over-provision (wasting significant cloud budget). Good capacity planning combines traffic forecasts, per-request resource profiling, and safety margins." },
+  { question: "How do I measure CPU time per request?", answer: "Use profiling tools: for web services, instrument with OpenTelemetry or language-specific profilers (pprof for Go, py-spy for Python, async_profiler for Java). Run a controlled load test and measure total CPU seconds consumed divided by request count. Alternatively, look at CPU utilization from your APM at a known RPS and divide: CPU% × cores / RPS = CPU seconds per request." },
+  { question: "What is a safe target CPU utilization?", answer: "Target 60-70% CPU utilization under sustained normal load. This leaves headroom for: traffic spikes (20-30% above normal), garbage collection pauses, OS overhead, and auto-scaling reaction time. Running above 80% CPU consistently is dangerous — latency degrades non-linearly past 70-80% utilization due to queuing theory (Little's Law)." },
+  { question: "How should I size memory for Kubernetes pods?", answer: "Pod memory requests should match the average working set; limits should be 1.5–2x requests to handle spikes. Profile memory usage under load: baseline idle memory + (requests in flight × memory per request) + framework overhead. Always set both requests and limits — pods without limits can starve neighbors. Use VPA (Vertical Pod Autoscaler) or regular profiling to tune over time." },
+  { question: "How does compound growth affect capacity projections?", answer: "Compound monthly growth compounds rapidly. 10% monthly growth = 214% growth over 12 months (3.14x). 20% monthly = 792% (8.9x). This means a service handling 1,000 RPS today needs to handle 3,140–8,900 RPS in a year. Always plan hardware procurement and architectural changes 3-6 months ahead of when you expect to need them, accounting for lead times." },
+];
+---
+
+<BaseLayout
+  title="Capacity Planning Calculator — Server & Pod Sizing for Traffic Growth"
+  description="Estimate required CPU cores, memory, and pod count for projected traffic growth. Calculate Kubernetes pod sizing based on RPS, CPU per request, memory per request, and growth rate."
+  tool="Capacity Planning Calculator, Kubernetes Pod Sizing, Server Capacity Estimator, Traffic Growth Calculator, RPS CPU Memory Calculator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Capacity Planning Calculator</h1>
+  <p class="text-text-muted mb-4">Estimate server and Kubernetes pod capacity for your traffic projections. Input current RPS, per-request resource usage, and growth rate to get concrete sizing recommendations.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CPU & memory estimation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Compound growth projection</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pod count & safety margin</span>
+  </div>
+
+  <!-- Current Traffic -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Current Traffic & Resources</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Current RPS (requests/sec)</label>
+        <input id="current-rps" type="number" value="500" min="1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">CPU per Request (milliseconds)</label>
+        <input id="cpu-per-req" type="number" value="8" min="0.1" step="0.1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Memory per Request (MB)</label>
+        <input id="mem-per-req" type="number" value="2" min="0.1" step="0.1"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Growth & Targets -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Growth & Utilization Targets</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Monthly Growth Rate (%)</label>
+        <input id="growth-rate" type="number" value="10" min="0" max="200" step="0.5"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Time Horizon (months)</label>
+        <input id="time-horizon" type="number" value="12" min="1" max="60"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Target CPU Utilization (%)</label>
+        <input id="target-cpu-util" type="number" value="65" min="10" max="95"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Safety Margin (%)</label>
+        <input id="safety-margin" type="number" value="20" min="0" max="100"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Pod Configuration -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Pod / Instance Sizing</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">CPU Cores per Pod</label>
+        <select id="pod-cpu" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="0.5">0.5 cores</option>
+          <option value="1" selected>1 core</option>
+          <option value="2">2 cores</option>
+          <option value="4">4 cores</option>
+          <option value="8">8 cores</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Memory per Pod (GB)</label>
+        <select id="pod-mem" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+          <option value="0.5">512 MB</option>
+          <option value="1">1 GB</option>
+          <option value="2" selected>2 GB</option>
+          <option value="4">4 GB</option>
+          <option value="8">8 GB</option>
+          <option value="16">16 GB</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Base Memory per Pod (MB)</label>
+        <input id="base-mem" type="number" value="256" min="0"
+          class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        <p class="text-xs text-text-muted mt-1">Framework / JVM / process overhead</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Capacity Requirements</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="result-rps" class="text-2xl font-bold text-primary mb-1">1,296</div>
+        <div class="text-xs text-text-muted">Projected RPS</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="result-cpu" class="text-2xl font-bold text-primary mb-1">24</div>
+        <div class="text-xs text-text-muted">Required CPU Cores</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="result-mem" class="text-2xl font-bold text-primary mb-1">18 GB</div>
+        <div class="text-xs text-text-muted">Required Memory</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="result-pods" class="text-2xl font-bold text-primary mb-1">24</div>
+        <div class="text-xs text-text-muted">Recommended Pods</div>
+      </div>
+    </div>
+    <div id="growth-chart" class="mb-4"></div>
+    <div id="sizing-summary" class="bg-bg-card border border-border rounded-lg p-4 text-sm"></div>
+  </div>
+
+  <!-- Growth Projection Table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">Growth Projection Timeline</h2>
+    <div id="projection-table" class="overflow-x-auto"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Capacity Planning Calculator" relatedTags={['devops', 'kubernetes', 'sre', 'infrastructure', 'scaling', 'cloud']} />
+</BaseLayout>
+
+<script>
+  function getVal(id: string): number {
+    return parseFloat((document.getElementById(id) as HTMLInputElement).value) || 0;
+  }
+  function getSel(id: string): number {
+    return parseFloat((document.getElementById(id) as HTMLSelectElement).value) || 0;
+  }
+
+  function calculate() {
+    const currentRps = getVal('current-rps');
+    const cpuPerReqMs = getVal('cpu-per-req');
+    const memPerReqMb = getVal('mem-per-req');
+    const growthRate = getVal('growth-rate') / 100;
+    const horizonMonths = getVal('time-horizon');
+    const targetCpuUtil = getVal('target-cpu-util') / 100;
+    const safetyMarginPct = getVal('safety-margin') / 100;
+    const podCpuCores = getSel('pod-cpu');
+    const podMemGb = getSel('pod-mem');
+    const baseMemMb = getVal('base-mem');
+
+    // Projected RPS at horizon
+    const projectedRps = currentRps * Math.pow(1 + growthRate, horizonMonths);
+    const withSafety = projectedRps * (1 + safetyMarginPct);
+
+    // CPU required: RPS × (cpu_per_request_sec) / target_utilization
+    const cpuPerReqSec = cpuPerReqMs / 1000;
+    const rawCpuCores = withSafety * cpuPerReqSec;
+    const requiredCpuCores = rawCpuCores / targetCpuUtil;
+
+    // Memory required: RPS × mem_per_request + base overhead
+    // Assume avg 100ms response time → requests in flight = RPS × 0.1
+    const avgResponseSec = 0.1;
+    const inFlight = withSafety * avgResponseSec;
+    const rawMemMb = inFlight * memPerReqMb + baseMemMb * 10; // 10 pods baseline
+    const requiredMemGb = (rawMemMb / 1024) / targetCpuUtil;
+
+    // Pod count — limited by whichever resource is the bottleneck
+    const podsByCpu = Math.ceil(requiredCpuCores / podCpuCores);
+    const podsByMem = Math.ceil(requiredMemGb / podMemGb);
+    const recommendedPods = Math.max(podsByCpu, podsByMem, 2); // min 2 for HA
+
+    document.getElementById('result-rps')!.textContent = Math.round(projectedRps).toLocaleString();
+    document.getElementById('result-cpu')!.textContent = requiredCpuCores.toFixed(1);
+    document.getElementById('result-mem')!.textContent = `${requiredMemGb.toFixed(1)} GB`;
+    document.getElementById('result-pods')!.textContent = String(recommendedPods);
+
+    // Growth milestones chart
+    const milestones = [1, 3, 6, 12, 24].filter(m => m <= horizonMonths + 6);
+    document.getElementById('growth-chart')!.innerHTML = `
+      <div class="space-y-2 mb-4">
+        <div class="text-xs text-text-muted font-medium mb-2">RPS Growth vs Current (${currentRps} RPS)</div>
+        ${milestones.map(m => {
+          const rps = currentRps * Math.pow(1 + growthRate, m);
+          const pct = Math.min((rps / (currentRps * Math.pow(1 + growthRate, Math.max(...milestones)))) * 100, 100);
+          return `<div class="flex items-center gap-3 text-xs">
+            <span class="w-16 text-text-muted text-right">+${m}mo</span>
+            <div class="flex-1 bg-bg-card border border-border rounded-full h-2.5">
+              <div class="bg-primary h-full rounded-full transition-all" style="width:${pct}%"></div>
+            </div>
+            <span class="w-20 font-mono">${Math.round(rps).toLocaleString()} rps</span>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+
+    document.getElementById('sizing-summary')!.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <div class="font-medium mb-2">Current Capacity Needed</div>
+          <div class="space-y-1 text-text-muted">
+            <div>CPU cores: <span class="font-mono text-foreground">${(currentRps * cpuPerReqSec / targetCpuUtil).toFixed(1)}</span></div>
+            <div>Pods: <span class="font-mono text-foreground">${Math.max(2, Math.ceil(currentRps * cpuPerReqSec / targetCpuUtil / podCpuCores))}</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="font-medium mb-2">At ${horizonMonths}-Month Horizon</div>
+          <div class="space-y-1 text-text-muted">
+            <div>Growth factor: <span class="font-mono text-foreground">${(projectedRps / currentRps).toFixed(2)}x</span></div>
+            <div>Pods (incl. ${Math.round(safetyMarginPct * 100)}% margin): <span class="font-mono text-foreground">${recommendedPods}</span></div>
+            <div>Bottleneck: <span class="font-mono text-foreground">${podsByCpu >= podsByMem ? 'CPU' : 'Memory'}</span></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Projection table
+    const checkpoints = Array.from({ length: Math.min(horizonMonths, 24) }, (_, i) => i + 1)
+      .filter(m => m === 1 || m % 3 === 0 || m === horizonMonths);
+    document.getElementById('projection-table')!.innerHTML = `
+      <table class="w-full text-sm min-w-[500px]">
+        <thead><tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-2 pr-4">Month</th>
+          <th class="text-right pb-2 pr-4">Projected RPS</th>
+          <th class="text-right pb-2 pr-4">CPU Cores</th>
+          <th class="text-right pb-2 pr-4">Memory</th>
+          <th class="text-right pb-2">Min Pods</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">
+          ${checkpoints.map(m => {
+            const rps = currentRps * Math.pow(1 + growthRate, m);
+            const rpsS = rps * (1 + safetyMarginPct);
+            const cpu = (rpsS * cpuPerReqSec / targetCpuUtil).toFixed(1);
+            const mem = ((rpsS * avgResponseSec * memPerReqMb / 1024) / targetCpuUtil).toFixed(1);
+            const pods = Math.max(2, Math.ceil(parseFloat(cpu) / podCpuCores));
+            return `<tr class="${m === horizonMonths ? 'bg-primary/5 font-semibold' : ''}">
+              <td class="py-2.5 pr-4">+${m}mo</td>
+              <td class="py-2.5 pr-4 text-right font-mono">${Math.round(rps).toLocaleString()}</td>
+              <td class="py-2.5 pr-4 text-right font-mono">${cpu}</td>
+              <td class="py-2.5 pr-4 text-right font-mono">${mem} GB</td>
+              <td class="py-2.5 text-right font-mono">${pods}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', calculate));
+  calculate();
+</script>

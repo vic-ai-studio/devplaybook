@@ -1,0 +1,259 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is the difference between MTTR and MTBF?", answer: "MTTR (Mean Time To Recovery/Repair) measures the average time it takes to restore service after a failure — a lower MTTR means faster recovery. MTBF (Mean Time Between Failures) measures the average time between two consecutive failures — a higher MTBF means more reliable service. Together they determine availability: Availability = MTBF / (MTBF + MTTR)." },
+  { question: "What availability is required for different SLA tiers?", answer: "99% (two nines) = ~87.6 hours downtime/year. 99.9% (three nines) = ~8.76 hours/year. 99.95% = ~4.38 hours/year. 99.99% (four nines) = ~52 minutes/year. 99.999% (five nines) = ~5.26 minutes/year. Most enterprise SLAs target 99.9%–99.99%, while consumer apps often target 99.9%." },
+  { question: "How do you measure MTTR accurately?", answer: "Measure MTTR from the moment the incident is detected (alert fires) to the moment service is fully restored (not just temporarily fixed). Track: detection time, acknowledgement time, mitigation time, and full resolution time separately. Many teams confuse MTTD (detection), MTTA (acknowledgement), and MTTR, leading to misleading metrics." },
+  { question: "What is a realistic MTBF target for web services?", answer: "For high-traffic web services, targeting MTBF of 720+ hours (30 days) is common for P1+ incidents. MTBF below 168 hours (1 week) indicates systemic reliability issues requiring architectural review. MTBF should be measured separately per service and per severity level — mixing them obscures real problem areas." },
+  { question: "How can I improve my MTTR?", answer: "Key MTTR improvement levers: (1) Better observability — faster detection and diagnosis with distributed tracing and structured logs. (2) Runbooks — documented step-by-step recovery procedures. (3) Automated rollbacks — deploy systems that can auto-revert on health check failure. (4) Game days — practice incident response with chaos engineering. (5) Post-mortems — systematic review of each incident to remove recurring causes." },
+];
+---
+
+<BaseLayout
+  title="MTTR MTBF Availability Calculator — SRE Reliability Metrics"
+  description="Calculate MTTR, MTBF, and service availability from incident history. Determine SLA tier, uptime hours, and reliability targets for your production systems."
+  tool="MTTR Calculator, MTBF Calculator, Availability Calculator, SLA Tier Calculator, SRE Reliability Metrics, Uptime Calculator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">MTTR / MTBF / Availability Calculator</h1>
+  <p class="text-text-muted mb-4">Calculate Mean Time To Recovery, Mean Time Between Failures, and service availability from incident history. Determine your SLA tier and reliability gaps.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> MTTR & MTBF calculation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Availability % and SLA tier</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Incident log parser</span>
+  </div>
+
+  <!-- Input Mode Toggle -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Input Mode</h2>
+    <div class="flex gap-3 mb-4">
+      <button id="btn-manual" onclick="switchMode('manual')" class="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white">Manual Entry</button>
+      <button id="btn-log" onclick="switchMode('log')" class="px-4 py-2 rounded-lg text-sm font-medium bg-bg-card border border-border text-text-muted">Incident Log</button>
+    </div>
+
+    <!-- Manual Mode -->
+    <div id="manual-mode">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Total Downtime (hours)</label>
+          <input id="total-downtime" type="number" value="12.5" min="0" step="0.1"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Number of Incidents</label>
+          <input id="num-incidents" type="number" value="5" min="1"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Observation Period (days)</label>
+          <input id="observation-days" type="number" value="90" min="1"
+            class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Log Mode -->
+    <div id="log-mode" class="hidden">
+      <label class="block text-sm font-medium mb-1.5">Incident Log (one per line: <code class="text-primary">start,end</code> — e.g. <code class="text-primary">2024-03-01 02:00,2024-03-01 03:30</code>)</label>
+      <textarea id="incident-log" rows="8" placeholder="2024-03-01 02:00,2024-03-01 03:30&#10;2024-03-15 14:00,2024-03-15 15:45&#10;2024-04-02 08:00,2024-04-02 09:00"
+        class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary"></textarea>
+      <div id="log-parse-status" class="text-xs mt-1 text-text-muted"></div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Reliability Metrics</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="mttr-result" class="text-2xl font-bold text-primary mb-1">2.5h</div>
+        <div class="text-xs text-text-muted">MTTR</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="mtbf-result" class="text-2xl font-bold text-primary mb-1">414h</div>
+        <div class="text-xs text-text-muted">MTBF</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="availability-result" class="text-2xl font-bold text-primary mb-1">99.40%</div>
+        <div class="text-xs text-text-muted">Availability</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="sla-tier" class="text-2xl font-bold text-primary mb-1">99.9%</div>
+        <div class="text-xs text-text-muted">SLA Tier Met</div>
+      </div>
+    </div>
+    <div id="downtime-breakdown" class="bg-bg-card border border-border rounded-lg p-4 text-sm"></div>
+  </div>
+
+  <!-- SLA Reference -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-3">SLA Tier Reference</h2>
+    <div id="sla-table" class="overflow-x-auto"></div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="MTTR MTBF Availability Calculator" relatedTags={['devops', 'sre', 'reliability', 'sla', 'monitoring', 'incident']} />
+</BaseLayout>
+
+<script>
+  let currentMode = 'manual';
+
+  (window as any).switchMode = function(mode: string) {
+    currentMode = mode;
+    const manualEl = document.getElementById('manual-mode')!;
+    const logEl = document.getElementById('log-mode')!;
+    const btnManual = document.getElementById('btn-manual')!;
+    const btnLog = document.getElementById('btn-log')!;
+
+    if (mode === 'manual') {
+      manualEl.classList.remove('hidden');
+      logEl.classList.add('hidden');
+      btnManual.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white';
+      btnLog.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-bg-card border border-border text-text-muted';
+    } else {
+      manualEl.classList.add('hidden');
+      logEl.classList.remove('hidden');
+      btnManual.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-bg-card border border-border text-text-muted';
+      btnLog.className = 'px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white';
+    }
+    calculate();
+  };
+
+  function getVal(id: string): number {
+    return parseFloat((document.getElementById(id) as HTMLInputElement).value) || 0;
+  }
+
+  function parseLog(): { totalDowntime: number; numIncidents: number; observationDays: number } {
+    const raw = (document.getElementById('incident-log') as HTMLTextAreaElement).value.trim();
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    let totalMs = 0;
+    let parsed = 0;
+    let errors = 0;
+    let minDate = Infinity, maxDate = -Infinity;
+
+    for (const line of lines) {
+      const parts = line.split(',');
+      if (parts.length < 2) { errors++; continue; }
+      const start = new Date(parts[0].trim()).getTime();
+      const end = new Date(parts[1].trim()).getTime();
+      if (isNaN(start) || isNaN(end) || end <= start) { errors++; continue; }
+      totalMs += end - start;
+      parsed++;
+      if (start < minDate) minDate = start;
+      if (end > maxDate) maxDate = end;
+    }
+
+    const statusEl = document.getElementById('log-parse-status')!;
+    statusEl.textContent = errors > 0
+      ? `Parsed ${parsed} incidents (${errors} lines skipped — check format)`
+      : `Parsed ${parsed} incidents successfully`;
+    statusEl.className = `text-xs mt-1 ${errors > 0 ? 'text-yellow-500' : 'text-green-500'}`;
+
+    const observationDays = parsed > 1 ? (maxDate - minDate) / 86400000 : 30;
+    return {
+      totalDowntime: totalMs / 3600000,
+      numIncidents: parsed,
+      observationDays: Math.max(observationDays, 1),
+    };
+  }
+
+  function fmt(hours: number): string {
+    if (hours >= 24) return `${(hours / 24).toFixed(1)}d`;
+    if (hours >= 1) return `${hours.toFixed(1)}h`;
+    return `${(hours * 60).toFixed(0)}m`;
+  }
+
+  function calculate() {
+    let totalDowntime: number, numIncidents: number, observationDays: number;
+
+    if (currentMode === 'log') {
+      const parsed = parseLog();
+      totalDowntime = parsed.totalDowntime;
+      numIncidents = parsed.numIncidents;
+      observationDays = parsed.observationDays;
+    } else {
+      totalDowntime = getVal('total-downtime');
+      numIncidents = Math.max(getVal('num-incidents'), 1);
+      observationDays = getVal('observation-days');
+    }
+
+    const observationHours = observationDays * 24;
+    const mttr = numIncidents > 0 ? totalDowntime / numIncidents : 0;
+    const uptimeHours = observationHours - totalDowntime;
+    const mtbf = numIncidents > 0 ? uptimeHours / numIncidents : observationHours;
+    const availability = observationHours > 0 ? (uptimeHours / observationHours) * 100 : 100;
+
+    document.getElementById('mttr-result')!.textContent = fmt(mttr);
+    document.getElementById('mtbf-result')!.textContent = fmt(mtbf);
+    document.getElementById('availability-result')!.textContent = `${availability.toFixed(3)}%`;
+
+    // SLA tier
+    const tiers = [
+      { label: '99.999%', min: 99.999 },
+      { label: '99.99%', min: 99.99 },
+      { label: '99.95%', min: 99.95 },
+      { label: '99.9%', min: 99.9 },
+      { label: '99%', min: 99 },
+      { label: '<99%', min: 0 },
+    ];
+    const tier = tiers.find(t => availability >= t.min) || tiers[tiers.length - 1];
+    const tierEl = document.getElementById('sla-tier')!;
+    tierEl.textContent = tier.label;
+    tierEl.className = `text-2xl font-bold mb-1 ${availability >= 99.9 ? 'text-green-500' : availability >= 99 ? 'text-yellow-500' : 'text-red-500'}`;
+
+    // Downtime breakdown
+    const yearlyDowntime = (1 - availability / 100) * 8760;
+    document.getElementById('downtime-breakdown')!.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        <div>
+          <div class="text-text-muted text-xs mb-1">Observation Period</div>
+          <div class="font-semibold">${observationDays} days (${observationHours.toLocaleString()}h)</div>
+        </div>
+        <div>
+          <div class="text-text-muted text-xs mb-1">Total Downtime</div>
+          <div class="font-semibold">${fmt(totalDowntime)} (${totalDowntime.toFixed(2)}h)</div>
+        </div>
+        <div>
+          <div class="text-text-muted text-xs mb-1">Projected Annual Downtime</div>
+          <div class="font-semibold ${yearlyDowntime > 8.76 ? 'text-red-500' : 'text-green-500'}">${fmt(yearlyDowntime)}</div>
+        </div>
+      </div>
+    `;
+
+    // SLA table
+    const slaData = [
+      { nines: 'Two nines', pct: '99%', monthly: '7.2h', yearly: '87.6h', tier: 'Basic' },
+      { nines: 'Three nines', pct: '99.9%', monthly: '43.8m', yearly: '8.76h', tier: 'Standard' },
+      { nines: 'Three and a half', pct: '99.95%', monthly: '21.9m', yearly: '4.38h', tier: 'Premium' },
+      { nines: 'Four nines', pct: '99.99%', monthly: '4.4m', yearly: '52.6m', tier: 'Enterprise' },
+      { nines: 'Five nines', pct: '99.999%', monthly: '26s', yearly: '5.26m', tier: 'Carrier Grade' },
+    ];
+    document.getElementById('sla-table')!.innerHTML = `
+      <table class="w-full text-sm min-w-[500px]">
+        <thead><tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-2 pr-4">Tier</th>
+          <th class="text-right pb-2 pr-4">Availability</th>
+          <th class="text-right pb-2 pr-4">Monthly Downtime</th>
+          <th class="text-right pb-2 pr-4">Yearly Downtime</th>
+          <th class="text-right pb-2">Category</th>
+        </tr></thead>
+        <tbody class="divide-y divide-border">
+          ${slaData.map(s => `<tr class="${s.pct === tier.label ? 'bg-primary/5' : ''}">
+            <td class="py-2.5 pr-4 text-text-muted">${s.nines}</td>
+            <td class="py-2.5 pr-4 text-right font-mono font-semibold">${s.pct}</td>
+            <td class="py-2.5 pr-4 text-right font-mono">${s.monthly}</td>
+            <td class="py-2.5 pr-4 text-right font-mono">${s.yearly}</td>
+            <td class="py-2.5 text-right text-text-muted">${s.tier}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  document.querySelectorAll('input, textarea').forEach(el => el.addEventListener('input', calculate));
+  calculate();
+</script>
