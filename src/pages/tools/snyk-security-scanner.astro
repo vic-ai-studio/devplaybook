@@ -1,0 +1,196 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is Snyk and how is it different from npm audit?",
+    answer: "Snyk is a developer-first security platform that scans dependencies, containers, IaC, and code for vulnerabilities. Unlike npm audit, Snyk provides fix pull requests, license compliance checks, container image scanning, and integrates with Git providers for continuous monitoring. npm audit is limited to Node.js packages and only reports — it can't open fix PRs or scan Docker images."
+  },
+  {
+    question: "How do I integrate Snyk in GitHub Actions?",
+    answer: "Add a workflow step that runs 'snyk test' after checkout and dependency install. Use the SNYK_TOKEN secret in your repo settings and the snyk/actions/node@master action. Set '--severity-threshold=high' to fail the build only on high/critical issues, preventing noise from low-severity findings blocking every PR."
+  },
+  {
+    question: "What is the difference between snyk monitor and snyk test?",
+    answer: "snyk test performs a one-off vulnerability check and exits with a non-zero code if issues are found — ideal for CI gates. snyk monitor continuously tracks your project on Snyk's platform, sending alerts when new CVEs affect your current dependency tree. Use both: test in CI to block bad builds, monitor on main branch for ongoing visibility."
+  },
+  {
+    question: "How do I ignore false positives with a .snyk policy file?",
+    answer: "Create a .snyk file at the project root and add an ignore block with the CVE ID, a reason string, and an expiry date. Run 'snyk ignore --id=CVE-XXXX-XXXX --reason=\"not exploitable in our context\" --expiry=2025-12-31'. Commit the .snyk file so all developers and CI share the same suppression rules."
+  },
+  {
+    question: "Can Snyk scan Docker images for vulnerabilities?",
+    answer: "Yes. Run 'snyk container test your-image:tag' to scan OS-level packages (Alpine, Debian, Ubuntu) and application dependencies inside the image. Snyk identifies the base image layer contributing each vulnerability and suggests leaner or patched base images as alternatives."
+  },
+  {
+    question: "How do I read Snyk severity scores?",
+    answer: "Snyk uses CVSS scores: Critical (9.0–10), High (7.0–8.9), Medium (4.0–6.9), Low (0.1–3.9). Snyk also shows a Priority Score (0–1000) that factors in exploitability, CVSS, and whether a fix is available. Focus remediation on high Priority Score items first, not just the highest CVSS."
+  },
+];
+---
+
+<BaseLayout
+  title="Snyk Security Scanner: Vulnerability Scanning & Fix PR Guide"
+  description="Complete guide to Snyk vulnerability scanning for npm, Docker, IaC. CLI setup, CI/CD integration, fix PRs, license compliance, and policy files."
+  tool="Snyk, vulnerability scanner, Snyk CLI, Snyk CI, dependency scanning, container scanning"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Snyk Security Scanner: Vulnerability Scanning & Fix PR Guide",
+    "url": "https://devplaybook.cc/tools/snyk-security-scanner",
+    "description": "Complete guide to Snyk vulnerability scanning for npm, Docker, IaC. CLI setup, CI/CD integration, fix PRs, license compliance, and policy files.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Snyk Security Scanner: Vulnerability Scanning & Fix PR Guide</h1>
+  <p class="text-text-muted mb-6">Snyk finds and fixes vulnerabilities in your dependencies, containers, and infrastructure code — before they reach production. This guide covers the full workflow from CLI setup to CI/CD integration and policy management.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> npm / PyPI / Maven / Go modules</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Docker image scanning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Terraform & K8s IaC scanning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Automated fix pull requests</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> License compliance checks</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">What is Snyk (vs npm audit)?</h2>
+  <p class="text-text-muted mb-4">npm audit checks Node.js packages against the npm advisory database — it's built-in and free but limited. Snyk goes further: it covers 10+ ecosystems, scans Docker images and IaC, integrates with GitHub/GitLab/Bitbucket to open automated fix PRs, and continuously monitors your deployed projects for newly disclosed CVEs.</p>
+  <p class="text-text-muted mb-4">Snyk has a free tier that covers open-source projects and up to 200 tests/month for private repos. Most teams find the free plan sufficient for CI gating.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">CLI Quickstart</h2>
+  <p class="text-text-muted mb-3">Install globally and authenticate with your Snyk account token:</p>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Install
+npm install -g snyk
+
+# Authenticate (opens browser)
+snyk auth
+
+# Test current project
+snyk test
+
+# Monitor project on Snyk platform (continuous tracking)
+snyk monitor
+
+# Auto-fix vulnerabilities and open a PR
+snyk fix</code></pre>
+
+  <p class="text-text-muted mb-4">Run <code>snyk test --severity-threshold=high</code> to exit non-zero only when high or critical issues are found, keeping CI from failing on low-risk advisories.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">CI/CD Integration — GitHub Actions</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code>name: Snyk Security Scan
+
+on: [push, pull_request]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: &#123;&#123; secrets.SNYK_TOKEN &#125;&#125;
+        with:
+          args: --severity-threshold=high</code></pre>
+
+  <p class="text-text-muted mb-4">Add <code>SNYK_TOKEN</code> to your repository secrets. Generate it from <strong>Snyk Dashboard → Account Settings → API Token</strong>.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Container Scanning</h2>
+  <p class="text-text-muted mb-3">Snyk can scan Docker images — both the OS layer and any app dependencies baked into the image:</p>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Scan a local or remote image
+snyk container test node:18-alpine
+
+# Scan your own image
+snyk container test myapp:latest --file=Dockerfile
+
+# Monitor container on Snyk platform
+snyk container monitor myapp:latest</code></pre>
+  <p class="text-text-muted mb-4">Snyk shows which base image layer introduced each vulnerability and suggests a patched or slimmer alternative (e.g., switching from <code>node:18</code> to <code>node:18-slim</code> can eliminate dozens of OS-level CVEs).</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">IaC Scanning (Terraform, Kubernetes)</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Scan Terraform files
+snyk iac test ./infra/
+
+# Scan Kubernetes manifests
+snyk iac test k8s-manifests/
+
+# Scan a single file
+snyk iac test deployment.yaml</code></pre>
+  <p class="text-text-muted mb-4">Snyk IaC detects misconfigurations like open security groups, containers running as root, missing resource limits, and disabled audit logging — before you apply changes to production.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">.snyk Policy File — Managing False Positives</h2>
+  <p class="text-text-muted mb-3">The <code>.snyk</code> file lets you suppress known false positives or accepted risks:</p>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># .snyk
+version: v1.25.0
+ignore:
+  SNYK-JS-LODASH-567746:
+    - '*':
+        reason: Not exploitable — no user-controlled input reaches this path
+        expires: '2025-12-31T00:00:00.000Z'
+        created: '2024-01-15T10:00:00.000Z'</code></pre>
+  <p class="text-text-muted mb-4">Always include a <code>reason</code> and <code>expires</code> date. Commit <code>.snyk</code> to version control so the entire team and CI pipeline share the same suppression rules.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Snyk vs Alternatives</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Tool</th>
+          <th class="text-left py-2 pr-4 font-semibold">Best For</th>
+          <th class="text-left py-2 pr-4 font-semibold">Container</th>
+          <th class="text-left py-2 pr-4 font-semibold">IaC</th>
+          <th class="text-left py-2 pr-4 font-semibold">Fix PRs</th>
+          <th class="text-left py-2 pr-4 font-semibold">Free Tier</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50">
+          <td class="py-2 pr-4 font-medium text-text">Snyk</td>
+          <td class="py-2 pr-4">Dev-first, multi-ecosystem</td>
+          <td class="py-2 pr-4">✓</td>
+          <td class="py-2 pr-4">✓</td>
+          <td class="py-2 pr-4">✓</td>
+          <td class="py-2 pr-4">200 tests/mo</td>
+        </tr>
+        <tr class="border-b border-border/50">
+          <td class="py-2 pr-4 font-medium text-text">OWASP DC</td>
+          <td class="py-2 pr-4">Java/Maven, offline</td>
+          <td class="py-2 pr-4">✗</td>
+          <td class="py-2 pr-4">✗</td>
+          <td class="py-2 pr-4">✗</td>
+          <td class="py-2 pr-4">Free/OSS</td>
+        </tr>
+        <tr class="border-b border-border/50">
+          <td class="py-2 pr-4 font-medium text-text">Dependabot</td>
+          <td class="py-2 pr-4">GitHub repos, free</td>
+          <td class="py-2 pr-4">✗</td>
+          <td class="py-2 pr-4">✗</td>
+          <td class="py-2 pr-4">✓</td>
+          <td class="py-2 pr-4">Free</td>
+        </tr>
+        <tr>
+          <td class="py-2 pr-4 font-medium text-text">SonarQube</td>
+          <td class="py-2 pr-4">Code quality + SAST</td>
+          <td class="py-2 pr-4">✗</td>
+          <td class="py-2 pr-4">✗</td>
+          <td class="py-2 pr-4">✗</td>
+          <td class="py-2 pr-4">Community ed.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

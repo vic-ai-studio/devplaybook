@@ -1,0 +1,190 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "Auth0 vs Okta vs Clerk — which should I use?",
+    answer: "Auth0 is the best choice for developer-centric projects needing flexible customization, social logins, and machine-to-machine tokens — it has an excellent free tier (7,500 MAU). Okta targets enterprise SSO with LDAP/AD integration and compliance features, making it better for workforce identity. Clerk is purpose-built for Next.js and React apps, offering pre-built UI components and a simpler DX for B2C products. If you're building a SaaS with multiple auth providers and need RBAC, Auth0 is the safest starting point."
+  },
+  {
+    question: "How do Auth0 Actions work and how are they different from Rules?",
+    answer: "Rules were the original extensibility mechanism — JavaScript functions that ran in a specific pipeline order but were difficult to test locally and shared global state. Actions are the modern replacement: they run at specific trigger points (Login, Machine-to-Machine, Pre-User Registration), are written as isolated Node.js modules with explicit dependencies, and can be tested in the Auth0 dashboard. Actions also support secrets management and versioning. Auth0 has committed to deprecating Rules in favor of Actions — all new development should use Actions."
+  },
+  {
+    question: "What are M2M tokens and when should I use them?",
+    answer: "Machine-to-Machine (M2M) tokens are OAuth2 Client Credentials flow tokens issued to backend services that need to call other APIs without a user context. Use them when a cron job, microservice, or background worker needs to authenticate to your API. In Auth0, you create an M2M Application, authorize it for an API audience, then exchange client_id + client_secret for an access token via POST /oauth/token. M2M tokens count against your Auth0 quota, so cache them until near expiry rather than requesting a new token on every call."
+  },
+  {
+    question: "How do I add Auth0 to a Next.js app?",
+    answer: "Install @auth0/nextjs-auth0 and set AUTH0_SECRET, AUTH0_BASE_URL, AUTH0_ISSUER_BASE_URL, AUTH0_CLIENT_ID, and AUTH0_CLIENT_SECRET in your .env.local. Create a catch-all route at pages/api/auth/[auth0].js that exports handleAuth(). Wrap your _app.js with UserProvider. Use withPageAuthRequired on protected pages and getSession() in API routes. For App Router (Next.js 13+), use the auth0-nextjs SDK v3 which supports Route Handlers and Server Components."
+  },
+  {
+    question: "How do I configure MFA in Auth0?",
+    answer: "Enable MFA in your Auth0 Dashboard under Security > Multi-factor Auth. Auth0 supports TOTP (Google Authenticator), SMS (via Twilio), WebAuthn (passkeys), and Duo. You can set MFA as Always On, Adaptive (based on risk signals), or Allow users to opt-in. For granular control, use an Auth0 Action on the Login trigger to programmatically require MFA for specific users or roles by calling api.multifactor.enable('totp'). Adaptive MFA uses Auth0's threat intelligence to challenge suspicious logins automatically."
+  },
+  {
+    question: "What is the Auth0 free tier limit?",
+    answer: "The Auth0 Free plan supports 7,500 Monthly Active Users (MAU) with unlimited logins, social connections (Google, GitHub, Facebook, etc.), and standard Universal Login. It includes 2 social connections, 1 custom domain on the Essentials plan, and basic log retention (2 days). The Free tier does not include Organizations (multi-tenant), advanced MFA policies, or SAML enterprise connections. For most early-stage SaaS products the Free tier is sufficient until you exceed ~5,000 MAU. Exceeding 7,500 MAU requires the Essentials plan starting at $35/month."
+  },
+];
+---
+
+<BaseLayout
+  title="Auth0 Authentication Guide: Setup, Rules, Actions & M2M Tokens"
+  description="Complete Auth0 guide: tenant setup, Universal Login, Rules vs Actions, M2M tokens for APIs, social connections, MFA configuration, and Node.js SDK integration."
+  tool="Auth0, authentication, OAuth2, OIDC, M2M tokens, Auth0 Actions, social login, Node.js auth"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Auth0 Authentication Guide: Setup, Rules, Actions & M2M Tokens",
+    "url": "https://devplaybook.cc/tools/auth0-authentication-guide",
+    "description": "Complete Auth0 guide: tenant setup, Universal Login, Rules vs Actions, M2M tokens for APIs, social connections, MFA configuration, and Node.js SDK integration.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Auth0 Authentication Guide: Setup, Rules, Actions & M2M Tokens</h1>
+  <p class="text-text-muted mb-6">Auth0 is an identity platform that handles authentication and authorization so you don't have to build it yourself. This guide covers everything from initial tenant setup to production-grade patterns: social connections, Universal Login customization, Actions pipelines, M2M tokens for service-to-service auth, and MFA configuration.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> OAuth2 & OIDC compliant</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 7,500 MAU free tier</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Social + enterprise connections</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> M2M token support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Extensible Actions pipeline</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Why Auth0 Instead of Building Auth Yourself?</h2>
+  <p class="text-text-muted mb-4">Building authentication from scratch means implementing password hashing (bcrypt/Argon2), secure session management, CSRF protection, OAuth2 flows, token rotation, brute-force protection, and MFA — all of which have subtle security failure modes. A single misconfiguration can expose your entire user base. Auth0 provides all of this as a managed service with a battle-tested implementation, leaving your team to focus on product logic instead of identity infrastructure.</p>
+  <p class="text-text-muted mb-4">Auth0 is ideal when you need: multiple social providers, enterprise SSO (SAML/OIDC), machine-to-machine API authentication, or compliance features like MFA and log retention. For simple username/password apps that never need external providers, a library like Passport.js or a lighter solution like Clerk may be more appropriate.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Tenant Setup and Application Types</h2>
+  <p class="text-text-muted mb-4">An Auth0 <strong>tenant</strong> is an isolated environment (like a workspace) that holds your users, applications, and settings. Create separate tenants for development, staging, and production. Within a tenant, you register <strong>Applications</strong> — each represents a client that will authenticate users:</p>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Application Type</th>
+          <th class="text-left py-2 pr-4 font-semibold">Use Case</th>
+          <th class="text-left py-2 pr-4 font-semibold">Grant Type</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Regular Web App</td><td class="py-2 pr-4">Next.js, Express (server-side)</td><td class="py-2 pr-4">Authorization Code</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">SPA</td><td class="py-2 pr-4">React, Vue (client-side)</td><td class="py-2 pr-4">Auth Code + PKCE</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Native / Mobile</td><td class="py-2 pr-4">iOS, Android</td><td class="py-2 pr-4">Auth Code + PKCE</td></tr>
+        <tr><td class="py-2 pr-4">Machine to Machine</td><td class="py-2 pr-4">Backend services, cron jobs</td><td class="py-2 pr-4">Client Credentials</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Adding Auth0 to an Express / Next.js App</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Install SDK
+npm install @auth0/nextjs-auth0
+
+# .env.local
+AUTH0_SECRET='use-a-long-random-string'
+AUTH0_BASE_URL='http://localhost:3000'
+AUTH0_ISSUER_BASE_URL='https://YOUR_DOMAIN.auth0.com'
+AUTH0_CLIENT_ID='your-client-id'
+AUTH0_CLIENT_SECRET='your-client-secret'</code></pre>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code>// pages/api/auth/[auth0].js — catch-all route
+import &#123; handleAuth &#125; from '@auth0/nextjs-auth0';
+export default handleAuth();
+
+// pages/_app.js
+import &#123; UserProvider &#125; from '@auth0/nextjs-auth0/client';
+export default function App(&#123; Component, pageProps &#125;) &#123;
+  return (
+    &lt;UserProvider&gt;
+      &lt;Component &#123;...pageProps&#125; /&gt;
+    &lt;/UserProvider&gt;
+  );
+&#125;
+
+// Protected page
+import &#123; withPageAuthRequired &#125; from '@auth0/nextjs-auth0';
+export default withPageAuthRequired(function Dashboard(&#123; user &#125;) &#123;
+  return &lt;p&gt;Welcome &#123;user.name&#125;&lt;/p&gt;;
+&#125;);</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Social Connections (Google, GitHub)</h2>
+  <p class="text-text-muted mb-4">In the Auth0 Dashboard, go to <strong>Authentication &gt; Social</strong> and enable connections. For Google, create an OAuth2 app in Google Cloud Console and paste your Client ID + Secret. For GitHub, register an OAuth App at github.com/settings/developers. Auth0 normalizes the profile data across all providers into a consistent user object with <code class="font-mono bg-surface px-1 rounded text-sm">sub</code>, <code class="font-mono bg-surface px-1 rounded text-sm">email</code>, and <code class="font-mono bg-surface px-1 rounded text-sm">name</code> fields.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Rules vs Actions: What Changed</h2>
+  <p class="text-text-muted mb-4">Rules were the original Auth0 pipeline extension — JavaScript functions that ran sequentially after every login. Actions replace them with a cleaner, node-module-based system. Key differences:</p>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Feature</th>
+          <th class="text-left py-2 pr-4 font-semibold">Rules (deprecated)</th>
+          <th class="text-left py-2 pr-4 font-semibold">Actions (current)</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">npm dependencies</td><td class="py-2 pr-4">Shared, limited list</td><td class="py-2 pr-4">Any npm package</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Testing</td><td class="py-2 pr-4">Manual only</td><td class="py-2 pr-4">Built-in test runner</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Secrets</td><td class="py-2 pr-4">Global configuration</td><td class="py-2 pr-4">Per-action secrets</td></tr>
+        <tr><td class="py-2 pr-4">Triggers</td><td class="py-2 pr-4">Login only</td><td class="py-2 pr-4">Login, M2M, Registration, etc.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code>// Auth0 Action: Add custom claim to access token
+exports.onExecutePostLogin = async (event, api) =&gt; &#123;
+  const namespace = 'https://myapp.com';
+  const roles = event.authorization?.roles ?? [];
+  api.accessToken.setCustomClaim(`&#36;&#123;namespace&#125;/roles`, roles);
+  api.idToken.setCustomClaim(`&#36;&#123;namespace&#125;/roles`, roles);
+&#125;;</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">M2M Tokens for Backend-to-Backend Authentication</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Request an M2M access token (Client Credentials flow)
+curl -X POST https://YOUR_DOMAIN.auth0.com/oauth/token \
+  -H "content-type: application/json" \
+  -d '&#123;
+    "client_id": "YOUR_M2M_CLIENT_ID",
+    "client_secret": "YOUR_M2M_CLIENT_SECRET",
+    "audience": "https://api.yourapp.com",
+    "grant_type": "client_credentials"
+  &#125;'
+
+# Response includes access_token (JWT) and expires_in seconds
+# Cache the token; request a new one ~60s before expiry</code></pre>
+  <p class="text-text-muted mb-4">Validate M2M tokens in your API the same way as user tokens — check the <code class="font-mono bg-surface px-1 rounded text-sm">iss</code>, <code class="font-mono bg-surface px-1 rounded text-sm">aud</code>, and expiry, and verify the signature using Auth0's JWKS endpoint.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">MFA Configuration</h2>
+  <p class="text-text-muted mb-4">Enable MFA under <strong>Security &gt; Multi-factor Auth</strong>. Auth0 supports TOTP (authenticator apps), SMS, WebAuthn (passkeys/hardware keys), and Duo. Use an Action to enforce MFA programmatically for high-risk users:</p>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code>// Require MFA for admin users
+exports.onExecutePostLogin = async (event, api) =&gt; &#123;
+  if (event.authorization?.roles?.includes('admin')) &#123;
+    api.multifactor.enable('any', &#123; allowRememberBrowser: false &#125;);
+  &#125;
+&#125;;</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Auth0 vs Clerk vs NextAuth Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Feature</th>
+          <th class="text-left py-2 pr-4 font-semibold">Auth0</th>
+          <th class="text-left py-2 pr-4 font-semibold">Clerk</th>
+          <th class="text-left py-2 pr-4 font-semibold">NextAuth.js</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Free tier</td><td class="py-2 pr-4">7,500 MAU</td><td class="py-2 pr-4">10,000 MAU</td><td class="py-2 pr-4">Self-hosted (free)</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">UI components</td><td class="py-2 pr-4">Universal Login (hosted)</td><td class="py-2 pr-4">Drop-in React components</td><td class="py-2 pr-4">Build your own</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">M2M / Client Credentials</td><td class="py-2 pr-4">Yes</td><td class="py-2 pr-4">Limited</td><td class="py-2 pr-4">Manual implementation</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Enterprise SSO (SAML)</td><td class="py-2 pr-4">Yes (paid)</td><td class="py-2 pr-4">Yes (paid)</td><td class="py-2 pr-4">Via providers</td></tr>
+        <tr><td class="py-2 pr-4">Self-hosted option</td><td class="py-2 pr-4">No</td><td class="py-2 pr-4">No</td><td class="py-2 pr-4">Yes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>

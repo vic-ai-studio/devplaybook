@@ -1,0 +1,177 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is runtime security and how is it different from SAST or DAST?",
+    answer: "SAST analyzes source code before execution; DAST tests a running application from the outside via HTTP. Runtime security monitors what actually happens inside containers and processes at execution time — syscalls, file access, network connections, and privilege changes. A container could pass all SAST/DAST checks but still be exploited via a zero-day; runtime security detects the exploit behavior itself regardless of how it got there."
+  },
+  {
+    question: "How does Falco detect threats at runtime?",
+    answer: "Falco hooks into the Linux kernel using a kernel module or eBPF probe to intercept every syscall made by processes in your cluster. It evaluates each syscall against a rule engine in userspace. When a syscall matches a rule condition (e.g., a process writing to /etc/passwd, or a shell spawned inside a container), Falco emits an alert with full context: process name, container ID, user, and the exact command."
+  },
+  {
+    question: "What is Falcosidekick and how do I set it up?",
+    answer: "Falcosidekick is a companion service that consumes Falco's JSON event stream and forwards alerts to 50+ outputs: Slack, PagerDuty, Elasticsearch, Datadog, Prometheus, and more. Deploy it as a Kubernetes deployment alongside Falco, configure output destinations in its config.yaml, and point Falco's HTTP output at the Falcosidekick service. The UI dashboard (falcosidekick-ui) provides a real-time event browser."
+  },
+  {
+    question: "How do I write a custom Falco rule?",
+    answer: "Falco rules are YAML with four parts: a macro (reusable condition), a list (set of values), a rule with condition, output, priority, and tags. The condition uses the Falco filter syntax over syscall fields: proc.name, fd.name, container.id, user.name. Mount your custom rules file via a ConfigMap in Kubernetes and reference it in Falco's Helm values as an extraRules or customRulesConfigMap."
+  },
+  {
+    question: "How does Falco use eBPF vs kernel module?",
+    answer: "The kernel module (kmod) requires inserting a kernel module into the host — more powerful but requires privileged access and can cause kernel panics if there's a bug. The eBPF probe runs in a sandboxed VM inside the kernel — safer, no kernel panics, works in restricted environments like GKE Autopilot and some managed Kubernetes services. Use eBPF unless you're on an older kernel (pre-5.8) that lacks required BPF features."
+  },
+  {
+    question: "What are the most useful default Falco rules?",
+    answer: "The most actionable default rules are: 'Terminal shell in container' (interactive shell access to a running container), 'Write below etc' (writing to /etc inside a container), 'Unexpected network connection' (outbound connections to unusual ports), 'Read sensitive file untrusted' (reading /etc/shadow or SSH private keys), and 'Container drift' (new executables appearing in a running container, indicating supply chain compromise)."
+  },
+];
+---
+
+<BaseLayout
+  title="Falco Runtime Security: Kubernetes Threat Detection & Alert Rules"
+  description="Falco Kubernetes runtime security guide: install as DaemonSet, write detection rules, alert on suspicious syscalls, integrate with SIEM, and respond to container threats."
+  tool="Falco, runtime security, Kubernetes security, syscall detection, threat detection, eBPF, container security"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Falco Runtime Security: Kubernetes Threat Detection & Alert Rules",
+    "url": "https://devplaybook.cc/tools/falco-runtime-security",
+    "description": "Falco Kubernetes runtime security guide: install as DaemonSet, write detection rules, alert on suspicious syscalls, integrate with SIEM, and respond to container threats.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Falco Runtime Security: Kubernetes Threat Detection & Alert Rules</h1>
+  <p class="text-text-muted mb-6">Falco is a CNCF graduated open-source runtime security tool that detects threats inside running containers by monitoring Linux syscalls. It acts as a behavioral detection layer that catches exploits, container escapes, and insider threats that pre-deployment scanning cannot see.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real-time syscall monitoring</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> eBPF & kernel module support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 50+ alert destinations via Falcosidekick</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CNCF graduated project</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Custom YAML rule authoring</span>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">What is Falco and Runtime Security?</h2>
+  <p class="text-text-muted mb-4">Traditional security tools (SAST, DAST, vulnerability scanners) analyze code and configurations before deployment. Runtime security monitors what actually happens when your containers run. Even a perfectly hardened container can be attacked via a zero-day exploit — Falco detects the attacker's <em>behavior</em>: spawning a shell, reading credential files, or making unexpected network calls.</p>
+  <p class="text-text-muted mb-4">Falco was originally created by Sysdig and donated to the CNCF in 2018. It's now a CNCF graduated project and the de facto standard for Kubernetes runtime threat detection.</p>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Architecture: Kernel Module vs eBPF</h2>
+  <p class="text-text-muted mb-4">Falco intercepts syscalls via a <strong>kernel-space probe</strong> and evaluates them against rules in <strong>userspace</strong>. Two probe types are available:</p>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Driver</th>
+          <th class="text-left py-2 pr-4 font-semibold">Kernel Requirement</th>
+          <th class="text-left py-2 pr-4 font-semibold">Privileges</th>
+          <th class="text-left py-2 pr-4 font-semibold">Safety</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4">Kernel module (kmod)</td><td class="py-2 pr-4">Any Linux</td><td class="py-2 pr-4">Privileged</td><td class="py-2 pr-4">Can cause kernel panic</td></tr>
+        <tr><td class="py-2 pr-4">eBPF probe</td><td class="py-2 pr-4">≥ 4.14 (5.8 for modern)</td><td class="py-2 pr-4">CAP_BPF or root</td><td class="py-2 pr-4">Kernel-sandboxed, safer</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Installation via Helm</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Add Falco Helm repo
+helm repo add falcosecurity https://falcosecurity.github.io/charts
+helm repo update
+
+# Install with eBPF driver
+helm install falco falcosecurity/falco \
+  --namespace falco \
+  --create-namespace \
+  --set driver.kind=ebpf \
+  --set falcosidekick.enabled=true \
+  --set falcosidekick.webui.enabled=true
+
+# Verify DaemonSet is running
+kubectl get pods -n falco</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Default Rules — What Falco Detects Out of the Box</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># View default rule file
+kubectl exec -it -n falco daemonset/falco -- cat /etc/falco/falco_rules.yaml | grep "^- rule:" | head -20
+
+# Key default rules:
+# Terminal shell in container
+# Write below etc
+# Read sensitive file untrusted
+# Unexpected outbound connection destination
+# Container drift detected
+# Privilege escalation using setuid binary</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Writing Custom Falco Rules</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># custom_rules.yaml
+- macro: nginx_container
+  condition: container.image.repository = "nginx"
+
+- list: allowed_nginx_ports
+  items: [80, 443]
+
+- rule: Unexpected port opened by nginx
+  desc: Nginx is listening on a non-standard port
+  condition: >
+    evt.type = listen and
+    nginx_container and
+    not fd.sport in (allowed_nginx_ports)
+  output: >
+    Nginx listening on unexpected port
+    (port=&#37;fd.sport container=&#37;container.name image=&#37;container.image.repository)
+  priority: WARNING
+  tags: [network, custom]
+
+- rule: Crypto mining process detected
+  desc: Detect known crypto miner process names
+  condition: >
+    spawned_process and
+    proc.name in (xmrig, minerd, cpuminer, ccminer)
+  output: >
+    Crypto miner detected (proc=&#37;proc.name user=&#37;user.name container=&#37;container.name)
+  priority: CRITICAL
+  tags: [process, crypto]</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Alert Channels via Falcosidekick</h2>
+  <pre class="bg-surface rounded-lg p-4 text-sm overflow-x-auto mb-4"><code># Falcosidekick values in Helm
+falcosidekick:
+  enabled: true
+  config:
+    slack:
+      webhookurl: "https://hooks.slack.com/services/..."
+      minimumpriority: "warning"
+    prometheus:
+      # metrics exposed at :2801/metrics
+    elasticsearch:
+      hostport: "http://elasticsearch:9200"
+      index: "falco-alerts"
+      minimumpriority: "notice"</code></pre>
+
+  <h2 class="text-2xl font-semibold mt-8 mb-3">Falco vs Runtime Security Alternatives</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 pr-4 font-semibold">Tool</th>
+          <th class="text-left py-2 pr-4 font-semibold">Approach</th>
+          <th class="text-left py-2 pr-4 font-semibold">Custom Rules</th>
+          <th class="text-left py-2 pr-4 font-semibold">License</th>
+        </tr>
+      </thead>
+      <tbody class="text-text-muted">
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-medium text-text">Falco</td><td class="py-2 pr-4">Syscall interception</td><td class="py-2 pr-4">YAML (easy)</td><td class="py-2 pr-4">Apache 2.0</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-medium text-text">Tetragon</td><td class="py-2 pr-4">eBPF + enforcement</td><td class="py-2 pr-4">TracingPolicies CRD</td><td class="py-2 pr-4">Apache 2.0</td></tr>
+        <tr class="border-b border-border/50"><td class="py-2 pr-4 font-medium text-text">Sysdig Secure</td><td class="py-2 pr-4">Syscall + network</td><td class="py-2 pr-4">Falco-compatible</td><td class="py-2 pr-4">Commercial</td></tr>
+        <tr><td class="py-2 pr-4 font-medium text-text">Aqua CSPM</td><td class="py-2 pr-4">Full CNAPP suite</td><td class="py-2 pr-4">Yes</td><td class="py-2 pr-4">Commercial</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ToolPageCta />
+  <FaqSection faqs={faq} />
+</BaseLayout>
