@@ -1,0 +1,232 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const suiteExample = `# pip install great-expectations
+import great_expectations as gx
+
+# Initialize a Data Context (creates gx/ config directory)
+context = gx.get_context()
+
+# Connect to a Pandas datasource
+datasource = context.sources.add_pandas("my_datasource")
+asset = datasource.add_csv_asset("orders", filepath_or_buffer="orders.csv")
+batch_request = asset.build_batch_request()
+
+# Create an Expectation Suite
+suite = context.add_expectation_suite("orders_suite")
+
+# Get a Validator (loads a batch + attaches the suite)
+validator = context.get_validator(
+    batch_request=batch_request,
+    expectation_suite_name="orders_suite",
+)
+
+# Define expectations
+validator.expect_column_to_exist("order_id")
+validator.expect_column_values_to_not_be_null("order_id")
+validator.expect_column_values_to_be_unique("order_id")
+validator.expect_column_values_to_not_be_null("amount")
+validator.expect_column_values_to_be_between("amount", min_value=0, max_value=1_000_000)
+validator.expect_column_values_to_be_in_set(
+    "status", ["placed", "shipped", "delivered", "returned"]
+)
+validator.expect_column_values_to_match_regex(
+    "email", r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+)
+validator.expect_table_row_count_to_be_between(min_value=1000, max_value=10_000_000)
+
+# Save expectations to the suite
+validator.save_expectation_suite(discard_failed_expectations=False)
+print("Suite saved with", len(suite.expectations), "expectations")`;
+
+const checkpointExample = `# Checkpoint — run validations and build Data Docs
+import great_expectations as gx
+
+context = gx.get_context()
+
+# Add a checkpoint that links a suite to a datasource
+checkpoint = context.add_checkpoint(
+    name="orders_checkpoint",
+    validations=[
+        &#123;
+            "batch_request": &#123;
+                "datasource_name": "my_datasource",
+                "data_asset_name": "orders",
+            &#125;,
+            "expectation_suite_name": "orders_suite",
+        &#125;
+    ],
+    action_list=[
+        &#123;
+            "name": "store_validation_result",
+            "action": &#123;"class_name": "StoreValidationResultAction"&#125;,
+        &#125;,
+        &#123;
+            "name": "update_data_docs",
+            "action": &#123;"class_name": "UpdateDataDocsAction"&#125;,
+        &#125;,
+        &#123;
+            "name": "send_slack_notification",
+            "action": &#123;
+                "class_name": "SlackNotificationAction",
+                "slack_webhook": "https://hooks.slack.com/...",
+                "notify_on": "failure",
+            &#125;,
+        &#125;,
+    ],
+)
+
+# Run the checkpoint
+result = context.run_checkpoint(checkpoint_name="orders_checkpoint")
+
+if not result["success"]:
+    raise ValueError("Data validation FAILED — blocking pipeline execution!")
+
+# Open Data Docs in browser
+context.open_data_docs()`;
+
+const pipelineExample = `# Integrate Great Expectations into an Airflow DAG
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from datetime import datetime
+import great_expectations as gx
+
+def validate_data(**context):
+    gx_context = gx.get_context(
+        context_root_dir="/opt/airflow/gx"
+    )
+    result = gx_context.run_checkpoint(
+        checkpoint_name="orders_checkpoint",
+        batch_parameters=&#123;
+            "partition_date": context["ds"]  # pass Airflow execution date
+        &#125;,
+    )
+    if not result["success"]:
+        failed = [
+            r["expectation_config"]["expectation_type"]
+            for r in result["run_results"].values()
+            for r in r["validation_result"]["results"]
+            if not r["success"]
+        ]
+        raise ValueError(f"Validation failed for: &#123;failed&#125;")
+
+with DAG("etl_with_validation", schedule_interval="@daily",
+         start_date=datetime(2024, 1, 1), catchup=False) as dag:
+    validate = PythonOperator(
+        task_id="validate_orders",
+        python_callable=validate_data,
+    )
+    transform = PythonOperator(task_id="transform", python_callable=run_transform)
+    validate >> transform  # block transform if validation fails`;
+
+const faq = [
+  { question: "What is an Expectation Suite in Great Expectations?", answer: "An Expectation Suite is a named, versioned collection of expectations for a dataset — essentially a schema and quality contract. Each expectation is a declarative assertion like 'column X must not be null' or 'column Y values must be between 0 and 100'. Suites are stored as JSON files in the GE store and can be version-controlled. You create a suite once using a Validator, and then re-run it against new batches of data at any time. Suites can be auto-generated from a profiler that analyzes existing data, then manually refined." },
+  { question: "What is a Checkpoint and when should I use it?", answer: "A Checkpoint is the mechanism for running validations in a production context. It links one or more Expectation Suites to one or more data batches and defines a list of actions to perform after validation — storing results, updating Data Docs, sending Slack/email alerts, or raising exceptions. Checkpoints are the integration point between Great Expectations and your pipeline orchestrator (Airflow, Prefect, dbt). Call context.run_checkpoint() in your pipeline and check result['success'] to decide whether to allow the pipeline to proceed." },
+  { question: "What are Data Docs in Great Expectations?", answer: "Data Docs are auto-generated HTML documentation sites that display your Expectation Suites, validation results, and profiling reports. They show which expectations passed and failed, with actual observed values alongside expected values. Data Docs can be hosted locally, on S3, GCS, or Azure Blob Storage. They serve as living documentation of your data quality contract — stakeholders and data consumers can see exactly what guarantees are in place and review historical validation runs. Update them automatically via the UpdateDataDocsAction in your Checkpoint action list." },
+  { question: "How does Great Expectations differ from dbt tests?", answer: "dbt tests run inside the warehouse against materialized models — they are SQL-based and tightly coupled to dbt's transformation layer. They are best for testing transformed data after dbt run. Great Expectations runs in Python before or after loading, works on raw data, DataFrames, and files (not just warehouse tables), and provides richer statistical expectations (distribution checks, outlier detection, format validation). They are complementary: use dbt tests for model output validation and Great Expectations for input data validation at the ingestion boundary." },
+  { question: "Can Great Expectations work with Spark DataFrames?", answer: "Yes. Great Expectations has native Spark support through the SparkDFDataset and the Spark Datasource in GE version 3+. You can validate PySpark DataFrames directly without materializing them to disk. This is useful for validating streaming or batch Spark pipelines at transformation boundaries. The Spark backend evaluates expectations as Spark SQL operations distributed across the cluster, making it efficient for large datasets. Configure a SparkDFDatasource in your Data Context and pass a Spark DataFrame as the batch." },
+  { question: "What is the difference between Great Expectations, Soda, and dbt tests?", answer: "Great Expectations is the most feature-rich and flexible — a full Python library with hundreds of expectation types, Data Docs, custom expectations, and deep integration with data sources. It has a steeper setup curve. Soda is a more developer-friendly, YAML-driven tool with a managed cloud offering (Soda Cloud) for teams that want built-in alerting and a SaaS UI without hosting infrastructure. dbt tests are the simplest option but only work within dbt's transformation layer and are limited to generic and singular SQL tests. For teams deeply invested in dbt, start with dbt tests. For standalone ingestion validation, choose GE or Soda." },
+];
+---
+
+<BaseLayout
+  title="Great Expectations: Data Quality Validation & Testing Guide"
+  description="Complete Great Expectations guide: Expectation Suites, Data Sources, Checkpoints, pipeline integration (Airflow), Data Docs, and GE vs dbt tests vs Soda comparison."
+  tool="Great Expectations, data quality, data validation, data testing, expectations, data pipeline, GE"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Great Expectations: Data Quality Validation & Testing Guide",
+    "url": "https://devplaybook.cc/tools/great-expectations",
+    "description": "Complete Great Expectations guide covering Expectation Suites, Checkpoints, Data Docs, pipeline integration, and comparison with dbt tests and Soda.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Great Expectations: Data Quality Validation & Testing Guide</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Great Expectations</strong> is the leading open-source Python library for data quality validation. Define a contract for your data, validate every pipeline run against it, generate human-readable documentation, and catch bad data before it reaches production systems.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 300+ built-in expectations</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auto-generated Data Docs</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Airflow / Prefect integration</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Spark & SQL support</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Great Expectations?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Great Expectations (GE) is an open-source Python library for defining, documenting, and enforcing data quality expectations in data pipelines. Instead of writing ad-hoc assertions scattered across pipeline code, GE provides a structured framework: define Expectation Suites (quality contracts), connect them to data via Validators, and run them at checkpoints in your pipeline. Failed validations can block pipeline execution or trigger alerts before bad data propagates downstream.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    GE works with Pandas DataFrames, Spark DataFrames, SQL databases (via SQLAlchemy), and files (CSV, Parquet, JSON). The Data Docs feature auto-generates an HTML documentation site showing all expectations, their validation history, and observed values — making data quality transparent to all stakeholders without requiring access to the pipeline code.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Creating an Expectation Suite</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={suiteExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Checkpoints, Data Docs & Alerts</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={checkpointExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Integrating GE into an Airflow Pipeline</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={pipelineExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Great Expectations vs dbt Tests vs Soda</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Great Expectations</th>
+          <th class="border border-border px-3 py-2 text-left">dbt Tests</th>
+          <th class="border border-border px-3 py-2 text-left">Soda</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Configuration</td>
+          <td class="border border-border px-3 py-2">Python API</td>
+          <td class="border border-border px-3 py-2">YAML in schema.yml</td>
+          <td class="border border-border px-3 py-2">YAML (.soda)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Works on</td>
+          <td class="border border-border px-3 py-2">Files, Pandas, Spark, SQL</td>
+          <td class="border border-border px-3 py-2">dbt models (SQL only)</td>
+          <td class="border border-border px-3 py-2">SQL + Spark + Pandas</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Documentation</td>
+          <td class="border border-border px-3 py-2">Auto Data Docs (HTML)</td>
+          <td class="border border-border px-3 py-2">dbt docs (lineage)</td>
+          <td class="border border-border px-3 py-2">Soda Cloud UI</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Alerting</td>
+          <td class="border border-border px-3 py-2">Slack/email via Actions</td>
+          <td class="border border-border px-3 py-2">Orchestrator-level</td>
+          <td class="border border-border px-3 py-2">Built-in (Soda Cloud)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Raw data validation</td>
+          <td class="border border-border px-3 py-2">Yes (at ingestion)</td>
+          <td class="border border-border px-3 py-2">No (post-transform)</td>
+          <td class="border border-border px-3 py-2">Yes</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Setup complexity</td>
+          <td class="border border-border px-3 py-2">High</td>
+          <td class="border border-border px-3 py-2">Low (within dbt)</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Great Expectations Guide" relatedTags={['great-expectations', 'data-quality', 'data-testing', 'data-pipeline', 'data-engineering']} />
+</BaseLayout>

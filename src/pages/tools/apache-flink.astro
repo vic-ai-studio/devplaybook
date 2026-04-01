@@ -1,0 +1,229 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const datastreamExample = `# PyFlink DataStream API — event-time windowed aggregation
+from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.datastream.connectors.kafka import KafkaSource, KafkaOffsetsInitializer
+from pyflink.common import WatermarkStrategy, Duration
+from pyflink.common.serialization import SimpleStringSchema
+from pyflink.datastream.window import TumblingEventTimeWindows
+from pyflink.common.time import Time
+
+env = StreamExecutionEnvironment.get_execution_environment()
+env.set_parallelism(4)
+
+# Kafka source with event-time watermarks
+source = KafkaSource.builder() \
+    .set_bootstrap_servers("localhost:9092") \
+    .set_topics("user-events") \
+    .set_group_id("flink-consumer") \
+    .set_starting_offsets(KafkaOffsetsInitializer.earliest()) \
+    .set_value_only_deserializer(SimpleStringSchema()) \
+    .build()
+
+watermark_strategy = WatermarkStrategy \
+    .for_bounded_out_of_orderness(Duration.of_seconds(5)) \
+    .with_timestamp_assigner(lambda event, _: extract_timestamp(event))
+
+stream = env.from_source(source, watermark_strategy, "Kafka Source")
+
+# Tumbling 1-minute window, keyed by user_id
+result = (
+    stream
+    .map(lambda e: parse_event(e))          # (user_id, event_type, ts)
+    .key_by(lambda e: e[0])                 # key by user_id
+    .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+    .reduce(lambda a, b: (a[0], a[1], a[2] + b[2]))  # sum counts
+)
+
+result.print()
+env.execute("User Event Aggregation")`;
+
+const flinkSqlExample = `-- Flink SQL — streaming join and windowed aggregation
+-- Create Kafka source table
+CREATE TABLE orders (
+    order_id    STRING,
+    user_id     STRING,
+    amount      DOUBLE,
+    event_time  TIMESTAMP(3),
+    WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
+) WITH (
+    'connector' = 'kafka',
+    'topic'     = 'orders',
+    'properties.bootstrap.servers' = 'localhost:9092',
+    'format'    = 'json'
+);
+
+-- Create output sink (e.g., Iceberg table)
+CREATE TABLE order_summary (
+    window_start TIMESTAMP(3),
+    window_end   TIMESTAMP(3),
+    user_id      STRING,
+    total_amount DOUBLE,
+    order_count  BIGINT
+) WITH (
+    'connector' = 'iceberg',
+    'catalog-name' = 'hive_catalog',
+    'database-name' = 'analytics'
+);
+
+-- Tumbling window aggregation (Flink SQL TVF syntax)
+INSERT INTO order_summary
+SELECT
+    window_start,
+    window_end,
+    user_id,
+    SUM(amount)  AS total_amount,
+    COUNT(*)     AS order_count
+FROM TABLE(
+    TUMBLE(TABLE orders, DESCRIPTOR(event_time), INTERVAL '1' MINUTE)
+)
+GROUP BY window_start, window_end, user_id;`;
+
+const statefullExample = `# Stateful processing with Flink ValueState
+from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.datastream.functions import KeyedProcessFunction
+from pyflink.datastream.state import ValueStateDescriptor
+from pyflink.common.typeinfo import Types
+
+class FraudDetector(KeyedProcessFunction):
+    """Flag users with >3 transactions in 60 seconds."""
+    def open(self, runtime_context):
+        desc = ValueStateDescriptor("tx_count", Types.INT())
+        self.tx_count = runtime_context.get_state(desc)
+
+    def process_element(self, value, ctx):
+        current = self.tx_count.value() or 0
+        current += 1
+        self.tx_count.update(current)
+
+        if current > 3:
+            yield f"FRAUD ALERT: user &#123;value['user_id']&#125; tx count &#123;current&#125;"
+
+        # Register a cleanup timer (TTL alternative)
+        ctx.timer_service().register_event_time_timer(
+            ctx.timestamp() + 60_000  # 60 seconds
+        )
+
+    def on_timer(self, timestamp, ctx):
+        self.tx_count.clear()  # reset count after window`;
+
+const faq = [
+  { question: "What makes Flink 'true streaming' vs Spark's micro-batch approach?", answer: "Spark Structured Streaming processes data in small batches (micro-batches) — it accumulates events for a configurable trigger interval (e.g., 1 second) then processes them as a batch. Latency is bounded by the trigger interval. Flink processes each event individually as soon as it arrives, with no batching delay. This makes Flink latency sub-millisecond in practice. The distinction matters for use cases like fraud detection, real-time bidding, or alerting where every millisecond counts. For analytics dashboards with 5-second refresh rates, Spark Structured Streaming is often simpler and sufficient." },
+  { question: "What is the difference between event time and processing time in Flink?", answer: "Processing time is when the event arrives at the Flink operator — easy to implement but non-deterministic and cannot handle late-arriving data correctly. Event time is the timestamp embedded in the event itself (when the event actually occurred). Event time enables correct windowing even when events arrive out of order or delayed (e.g., mobile events buffered offline). Flink uses watermarks — monotonically increasing timestamps that tell the system 'all events with time <= watermark have arrived' — to advance event time and trigger windows. Event time with watermarks is the right approach for production streaming pipelines." },
+  { question: "What are watermarks and how should I configure them?", answer: "A watermark is a marker in the data stream that says 'no event with timestamp earlier than this watermark will arrive.' Flink uses watermarks to decide when to close a time window and emit results. The WatermarkStrategy.forBoundedOutOfOrderness(Duration.ofSeconds(N)) strategy allows events up to N seconds late before the watermark advances. Set N too low and late events are dropped; set it too high and window latency increases by N seconds. Choose N based on your observed maximum network/processing delay. For very late events beyond N, use allowed lateness on the window to still update results after initial emission." },
+  { question: "What is Flink state and why is it managed separately from the application?", answer: "Flink's managed state is stored in a configurable state backend (Heap, RocksDB) and automatically checkpointed to durable storage (HDFS, S3) at regular intervals. This decouples state from the JVM heap — RocksDB allows state far larger than available memory. When a job fails, Flink restores from the latest checkpoint, replaying only the events since that checkpoint from Kafka (or another replayable source). This gives exactly-once processing semantics without the application needing to implement recovery logic. State is also key-partitioned — each key's state lives on the operator processing that key." },
+  { question: "When should I use Flink SQL vs the DataStream API?", answer: "Flink SQL is ideal for analytics-style streaming queries — windowed aggregations, streaming joins, CDC (Change Data Capture) processing. It is less code, easier to maintain, and benefits from Flink's SQL optimizer. The DataStream API gives full control for complex custom logic: machine learning inference, complex event processing (CEP), custom state machines, and operations that do not map cleanly to SQL. In practice, mix them — use Flink SQL for the transformation layer and DataStream API for custom sources, sinks, or logic that SQL cannot express." },
+  { question: "What is Flink's savepoint and how does it differ from a checkpoint?", answer: "Checkpoints are automatic, periodic snapshots triggered by Flink for failure recovery. They are managed by Flink, can be overwritten, and are not intended for manual use. Savepoints are manually triggered, operator-addressable snapshots used for application upgrades, A/B testing, or migrating to a new Flink version. You can stop a job with a savepoint, deploy new application code, and restart from the savepoint — preserving all stateful context. This is critical for zero-downtime upgrades of long-running stateful streaming jobs. Savepoints use the same format as checkpoints but have stronger stability guarantees." },
+];
+---
+
+<BaseLayout
+  title="Apache Flink: Stream Processing, Windows & State Management"
+  description="Complete Apache Flink guide: true streaming vs micro-batch, DataStream API, event time and watermarks, tumbling/sliding/session windows, stateful processing, Flink SQL, and Flink vs Spark Streaming comparison."
+  tool="Apache Flink, stream processing, DataStream, windowing, stateful, event time, Flink SQL"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Apache Flink: Stream Processing, Windows & State Management",
+    "url": "https://devplaybook.cc/tools/apache-flink",
+    "description": "Complete Apache Flink guide covering DataStream API, event time, watermarks, windowing, stateful processing, Flink SQL, and comparison with Spark Streaming.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Apache Flink: Stream Processing, Windows & State Management</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Apache Flink</strong> is a true streaming engine that processes events one at a time with sub-millisecond latency, fault-tolerant managed state, and powerful windowing semantics. The framework of choice for fraud detection, real-time analytics, and event-driven architectures at scale.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> True event-by-event streaming</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Event time + watermarks</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Exactly-once semantics</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Managed state (RocksDB)</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Apache Flink?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Apache Flink is an open-source, distributed stream processing framework developed at TU Berlin and now one of the most active Apache projects. Unlike Spark Structured Streaming which processes data in micro-batches, Flink processes each event individually as it arrives, achieving consistent sub-millisecond latency. Flink provides exactly-once processing guarantees through distributed snapshots (Chandy-Lamport algorithm), making it reliable for financial and mission-critical applications.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Flink's key differentiator is managed state — stateful operations (running aggregates, session tracking, pattern matching) are stored in a configurable state backend and automatically checkpointed to durable storage. If a task fails, Flink restores state from the last checkpoint and replays from the source. Flink supports two primary APIs: the DataStream API for fine-grained control and Flink SQL for declarative streaming queries.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Window Types in Flink</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Tumbling Window</strong> — fixed-size, non-overlapping windows (e.g., 1-minute buckets); every event belongs to exactly one window</li>
+    <li><strong>Sliding Window</strong> — fixed-size, overlapping windows (e.g., 5-minute window every 1 minute); events can belong to multiple windows</li>
+    <li><strong>Session Window</strong> — dynamic gap-based windows; a window closes when no event arrives within the gap timeout; ideal for user session analysis</li>
+    <li><strong>Global Window</strong> — single unbounded window with a custom trigger; requires explicit trigger and evictor configuration</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">DataStream API with Kafka Source</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={datastreamExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Flink SQL Streaming Aggregations</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={flinkSqlExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Stateful Processing with KeyedProcessFunction</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={statefullExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Flink vs Spark Structured Streaming vs Kafka Streams</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Apache Flink</th>
+          <th class="border border-border px-3 py-2 text-left">Spark Structured Streaming</th>
+          <th class="border border-border px-3 py-2 text-left">Kafka Streams</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Processing model</td>
+          <td class="border border-border px-3 py-2">True streaming (event-level)</td>
+          <td class="border border-border px-3 py-2">Micro-batch</td>
+          <td class="border border-border px-3 py-2">True streaming</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Latency</td>
+          <td class="border border-border px-3 py-2">&lt;1ms–10ms</td>
+          <td class="border border-border px-3 py-2">100ms–seconds</td>
+          <td class="border border-border px-3 py-2">&lt;1ms–10ms</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">State backend</td>
+          <td class="border border-border px-3 py-2">RocksDB / Heap</td>
+          <td class="border border-border px-3 py-2">In-memory / checkpoint</td>
+          <td class="border border-border px-3 py-2">RocksDB</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Sources / sinks</td>
+          <td class="border border-border px-3 py-2">Kafka, S3, JDBC, custom</td>
+          <td class="border border-border px-3 py-2">Kafka, S3, Delta, custom</td>
+          <td class="border border-border px-3 py-2">Kafka only</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">SQL support</td>
+          <td class="border border-border px-3 py-2">Flink SQL (excellent)</td>
+          <td class="border border-border px-3 py-2">Spark SQL (excellent)</td>
+          <td class="border border-border px-3 py-2">None (Java/Scala DSL)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Deployment</td>
+          <td class="border border-border px-3 py-2">Standalone / YARN / K8s</td>
+          <td class="border border-border px-3 py-2">Spark cluster</td>
+          <td class="border border-border px-3 py-2">Library (no cluster)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Apache Flink Guide" relatedTags={['flink', 'stream-processing', 'kafka', 'data-engineering', 'real-time']} />
+</BaseLayout>

@@ -1,0 +1,217 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const flowExample = `# pip install prefect
+from prefect import flow, task
+from prefect.tasks import task_input_hash
+from datetime import timedelta
+import httpx
+
+# Tasks — individual units of work with retry/caching
+@task(
+    retries=3,
+    retry_delay_seconds=10,
+    cache_key_fn=task_input_hash,
+    cache_expiration=timedelta(hours=1),
+)
+def fetch_data(url: str) -> dict:
+    response = httpx.get(url, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+@task(log_prints=True)
+def transform_data(raw: dict) -> list[dict]:
+    records = raw.get("data", [])
+    return [
+        &#123;
+            "id": r["id"],
+            "value": r["metrics"]["total"] * 1.1,
+            "category": r["type"].upper(),
+        &#125;
+        for r in records
+        if r.get("active", True)
+    ]
+
+@task
+def load_to_warehouse(records: list[dict]) -> int:
+    # ... write to database
+    print(f"Loaded &#123;len(records)&#125; records")
+    return len(records)
+
+# Flow — orchestrates tasks
+@flow(name="ETL Pipeline", log_prints=True)
+def etl_pipeline(api_url: str = "https://api.example.com/data") -> int:
+    raw = fetch_data(api_url)
+    transformed = transform_data(raw)
+    count = load_to_warehouse(transformed)
+    return count
+
+if __name__ == "__main__":
+    result = etl_pipeline()
+    print(f"Pipeline done: &#123;result&#125; records loaded")`;
+
+const deploymentExample = `# Prefect Deployments — schedule flows for production
+from prefect import flow
+from prefect.deployments import Deployment
+from prefect.server.schemas.schedules import CronSchedule
+
+@flow
+def etl_pipeline(api_url: str = "https://api.example.com"):
+    ...
+
+# Create a deployment with a cron schedule
+deployment = Deployment.build_from_flow(
+    flow=etl_pipeline,
+    name="production-etl",
+    parameters=&#123;"api_url": "https://api.example.com/v2"&#125;,
+    schedule=CronSchedule(cron="0 6 * * *", timezone="UTC"),  # daily at 6am
+    work_pool_name="my-work-pool",
+    tags=["production", "etl"],
+)
+deployment.apply()
+
+# --- CLI equivalent ---
+# prefect deploy --name production-etl
+# prefect worker start --pool my-work-pool
+# prefect deployment run etl-pipeline/production-etl`;
+
+const errorHandlingExample = `# Error handling, retries, and subflows
+from prefect import flow, task
+from prefect.utilities.annotations import quote
+import asyncio
+
+@task(retries=5, retry_delay_seconds=exponential(60))
+async def call_flaky_api(endpoint: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(endpoint, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+@flow
+def process_region(region: str) -> dict:
+    """Subflow — runs independently, has its own run in the UI."""
+    data = call_flaky_api(f"https://api.example.com/&#123;region&#125;")
+    return &#123;"region": region, "count": len(data)&#125;
+
+@flow(name="Global ETL", on_failure=[send_alert])
+def global_etl():
+    # Run subflows for each region — appear as nested runs in UI
+    results = [process_region(r) for r in ["us", "eu", "ap"]]
+    total = sum(r["count"] for r in results)
+    print(f"Total records: &#123;total&#125;")
+
+def send_alert(flow, flow_run, state):
+    """Called automatically on flow failure."""
+    print(f"Flow &#123;flow.name&#125; failed: &#123;state.message&#125;")`;
+
+const faq = [
+  { question: "What is the difference between Prefect Flows and Tasks?", answer: "A Flow is the top-level Python function decorated with @flow — it defines the overall pipeline, orchestrates tasks, and is the unit tracked in Prefect Cloud or the local server. A Task is a function decorated with @task — it represents a single step with its own retry logic, caching, and state tracking. Tasks run inside flows. Flows can call other flows (subflows), which appear as nested runs in the UI. In Prefect, any Python function can be a flow or task — there is no special DAG class to define." },
+  { question: "How does Prefect compare to Apache Airflow?", answer: "Airflow defines workflows as DAG objects in Python files — the task graph must be static at parse time, and dynamic patterns require workarounds. Prefect workflows are plain Python functions — control flow (loops, conditionals, dynamic task mapping) is native Python. Prefect has a gentler learning curve and requires less boilerplate. Airflow has a larger ecosystem of operators and is more battle-tested at scale in data engineering teams. Prefect Cloud provides a managed control plane with no infrastructure to run. Airflow requires running a scheduler, webserver, and metadata database." },
+  { question: "What is a Prefect Work Pool and why is it needed?", answer: "A Work Pool is an infrastructure abstraction that defines where and how flows run. Workers poll work pools for scheduled runs and execute them in the configured infrastructure: local processes, Docker containers, Kubernetes pods, ECS tasks, or Cloud Run jobs. Work pools decouple the scheduling decision (made by Prefect) from the execution decision (made by the worker). This allows a single Prefect Cloud account to orchestrate flows across multiple environments. Create a work pool with prefect work-pool create and start a worker with prefect worker start --pool my-pool." },
+  { question: "How does Prefect handle retries and failures?", answer: "Task retries are configured on the @task decorator with retries=N and retry_delay_seconds. The delay can be a fixed number, a list of delays for each retry, or an exponential backoff. When a task fails, Prefect marks it as Failed, waits the retry delay, and re-runs it. If all retries are exhausted the task enters a Crashed state and the flow fails. Flow-level failure hooks (on_failure=[callback]) allow you to send alerts, update a status page, or trigger remediation when a flow fails. Tasks that raise exceptions report as Failed; tasks that error at the system level (OOM, segfault) report as Crashed." },
+  { question: "What is task caching in Prefect and how should I use it?", answer: "Task caching allows Prefect to skip re-running a task and return the cached result if the same inputs were used within a cache expiration window. Configure it with cache_key_fn=task_input_hash (cache key is the hash of all inputs) and cache_expiration=timedelta(hours=1) on the @task decorator. This is useful for expensive API calls or data fetches in development — run the flow multiple times without re-hitting the API. In production, use caching carefully: be sure cache invalidation happens when data changes. Use a custom cache_key_fn for deterministic keys based on your business logic." },
+  { question: "What is the difference between Prefect Cloud and self-hosted Prefect Server?", answer: "Prefect Cloud is the managed SaaS control plane hosted by Prefect — it provides the UI, API, scheduling, and state database with no infrastructure to operate. It has a generous free tier. Prefect Server is the same control plane running self-hosted, typically via prefect server start or Docker Compose. With self-hosted you control data residency and can run fully air-gapped, but you are responsible for operations, upgrades, and backup. In both cases, flows execute on your own infrastructure via workers — neither Prefect Cloud nor Prefect Server runs your code directly." },
+];
+---
+
+<BaseLayout
+  title="Prefect: Modern Workflow Orchestration for Data Pipelines"
+  description="Complete Prefect guide: Flows and Tasks, scheduling, Deployments, Work Pools, Prefect Cloud UI, retries and error handling, and Prefect vs Airflow vs Dagster comparison."
+  tool="Prefect, workflow orchestration, data pipeline, Python, flows tasks, scheduling, Prefect Cloud"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Prefect: Modern Workflow Orchestration for Data Pipelines",
+    "url": "https://devplaybook.cc/tools/prefect",
+    "description": "Complete Prefect guide covering Flows, Tasks, Deployments, Work Pools, Prefect Cloud, retries, and comparison with Airflow and Dagster.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Prefect: Modern Workflow Orchestration for Data Pipelines</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Prefect</strong> is the modern Python workflow orchestration platform that treats your code as the source of truth. No DAG classes, no XML — just Python functions decorated with <code>@flow</code> and <code>@task</code>, with built-in retries, caching, scheduling, and a beautiful UI.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pure Python workflows</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Native retries & caching</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Prefect Cloud (managed UI)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dynamic task mapping</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Prefect?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Prefect is an open-source workflow orchestration tool built for data engineers and data scientists who want a modern alternative to Apache Airflow. Released in 2018, Prefect 2.0 (Orion) fundamentally redesigned the architecture: workflows are native Python functions, dynamic control flow is supported out of the box, and the deployment model decouples scheduling from execution through Work Pools and Workers.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Prefect Cloud provides a hosted control plane with a rich UI showing flow run history, task states, logs, and scheduling — with a generous free tier. Workers run on your own infrastructure (local, Docker, Kubernetes, ECS) and poll Prefect Cloud for work. This hybrid model means your data never leaves your infrastructure while still getting the benefits of a managed orchestration backend.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Flows, Tasks & Retries</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={flowExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Deployments & Scheduling</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={deploymentExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Error Handling & Subflows</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={errorHandlingExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Prefect vs Airflow vs Dagster</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Prefect</th>
+          <th class="border border-border px-3 py-2 text-left">Apache Airflow</th>
+          <th class="border border-border px-3 py-2 text-left">Dagster</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Workflow definition</td>
+          <td class="border border-border px-3 py-2">@flow / @task decorators</td>
+          <td class="border border-border px-3 py-2">DAG object + operators</td>
+          <td class="border border-border px-3 py-2">@job / @op / @asset</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Dynamic workflows</td>
+          <td class="border border-border px-3 py-2">Native Python</td>
+          <td class="border border-border px-3 py-2">Limited (workarounds)</td>
+          <td class="border border-border px-3 py-2">Native (partitions)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Managed cloud</td>
+          <td class="border border-border px-3 py-2">Prefect Cloud (free tier)</td>
+          <td class="border border-border px-3 py-2">Astronomer / MWAA</td>
+          <td class="border border-border px-3 py-2">Dagster Cloud</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Learning curve</td>
+          <td class="border border-border px-3 py-2">Low</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2">Medium–High</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Data lineage</td>
+          <td class="border border-border px-3 py-2">Limited</td>
+          <td class="border border-border px-3 py-2">Plugin required</td>
+          <td class="border border-border px-3 py-2">First-class (Assets)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Python-native teams, quick start</td>
+          <td class="border border-border px-3 py-2">Complex ETL, large teams</td>
+          <td class="border border-border px-3 py-2">Data platform / lineage</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Prefect Guide" relatedTags={['prefect', 'workflow-orchestration', 'data-pipeline', 'python', 'data-engineering']} />
+</BaseLayout>

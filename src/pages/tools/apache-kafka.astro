@@ -1,0 +1,226 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const dockerExample = `# docker-compose.yml — Kafka + Zookeeper + Schema Registry
+version: '3.8'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    depends_on: [kafka]
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092`;
+
+const pythonExample = `# pip install confluent-kafka
+from confluent_kafka import Producer, Consumer, KafkaError
+
+# --- Producer ---
+producer = Producer(&#123;'bootstrap.servers': 'localhost:9092'&#125;)
+
+def delivery_report(err, msg):
+    if err:
+        print(f'Delivery failed: &#123;err&#125;')
+    else:
+        print(f'Delivered to &#123;msg.topic()&#125; [&#123;msg.partition()&#125;] @ &#123;msg.offset()&#125;')
+
+for i in range(10):
+    producer.produce(
+        topic='user-events',
+        key=f'user-&#123;i&#125;',
+        value=f'&#123;"event": "click", "user_id": &#123;i&#125;&#125;',
+        callback=delivery_report
+    )
+producer.flush()
+
+# --- Consumer ---
+consumer = Consumer(&#123;
+    'bootstrap.servers': 'localhost:9092',
+    'group.id': 'analytics-consumer-group',
+    'auto.offset.reset': 'earliest',
+&#125;)
+consumer.subscribe(['user-events'])
+
+try:
+    while True:
+        msg = consumer.poll(timeout=1.0)
+        if msg is None:
+            continue
+        if msg.error():
+            if msg.error().code() == KafkaError._PARTITION_EOF:
+                continue
+            raise Exception(msg.error())
+        print(f'Key: &#123;msg.key()&#125;  Value: &#123;msg.value()&#125;')
+finally:
+    consumer.close()`;
+
+const connectExample = `# Kafka Connect — JDBC Source Connector config (REST API)
+# POST http://localhost:8083/connectors
+&#123;
+  "name": "postgres-source-connector",
+  "config": &#123;
+    "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+    "connection.url": "jdbc:postgresql://db:5432/mydb",
+    "connection.user": "kafka",
+    "connection.password": "secret",
+    "mode": "incrementing",
+    "incrementing.column.name": "id",
+    "topic.prefix": "db.",
+    "table.whitelist": "orders,customers",
+    "poll.interval.ms": "5000",
+    "value.converter": "io.confluent.kafka.serializers.KafkaAvroSerializer",
+    "value.converter.schema.registry.url": "http://schema-registry:8081"
+  &#125;
+&#125;`;
+
+const faq = [
+  { question: "What are Kafka topics, partitions, and consumer groups?", answer: "A topic is a named, durable log to which producers write events. Topics are divided into partitions — each partition is an ordered, immutable sequence of records stored on disk. Partitions enable parallelism: multiple consumers can read different partitions simultaneously. A consumer group is a set of consumers that collectively consume all partitions of a topic — Kafka assigns each partition to exactly one consumer in the group at a time. Adding more consumers to a group increases read throughput up to the partition count." },
+  { question: "What is Kafka's retention and durability model?", answer: "Kafka persists all events to disk regardless of whether they have been consumed. Retention is configurable per topic by time (retention.ms, default 7 days) or size (retention.bytes). Unlike a message queue that deletes messages after consumption, Kafka retains all events for the retention period — consumers can replay events by resetting offsets. Durability is achieved through replication: each partition is replicated across multiple brokers (replication.factor). A write is acknowledged only when the configured acks replicas confirm receipt." },
+  { question: "What is Kafka Schema Registry and why should I use it?", answer: "Schema Registry is a separate service (from Confluent) that stores and enforces schemas for Kafka messages — typically Avro, Protobuf, or JSON Schema. Producers register a schema before writing; consumers retrieve the schema to deserialize. This prevents schema drift where a producer changes the message format and silently breaks downstream consumers. Schema Registry enforces compatibility rules (backward, forward, full) — a producer cannot publish a schema that would break existing consumers. It is essential in any production Kafka deployment with multiple teams." },
+  { question: "What is Kafka Connect and how does it differ from writing a consumer manually?", answer: "Kafka Connect is a framework for scalable, fault-tolerant integration between Kafka and external systems using pre-built connectors (JDBC, S3, Elasticsearch, Debezium for CDC, etc.). A connector handles offset management, schema evolution, error handling, and parallel execution automatically. Writing a custom consumer requires implementing all of that yourself. Use Connect when a connector exists for your system — it drastically reduces boilerplate. Write a custom consumer when you need complex business logic, aggregations, or the connector ecosystem lacks your target system." },
+  { question: "What is the difference between Kafka and a traditional message queue like RabbitMQ?", answer: "Traditional message queues (RabbitMQ, ActiveMQ) are designed for task distribution: messages are pushed to consumers and deleted after acknowledgement. Kafka is a distributed log: events are retained for a configurable period regardless of consumption, consumers maintain their own offset state, and multiple independent consumer groups can read the same topic at their own pace. Kafka excels at event streaming, audit logs, event sourcing, and replay scenarios. RabbitMQ excels at low-latency task queues with complex routing (fanout, topic, headers exchanges) and when immediate deletion after processing is desired." },
+  { question: "How should I choose the number of partitions for a topic?", answer: "Partitions determine maximum read parallelism — you cannot have more active consumers in a group than partitions. As a rule of thumb, start with the maximum number of concurrent consumers you expect, or use the formula: partitions = target throughput / throughput per partition. Partitions cannot be reduced after creation (only increased), so start conservatively — Kafka is typically I/O-bound so a few partitions per broker is fine. High-throughput topics (100k+ msg/s) may need 20-50+ partitions. Use Kafka's built-in performance testing tool (kafka-producer-perf-test.sh) to benchmark before production sizing." },
+];
+---
+
+<BaseLayout
+  title="Apache Kafka: Event Streaming Architecture & Setup Guide"
+  description="Complete Apache Kafka guide: topics, partitions, consumer groups, Python producer/consumer, Schema Registry, Kafka Connect, Docker Compose quickstart, and Kafka vs Flink vs Spark Streaming comparison."
+  tool="Apache Kafka, event streaming, producer consumer, topics partitions, Kafka Connect, Schema Registry, Kafka Streams"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Apache Kafka: Event Streaming Architecture & Setup Guide",
+    "url": "https://devplaybook.cc/tools/apache-kafka",
+    "description": "Complete Apache Kafka guide covering topics, partitions, consumer groups, Python client, Schema Registry, Kafka Connect, and streaming framework comparisons.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Apache Kafka: Event Streaming Architecture & Setup Guide</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Apache Kafka</strong> is the industry-standard distributed event streaming platform, handling trillions of events per day at companies like LinkedIn, Uber, and Netflix. Build real-time data pipelines and streaming applications with durable, replayable event logs.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Durable event log</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Horizontal scalability</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Multi-consumer replay</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> 300+ connectors</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Apache Kafka?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Apache Kafka is a distributed event store and stream-processing platform. Created at LinkedIn in 2010 and open-sourced in 2011, it is now an Apache top-level project. Unlike a traditional message queue that deletes events after delivery, Kafka persists all events in an ordered, immutable log for a configurable retention period. Any number of independent consumers can read the same events at their own pace, and events can be replayed from any offset.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Kafka's architecture consists of brokers (the servers that store data), topics (logical event streams), partitions (horizontal shards of a topic enabling parallelism), producers (applications that write events), and consumers (applications that read events). As of Kafka 3.3, ZooKeeper is no longer required — the KRaft mode uses Kafka itself for metadata management, simplifying deployment significantly.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Core Architecture</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>Broker</strong> — a Kafka server that stores partitions and handles producer/consumer requests</li>
+    <li><strong>Topic</strong> — a named, append-only log; events are never modified once written</li>
+    <li><strong>Partition</strong> — ordered shard of a topic; enables parallel reads and writes across brokers</li>
+    <li><strong>Offset</strong> — unique sequential ID for each event within a partition; consumers track their own offset</li>
+    <li><strong>Consumer Group</strong> — a set of consumers sharing a group.id; each partition assigned to exactly one consumer</li>
+    <li><strong>Replication Factor</strong> — number of broker copies per partition; protects against broker failure</li>
+    <li><strong>Schema Registry</strong> — external service that validates and stores Avro/Protobuf schemas</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Docker Compose Quickstart</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Python Producer & Consumer (confluent-kafka)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={pythonExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Kafka Connect Source Connector</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={connectExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Kafka Streams vs Apache Flink vs Spark Streaming</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Kafka Streams</th>
+          <th class="border border-border px-3 py-2 text-left">Apache Flink</th>
+          <th class="border border-border px-3 py-2 text-left">Spark Structured Streaming</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Processing model</td>
+          <td class="border border-border px-3 py-2">True streaming (event-by-event)</td>
+          <td class="border border-border px-3 py-2">True streaming</td>
+          <td class="border border-border px-3 py-2">Micro-batch (default)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Deployment</td>
+          <td class="border border-border px-3 py-2">Library (no cluster needed)</td>
+          <td class="border border-border px-3 py-2">Cluster (standalone / k8s)</td>
+          <td class="border border-border px-3 py-2">Cluster (Spark)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Source / sink</td>
+          <td class="border border-border px-3 py-2">Kafka only</td>
+          <td class="border border-border px-3 py-2">Kafka, DB, S3, custom</td>
+          <td class="border border-border px-3 py-2">Kafka, S3, Delta Lake, custom</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">State management</td>
+          <td class="border border-border px-3 py-2">RocksDB (built-in)</td>
+          <td class="border border-border px-3 py-2">RocksDB / heap (advanced)</td>
+          <td class="border border-border px-3 py-2">Checkpointing</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Latency</td>
+          <td class="border border-border px-3 py-2">Very low (ms)</td>
+          <td class="border border-border px-3 py-2">Very low (ms)</td>
+          <td class="border border-border px-3 py-2">Low–Medium (seconds)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Kafka-centric microservices</td>
+          <td class="border border-border px-3 py-2">Complex stateful streaming</td>
+          <td class="border border-border px-3 py-2">Batch + streaming unified</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Production Best Practices</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Set replication factor to at least 3 in production and configure <code>min.insync.replicas=2</code> for durability</li>
+    <li>Use Schema Registry with Avro or Protobuf to enforce schema compatibility across producer/consumer deployments</li>
+    <li>Monitor consumer lag per partition — lag growth indicates consumers are falling behind producers</li>
+    <li>Tune <code>linger.ms</code> and <code>batch.size</code> on producers to balance throughput vs latency</li>
+    <li>Prefer KRaft mode over ZooKeeper for all new deployments (Kafka 3.3+)</li>
+    <li>Use Kafka Connect for integrations — avoid reinventing offset management in custom consumers</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Apache Kafka Guide" relatedTags={['kafka', 'event-streaming', 'data-pipeline', 'messaging', 'data-engineering']} />
+</BaseLayout>

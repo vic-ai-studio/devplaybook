@@ -1,0 +1,277 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const dagExample = `# dags/etl_pipeline.py
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.operators.bash import BashOperator
+from airflow.providers.http.sensors.http import HttpSensor
+
+default_args = {
+    'owner': 'data-team',
+    'retries': 2,
+    'retry_delay': timedelta(minutes=5),
+    'email_on_failure': True,
+}
+
+def extract_data(**context):
+    import requests
+    response = requests.get('https://api.example.com/data')
+    context['ti'].xcom_push(key='raw_data', value=response.json())
+
+def transform_data(**context):
+    raw = context['ti'].xcom_pull(key='raw_data', task_ids='extract')
+    transformed = [{'id': r['id'], 'value': r['v'] * 2} for r in raw]
+    context['ti'].xcom_push(key='transformed', value=transformed)
+
+with DAG(
+    dag_id='etl_pipeline',
+    default_args=default_args,
+    schedule_interval='@daily',
+    start_date=datetime(2024, 1, 1),
+    catchup=False,
+    tags=['etl', 'production'],
+) as dag:
+
+    check_api = HttpSensor(
+        task_id='check_api',
+        http_conn_id='api_default',
+        endpoint='/health',
+        timeout=20,
+        poke_interval=5,
+    )
+
+    extract = PythonOperator(
+        task_id='extract',
+        python_callable=extract_data,
+    )
+
+    transform = PythonOperator(
+        task_id='transform',
+        python_callable=transform_data,
+    )
+
+    load = BashOperator(
+        task_id='load',
+        bash_command='python /opt/scripts/load_to_warehouse.py',
+    )
+
+    check_api >> extract >> transform >> load`;
+
+const dockerExample = `# docker-compose.yml (Airflow quickstart)
+version: '3.8'
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.0
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+
+  airflow-init:
+    <<: *airflow-common
+    command: version
+    entrypoint: /bin/bash
+    environment:
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin`;
+
+const xcomExample = `# XComs and Connections
+from airflow.models import Variable
+from airflow.hooks.base import BaseHook
+
+# Read Airflow Variable (encrypted in metastore)
+api_key = Variable.get('my_api_key', deserialize_json=False)
+
+# Read a Connection
+conn = BaseHook.get_connection('my_postgres')
+print(conn.host, conn.schema, conn.login)
+
+# Push/pull XCom values between tasks
+def producer(**context):
+    context['ti'].xcom_push(key='result', value=42)
+
+def consumer(**context):
+    val = context['ti'].xcom_pull(
+        task_ids='producer_task',
+        key='result'
+    )
+    print(f"Got: &#123;val&#125;")  # 42`;
+
+const faq = [
+  { question: "What is a DAG in Apache Airflow?", answer: "A DAG (Directed Acyclic Graph) is a Python file that defines a workflow as a set of tasks and their dependencies. 'Directed' means data flows in one direction, 'Acyclic' means no circular dependencies. Each task in a DAG is an instance of an Operator (BashOperator, PythonOperator, etc.). Airflow's scheduler reads DAG files from the dags/ directory and schedules task runs based on the defined schedule_interval and start_date." },
+  { question: "What is the difference between Airflow Executors?", answer: "The SequentialExecutor runs one task at a time (only for development). The LocalExecutor uses multiprocessing to run tasks in parallel on the same machine — suitable for small to medium workloads. The CeleryExecutor distributes tasks across a cluster of worker nodes using a message broker (Redis or RabbitMQ) — suited for large-scale production. The KubernetesExecutor spins up a fresh Pod per task in Kubernetes — provides strong isolation and resource control. Most production deployments use Celery or Kubernetes executors." },
+  { question: "How do XComs work in Airflow?", answer: "XComs (Cross-Communications) allow tasks to exchange small pieces of data via Airflow's metadata database. A task pushes a value with ti.xcom_push(key, value) and a downstream task pulls it with ti.xcom_pull(task_ids, key). XComs are stored in the database so they are size-limited — keep them small (IDs, filenames, counts). For large datasets, write to an intermediate storage (S3, GCS, local disk) and pass only the path via XCom. In Airflow 2.x, PythonOperator automatically pushes the function return value as an XCom." },
+  { question: "What is the catchup parameter in a DAG?", answer: "When catchup=True (the default), Airflow will backfill all DAG runs from the start_date to the current date when the DAG is first enabled. For a daily DAG with a start_date six months ago, this triggers 180 immediate runs. Setting catchup=False prevents backfilling — only the next scheduled run will execute. Unless you need historical backfills, always set catchup=False in production DAGs to avoid overwhelming your infrastructure when deploying or re-enabling a paused DAG." },
+  { question: "How do Airflow Connections differ from Variables?", answer: "Connections store credentials for external systems (databases, APIs, cloud services) — they include fields for host, port, schema, login, password, and extra JSON config. They are managed via the Airflow UI under Admin > Connections or via environment variables (AIRFLOW_CONN_MY_CONN=...). Variables store arbitrary key-value configuration, optionally serialized as JSON. Variables are accessible anywhere in a DAG with Variable.get(). Both can be encrypted at rest using Fernet encryption configured via AIRFLOW__CORE__FERNET_KEY." },
+  { question: "When should I use Airflow vs a simpler cron-based approach?", answer: "Use cron for simple, independent jobs with no inter-task dependencies and no need for retries, monitoring, or backfilling. Use Airflow when you have multi-step pipelines where later tasks depend on earlier ones, need automatic retries on failure, require centralized scheduling and visibility across many pipelines, need backfilling capability, or work across a team where visibility and auditability matter. The operational overhead of running Airflow (metadata database, scheduler, webserver) is not justified for one or two simple scripts." },
+];
+---
+
+<BaseLayout
+  title="Apache Airflow: DAG Orchestration, Setup & Best Practices"
+  description="Complete Apache Airflow guide: DAG definition, BashOperator, PythonOperator, HttpSensor, XComs, Connections, Docker Compose quickstart, and Airflow vs Prefect vs Dagster comparison."
+  tool="Apache Airflow, DAG, workflow orchestration, ETL, data pipeline, PythonOperator, BashOperator"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Apache Airflow: DAG Orchestration, Setup & Best Practices",
+    "url": "https://devplaybook.cc/tools/apache-airflow",
+    "description": "Complete Apache Airflow guide: DAG definition, operators, XComs, Connections, Docker Compose quickstart, and comparisons with Prefect and Dagster.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Apache Airflow: DAG Orchestration, Setup & Best Practices</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Apache Airflow</strong> is the industry-standard open-source platform for authoring, scheduling, and monitoring data pipelines as code. Define your workflows as Python DAGs and get full visibility into every task run, retry, and dependency.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Pipelines as Python code</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dynamic DAG generation</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Rich operator ecosystem</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Built-in retry & alerting</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Apache Airflow?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Apache Airflow is a platform to programmatically author, schedule, and monitor workflows. Originally created at Airbnb in 2014 and donated to the Apache Software Foundation in 2016, it has become the dominant open-source workflow orchestration tool for data engineering teams worldwide. Airflow represents pipelines as Directed Acyclic Graphs (DAGs) written in Python, which means pipelines can be dynamically generated, version-controlled in Git, and tested like any other code.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    The Airflow scheduler continuously monitors all DAGs, triggers task instances when their dependencies are met, and distributes work to an executor. The web UI provides a graphical view of DAG runs, task logs, dependency graphs, and Gantt charts, making it straightforward to diagnose failures and monitor pipeline health in production.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Core Concepts</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li><strong>DAG</strong> — a Python file defining tasks and their dependencies as a directed graph</li>
+    <li><strong>Operator</strong> — a template for a task: BashOperator, PythonOperator, SqlOperator, S3ToRedshiftOperator, etc.</li>
+    <li><strong>Sensor</strong> — a special operator that polls for a condition (file exists, API responds, S3 key present) before proceeding</li>
+    <li><strong>Task Instance</strong> — a specific run of an operator within a DAG run, with states: queued → running → success/failed</li>
+    <li><strong>XCom</strong> — mechanism for passing small values between tasks via the metadata database</li>
+    <li><strong>Connection</strong> — stored credentials for external systems (DB, API, cloud), referenced by conn_id</li>
+    <li><strong>Variable</strong> — key-value store for DAG configuration, optionally JSON-serialized</li>
+    <li><strong>Executor</strong> — the mechanism for running tasks: Local, Celery, or Kubernetes</li>
+  </ul>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">DAG Definition with Operators & Sensors</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dagExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Docker Compose Quickstart</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={dockerExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">XComs, Variables & Connections</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={xcomExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Airflow vs Prefect vs Dagster</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Apache Airflow</th>
+          <th class="border border-border px-3 py-2 text-left">Prefect</th>
+          <th class="border border-border px-3 py-2 text-left">Dagster</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Paradigm</td>
+          <td class="border border-border px-3 py-2">Task DAG (push)</td>
+          <td class="border border-border px-3 py-2">Flow/Task (push)</td>
+          <td class="border border-border px-3 py-2">Asset-based (pull)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Language</td>
+          <td class="border border-border px-3 py-2">Python</td>
+          <td class="border border-border px-3 py-2">Python</td>
+          <td class="border border-border px-3 py-2">Python</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">UI</td>
+          <td class="border border-border px-3 py-2">Webserver (self-hosted)</td>
+          <td class="border border-border px-3 py-2">Prefect Cloud / self-hosted</td>
+          <td class="border border-border px-3 py-2">Dagit (self-hosted)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Dynamic workflows</td>
+          <td class="border border-border px-3 py-2">Limited (requires workarounds)</td>
+          <td class="border border-border px-3 py-2">Native</td>
+          <td class="border border-border px-3 py-2">Native (partitions)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Data lineage</td>
+          <td class="border border-border px-3 py-2">Plugin required</td>
+          <td class="border border-border px-3 py-2">Limited</td>
+          <td class="border border-border px-3 py-2">First-class (Assets)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Learning curve</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2">Low–Medium</td>
+          <td class="border border-border px-3 py-2">Medium–High</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Managed cloud</td>
+          <td class="border border-border px-3 py-2">Astronomer / MWAA / Cloud Composer</td>
+          <td class="border border-border px-3 py-2">Prefect Cloud</td>
+          <td class="border border-border px-3 py-2">Dagster Cloud</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Complex ETL, large teams</td>
+          <td class="border border-border px-3 py-2">Modern Python teams</td>
+          <td class="border border-border px-3 py-2">Data platform / lineage</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Best Practices</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Set <code>catchup=False</code> on all production DAGs to prevent unintended backfills on re-deployment</li>
+    <li>Keep tasks atomic and idempotent — each task should do one thing and be safely re-runnable</li>
+    <li>Never import heavy libraries at DAG file top level — Airflow parses all DAG files frequently; slow imports degrade scheduler performance</li>
+    <li>Use XComs only for small values (IDs, counts, paths) — write large datasets to S3/GCS and pass the path</li>
+    <li>Store all credentials in Connections or Variables, never hardcoded in DAG files</li>
+    <li>Tag DAGs with <code>tags=[]</code> and use consistent naming conventions for easy filtering in the UI</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Apache Airflow Guide" relatedTags={['airflow', 'data-pipeline', 'orchestration', 'etl', 'data-engineering']} />
+</BaseLayout>

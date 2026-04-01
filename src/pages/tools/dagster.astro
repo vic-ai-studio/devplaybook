@@ -1,0 +1,240 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const assetExample = `# pip install dagster dagster-webserver
+from dagster import asset, AssetExecutionContext, Definitions
+import pandas as pd
+
+# Software-Defined Assets — define the data, not the task
+@asset(
+    group_name="raw",
+    description="Raw orders from the API",
+)
+def raw_orders(context: AssetExecutionContext) -> pd.DataFrame:
+    import httpx
+    data = httpx.get("https://api.example.com/orders").json()
+    df = pd.DataFrame(data)
+    context.log.info(f"Fetched &#123;len(df)&#125; orders")
+    return df
+
+@asset(
+    group_name="staging",
+    deps=[raw_orders],
+    description="Cleaned orders with USD amounts",
+)
+def stg_orders(raw_orders: pd.DataFrame) -> pd.DataFrame:
+    df = raw_orders.copy()
+    df["amount_usd"] = df["amount_cents"] / 100
+    df = df[df["status"] != "cancelled"]
+    df["created_at"] = pd.to_datetime(df["created_at"])
+    return df
+
+@asset(
+    group_name="marts",
+    deps=[stg_orders],
+    description="Revenue aggregated by region and month",
+)
+def revenue_by_region(stg_orders: pd.DataFrame) -> pd.DataFrame:
+    return (
+        stg_orders
+        .assign(month=lambda df: df["created_at"].dt.to_period("M"))
+        .groupby(["region", "month"])
+        .agg(revenue=("amount_usd", "sum"), orders=("order_id", "count"))
+        .reset_index()
+    )
+
+# Definitions — registers all assets, jobs, schedules, resources
+defs = Definitions(assets=[raw_orders, stg_orders, revenue_by_region])`;
+
+const jobExample = `# Jobs, Schedules, Sensors & Resources
+from dagster import (
+    define_asset_job, ScheduleDefinition, sensor,
+    RunRequest, SensorEvaluationContext, resource,
+    Definitions, EnvVar,
+)
+from dagster_postgres import PostgresIOManager
+
+# Job — subset of assets to materialize together
+etl_job = define_asset_job(
+    name="nightly_etl",
+    selection=["raw_orders", "stg_orders", "revenue_by_region"],
+)
+
+# Schedule — run the job on a cron
+nightly_schedule = ScheduleDefinition(
+    job=etl_job,
+    cron_schedule="0 2 * * *",  # 2am UTC daily
+    execution_timezone="UTC",
+)
+
+# Sensor — trigger a run when a new S3 file appears
+@sensor(job=etl_job, minimum_interval_seconds=60)
+def new_file_sensor(context: SensorEvaluationContext):
+    import boto3
+    s3 = boto3.client("s3")
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket="my-bucket", Prefix="inbox/"):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key not in context.cursor:
+                yield RunRequest(
+                    run_key=key,
+                    run_config=&#123;"ops": &#123;"raw_orders": &#123;"config": &#123;"s3_key": key&#125;&#125;&#125;&#125;,
+                )
+
+# Resource — shared database connection
+postgres_resource = PostgresIOManager(
+    host=EnvVar("POSTGRES_HOST"),
+    database=EnvVar("POSTGRES_DB"),
+)
+
+defs = Definitions(
+    assets=[raw_orders, stg_orders, revenue_by_region],
+    jobs=[etl_job],
+    schedules=[nightly_schedule],
+    sensors=[new_file_sensor],
+    resources=&#123;"io_manager": postgres_resource&#125;,
+)`;
+
+const partitionExample = `# Partitioned assets — process data day by day
+from dagster import (
+    asset, DailyPartitionsDefinition, AssetExecutionContext,
+    build_asset_context, materialize,
+)
+
+daily_partitions = DailyPartitionsDefinition(start_date="2024-01-01")
+
+@asset(
+    partitions_def=daily_partitions,
+    group_name="raw",
+)
+def daily_events(context: AssetExecutionContext) -> pd.DataFrame:
+    date = context.partition_key  # "2024-01-15"
+    url = f"https://api.example.com/events?date=&#123;date&#125;"
+    return pd.DataFrame(httpx.get(url).json())
+
+@asset(
+    partitions_def=daily_partitions,
+    deps=[daily_events],
+)
+def daily_summary(daily_events: pd.DataFrame) -> dict:
+    return &#123;
+        "total_events": len(daily_events),
+        "unique_users": daily_events["user_id"].nunique(),
+    &#125;
+
+# Backfill a date range from CLI:
+# dagster asset backfill --select daily_events daily_summary \\
+#   --partition-range 2024-01-01...2024-01-31`;
+
+const faq = [
+  { question: "What is the difference between asset-based and task-based orchestration?", answer: "Task-based orchestration (Airflow, Prefect) thinks in terms of actions — run this task, then that task. You define the execution sequence and the tasks produce side effects (writing to a database). Asset-based orchestration (Dagster) thinks in terms of data artifacts — define the assets you want to exist and how to produce them. Dagster tracks which assets are materialized, shows lineage between assets, and can automatically determine which assets need to be re-run when upstream data changes. This shift makes it easier to answer 'what data do we have and how was it produced?'" },
+  { question: "What are Software-Defined Assets in Dagster?", answer: "Software-Defined Assets (SDAs) are Python functions decorated with @asset that declare what data artifact they produce and what upstream data they depend on. Unlike Airflow tasks which are operations, assets are descriptions of data. Dagster tracks the materialization status of each asset — when it was last materialized, with what code version, and whether it is stale relative to its upstream dependencies. The Dagit UI shows a live asset graph with materialization history, making it easy to see the state of your entire data platform at a glance." },
+  { question: "What is the Dagit UI and what can I do with it?", answer: "Dagit is Dagster's web interface (dagster-webserver package). It provides: an Asset Catalog showing all defined assets with their lineage graph and materialization status, a Launchpad for running jobs with custom configuration, a Runs view with per-step logs and timing, a Schedules and Sensors tab for monitoring trigger status, and a Partitions tab for viewing backfill progress. Run dagster dev to start both the webserver and daemon locally. Dagit is the primary observability surface for a Dagster deployment." },
+  { question: "How do Dagster Resources work?", answer: "Resources are reusable, configurable objects that provide shared infrastructure to assets and ops — database connections, API clients, cloud storage handles. Define a resource using the @resource decorator or by subclassing ConfigurableResource. Resources are injected into assets as function parameters by name. In the Definitions object, map resource keys to implementations. This allows you to swap implementations between environments: in development, inject a local SQLite resource; in production, inject a PostgreSQL resource. Resources eliminate the need to create clients inside each function." },
+  { question: "When should I choose Dagster over Airflow?", answer: "Choose Dagster when data lineage and asset observability are important — knowing what data exists, when it was produced, and whether it is stale. Dagster's asset graph is a first-class concept, not a bolt-on. Choose Dagster when your team thinks in terms of data products rather than scheduled scripts. Choose Airflow when you have existing Airflow DAGs and a large team familiar with it, need specific Airflow operators not available in Dagster's integrations, or work in a data engineering context where Airflow is the established standard. Dagster has a higher learning curve than Prefect but more powerful data modeling concepts." },
+  { question: "What is the difference between @op, @job, and @asset in Dagster?", answer: "@op is the lowest-level unit of computation — a function that takes inputs and returns outputs, similar to a Prefect task. @job is a graph of @ops that can be scheduled and run. @asset is a higher-level abstraction — an @op that produces a named data artifact tracked in the asset catalog. For new Dagster projects, prefer @asset over @op/@job — the SDA paradigm provides better observability and is the recommended approach. @op and @job are useful for computational pipelines that do not produce reusable data artifacts, or for migrating from Airflow with a task-centric mental model." },
+];
+---
+
+<BaseLayout
+  title="Dagster: Data Orchestration with Assets, Jobs & Sensors"
+  description="Complete Dagster guide: Software-Defined Assets, Jobs and Schedules, Sensors, Resources, Dagit UI, partitions, and Dagster vs Airflow vs Prefect comparison."
+  tool="Dagster, data orchestration, software-defined assets, jobs sensors, data platform, Dagit, orchestration"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Dagster: Data Orchestration with Assets, Jobs & Sensors",
+    "url": "https://devplaybook.cc/tools/dagster",
+    "description": "Complete Dagster guide covering Software-Defined Assets, Jobs, Schedules, Sensors, Resources, Dagit UI, and comparison with Airflow and Prefect.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Dagster: Data Orchestration with Assets, Jobs & Sensors</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Dagster</strong> is the cloud-native data orchestration platform that treats data assets — not tasks — as first-class citizens. Get full data lineage, asset materialization tracking, and a rich observability UI out of the box.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Asset-based orchestration</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Full data lineage</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Built-in Dagit UI</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Sensors & partitions</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Dagster?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Dagster is an open-source data orchestration platform designed around the concept of Software-Defined Assets (SDAs) — Python functions that declare what data artifacts they produce and depend on. Unlike Airflow which orchestrates tasks, Dagster orchestrates data: it tracks the materialization state of every asset, shows the full lineage graph from raw sources to final models, and surfaces data freshness and quality at the platform level.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Dagster integrates natively with dbt (model assets), Airbyte (source assets), Spark, Snowflake, BigQuery, and most of the modern data stack. The Dagit web UI provides an interactive asset graph, run history with per-step logs, a partition viewer for backfill monitoring, and a sensor dashboard. Dagster Cloud is the managed offering; Dagster Open Source can be self-hosted with dagster dev for local development.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Software-Defined Assets</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={assetExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Jobs, Schedules, Sensors & Resources</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={jobExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Partitioned Assets & Backfills</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={partitionExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Dagster vs Airflow vs Prefect</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Dagster</th>
+          <th class="border border-border px-3 py-2 text-left">Apache Airflow</th>
+          <th class="border border-border px-3 py-2 text-left">Prefect</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Paradigm</td>
+          <td class="border border-border px-3 py-2">Asset-based</td>
+          <td class="border border-border px-3 py-2">Task DAG</td>
+          <td class="border border-border px-3 py-2">Flow/Task</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Data lineage</td>
+          <td class="border border-border px-3 py-2">First-class (asset graph)</td>
+          <td class="border border-border px-3 py-2">Plugin required</td>
+          <td class="border border-border px-3 py-2">Limited</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">UI</td>
+          <td class="border border-border px-3 py-2">Dagit (self-hosted)</td>
+          <td class="border border-border px-3 py-2">Webserver (self-hosted)</td>
+          <td class="border border-border px-3 py-2">Prefect Cloud / self-hosted</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">dbt integration</td>
+          <td class="border border-border px-3 py-2">Native (dbt assets)</td>
+          <td class="border border-border px-3 py-2">BashOperator / dbt-airflow</td>
+          <td class="border border-border px-3 py-2">prefect-dbt</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Learning curve</td>
+          <td class="border border-border px-3 py-2">Medium–High</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2">Low</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Best for</td>
+          <td class="border border-border px-3 py-2">Data platform / lineage</td>
+          <td class="border border-border px-3 py-2">Complex ETL, large teams</td>
+          <td class="border border-border px-3 py-2">Python-native quick start</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Dagster Guide" relatedTags={['dagster', 'data-orchestration', 'data-lineage', 'data-platform', 'data-engineering']} />
+</BaseLayout>

@@ -1,0 +1,240 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const modelExample = `-- models/staging/stg_orders.sql
+-- ref() creates a dependency on the source model
+WITH source AS (
+    SELECT * FROM &#123;&#123; source('raw', 'orders') &#125;&#125;
+),
+renamed AS (
+    SELECT
+        id                    AS order_id,
+        user_id,
+        status,
+        amount / 100.0        AS amount_usd,   -- convert cents
+        created_at::TIMESTAMP AS created_at
+    FROM source
+    WHERE status != 'cancelled'
+)
+SELECT * FROM renamed;
+
+-- models/marts/fct_orders.sql
+WITH orders AS (
+    SELECT * FROM &#123;&#123; ref('stg_orders') &#125;&#125;
+),
+customers AS (
+    SELECT * FROM &#123;&#123; ref('stg_customers') &#125;&#125;
+),
+final AS (
+    SELECT
+        o.order_id,
+        o.amount_usd,
+        o.created_at,
+        c.email,
+        c.country
+    FROM orders o
+    LEFT JOIN customers c USING (user_id)
+)
+SELECT * FROM final;`;
+
+const testsExample = `# models/staging/schema.yml — generic tests
+version: 2
+
+models:
+  - name: stg_orders
+    description: "Cleaned orders from the raw source"
+    columns:
+      - name: order_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['placed', 'shipped', 'delivered', 'returned']
+      - name: amount_usd
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100000
+
+sources:
+  - name: raw
+    database: analytics
+    schema: raw_data
+    tables:
+      - name: orders
+        freshness:
+          warn_after: &#123;count: 12, period: hour&#125;
+          error_after: &#123;count: 24, period: hour&#125;
+        loaded_at_field: _etl_loaded_at`;
+
+const incrementalExample = `-- models/marts/fct_events_incremental.sql
+&#123;&#123;
+  config(
+    materialized='incremental',
+    unique_key='event_id',
+    on_schema_change='sync_all_columns'
+  )
+&#125;&#125;
+
+SELECT
+    event_id,
+    user_id,
+    event_type,
+    properties,
+    occurred_at
+FROM &#123;&#123; source('raw', 'events') &#125;&#125;
+
+&#123;%- if is_incremental() %&#125;
+    -- Only process rows newer than the latest in the table
+    WHERE occurred_at > (SELECT MAX(occurred_at) FROM &#123;&#123; this &#125;&#125;)
+&#123;%- endif %&#125;;
+
+-- Run commands
+-- dbt run                        # run all models
+-- dbt run --select stg_orders    # run one model
+-- dbt test                       # run all tests
+-- dbt docs generate && dbt docs serve  # open docs
+-- dbt source freshness           # check source freshness`;
+
+const faq = [
+  { question: "What does dbt actually do?", answer: "dbt (data build tool) handles the T in ELT — it transforms data that already lives in your data warehouse. You write SELECT statements in SQL files (models), and dbt compiles them into CREATE TABLE AS / CREATE VIEW AS statements and executes them in the warehouse. dbt does not move data into the warehouse — that is the job of a data loader like Fivetran or Airbyte. dbt handles dependency resolution between models, schema documentation, data testing, and incremental loading patterns." },
+  { question: "What is the ref() function and why is it important?", answer: "The ref() function is how models declare dependencies on each other. When you write {{ ref('stg_orders') }}, dbt resolves it to the correct database.schema.table name for your environment (dev vs prod) and records the dependency in the DAG. This means dbt can run models in the correct order, and changing a model name only requires updating the ref() calls. Without ref(), you would hardcode table names and lose both the dependency graph and environment isolation." },
+  { question: "What is the difference between a view, table, and incremental materialization?", answer: "A view runs the SQL query every time it is queried — lightweight but slow for complex queries. A table runs the SQL and stores the results as a physical table, rebuilt completely on every dbt run. An incremental model only processes new or updated rows on subsequent runs, appending or upserting into the existing table. Use views for lightweight staging models, tables for marts and frequently queried models, and incremental for large event or fact tables where full rebuilds are too slow or expensive." },
+  { question: "What are dbt tests and how do they work?", answer: "dbt has two types of tests. Generic tests are configured in schema.yml files and check things like unique, not_null, accepted_values, and relationships across models — dbt ships four built-in tests and packages like dbt-utils add more. Singular tests are custom SQL files in the tests/ directory that return failing rows — any rows returned means the test fails. Run dbt test to execute all tests after dbt run. Tests are essential for catching data quality issues in the pipeline before downstream users query bad data." },
+  { question: "How does dbt handle environments (dev vs prod)?", answer: "dbt uses profiles (defined in ~/.dbt/profiles.yml) to separate environments. Each environment points to a different schema or database — for example, dev writes to analytics_dev and prod writes to analytics. The ref() and source() macros automatically resolve to the correct location based on the target environment. This means every developer has an isolated sandbox to test changes without affecting production tables. CI/CD pipelines run dbt in a slim CI mode, testing only changed models using state comparison." },
+  { question: "What is the difference between dbt Core and dbt Cloud?", answer: "dbt Core is the open-source CLI tool that runs locally or in CI/CD pipelines — it is free and handles all core transformation, testing, and documentation functionality. dbt Cloud is the hosted service from dbt Labs that adds a browser-based IDE, managed job scheduling, CI/CD integration, centralized logging, the dbt Explorer for lineage visualization, and SSO. dbt Core is sufficient for teams with existing orchestration (Airflow, Prefect). dbt Cloud is useful for teams that want a managed experience without building their own orchestration." },
+];
+---
+
+<BaseLayout
+  title="dbt Core: Data Transformation, Models & Testing Guide"
+  description="Complete dbt Core guide: SQL models, ref() function, sources, generic and singular tests, macros, incremental models, dbt run/test/docs, and dbt vs stored procedures comparison."
+  tool="dbt, data build tool, SQL transformation, analytics engineering, data warehouse, dbt models, dbt tests"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "dbt Core: Data Transformation, Models & Testing Guide",
+    "url": "https://devplaybook.cc/tools/dbt-core",
+    "description": "Complete dbt Core guide covering SQL models, ref(), sources, tests, macros, incremental models, and comparison with stored procedures.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">dbt Core: Data Transformation, Models & Testing Guide</h1>
+  <p class="text-text-muted mb-6">
+    <strong>dbt (data build tool)</strong> is the analytics engineering standard for transforming data inside your warehouse. Write modular SQL, test every column, generate documentation automatically, and ship production-quality data models with confidence.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SQL-first transformations</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Built-in data testing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Auto-generated docs</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Incremental models</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is dbt?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    dbt (data build tool) is an open-source command-line tool that enables analytics engineers to transform data in their warehouse using plain SQL. It handles only the T in ELT — data must already be in the warehouse via a loader. dbt compiles your SELECT-based models into DDL/DML statements, executes them in the correct dependency order, tests the output, and generates a documentation site with full lineage — all from your SQL and YAML configuration files.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    dbt works with all major warehouses: Snowflake, BigQuery, Redshift, Databricks, DuckDB, and Postgres. A typical dbt project contains staging models that clean raw source data, intermediate models that join and enrich, and marts (fact and dimension tables) that serve BI tools. Version control, peer review, and CI testing of data transformations become standard practice.
+  </p>
+
+  <h2 class="text-xl font-semibent mt-8 mb-3">Project Structure</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># dbt project layout
+my_project/
+├── dbt_project.yml          # Project config (name, version, model paths)
+├── profiles.yml             # Connection credentials (usually in ~/.dbt/)
+├── models/
+│   ├── staging/             # stg_* models: clean raw sources
+│   │   ├── schema.yml       # Source + model definitions and tests
+│   │   └── stg_orders.sql
+│   ├── intermediate/        # int_* models: business logic joins
+│   └── marts/               # fct_* and dim_* models: final outputs
+├── tests/                   # Singular SQL tests (return failing rows)
+├── macros/                  # Reusable Jinja macros
+├── snapshots/               # SCD Type 2 change tracking
+├── seeds/                   # CSV files loaded as reference tables
+└── analyses/                # Ad-hoc SQL (not materialized)</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">SQL Models with ref() and source()</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={modelExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Schema Tests & Source Freshness</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={testsExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Incremental Models & CLI Commands</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={incrementalExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">dbt vs Stored Procedures vs Custom Python ETL</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">dbt Core</th>
+          <th class="border border-border px-3 py-2 text-left">Stored Procedures</th>
+          <th class="border border-border px-3 py-2 text-left">Custom Python ETL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Version control</td>
+          <td class="border border-border px-3 py-2">Git-native</td>
+          <td class="border border-border px-3 py-2">Manual / DDL scripts</td>
+          <td class="border border-border px-3 py-2">Git (code only)</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Testing</td>
+          <td class="border border-border px-3 py-2">Built-in (schema.yml)</td>
+          <td class="border border-border px-3 py-2">None / manual</td>
+          <td class="border border-border px-3 py-2">Unit tests (pytest)</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Documentation</td>
+          <td class="border border-border px-3 py-2">Auto-generated with lineage</td>
+          <td class="border border-border px-3 py-2">None by default</td>
+          <td class="border border-border px-3 py-2">Manual</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Dependency resolution</td>
+          <td class="border border-border px-3 py-2">Automatic via ref()</td>
+          <td class="border border-border px-3 py-2">Manual ordering</td>
+          <td class="border border-border px-3 py-2">Manual / Airflow DAG</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Dev/prod isolation</td>
+          <td class="border border-border px-3 py-2">Built-in (profiles)</td>
+          <td class="border border-border px-3 py-2">Manual schema swaps</td>
+          <td class="border border-border px-3 py-2">Env vars</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Non-SQL logic</td>
+          <td class="border border-border px-3 py-2">Limited (Python models)</td>
+          <td class="border border-border px-3 py-2">Procedural SQL only</td>
+          <td class="border border-border px-3 py-2">Full Python flexibility</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Best Practices</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Follow the staging → intermediate → marts layer pattern; never join raw sources directly in marts</li>
+    <li>Always define sources in schema.yml — never reference raw tables with hardcoded names</li>
+    <li>Add at minimum <code>unique</code> and <code>not_null</code> tests on all primary keys</li>
+    <li>Use incremental models for large event tables, full table refreshes for smaller dimensions</li>
+    <li>Run <code>dbt docs generate</code> in CI so documentation is always current</li>
+    <li>Use the <code>--select</code> flag and state-based CI to test only changed models in pull requests</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="dbt Core Guide" relatedTags={['dbt', 'sql', 'data-warehouse', 'analytics-engineering', 'etl']} />
+</BaseLayout>

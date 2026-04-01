@@ -1,0 +1,224 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const pysparkExample = `# pip install pyspark
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, sum as spark_sum, avg, count
+
+# Initialize SparkSession
+spark = SparkSession.builder \
+    .appName("Sales Analysis") \
+    .config("spark.sql.shuffle.partitions", "200") \
+    .getOrCreate()
+
+# Read data (Parquet, CSV, JSON, Delta, JDBC...)
+df = spark.read.parquet("s3://my-bucket/sales/")
+
+# DataFrame transformations (lazy — nothing executes yet)
+result = (
+    df
+    .filter(col("status") == "completed")
+    .filter(col("amount") > 0)
+    .withColumn("amount_usd", col("amount") / 100)
+    .groupBy("region", "product_category")
+    .agg(
+        spark_sum("amount_usd").alias("total_revenue"),
+        avg("amount_usd").alias("avg_order_value"),
+        count("order_id").alias("order_count"),
+    )
+    .orderBy(col("total_revenue").desc())
+)
+
+# Action triggers actual computation
+result.show(20)
+result.write.mode("overwrite").parquet("s3://my-bucket/output/sales_summary/")
+
+spark.stop()`;
+
+const sqlExample = `# Spark SQL — register temp view and run SQL
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import broadcast
+
+spark = SparkSession.builder.appName("SparkSQL").getOrCreate()
+
+orders = spark.read.parquet("s3://bucket/orders/")
+customers = spark.read.parquet("s3://bucket/customers/")
+
+# Register as temp views
+orders.createOrReplaceTempView("orders")
+customers.createOrReplaceTempView("customers")
+
+# Run standard SQL
+result = spark.sql("""
+    SELECT
+        c.country,
+        DATE_TRUNC('month', o.created_at) AS month,
+        COUNT(o.order_id)                 AS orders,
+        SUM(o.amount_usd)                 AS revenue
+    FROM orders o
+    JOIN customers c ON o.user_id = c.user_id
+    WHERE o.status = 'completed'
+    GROUP BY 1, 2
+    ORDER BY 2 DESC, 3 DESC
+""")
+result.show()
+
+# Broadcast join optimization for small dimension tables
+result2 = orders.join(
+    broadcast(customers),   # sends small table to all executors
+    on="user_id",
+    how="left"
+)`;
+
+const optimizationExample = `# Spark performance optimization techniques
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+
+spark = SparkSession.builder.appName("Optimization").getOrCreate()
+
+df = spark.read.parquet("s3://bucket/events/")
+
+# 1. Caching — keeps DataFrame in memory across multiple actions
+df.cache()                     # MEMORY_AND_DISK by default
+df.persist()                   # same as cache()
+df.unpersist()                 # free memory when done
+
+# 2. Repartitioning
+df_balanced = df.repartition(200)                       # round-robin
+df_by_key   = df.repartition(50, col("user_id"))        # hash partition
+df_small    = df.coalesce(10)                           # reduce (no shuffle)
+
+# 3. Predicate pushdown — Spark pushes filters to data source
+df_filtered = spark.read \
+    .option("pushDownPredicate", "true") \
+    .parquet("s3://bucket/events/") \
+    .filter(col("event_date") == "2024-01-01")
+
+# 4. Explain plan — inspect physical plan
+df_filtered.explain(mode="formatted")
+
+# 5. Adaptive Query Execution (AQE) — Spark 3.x auto-tuning
+spark.conf.set("spark.sql.adaptive.enabled", "true")
+spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")`;
+
+const faq = [
+  { question: "What is the difference between RDDs, DataFrames, and Datasets in Spark?", answer: "RDDs (Resilient Distributed Datasets) are the low-level API — collections of objects distributed across the cluster, processed with functional transformations (map, filter, reduce). They give full control but lack optimization. DataFrames are distributed collections of rows with named, typed columns — similar to a database table. Spark's Catalyst optimizer can optimize DataFrame queries automatically. Datasets are type-safe DataFrames available in Scala and Java (Python does not have them). For Python, always use DataFrames — they are faster than RDDs and fully optimized by Catalyst and Tungsten." },
+  { question: "What does 'lazy evaluation' mean in Spark?", answer: "In Spark, transformations (filter, groupBy, join, select) are lazy — they build up a logical execution plan but do not actually run any computation. Execution only happens when an action is called (show, collect, write, count). This design allows Spark's Catalyst optimizer to examine the full transformation plan before execution and apply optimizations like predicate pushdown, projection pruning, and join reordering. It also means you can chain many transformations with no performance cost until you trigger an action." },
+  { question: "What causes Spark shuffles and why are they expensive?", answer: "A shuffle occurs when data must be redistributed across partitions — typically during groupBy, join, distinct, orderBy, and repartition. Shuffled data is written to disk, transferred over the network to target executors, then read back. Shuffles are expensive because they involve disk I/O, network I/O, and serialization. Minimize shuffles by: broadcasting small tables in joins, filtering data before joining, using partition-aware operations, and setting spark.sql.shuffle.partitions to an appropriate value (default 200 is often too high for small datasets)." },
+  { question: "How does Spark's in-memory processing work and when does it spill to disk?", answer: "Spark stores intermediate data in executor JVM memory. Each executor has an execution memory pool (for shuffles and aggregations) and a storage memory pool (for cached RDDs/DataFrames). With Unified Memory Management (Spark 1.6+), these pools dynamically share memory. When execution memory is exhausted during a shuffle or sort, Spark spills data to local disk. Spill is far slower than in-memory but prevents OOM errors. Tune executor memory (--executor-memory), cores per executor, and the memory.fraction settings to minimize spill on large jobs." },
+  { question: "What is Adaptive Query Execution (AQE) in Spark 3?", answer: "Adaptive Query Execution (AQE), introduced in Spark 3.0, allows Spark to re-optimize the query plan at runtime based on actual statistics collected during execution. It handles three main scenarios automatically: coalescing post-shuffle partitions (merging small partitions to reduce task overhead), converting sort-merge joins to broadcast joins when a table turns out to be small enough, and skew join optimization (splitting oversized partitions). Enable AQE with spark.sql.adaptive.enabled=true — it is enabled by default in Spark 3.2+." },
+  { question: "When should I choose Spark over Pandas or Dask?", answer: "Use Pandas when your data fits comfortably in a single machine's RAM (typically under 20–50 GB) — it is simpler, faster to develop with, and has a richer ecosystem for exploratory analysis. Use Dask when you want Pandas-like syntax but need to process data that is too large for one machine without the operational complexity of a Spark cluster. Use Spark when you have genuinely large datasets (hundreds of GB to petabytes), need to integrate with a data lake or warehouse (Delta Lake, Iceberg, Hive), require SQL support alongside DataFrame operations, or are on a managed cluster (Databricks, EMR, Dataproc)." },
+];
+---
+
+<BaseLayout
+  title="Apache Spark: Distributed Data Processing & PySpark Guide"
+  description="Complete Apache Spark guide: RDDs, DataFrames, PySpark quickstart, DataFrame operations, Spark SQL, broadcast joins, caching, AQE, and Spark vs Flink vs Dask comparison."
+  tool="Apache Spark, PySpark, distributed computing, DataFrame, Spark SQL, RDD, big data"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org", "@type": "WebPage",
+    "name": "Apache Spark: Distributed Data Processing & PySpark Guide",
+    "url": "https://devplaybook.cc/tools/apache-spark",
+    "description": "Complete Apache Spark guide covering RDDs, DataFrames, PySpark, Spark SQL, optimization techniques, and comparison with Flink and Dask.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Apache Spark: Distributed Data Processing & PySpark Guide</h1>
+  <p class="text-text-muted mb-6">
+    <strong>Apache Spark</strong> is the leading unified analytics engine for large-scale data processing, combining batch processing, streaming, SQL, machine learning, and graph computation in a single framework. Process petabytes across thousands of nodes with in-memory speed.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> In-memory processing</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Unified batch + streaming</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Catalyst optimizer</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Delta Lake / Iceberg support</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">What is Apache Spark?</h2>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Apache Spark is an open-source, distributed computing framework originally developed at UC Berkeley's AMPLab in 2009. It provides a unified API for batch processing, streaming, SQL queries, machine learning (MLlib), and graph processing (GraphX). Spark's core innovation is in-memory computation — intermediate results are kept in RAM across transformation steps rather than written to disk like Hadoop MapReduce, making it 10–100x faster for iterative workloads.
+  </p>
+  <p class="text-text-muted mb-4 leading-relaxed">
+    Spark can run on a local machine, a standalone cluster, YARN, Mesos, or Kubernetes. Managed services like Databricks, Amazon EMR, Google Dataproc, and Azure HDInsight run Spark at scale without cluster management overhead. PySpark is the Python API and the most widely used interface — it provides the full DataFrame, Spark SQL, and Streaming API with Python syntax.
+  </p>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">PySpark DataFrame Quickstart</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={pysparkExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Spark SQL & Broadcast Joins</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={sqlExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Performance Optimization</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4" set:html={optimizationExample}></pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Spark vs Apache Flink vs Dask</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Feature</th>
+          <th class="border border-border px-3 py-2 text-left">Apache Spark</th>
+          <th class="border border-border px-3 py-2 text-left">Apache Flink</th>
+          <th class="border border-border px-3 py-2 text-left">Dask</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="border border-border px-3 py-2">Primary use case</td>
+          <td class="border border-border px-3 py-2">Batch + streaming unified</td>
+          <td class="border border-border px-3 py-2">Low-latency streaming</td>
+          <td class="border border-border px-3 py-2">Scale-out Pandas/NumPy</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Streaming model</td>
+          <td class="border border-border px-3 py-2">Micro-batch (or ContinuousProcessing)</td>
+          <td class="border border-border px-3 py-2">True event-by-event</td>
+          <td class="border border-border px-3 py-2">Batch only</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">Python API</td>
+          <td class="border border-border px-3 py-2">PySpark (full-featured)</td>
+          <td class="border border-border px-3 py-2">PyFlink (growing)</td>
+          <td class="border border-border px-3 py-2">Native Python</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Managed cloud</td>
+          <td class="border border-border px-3 py-2">Databricks, EMR, Dataproc</td>
+          <td class="border border-border px-3 py-2">Kinesis, Confluent Cloud</td>
+          <td class="border border-border px-3 py-2">Coiled, self-hosted</td>
+        </tr>
+        <tr>
+          <td class="border border-border px-3 py-2">SQL support</td>
+          <td class="border border-border px-3 py-2">Excellent (Spark SQL)</td>
+          <td class="border border-border px-3 py-2">Good (Flink SQL)</td>
+          <td class="border border-border px-3 py-2">Limited</td>
+        </tr>
+        <tr class="bg-bg-card/30">
+          <td class="border border-border px-3 py-2">Learning curve</td>
+          <td class="border border-border px-3 py-2">Medium</td>
+          <td class="border border-border px-3 py-2">High</td>
+          <td class="border border-border px-3 py-2">Low (Pandas-like)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Best Practices</h2>
+  <ul class="list-disc list-inside text-text-muted space-y-1 mb-4 ml-2">
+    <li>Enable Adaptive Query Execution (<code>spark.sql.adaptive.enabled=true</code>) for automatic shuffle partition optimization</li>
+    <li>Broadcast small dimension tables in joins to eliminate expensive sort-merge shuffle</li>
+    <li>Use <code>coalesce()</code> to reduce partition count without shuffle; <code>repartition()</code> when you need a balanced distribution</li>
+    <li>Always call <code>unpersist()</code> after cached DataFrames are no longer needed to free executor memory</li>
+    <li>Store data in columnar Parquet or Delta Lake format to benefit from predicate pushdown and columnar reads</li>
+    <li>Profile jobs with Spark UI's SQL tab and Stage details to identify shuffle bottlenecks and spill</li>
+  </ul>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Apache Spark Guide" relatedTags={['spark', 'pyspark', 'big-data', 'distributed-computing', 'data-engineering']} />
+</BaseLayout>
