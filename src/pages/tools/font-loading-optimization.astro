@@ -1,0 +1,147 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is FOUT, FOIT, and FOFT, and which should I use?", answer: "FOIT (Flash of Invisible Text) hides text until the font loads — bad for LCP and CLS. FOUT (Flash of Unstyled Text) shows fallback font text immediately, then swaps to the web font — causes layout shift. FOFT (Flash of Faux Text) is an optimized FOUT variant using a subset of the font (e.g., only critical characters) first. For most sites, use `font-display: swap` with a well-tuned fallback font (using `size-adjust`, `ascent-override`, etc.) to minimize CLS from FOUT." },
+  { question: "What is the best way to self-host Google Fonts?", answer: "Download fonts from google-webfonts-helper.herokuapp.com or fonts.google.com (Download Family button). Host the .woff2 files on your CDN. Use `@font-face` with `font-display: swap`. Self-hosting eliminates the Google Fonts render-blocking connection (saves one DNS lookup + TLS handshake) and allows you to serve fonts with long-term cache headers. Use font subsetting with `pyftsubset` or `glyphhanger` to remove unused Unicode ranges, reducing file size 30–60%." },
+  { question: "How do I use font-display: optional to prevent layout shift?", answer: "With `font-display: optional`, the browser only uses the web font if it's already cached. If not, it uses the fallback font permanently for that page load — no swap, no layout shift, no FOUT. This is the best option for non-critical decorative fonts. The web font still gets cached in the background and appears on the next visit. Use with `<link rel='preload'>` to prioritize caching the font during the initial load so it's ready on the second visit." },
+  { question: "How do I use size-adjust and ascent-override to reduce CLS from font swapping?", answer: "CSS font metric descriptors (`size-adjust`, `ascent-override`, `descent-override`, `line-gap-override`) let you modify fallback font metrics to match the web font's layout dimensions. This means when the web font swaps in, the text takes up nearly the same space and CLS approaches zero. Use the Font Style Matcher tool (meowni.ca/font-style-matcher) or Google's Cascade Layers approach to calculate the right values. Next.js 13+ does this automatically with its local font optimization." },
+];
+---
+
+<BaseLayout
+  title="Web Font Loading Optimization — font-display, Preload & Self-Hosting"
+  description="Optimize web font loading: use font-display strategies, preload critical fonts, self-host Google Fonts, use size-adjust to eliminate FOUT layout shift, and reduce font file size."
+  tool="web fonts, font-display, font loading, FOUT, Google Fonts, self-hosted fonts, font optimization, CLS, performance"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Web Font Loading Optimization Guide",
+    "url": "https://devplaybook.cc/tools/font-loading-optimization",
+    "description": "Eliminate font-related FCP delays and CLS with font-display, preloading, self-hosting, and font metric matching.",
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Web Font Loading Optimization</h1>
+  <p class="text-text-muted mb-6">
+    Web fonts can block rendering, cause layout shift, and add 100–500ms to your FCP. The right combination of <strong>font-display</strong>, <strong>preloading</strong>, and <strong>font metric overrides</strong> eliminates these issues without sacrificing design.
+  </p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> font-display strategies</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Font preloading</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Self-hosting setup</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> CLS elimination</span>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">font-display Strategy Comparison</h2>
+  <div class="overflow-x-auto mb-6">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="bg-bg-card">
+          <th class="border border-border px-3 py-2 text-left">Value</th>
+          <th class="border border-border px-3 py-2 text-left">Behavior</th>
+          <th class="border border-border px-3 py-2 text-left">CLS Risk</th>
+          <th class="border border-border px-3 py-2 text-left">Best For</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="border border-border px-3 py-2 font-mono text-xs">auto</td><td class="border border-border px-3 py-2">Browser default (usually FOIT)</td><td class="border border-border px-3 py-2 text-yellow-400">Medium</td><td class="border border-border px-3 py-2">Avoid</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 font-mono text-xs">block</td><td class="border border-border px-3 py-2">3s invisible, then swap</td><td class="border border-border px-3 py-2 text-red-400">High</td><td class="border border-border px-3 py-2">Icon fonts only</td></tr>
+        <tr><td class="border border-border px-3 py-2 font-mono text-xs">swap</td><td class="border border-border px-3 py-2">Fallback immediately, swap when ready</td><td class="border border-border px-3 py-2 text-yellow-400">Medium</td><td class="border border-border px-3 py-2">Body text (with size-adjust)</td></tr>
+        <tr class="bg-bg-card/30"><td class="border border-border px-3 py-2 font-mono text-xs">fallback</td><td class="border border-border px-3 py-2">100ms invisible, 3s swap window</td><td class="border border-border px-3 py-2 text-yellow-400">Low</td><td class="border border-border px-3 py-2">Body text</td></tr>
+        <tr><td class="border border-border px-3 py-2 font-mono text-xs">optional</td><td class="border border-border px-3 py-2">Use cached font or skip forever</td><td class="border border-border px-3 py-2 text-green-400">Zero</td><td class="border border-border px-3 py-2">Non-critical fonts</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Self-Hosting with @font-face</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">/* styles/fonts.css */
+@font-face &#123;
+  font-family: 'Inter';
+  src: url('/fonts/inter-var.woff2') format('woff2');
+  font-weight: 100 900;       /* Variable font range */
+  font-display: swap;         /* Show fallback, swap when ready */
+  unicode-range: U+0000-00FF; /* Only Latin characters (subset) */
+&#125;
+
+/* Reduce CLS with metric overrides */
+@font-face &#123;
+  font-family: 'Inter-fallback';
+  src: local('Arial');
+  ascent-override: 90%;       /* Match Inter's metrics */
+  descent-override: 22.43%;
+  line-gap-override: 0%;
+  size-adjust: 107.4%;
+&#125;
+
+body &#123;
+  /* Fallback matches Inter layout — near-zero CLS on swap */
+  font-family: 'Inter', 'Inter-fallback', Arial, sans-serif;
+&#125;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Preloading Critical Fonts</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">&lt;!-- Preload only the font used above the fold --&gt;
+&lt;link
+  rel="preload"
+  href="/fonts/inter-var.woff2"
+  as="font"
+  type="font/woff2"
+  crossorigin
+&gt;
+
+&lt;!-- If still using Google Fonts (not recommended) --&gt;
+&lt;link rel="preconnect" href="https://fonts.googleapis.com"&gt;
+&lt;link rel="preconnect" href="https://fonts.gstatic.com" crossorigin&gt;
+&lt;link
+  href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap"
+  rel="stylesheet"
+&gt;</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Font Subsetting (Reduce Size 30–60%)</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4"># Install fonttools
+pip install fonttools brotli
+
+# Subset to Latin characters only
+pyftsubset Inter.ttf \
+  --output-file=inter-latin.woff2 \
+  --flavor=woff2 \
+  --layout-features='kern,liga,calt' \
+  --unicodes="U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+
+# Result: Inter.ttf (3.4MB) → inter-latin.woff2 (68KB)</pre>
+
+  <h2 class="text-xl font-semibold mt-8 mb-3">Next.js Built-in Font Optimization</h2>
+  <pre class="bg-bg-card border border-border rounded-xl p-4 text-xs font-mono overflow-x-auto whitespace-pre text-text mb-4">// app/layout.tsx — Next.js handles preloading + size-adjust automatically
+import &#123; Inter, Playfair_Display &#125; from 'next/font/google';
+
+const inter = Inter(&#123;
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+&#125;);
+
+// Or self-hosted local font
+import localFont from 'next/font/local';
+const myFont = localFont(&#123;
+  src: './fonts/inter-var.woff2',
+  display: 'swap',
+  variable: '--font-inter',
+&#125;);
+
+export default function Layout(&#123; children &#125;) &#123;
+  return (
+    &lt;html className=&#123;inter.variable&#125;&gt;
+      &lt;body&gt;&#123;children&#125;&lt;/body&gt;
+    &lt;/html&gt;
+  );
+&#125;</pre>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Font Loading Optimization" relatedTags={['fonts', 'performance', 'cls', 'fcp', 'core-web-vitals', 'css']} />
+</BaseLayout>
