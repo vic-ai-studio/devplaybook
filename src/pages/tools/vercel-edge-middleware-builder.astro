@@ -1,0 +1,284 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+import AdUnit from '../../components/AdUnit.astro';
+
+const faq = [
+  { question: "What is Vercel Edge Middleware?", answer: "Vercel Edge Middleware runs before a request is processed at the edge (CDN layer), enabling you to modify requests/responses without hitting your origin server. Common uses include authentication checks, geolocation redirects, A/B testing, bot protection, header manipulation, and rewriting paths. It's written in TypeScript, runs on the V8 edge runtime, and is defined in middleware.ts at the project root." },
+  { question: "What is the matcher config in Vercel middleware?", answer: "The matcher config restricts which routes trigger your middleware. Without a matcher, middleware runs on every request (including static files, _next/, and API routes). Use matcher to target specific paths: `['/api/:path*']` for all API routes, `['/((?!_next|favicon).*)']` to exclude Next.js internals, or `['/dashboard/:path*', '/profile']` for specific sections. Matchers support regex via (?regex) syntax." },
+  { question: "Can Vercel Edge Middleware access Node.js APIs?", answer: "No. Edge Middleware runs on the V8 edge runtime (not Node.js), which means no Node.js built-ins (no fs, no crypto module from Node.js, no net). You get Web APIs: fetch(), Request, Response, URL, Headers, crypto.subtle (Web Crypto), TextEncoder/Decoder, and Vercel-specific helpers like geolocation. Use next/server's NextRequest and NextResponse for Vercel-specific functionality." },
+  { question: "How do I handle authentication in Vercel Edge Middleware?", answer: "Common pattern: read the session cookie or Authorization header, verify a JWT using Web Crypto (crypto.subtle.verify), and either continue with NextResponse.next() or redirect to login with NextResponse.redirect(). For complex auth, call a lightweight auth API endpoint from middleware. Avoid database calls in middleware — too slow and complex for the edge runtime." },
+  { question: "What is the difference between middleware.ts and API routes?", answer: "middleware.ts runs at the edge before routing occurs — it's for fast, lightweight operations (auth checks, redirects, header manipulation) with no cold starts. API routes (/api/*) run in Node.js serverless functions after routing, supporting full Node.js capabilities, database connections, and heavier compute. Use middleware for gating/redirecting; use API routes for business logic." },
+];
+---
+
+<BaseLayout
+  title="Vercel Edge Middleware Builder — Generate middleware.ts with Matcher Configs"
+  description="Generate Vercel Edge Middleware (middleware.ts) with custom matcher patterns. Add auth checks, redirects, geolocation, A/B testing, and header manipulation. Copy ready-to-use TypeScript code. Free tool."
+  tool="vercel edge middleware builder, middleware.ts generator, vercel middleware matcher, next.js middleware generator, edge middleware typescript"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Vercel Edge Middleware Builder",
+    "url": "https://devplaybook.cc/tools/vercel-edge-middleware-builder",
+    "description": "Generate Vercel Edge Middleware (middleware.ts) with custom matcher configs.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Vercel Edge Middleware Builder</h1>
+  <p class="text-text-muted mb-4">Generate <code class="bg-surface px-1 rounded text-xs">middleware.ts</code> for Vercel / Next.js with custom matcher patterns. Add auth, geolocation, A/B testing, rate limiting hints, and header manipulation logic.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Matcher config builder</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Logic presets</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> TypeScript output</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Copy to clipboard</span>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <div class="space-y-4">
+      <!-- Matcher Config -->
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="text-sm font-semibold">Matcher Patterns</h2>
+          <button id="addMatcher" class="text-xs text-primary hover:text-primary/80">+ Add</button>
+        </div>
+        <div class="mb-2">
+          <select id="matcherPreset" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary">
+            <option value="">— Select a preset —</option>
+            <option value="/api/:path*">All API routes (/api/:path*)</option>
+            <option value="/dashboard/:path*">Dashboard section</option>
+            <option value="/admin/:path*">Admin section</option>
+            <option value="/((?!_next|favicon|public).*)">All except Next.js internals</option>
+            <option value="/((?!_next/static|_next/image|favicon.ico).*)">All except static assets</option>
+            <option value="/blog/:path*">Blog section</option>
+            <option value="custom">Custom pattern...</option>
+          </select>
+        </div>
+        <div id="customMatcherRow" class="mb-2 hidden">
+          <input id="customMatcher" type="text" placeholder="e.g. /protected/:path*" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary" />
+        </div>
+        <button id="applyMatcher" class="w-full px-3 py-1.5 bg-surface border border-border rounded text-xs hover:border-primary transition-colors">Add Matcher</button>
+        <div id="matcherList" class="mt-2 space-y-1"></div>
+      </div>
+
+      <!-- Logic Blocks -->
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <h2 class="text-sm font-semibold mb-3">Middleware Logic</h2>
+        <div class="space-y-2">
+          <label class="flex items-start gap-2 cursor-pointer text-sm">
+            <input type="checkbox" id="logicAuth" class="accent-primary mt-0.5" />
+            <div><span class="font-medium">JWT Auth Check</span><br/><span class="text-xs text-text-muted">Verify Bearer token, redirect to /login if invalid</span></div>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer text-sm">
+            <input type="checkbox" id="logicGeo" class="accent-primary mt-0.5" />
+            <div><span class="font-medium">Geolocation Redirect</span><br/><span class="text-xs text-text-muted">Redirect based on country code (e.g. block certain regions)</span></div>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer text-sm">
+            <input type="checkbox" id="logicAB" class="accent-primary mt-0.5" />
+            <div><span class="font-medium">A/B Testing</span><br/><span class="text-xs text-text-muted">Split traffic 50/50 to /variant-a or /variant-b paths</span></div>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer text-sm">
+            <input type="checkbox" id="logicHeaders" class="accent-primary mt-0.5" />
+            <div><span class="font-medium">Security Headers</span><br/><span class="text-xs text-text-muted">Add CSP, X-Frame-Options, X-Content-Type-Options headers</span></div>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer text-sm">
+            <input type="checkbox" id="logicLocale" class="accent-primary mt-0.5" />
+            <div><span class="font-medium">Locale Detection</span><br/><span class="text-xs text-text-muted">Rewrite based on Accept-Language header</span></div>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer text-sm">
+            <input type="checkbox" id="logicBot" class="accent-primary mt-0.5" />
+            <div><span class="font-medium">Bot Detection</span><br/><span class="text-xs text-text-muted">Return 403 for known bot user agents</span></div>
+          </label>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-lg p-4">
+        <h2 class="text-sm font-semibold mb-2">Options</h2>
+        <div class="space-y-2 text-sm">
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Login redirect path</label>
+            <input id="loginPath" type="text" value="/login" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Cookie name (auth)</label>
+            <input id="cookieName" type="text" value="session" class="w-full bg-surface border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-bg-card border border-border rounded-lg p-4">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-semibold">Generated middleware.ts</h2>
+        <button id="copyBtn" class="text-xs px-3 py-1 bg-primary text-white rounded hover:bg-primary/90">Copy</button>
+      </div>
+      <pre id="output" class="text-xs font-mono bg-surface rounded p-3 overflow-x-auto whitespace-pre-wrap text-text min-h-96"></pre>
+    </div>
+  </div>
+
+  <AdUnit slot="auto" format="auto" label="Advertisement" />
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Vercel Edge Middleware Builder" relatedTags={['vercel', 'nextjs', 'edge', 'middleware', 'typescript', 'serverless']} />
+</BaseLayout>
+
+<script is:inline>
+(function() {
+  let matchers = [];
+
+  function renderMatchers() {
+    const el = document.getElementById('matcherList');
+    if (matchers.length === 0) { el.innerHTML = '<p class="text-xs text-text-muted italic">No matchers — middleware runs on all routes.</p>'; return; }
+    el.innerHTML = matchers.map((m, i) => `
+      <div class="flex items-center justify-between bg-surface rounded px-2 py-1 text-xs">
+        <code class="text-primary">${m}</code>
+        <button onclick="removeMatcher(${i})" class="text-red-400 hover:text-red-300">✕</button>
+      </div>`).join('');
+  }
+
+  window.removeMatcher = function(i) { matchers.splice(i, 1); renderMatchers(); generate(); };
+
+  document.getElementById('matcherPreset').addEventListener('change', function() {
+    document.getElementById('customMatcherRow').classList.toggle('hidden', this.value !== 'custom');
+  });
+
+  document.getElementById('applyMatcher').addEventListener('click', () => {
+    const sel = document.getElementById('matcherPreset').value;
+    const val = sel === 'custom' ? document.getElementById('customMatcher').value.trim() : sel;
+    if (val && !matchers.includes(val)) { matchers.push(val); renderMatchers(); generate(); }
+  });
+
+  function generate() {
+    const auth = document.getElementById('logicAuth').checked;
+    const geo = document.getElementById('logicGeo').checked;
+    const ab = document.getElementById('logicAB').checked;
+    const headers = document.getElementById('logicHeaders').checked;
+    const locale = document.getElementById('logicLocale').checked;
+    const bot = document.getElementById('logicBot').checked;
+    const loginPath = document.getElementById('loginPath').value || '/login';
+    const cookieName = document.getElementById('cookieName').value || 'session';
+
+    const imports = ["import { NextRequest, NextResponse } from 'next/server';"];
+    const body = [];
+
+    if (bot) {
+      body.push(`  // Bot detection
+  const ua = request.headers.get('user-agent') || '';
+  const BOT_PATTERNS = ['googlebot', 'bingbot', 'slurp', 'DotBot', 'SemrushBot', 'AhrefsBot'];
+  const isBot = BOT_PATTERNS.some(p => ua.toLowerCase().includes(p.toLowerCase()));
+  if (isBot) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }`);
+    }
+
+    if (auth) {
+      body.push(`  // JWT auth check
+  const token = request.cookies.get('${cookieName}')?.value
+    || request.headers.get('authorization')?.replace('Bearer ', '');
+
+  if (!token) {
+    const loginUrl = new URL('${loginPath}', request.url);
+    loginUrl.searchParams.set('from', request.nextUrl.pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // Verify JWT using Web Crypto (edge-compatible)
+  try {
+    const [header, payload] = token.split('.');
+    const decoded = JSON.parse(atob(payload));
+    if (decoded.exp && decoded.exp * 1000 < Date.now()) {
+      return NextResponse.redirect(new URL('${loginPath}', request.url));
+    }
+    // TODO: verify signature with crypto.subtle.verify for production
+  } catch {
+    return NextResponse.redirect(new URL('${loginPath}', request.url));
+  }`);
+    }
+
+    if (geo) {
+      body.push(`  // Geolocation check
+  const country = request.geo?.country || request.headers.get('x-vercel-ip-country') || 'US';
+  const BLOCKED_COUNTRIES = ['XX', 'YY']; // Replace with actual country codes
+  if (BLOCKED_COUNTRIES.includes(country)) {
+    return new NextResponse('Service not available in your region.', { status: 451 });
+  }`);
+    }
+
+    if (locale) {
+      body.push(`  // Locale detection
+  const acceptLang = request.headers.get('accept-language') || 'en';
+  const locale = acceptLang.split(',')[0].split('-')[0];
+  const SUPPORTED_LOCALES = ['en', 'zh', 'ja', 'ko', 'fr', 'de', 'es'];
+  const pathname = request.nextUrl.pathname;
+
+  if (!SUPPORTED_LOCALES.some(l => pathname.startsWith(\`/\${l}/\`) || pathname === \`/\${l}\`)) {
+    const detectedLocale = SUPPORTED_LOCALES.includes(locale) ? locale : 'en';
+    return NextResponse.rewrite(new URL(\`/\${detectedLocale}\${pathname}\`, request.url));
+  }`);
+    }
+
+    if (ab) {
+      body.push(`  // A/B testing (50/50 split)
+  const abCookie = request.cookies.get('ab-variant')?.value;
+  const variant = abCookie || (Math.random() < 0.5 ? 'a' : 'b');
+  const url = request.nextUrl.clone();
+  url.pathname = \`/variant-\${variant}\${request.nextUrl.pathname}\`;
+  const response = NextResponse.rewrite(url);
+  if (!abCookie) {
+    response.cookies.set('ab-variant', variant, { maxAge: 60 * 60 * 24 * 7 }); // 7 days
+  }
+  return response;`);
+    }
+
+    const responseBlock = ab ? '' : `
+  const response = NextResponse.next();`;
+
+    const headerBlock = headers ? `
+  // Security headers
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  response.headers.set(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;"
+  );` : '';
+
+    const returnBlock = !ab ? `
+  return response;` : '';
+
+    const matcherConfig = matchers.length > 0
+      ? `export const config = {\n  matcher: [\n${matchers.map(m => `    '${m}'`).join(',\n')}\n  ],\n};`
+      : `// No matcher — runs on all routes\n// export const config = { matcher: ['/api/:path*'] };`;
+
+    const fnBody = [...body, responseBlock, headerBlock, returnBlock].filter(Boolean).join('\n\n');
+    const code = `${imports.join('\n')}
+
+export function middleware(request: NextRequest) {
+${fnBody || '  return NextResponse.next();'}
+}
+
+${matcherConfig}`;
+
+    document.getElementById('output').textContent = code;
+  }
+
+  const checkboxes = ['logicAuth','logicGeo','logicAB','logicHeaders','logicLocale','logicBot'];
+  checkboxes.forEach(id => document.getElementById(id).addEventListener('change', generate));
+  ['loginPath','cookieName'].forEach(id => document.getElementById(id).addEventListener('input', generate));
+
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('output').textContent);
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  });
+
+  renderMatchers();
+  generate();
+})();
+</script>
