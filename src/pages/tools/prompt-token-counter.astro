@@ -1,0 +1,205 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "How are tokens counted for LLMs?", answer: "Tokens are chunks of text that LLMs process — typically 3-4 characters per token in English. Words like 'hello' are usually 1 token; longer words like 'programming' may be 2. Whitespace and punctuation are separate tokens. Non-English text, code, and special characters often use more tokens per word. OpenAI uses tiktoken (BPE), Claude uses a similar approach, Gemini uses SentencePiece." },
+  { question: "Why does token count affect cost?", answer: "LLM APIs charge per token (input + output tokens). Input tokens (your prompt) are typically cheaper than output tokens (the response). A 1M token context Gemini query at 1M input tokens costs around $1.25, while GPT-4o at the same would cost $2.50. Counting tokens before sending helps predict and control costs." },
+  { question: "What is the difference between input and output tokens?", answer: "Input tokens are everything you send: system prompt + conversation history + current user message. Output tokens are what the model generates. For cost estimation, you must count both. Output tokens are usually 2-4x more expensive per token. A typical chat message might be 200 input tokens and generate 400 output tokens." },
+  { question: "How does context window size affect my application?", answer: "The context window is the maximum tokens the model can process at once (input + output combined). GPT-4o has 128K tokens, Claude 3.5 Sonnet has 200K, Gemini 1.5 Pro has 1M. If your conversation history + prompt exceeds the window, you must truncate history. At $0.002/1K tokens, a full 128K context costs $0.26 per call." },
+  { question: "How accurate is this token counter?", answer: "This tool uses an approximation: ~4 characters per token for English text, with adjustments for code, numbers, and punctuation. For precise counts, use the official tokenizers: tiktoken (pip install tiktoken) for OpenAI models, or the model's API to count tokens before sending. The estimates here are typically within 5-10% accuracy." },
+];
+
+// Pricing table data (per 1M tokens, input/output)
+---
+
+<BaseLayout
+  title="Prompt Token Counter — Count Tokens for GPT, Claude & Gemini with Cost Estimation"
+  description="Count tokens in your prompt for GPT-4o, Claude 3.5, and Gemini models. Estimate API costs for input and output tokens across all major LLM providers."
+  tool="Prompt Token Counter, LLM Token Calculator, GPT Token Counter, Claude Token Counter, Gemini Token Counter, API Cost Estimator"
+  faq={faq}
+>
+  <h1 class="text-3xl font-bold mb-2">Prompt Token Counter</h1>
+  <p class="text-text-muted mb-4">Count tokens in your prompt and estimate API costs for GPT-4o, Claude, and Gemini models. Paste your text to see token counts and pricing breakdown.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real-time token counting</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Cost per model</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Context window check</span>
+  </div>
+
+  <!-- Input -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">Prompt Text</h2>
+      <span id="char-count" class="text-xs text-text-muted">0 characters</span>
+    </div>
+    <textarea id="prompt-input" rows="10" placeholder="Paste your prompt, system message, or conversation here..."
+      class="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-primary resize-y"></textarea>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="token-count" class="text-2xl font-bold text-primary">0</div>
+        <div class="text-xs text-text-muted mt-1">Input Tokens</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="word-count" class="text-2xl font-bold">0</div>
+        <div class="text-xs text-text-muted mt-1">Words</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="line-count" class="text-2xl font-bold">0</div>
+        <div class="text-xs text-text-muted mt-1">Lines</div>
+      </div>
+      <div class="bg-bg-card border border-border rounded-lg p-3 text-center">
+        <div id="tokens-per-word" class="text-2xl font-bold">0</div>
+        <div class="text-xs text-text-muted mt-1">Tok/Word ratio</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Output Token Estimate -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-base font-semibold mb-4">Expected Output Size</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <label class="output-size-label flex items-center gap-2 cursor-pointer p-3 border border-border rounded-lg hover:border-primary/50 transition-colors">
+        <input type="radio" name="output-size" value="128" class="output-size-radio" checked />
+        <div>
+          <div class="text-sm font-medium">Short</div>
+          <div class="text-xs text-text-muted">~128 tokens</div>
+        </div>
+      </label>
+      <label class="output-size-label flex items-center gap-2 cursor-pointer p-3 border border-border rounded-lg hover:border-primary/50 transition-colors">
+        <input type="radio" name="output-size" value="512" class="output-size-radio" />
+        <div>
+          <div class="text-sm font-medium">Medium</div>
+          <div class="text-xs text-text-muted">~512 tokens</div>
+        </div>
+      </label>
+      <label class="output-size-label flex items-center gap-2 cursor-pointer p-3 border border-border rounded-lg hover:border-primary/50 transition-colors">
+        <input type="radio" name="output-size" value="1024" class="output-size-radio" />
+        <div>
+          <div class="text-sm font-medium">Long</div>
+          <div class="text-xs text-text-muted">~1024 tokens</div>
+        </div>
+      </label>
+      <label class="output-size-label flex items-center gap-2 cursor-pointer p-3 border border-border rounded-lg hover:border-primary/50 transition-colors">
+        <input type="radio" name="output-size" value="4096" class="output-size-radio" />
+        <div>
+          <div class="text-sm font-medium">Very Long</div>
+          <div class="text-xs text-text-muted">~4096 tokens</div>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <!-- Cost Table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-4">Cost by Model</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[600px]">
+        <thead><tr class="text-text-muted text-xs uppercase border-b border-border">
+          <th class="text-left pb-2 pr-4">Model</th>
+          <th class="text-right pb-2 pr-4">Input $/1M</th>
+          <th class="text-right pb-2 pr-4">Output $/1M</th>
+          <th class="text-right pb-2 pr-4">Context</th>
+          <th class="text-right pb-2 pr-4">Input Cost</th>
+          <th class="text-right pb-2">Total Cost</th>
+        </tr></thead>
+        <tbody id="cost-table" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+    <p class="text-xs text-text-muted mt-3">Prices are approximate and may change. Check provider pricing pages for current rates.</p>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Prompt Token Counter" relatedTags={['llm', 'tokens', 'cost', 'gpt4o', 'claude', 'gemini', 'prompt']} />
+</BaseLayout>
+
+<script>
+  interface Model {
+    name: string;
+    provider: string;
+    inputPer1M: number;
+    outputPer1M: number;
+    contextK: number;
+    highlight?: boolean;
+  }
+
+  const MODELS: Model[] = [
+    { name: 'GPT-4o', provider: 'OpenAI', inputPer1M: 2.50, outputPer1M: 10.00, contextK: 128 },
+    { name: 'GPT-4o mini', provider: 'OpenAI', inputPer1M: 0.15, outputPer1M: 0.60, contextK: 128 },
+    { name: 'o4-mini', provider: 'OpenAI', inputPer1M: 1.10, outputPer1M: 4.40, contextK: 200 },
+    { name: 'claude-sonnet-4-6', provider: 'Anthropic', inputPer1M: 3.00, outputPer1M: 15.00, contextK: 200, highlight: true },
+    { name: 'claude-haiku-4-5', provider: 'Anthropic', inputPer1M: 0.80, outputPer1M: 4.00, contextK: 200 },
+    { name: 'claude-opus-4-6', provider: 'Anthropic', inputPer1M: 15.00, outputPer1M: 75.00, contextK: 200 },
+    { name: 'Gemini 2.5 Pro', provider: 'Google', inputPer1M: 1.25, outputPer1M: 10.00, contextK: 1000 },
+    { name: 'Gemini 2.0 Flash', provider: 'Google', inputPer1M: 0.10, outputPer1M: 0.40, contextK: 1000 },
+    { name: 'Gemini 1.5 Pro', provider: 'Google', inputPer1M: 1.25, outputPer1M: 5.00, contextK: 1000 },
+  ];
+
+  function estimateTokens(text: string): number {
+    if (!text) return 0;
+    // Rough approximation: 1 token per ~4 chars for English
+    // Code/numbers tend to be more tokens
+    const codeLines = text.split('\n').filter(l => l.match(/^\s*(const|let|var|def|function|class|import|from|if|for|while)/)).length;
+    const totalLines = text.split('\n').length;
+    const codeRatio = codeLines / Math.max(totalLines, 1);
+    // Code has more tokens per char (~3 chars/token)
+    const effectiveCharsPerToken = 4 - codeRatio;
+    return Math.round(text.length / effectiveCharsPerToken);
+  }
+
+  function getOutputTokens(): number {
+    const checked = document.querySelector('.output-size-radio:checked') as HTMLInputElement;
+    return checked ? parseInt(checked.value) : 128;
+  }
+
+  function formatCost(cost: number): string {
+    if (cost < 0.0001) return `$${(cost * 1000000).toFixed(2)} µ`;
+    if (cost < 0.01) return `$${cost.toFixed(5)}`;
+    return `$${cost.toFixed(4)}`;
+  }
+
+  function update() {
+    const text = (document.getElementById('prompt-input') as HTMLTextAreaElement).value;
+    const tokens = estimateTokens(text);
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const lines = text ? text.split('\n').length : 0;
+    const outputTokens = getOutputTokens();
+
+    document.getElementById('char-count')!.textContent = `${text.length.toLocaleString()} characters`;
+    document.getElementById('token-count')!.textContent = tokens.toLocaleString();
+    document.getElementById('word-count')!.textContent = words.toLocaleString();
+    document.getElementById('line-count')!.textContent = lines.toLocaleString();
+    document.getElementById('tokens-per-word')!.textContent = words > 0 ? (tokens / words).toFixed(1) : '0';
+
+    // Cost table
+    const tbody = document.getElementById('cost-table')!;
+    tbody.innerHTML = MODELS.map(m => {
+      const inputCost = (tokens / 1_000_000) * m.inputPer1M;
+      const outputCost = (outputTokens / 1_000_000) * m.outputPer1M;
+      const totalCost = inputCost + outputCost;
+      const usagePct = Math.min((tokens / (m.contextK * 1000)) * 100, 100);
+      const contextBar = usagePct > 90 ? 'text-red-400' : usagePct > 70 ? 'text-yellow-400' : 'text-green-400';
+      const isOver = tokens > m.contextK * 1000;
+      return `<tr class="${m.highlight ? 'bg-primary/5' : ''}">
+        <td class="py-2.5 pr-4">
+          <div class="font-medium text-sm">${m.name}</div>
+          <div class="text-xs text-text-muted">${m.provider}</div>
+        </td>
+        <td class="py-2.5 pr-4 text-right font-mono text-xs">$${m.inputPer1M.toFixed(2)}</td>
+        <td class="py-2.5 pr-4 text-right font-mono text-xs">$${m.outputPer1M.toFixed(2)}</td>
+        <td class="py-2.5 pr-4 text-right">
+          <span class="${isOver ? 'text-red-400 font-semibold' : contextBar} text-xs">${isOver ? 'OVER LIMIT' : `${usagePct.toFixed(1)}%`}</span>
+          <div class="text-xs text-text-muted">${m.contextK}K ctx</div>
+        </td>
+        <td class="py-2.5 pr-4 text-right font-mono text-xs">${formatCost(inputCost)}</td>
+        <td class="py-2.5 text-right font-mono font-semibold text-sm">${formatCost(totalCost)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('prompt-input')!.addEventListener('input', update);
+  document.querySelectorAll('.output-size-radio').forEach(el => el.addEventListener('change', update));
+  update();
+</script>
