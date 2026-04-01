@@ -1,0 +1,220 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is Qdrant and what makes it stand out?",
+    answer: "Qdrant is a high-performance, open-source vector search engine written in Rust. Its key differentiators are: rich payload (metadata) filtering with an advanced filter language, support for both dense and sparse vectors in the same collection (true hybrid search), vector quantization (scalar, product, binary) for 4–32x storage reduction, and gRPC for low-latency production APIs. It runs as a single binary, Docker container, or Kubernetes cluster."
+  },
+  {
+    question: "What is payload filtering in Qdrant?",
+    answer: "Qdrant attaches a JSON payload to each vector point. At search time, you can filter by any payload field using conditions like Must (AND), Should (OR), MustNot (NOT), and operators like Range, Match, IsNull, IsEmpty, and GeoRadius. Filtering is integrated into the HNSW graph traversal, not post-filtered, so it scales efficiently even with highly selective filters."
+  },
+  {
+    question: "What is vector quantization in Qdrant?",
+    answer: "Quantization compresses vectors to reduce memory and speed up search. Scalar quantization converts float32 to int8 (4x smaller). Product quantization uses codebook compression for even smaller size. Binary quantization converts each dimension to a single bit — up to 32x compression with ~2-5% accuracy drop. Quantization is transparent: you enable it per-collection and Qdrant handles the rest at index time."
+  },
+  {
+    question: "How do sparse vectors work in Qdrant?",
+    answer: "Sparse vectors (like SPLADE or BM25 term weights) have most values as zero. Qdrant stores them efficiently and can search sparse collections using dot product. By combining a dense vector collection with a sparse vector collection and using Reciprocal Rank Fusion, you get full hybrid search (semantic + keyword). This is the recommended approach for production RAG with mixed query types."
+  },
+  {
+    question: "Qdrant Cloud vs self-hosted: which is better?",
+    answer: "Self-hosted Qdrant is free, gives you full hardware control, and is ideal when data residency or cost-at-scale matters. Qdrant Cloud is the managed SaaS version — free tier (1GB), auto-scaling, no infra work. For teams without DevOps capacity or early-stage products, Qdrant Cloud removes friction. For >50M vectors or enterprise security requirements, self-hosted on your own VPC is more cost-effective long term."
+  },
+  {
+    question: "What index types does Qdrant support?",
+    answer: "Qdrant primarily uses HNSW (Hierarchical Navigable Small World) for dense vector indexing — it provides excellent recall (>0.95) with fast search. You can tune m (graph connectivity) and ef_construct (build-time accuracy) for your precision vs. speed tradeoff. Qdrant also supports flat (brute-force) indexing for small collections where exact search is needed. For sparse vectors, an inverted index is used automatically."
+  },
+];
+---
+
+<BaseLayout
+  title="Qdrant: High-Performance Vector Search Engine & Database"
+  description="Complete guide to Qdrant vector search engine — payload filtering, dense+sparse vectors, quantization, collection config, batch upsert, filtered search, Qdrant Cloud vs self-hosted, and comparison with Pinecone and Weaviate."
+  tool="Qdrant, vector search, payload filtering, sparse vectors, Rust vector DB"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Qdrant: High-Performance Vector Search Engine & Database","url":"https://devplaybook.cc/tools/qdrant","description":"Complete Qdrant guide — payload filtering, sparse+dense vectors, quantization, collection setup, and self-hosted vs cloud deployment."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Qdrant: High-Performance Vector Search Engine &amp; Database</h1>
+  <p class="text-text-muted mb-6">Qdrant is a production-grade, open-source vector search engine built in Rust for maximum performance. It supports rich payload filtering, hybrid search via sparse+dense vectors, vector quantization for cost reduction, and scales from a single Docker container to a distributed cluster. The go-to choice for teams who want performance, flexibility, and control.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Payload filtering (no post-filter)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dense + sparse hybrid search</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Vector quantization (4–32x)</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> gRPC + REST API</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Rust-powered, open source</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- Collection Setup -->
+  <section class="mb-8">
+    <h2 class="text-2xl font-bold mb-4">Creating a Collection &amp; Configuring HNSW</h2>
+    <p class="text-text-muted mb-4">Collections in Qdrant hold vectors and their payloads. Configure HNSW parameters and quantization at creation time.</p>
+    <pre class="bg-bg-card border border-border rounded-xl p-4 text-sm font-mono overflow-x-auto mb-4"><code class="text-green-400">pip install qdrant-client openai
+
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    VectorParams, Distance, HnswConfigDiff,
+    ScalarQuantizationConfig, ScalarType, QuantizationConfig
+)
+
+# Connect to self-hosted or Qdrant Cloud
+client = QdrantClient(url="http://localhost:6333")
+# client = QdrantClient(url="https://YOUR.qdrant.io", api_key="YOUR_KEY")
+
+# Create a collection with HNSW + scalar quantization
+client.create_collection(
+    collection_name="articles",
+    vectors_config=VectorParams(
+        size=1536,               # must match embedding model
+        distance=Distance.COSINE
+    ),
+    hnsw_config=HnswConfigDiff(
+        m=16,                    # graph connections per node (higher = better recall)
+        ef_construct=200,        # build-time search width
+        on_disk=False            # set True for large collections to save RAM
+    ),
+    quantization_config=QuantizationConfig(
+        scalar=ScalarQuantizationConfig(
+            type=ScalarType.INT8,   # 4x memory reduction
+            quantile=0.99,
+            always_ram=True         # keep quantized index in RAM for speed
+        )
+    )
+)
+print(client.get_collection("articles"))</code></pre>
+  </section>
+
+  <!-- Batch Upsert + Filtered Search -->
+  <section class="mb-8">
+    <h2 class="text-2xl font-bold mb-4">Batch Upsert &amp; Filtered Vector Search</h2>
+    <p class="text-text-muted mb-4">Upsert vectors with payloads in batches, then search with complex payload filters.</p>
+    <pre class="bg-bg-card border border-border rounded-xl p-4 text-sm font-mono overflow-x-auto mb-4"><code class="text-green-400">import openai
+from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue, Range
+
+oa = openai.OpenAI()
+
+docs = [
+    &#123;"id": 1, "text": "RAG improves LLM accuracy with external knowledge", "category": "ai",  "year": 2024&#125;,
+    &#123;"id": 2, "text": "Qdrant supports scalar quantization",               "category": "db",  "year": 2024&#125;,
+    &#123;"id": 3, "text": "Sparse vectors enable keyword-aware search",         "category": "ai",  "year": 2023&#125;,
+]
+
+# Generate embeddings
+texts = [d["text"] for d in docs]
+resp = oa.embeddings.create(model="text-embedding-3-small", input=texts)
+embeddings = [r.embedding for r in resp.data]
+
+# Batch upsert
+points = [
+    PointStruct(
+        id=d["id"],
+        vector=emb,
+        payload=&#123;"text": d["text"], "category": d["category"], "year": d["year"]&#125;
+    )
+    for d, emb in zip(docs, embeddings)
+]
+client.upsert(collection_name="articles", points=points)
+
+# Filtered search — only ai category, year >= 2024
+query_vec = oa.embeddings.create(
+    model="text-embedding-3-small",
+    input=["how does retrieval augmented generation work"]
+).data[0].embedding
+
+results = client.search(
+    collection_name="articles",
+    query_vector=query_vec,
+    query_filter=Filter(
+        must=[
+            FieldCondition(key="category", match=MatchValue(value="ai")),
+            FieldCondition(key="year", range=Range(gte=2024))
+        ]
+    ),
+    limit=3,
+    with_payload=True
+)
+for r in results:
+    print(f"score=&#123;r.score:.4f&#125; | &#123;r.payload['text']&#125;")</code></pre>
+  </section>
+
+  <!-- Sparse + Dense Hybrid -->
+  <section class="mb-8">
+    <h2 class="text-2xl font-bold mb-4">Hybrid Search: Sparse + Dense Vectors</h2>
+    <p class="text-text-muted mb-4">Combine dense semantic vectors with sparse keyword vectors in the same collection for true hybrid search.</p>
+    <pre class="bg-bg-card border border-border rounded-xl p-4 text-sm font-mono overflow-x-auto mb-4"><code class="text-green-400">from qdrant_client.models import (
+    SparseVectorParams, SparseIndexParams,
+    SparseVector, NamedSparseVector, NamedVector,
+    SearchRequest, Prefetch, FusionQuery, Fusion
+)
+
+# Create collection with both dense and sparse vectors
+client.create_collection(
+    collection_name="hybrid_docs",
+    vectors_config=&#123;"dense": VectorParams(size=1536, distance=Distance.COSINE)&#125;,
+    sparse_vectors_config=&#123;"sparse": SparseVectorParams(
+        index=SparseIndexParams(on_disk=False)
+    )&#125;
+)
+
+# Upsert with both vector types (sparse = BM25/SPLADE indices+values)
+client.upsert(
+    collection_name="hybrid_docs",
+    points=[PointStruct(
+        id=1,
+        vector=&#123;
+            "dense": dense_embedding,
+            "sparse": SparseVector(indices=[42, 100, 300], values=[0.8, 0.5, 0.3])
+        &#125;,
+        payload=&#123;"text": "Qdrant hybrid search guide"&#125;
+    )]
+)
+
+# Hybrid query using Reciprocal Rank Fusion
+results = client.query_points(
+    collection_name="hybrid_docs",
+    prefetch=[
+        Prefetch(query=NamedVector(name="dense", vector=dense_query), limit=20),
+        Prefetch(query=NamedSparseVector(name="sparse", vector=sparse_query), limit=20),
+    ],
+    query=FusionQuery(fusion=Fusion.RRF),   # Reciprocal Rank Fusion
+    limit=5
+)</code></pre>
+  </section>
+
+  <!-- Comparison Table -->
+  <section class="mb-8">
+    <h2 class="text-2xl font-bold mb-4">Qdrant vs Pinecone vs Weaviate vs Milvus</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[640px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-3 pr-4 font-medium">Feature</th>
+            <th class="text-left pb-3 pr-4 font-medium">Qdrant</th>
+            <th class="text-left pb-3 pr-4 font-medium">Pinecone</th>
+            <th class="text-left pb-3 pr-4 font-medium">Weaviate</th>
+            <th class="text-left pb-3 font-medium">Milvus</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted">
+          <tr><td class="py-3 pr-4 font-medium text-text">Language</td><td class="py-3 pr-4 text-green-500">Rust</td><td class="py-3 pr-4">Proprietary</td><td class="py-3 pr-4">Go</td><td class="py-3">Go + C++</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Quantization</td><td class="py-3 pr-4 text-green-500">Scalar/Product/Binary</td><td class="py-3 pr-4">No</td><td class="py-3 pr-4">No</td><td class="py-3">Yes (IVF)</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Hybrid search</td><td class="py-3 pr-4 text-green-500">Sparse + dense (RRF)</td><td class="py-3 pr-4">Limited</td><td class="py-3 pr-4 text-green-500">BM25 + vector</td><td class="py-3">Yes</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Payload filtering</td><td class="py-3 pr-4 text-green-500">In-graph (fast)</td><td class="py-3 pr-4">Yes</td><td class="py-3 pr-4">Yes</td><td class="py-3">Yes</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Open source</td><td class="py-3 pr-4 text-green-500">Yes (Apache 2.0)</td><td class="py-3 pr-4">No</td><td class="py-3 pr-4 text-green-500">Yes</td><td class="py-3 text-green-500">Yes</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Distributed</td><td class="py-3 pr-4">Yes (cluster mode)</td><td class="py-3 pr-4">Yes (managed)</td><td class="py-3 pr-4">Yes</td><td class="py-3 text-green-500">Yes (native)</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Best for</td><td class="py-3 pr-4">Perf + flexibility</td><td class="py-3 pr-4">Managed simplicity</td><td class="py-3 pr-4">Hybrid RAG</td><td class="py-3">Billion-scale</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Qdrant Vector Search Engine Guide" relatedTags={['ai', 'vector-database', 'embeddings', 'rag', 'semantic-search', 'hybrid-search']} />
+</BaseLayout>

@@ -1,0 +1,203 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  {
+    question: "What is pgvector and why use it?",
+    answer: "pgvector is a PostgreSQL extension that adds a native vector column type and similarity search operators. It lets you store embeddings directly in your existing Postgres database alongside relational data, enabling vector search with full SQL — JOINs, WHERE filters, CTEs, transactions, and RLS (Row Level Security). If you already use PostgreSQL, pgvector is often the fastest path to production vector search."
+  },
+  {
+    question: "What is the difference between IVFFlat and HNSW indexes in pgvector?",
+    answer: "IVFFlat divides vectors into 'lists' (clusters) and searches only the nearest clusters. It has faster build time and lower memory use but requires lists to be set at creation. HNSW (added in pgvector 0.5.0) builds a navigable small world graph — it has better recall (higher accuracy), faster queries, but longer build time and higher memory usage. For most production use cases, HNSW is now the recommended choice."
+  },
+  {
+    question: "What distance operators does pgvector support?",
+    answer: "pgvector provides three operators: <-> for L2 (Euclidean) distance, <#> for negative inner product (use for cosine-normalized vectors or dot product similarity), and <=> for cosine distance. Cosine distance (<=> operator) is most commonly used for text embeddings from OpenAI, Cohere, etc. Your ORDER BY clause should use the same metric your embedding model was trained with."
+  },
+  {
+    question: "How many vectors can pgvector handle?",
+    answer: "pgvector handles millions of vectors well on adequate hardware. The main constraint is that HNSW indexes are loaded into shared_buffers memory during search. For 1M vectors at 1536 dims (float32), the raw data is ~6GB; the HNSW index adds ~2-3x on top. With proper Postgres tuning (work_mem, shared_buffers), 10-50M vectors are feasible on high-memory instances. For 100M+, dedicated vector databases (Qdrant, Milvus) become more cost-efficient."
+  },
+  {
+    question: "Can I combine vector search with SQL filters in pgvector?",
+    answer: "Yes — this is pgvector's primary advantage over dedicated vector databases. You can combine <-> / <=> with any SQL WHERE clause: filter by user_id, date range, status, and then rank by similarity. For best performance with HNSW, apply pre-filters using a WHERE clause rather than post-filtering results — pgvector's iterative index scan will traverse the HNSW graph while respecting your filter."
+  },
+  {
+    question: "pgvector vs dedicated vector databases: when to choose each?",
+    answer: "Choose pgvector when: you already use PostgreSQL, your vector count is under 10-50M, you need SQL JOINs between vectors and relational data, or you want a simpler stack. Choose a dedicated vector DB (Pinecone, Qdrant, Weaviate) when: you need billion-scale search, advanced hybrid search (sparse+dense), managed infrastructure with auto-scaling, or performance-critical low-latency at very high QPS."
+  },
+];
+---
+
+<BaseLayout
+  title="pgvector: PostgreSQL Vector Extension for AI Applications"
+  description="Complete guide to pgvector — installation, vector column type, IVFFlat and HNSW indexing, cosine/L2/inner product operators, combining vector search with SQL filters, and comparison with dedicated vector databases."
+  tool="pgvector, PostgreSQL vector, vector search, SQL embeddings, pgvector HNSW"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"pgvector: PostgreSQL Vector Extension for AI Applications","url":"https://devplaybook.cc/tools/pgvector","description":"Complete pgvector guide — installation, HNSW/IVFFlat indexes, distance operators, SQL filtering, and comparison with dedicated vector databases."})} />
+
+  <h1 class="text-3xl font-bold mb-2">pgvector: PostgreSQL Vector Extension for AI Applications</h1>
+  <p class="text-text-muted mb-6">pgvector brings vector similarity search directly into PostgreSQL. Store embeddings as a native column type, create HNSW or IVFFlat indexes for fast ANN search, and combine semantic search with SQL WHERE clauses, JOINs, and transactions — all in your existing database. No new infrastructure, no new operational burden.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Native PostgreSQL extension</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HNSW &amp; IVFFlat indexes</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> SQL JOINs + vector search</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Row-level security</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Works with Supabase, Neon, RDS</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- Installation -->
+  <section class="mb-8">
+    <h2 class="text-2xl font-bold mb-4">Installation &amp; Schema Setup</h2>
+    <p class="text-text-muted mb-4">Enable the extension, create a table with a vector column, and set up HNSW indexing.</p>
+    <pre class="bg-bg-card border border-border rounded-xl p-4 text-sm font-mono overflow-x-auto mb-4"><code class="text-green-400">-- Enable pgvector extension (requires superuser or rds_superuser on RDS)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Create a documents table with an embedding column
+-- dimension must match your embedding model (OpenAI 3-small = 1536)
+CREATE TABLE documents (
+    id          BIGSERIAL PRIMARY KEY,
+    content     TEXT NOT NULL,
+    category    VARCHAR(64),
+    user_id     BIGINT REFERENCES users(id),
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    embedding   vector(1536)    -- pgvector column type
+);
+
+-- Create HNSW index for fast approximate nearest neighbor search
+-- HNSW is recommended over IVFFlat for most use cases (better recall, faster queries)
+CREATE INDEX ON documents USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+-- For L2 distance use: vector_l2_ops
+-- For inner product use: vector_ip_ops
+
+-- (Alternative) IVFFlat index — faster to build, lower memory, less accurate
+-- lists = sqrt(row_count) is a good starting point
+CREATE INDEX ON documents USING ivfflat (embedding vector_cosine_ops)
+WITH (lists = 100);</code></pre>
+  </section>
+
+  <!-- Insert + Query -->
+  <section class="mb-8">
+    <h2 class="text-2xl font-bold mb-4">Insert Embeddings &amp; Run Similarity Search</h2>
+    <p class="text-text-muted mb-4">Store OpenAI embeddings and query with cosine distance, combining with SQL filters.</p>
+    <pre class="bg-bg-card border border-border rounded-xl p-4 text-sm font-mono overflow-x-auto mb-4"><code class="text-green-400">import openai
+import psycopg2
+import json
+
+oa = openai.OpenAI()
+conn = psycopg2.connect("postgresql://user:pass@localhost/mydb")
+cur = conn.cursor()
+
+# Generate and store an embedding
+def embed(text: str) -> list[float]:
+    return oa.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    ).data[0].embedding
+
+docs = [
+    ("RAG combines retrieval with LLM generation", "ai"),
+    ("pgvector adds vector search to PostgreSQL",  "database"),
+    ("HNSW is the recommended ANN index type",     "database"),
+]
+
+for content, category in docs:
+    emb = embed(content)
+    cur.execute(
+        "INSERT INTO documents (content, category, embedding) VALUES (%s, %s, %s)",
+        (content, category, json.dumps(emb))   # psycopg2 auto-converts list to vector
+    )
+conn.commit()
+
+# Similarity search with cosine distance (<=>)
+query_emb = embed("how does retrieval augmented generation work")
+
+cur.execute("""
+    SELECT content, category,
+           embedding <=> %s::vector AS distance
+    FROM documents
+    WHERE category = 'ai'           -- SQL filter (pre-filter with HNSW iterative scan)
+    ORDER BY distance               -- nearest first
+    LIMIT 5
+""", (json.dumps(query_emb),))
+
+for row in cur.fetchall():
+    print(f"dist=&#123;row[2]:.4f&#125; | &#123;row[0]&#125;")</code></pre>
+  </section>
+
+  <!-- Advanced: JOINs and RLS -->
+  <section class="mb-8">
+    <h2 class="text-2xl font-bold mb-4">Advanced: SQL JOINs, CTEs &amp; Row-Level Security</h2>
+    <p class="text-text-muted mb-4">pgvector's biggest advantage — combine vector similarity with full SQL capabilities.</p>
+    <pre class="bg-bg-card border border-border rounded-xl p-4 text-sm font-mono overflow-x-auto mb-4"><code class="text-green-400">-- JOIN vector search with user data (pgvector's killer feature)
+SELECT
+    d.content,
+    u.name AS author,
+    d.created_at,
+    d.embedding <=> query.vec AS similarity_distance
+FROM
+    documents d
+    JOIN users u ON d.user_id = u.id,
+    (SELECT %s::vector AS vec) query   -- parameterized query vector
+WHERE
+    d.created_at > NOW() - INTERVAL '30 days'
+    AND d.category IN ('ai', 'database')
+ORDER BY
+    similarity_distance
+LIMIT 10;
+
+-- Row-Level Security for multi-tenant vector search
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation ON documents
+    USING (user_id = current_setting('app.user_id')::bigint);
+
+-- Now every query automatically filters to current user's vectors
+-- Perfect for SaaS applications with per-user document stores
+
+-- Tune HNSW search precision vs. speed at query time
+SET hnsw.ef_search = 100;   -- default 40; higher = better recall, slower
+
+-- Check index usage
+EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM documents
+ORDER BY embedding <=> '[...]'::vector LIMIT 5;</code></pre>
+  </section>
+
+  <!-- Comparison Table -->
+  <section class="mb-8">
+    <h2 class="text-2xl font-bold mb-4">pgvector vs Dedicated Vector Databases</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[640px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-3 pr-4 font-medium">Feature</th>
+            <th class="text-left pb-3 pr-4 font-medium">pgvector</th>
+            <th class="text-left pb-3 pr-4 font-medium">Pinecone</th>
+            <th class="text-left pb-3 pr-4 font-medium">Qdrant</th>
+            <th class="text-left pb-3 font-medium">Weaviate</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted">
+          <tr><td class="py-3 pr-4 font-medium text-text">SQL JOINs</td><td class="py-3 pr-4 text-green-500">Yes (full SQL)</td><td class="py-3 pr-4">No</td><td class="py-3 pr-4">No</td><td class="py-3">No</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">ACID transactions</td><td class="py-3 pr-4 text-green-500">Yes</td><td class="py-3 pr-4">No</td><td class="py-3 pr-4">No</td><td class="py-3">No</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Row-level security</td><td class="py-3 pr-4 text-green-500">Yes (Postgres RLS)</td><td class="py-3 pr-4">Namespaces</td><td class="py-3 pr-4">Payload filter</td><td class="py-3">Multi-tenancy</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Max practical scale</td><td class="py-3 pr-4">~50M vectors</td><td class="py-3 pr-4">100M+</td><td class="py-3 pr-4">100M+</td><td class="py-3">100M+</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Hybrid search</td><td class="py-3 pr-4">Manual (FTS + vector)</td><td class="py-3 pr-4">Limited</td><td class="py-3 pr-4 text-green-500">Native sparse+dense</td><td class="py-3 text-green-500">BM25 + vector</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Ops overhead</td><td class="py-3 pr-4 text-green-500">Low (existing PG)</td><td class="py-3 pr-4 text-green-500">None (managed)</td><td class="py-3 pr-4">Low–medium</td><td class="py-3">Low–medium</td></tr>
+          <tr><td class="py-3 pr-4 font-medium text-text">Best for</td><td class="py-3 pr-4">Existing PG users, SQL+vector</td><td class="py-3 pr-4">Managed prod</td><td class="py-3 pr-4">High perf self-host</td><td class="py-3">Hybrid RAG, SaaS</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="pgvector PostgreSQL Vector Extension Guide" relatedTags={['ai', 'vector-database', 'embeddings', 'rag', 'postgresql', 'database']} />
+</BaseLayout>
