@@ -1,0 +1,163 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What are the four main components of MLflow?", answer: "MLflow has four core components: MLflow Tracking (log parameters, metrics, and artifacts per run), MLflow Projects (package ML code in a reproducible format with conda/docker environments), MLflow Models (a standard format for packaging models with a flavor abstraction), and MLflow Model Registry (a centralized store to manage model lifecycle with Staging, Production, and Archived stages)." },
+  { question: "How does MLflow Tracking differ from TensorBoard?", answer: "TensorBoard is tightly coupled to TensorFlow/Keras and excels at visualizing training curves. MLflow Tracking is framework-agnostic — it works with scikit-learn, XGBoost, PyTorch, HuggingFace, and custom code. MLflow also logs arbitrary artifacts (plots, CSVs, serialized models) and supports remote backends (S3, GCS, Azure Blob) alongside a full Model Registry, which TensorBoard lacks." },
+  { question: "What is the MLflow Model Registry and when should I use it?", answer: "The Model Registry is a centralized store for managing ML model versions across their lifecycle. Use it when you have multiple model versions and need to track which version is in Staging vs Production, who approved a promotion, and what run produced the model. It integrates with CI/CD pipelines: an automated test can query models in Staging, validate them, then transition to Production via the API." },
+  { question: "Can MLflow run without a remote tracking server?", answer: "Yes. By default MLflow logs to a local ./mlruns directory — no server required. For team use, deploy an MLflow tracking server with mlflow server --backend-store-uri postgresql://... --default-artifact-root s3://my-bucket/. Clients connect by setting the MLFLOW_TRACKING_URI environment variable. MLflow Databricks also provides a fully managed tracking server." },
+  { question: "How does MLflow autolog work?", answer: "mlflow.autolog() automatically captures parameters, metrics, and model artifacts for supported libraries without any manual log calls. Call it before training: mlflow.sklearn.autolog() logs estimator params, CV metrics, and the fitted model. mlflow.pytorch.autolog() logs loss curves, optimizer state, and checkpoints. It is the fastest way to add tracking to existing training code." },
+  { question: "How do I serve a registered MLflow model?", answer: "Use mlflow models serve -m models:/MyModel/Production -p 5001. This starts a REST endpoint that accepts JSON payloads and returns predictions. For production-scale serving, use mlflow.pyfunc.load_model() inside a custom FastAPI or BentoML service, or deploy the model to SageMaker/AzureML via built-in mlflow.sagemaker.deploy()." },
+];
+---
+
+<BaseLayout
+  title="MLflow: Experiment Tracking, Model Registry & Serving Guide"
+  description="Complete MLflow guide: experiment tracking with mlflow.start_run(), logging params/metrics/artifacts, Model Registry stages, MLflow UI, and comparison with Weights & Biases and Comet ML."
+  tool="MLflow, experiment tracking, model registry, ML lifecycle, Python ML, mlflow tracking server, MLflow autolog"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"MLflow: Experiment Tracking, Model Registry & Serving Guide","url":"https://devplaybook.cc/tools/mlflow-tracking","description":"Complete MLflow guide covering experiment tracking, model registry, model serving, and MLflow vs W&B vs Comet comparison for ML lifecycle management."})} />
+
+  <h1 class="text-3xl font-bold mb-2">MLflow: Experiment Tracking, Model Registry &amp; Serving</h1>
+  <p class="text-text-muted mb-6">MLflow is the open-source platform for managing the end-to-end ML lifecycle. Log experiments, version models, and deploy to production — all from a unified API that works with any framework.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Framework-agnostic tracking</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Model Registry with lifecycle stages</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> One-line autolog support</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Built-in REST serving</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- What is MLflow -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">What is MLflow?</h2>
+    <p class="text-sm text-text-muted mb-3">MLflow is an open-source platform created by Databricks (2018) that solves the reproducibility and management problem in ML: "which parameters produced my best model, and how do I get it back to production?" It provides a clean API for logging any training run, storing artifacts, and managing model versions through a standardized lifecycle.</p>
+    <p class="text-sm text-text-muted">MLflow is framework-agnostic — the same tracking API works whether you are training a scikit-learn pipeline, a PyTorch transformer, or a custom NumPy model. Runs are stored in a backend (local filesystem, PostgreSQL, MySQL) and artifacts in an artifact store (local disk, S3, GCS, Azure Blob).</p>
+  </div>
+
+  <!-- Quickstart -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Quickstart: Log Your First Run</h2>
+    <p class="text-sm text-text-muted mb-3">Install MLflow with <code class="bg-bg border border-border rounded px-1 text-xs">pip install mlflow</code>, then wrap your training code in a run context:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>import mlflow
+import mlflow.sklearn
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+
+mlflow.set_experiment("fraud-detection")
+
+with mlflow.start_run(run_name="rf-baseline"):
+    # Log hyperparameters
+    params = &#123;"n_estimators": 100, "max_depth": 8, "random_state": 42&#125;
+    mlflow.log_params(params)
+
+    # Train
+    clf = RandomForestClassifier(**params)
+    clf.fit(X_train, y_train)
+
+    # Log metrics
+    acc = accuracy_score(y_test, clf.predict(X_test))
+    mlflow.log_metric("accuracy", acc)
+    mlflow.log_metric("f1_score", f1)
+
+    # Log the model artifact
+    mlflow.sklearn.log_model(clf, artifact_path="model")
+    print(f"Run ID: &#123;mlflow.active_run().info.run_id&#125;")</code></pre>
+    <p class="text-sm text-text-muted">Run <code class="bg-bg border border-border rounded px-1 text-xs">mlflow ui</code> to open the tracking dashboard at <code class="bg-bg border border-border rounded px-1 text-xs">http://localhost:5000</code>. Every run appears as a row with its params, metrics, and artifact links.</p>
+  </div>
+
+  <!-- Autolog -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Autolog: Zero-Code Tracking</h2>
+    <p class="text-sm text-text-muted mb-3">For supported frameworks, one line before training is enough:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>import mlflow
+
+# Enable autolog for all supported libraries at once
+mlflow.autolog()
+
+# Or per-library for fine-grained control
+mlflow.sklearn.autolog(log_model_signatures=True)
+mlflow.pytorch.autolog(log_every_n_epoch=5)
+mlflow.xgboost.autolog()
+mlflow.transformers.autolog()
+
+# Training code unchanged — MLflow captures everything automatically
+from sklearn.linear_model import LogisticRegression
+model = LogisticRegression(C=0.5, max_iter=200)
+model.fit(X_train, y_train)
+# ✓ Params logged: C=0.5, max_iter=200, solver=lbfgs
+# ✓ Metrics logged: training_score, validation metrics
+# ✓ Model artifact saved automatically</code></pre>
+  </div>
+
+  <!-- Model Registry -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Model Registry: Staging → Production Lifecycle</h2>
+    <p class="text-sm text-text-muted mb-3">Register a model from a run, then manage its lifecycle programmatically:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>from mlflow.tracking import MlflowClient
+
+client = MlflowClient()
+
+# Register model from a completed run
+run_id = "abc123def456"
+model_uri = f"runs:/&#123;run_id&#125;/model"
+mv = client.create_model_version(
+    name="FraudDetector",
+    source=model_uri,
+    run_id=run_id
+)
+print(f"Version: &#123;mv.version&#125;")  # Version: 3
+
+# Transition through lifecycle stages
+client.transition_model_version_stage(
+    name="FraudDetector",
+    version=3,
+    stage="Staging",
+    archive_existing_versions=False,
+)
+
+# After validation, promote to Production
+client.transition_model_version_stage(
+    name="FraudDetector",
+    version=3,
+    stage="Production",
+    archive_existing_versions=True,  # archive old Production version
+)
+
+# Load production model anywhere
+prod_model = mlflow.pyfunc.load_model("models:/FraudDetector/Production")</code></pre>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-4">MLflow vs Weights &amp; Biases vs Comet ML</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[600px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Feature</th>
+            <th class="text-left pb-2 pr-4">MLflow</th>
+            <th class="text-left pb-2 pr-4">Weights &amp; Biases</th>
+            <th class="text-left pb-2">Comet ML</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted">
+          <tr><td class="py-2 pr-4 font-medium text-text">Self-hostable</td><td class="py-2 pr-4 text-green-500">Yes (fully open-source)</td><td class="py-2 pr-4">Enterprise only</td><td class="py-2">Enterprise only</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Free tier</td><td class="py-2 pr-4 text-green-500">Unlimited (self-hosted)</td><td class="py-2 pr-4">100 GB free</td><td class="py-2">Limited free</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Model Registry</td><td class="py-2 pr-4 text-green-500">Built-in</td><td class="py-2 pr-4">Artifacts + Registry</td><td class="py-2">Model registry</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Hyperparameter sweeps</td><td class="py-2 pr-4">Manual / Optuna plugin</td><td class="py-2 pr-4 text-green-500">W&amp;B Sweeps (excellent)</td><td class="py-2">Optimizer</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Collaboration / Reports</td><td class="py-2 pr-4">Basic UI</td><td class="py-2 pr-4 text-green-500">W&amp;B Reports (excellent)</td><td class="py-2">Panels</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Model serving</td><td class="py-2 pr-4 text-green-500">mlflow models serve</td><td class="py-2 pr-4">None built-in</td><td class="py-2">None built-in</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Best for</td><td class="py-2 pr-4">Full MLOps pipeline, self-hosted</td><td class="py-2 pr-4">Research teams, sweep-heavy work</td><td class="py-2">Mid-size teams, good UI</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

@@ -1,0 +1,168 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Weights & Biases (W&B)?", answer: "Weights & Biases (W&B, pronounced 'wandb') is a cloud-based MLOps platform for experiment tracking, hyperparameter optimization, and team collaboration. It provides a Python SDK that logs training metrics, model weights, datasets, and media (images, audio, tables) to a central dashboard. W&B is especially popular in research settings where sweep-based hyperparameter search and rich run comparison are essential." },
+  { question: "How do W&B Sweeps work for hyperparameter optimization?", answer: "W&B Sweeps automates hyperparameter search. You define a sweep config (search space, strategy, metric to optimize), then launch agents that pick hyperparameter combinations from the controller and run your training function. Strategies include grid, random, and Bayesian optimization. Multiple agents can run in parallel on different machines, all reporting to the same sweep dashboard." },
+  { question: "What are W&B Artifacts and when should I use them?", answer: "W&B Artifacts are versioned datasets, models, or other files tracked through the ML pipeline. Use them to version your training datasets alongside experiments so you always know which data produced which model. Artifacts have lineage tracking: you can see the DAG from raw data → preprocessed dataset → trained model → evaluation results. This is critical for compliance and reproducibility." },
+  { question: "How do W&B Reports differ from regular run comparisons?", answer: "W&B Reports are shareable, richly formatted documents that embed live run charts, text annotations, and media. You can write a report explaining your experimental findings with embedded plots that auto-update as new runs come in. Reports are ideal for communicating results to stakeholders, writing internal research memos, or producing ablation study summaries." },
+  { question: "Does W&B work with HuggingFace Transformers?", answer: "Yes, W&B integrates natively with HuggingFace Transformers via the report_to parameter. Set report_to='wandb' in your TrainingArguments and W&B automatically logs loss curves, learning rate schedules, GPU utilization, and model checkpoints as artifacts. This zero-config integration covers both Trainer and Seq2SeqTrainer." },
+  { question: "Is W&B free for individual use?", answer: "W&B offers a free tier for individuals with unlimited logged data, 100 GB of artifact storage, and access to Sweeps and Reports. Teams beyond a certain size require paid plans. An on-premise/self-hosted deployment (W&B Server) is available on Enterprise plans, which is relevant for organizations with strict data residency requirements." },
+];
+---
+
+<BaseLayout
+  title="Weights & Biases: ML Experiment Tracking, Sweeps & Reports"
+  description="Complete W&B guide: wandb.init(), logging metrics, Sweeps for hyperparameter optimization, Artifacts for data versioning, Reports for team sharing, and W&B vs MLflow comparison."
+  tool="Weights & Biases, wandb, experiment tracking, hyperparameter sweeps, ML monitoring, W&B Reports, W&B Artifacts"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"Weights & Biases: ML Experiment Tracking, Sweeps & Reports","url":"https://devplaybook.cc/tools/weights-biases","description":"Complete guide to Weights & Biases for ML experiment tracking, hyperparameter sweeps, artifact versioning, and team reporting."})} />
+
+  <h1 class="text-3xl font-bold mb-2">Weights &amp; Biases: Experiment Tracking, Sweeps &amp; Reports</h1>
+  <p class="text-text-muted mb-6">W&amp;B is the go-to ML experiment tracker for research teams. Log metrics, visualize training, run automated hyperparameter sweeps, version datasets, and share results — all from a single Python SDK call.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Real-time training visualization</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Bayesian hyperparameter sweeps</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Dataset &amp; model artifact versioning</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> HuggingFace native integration</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- Basic logging -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Getting Started: wandb.init() and Logging</h2>
+    <p class="text-sm text-text-muted mb-3">Install with <code class="bg-bg border border-border rounded px-1 text-xs">pip install wandb</code>, authenticate with <code class="bg-bg border border-border rounded px-1 text-xs">wandb login</code>, then add three lines to any training script:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>import wandb
+import torch
+
+# Initialize a run — creates a unique run in your project
+run = wandb.init(
+    project="image-classifier",
+    name="resnet50-lr-0.001",
+    config=&#123;
+        "architecture": "ResNet50",
+        "learning_rate": 1e-3,
+        "batch_size": 64,
+        "epochs": 30,
+        "optimizer": "AdamW",
+    &#125;
+)
+
+for epoch in range(config.epochs):
+    train_loss, val_loss, val_acc = train_epoch(model, ...)
+
+    # Log metrics — visible in real time on wandb.ai
+    wandb.log(&#123;
+        "epoch": epoch,
+        "train/loss": train_loss,
+        "val/loss": val_loss,
+        "val/accuracy": val_acc,
+        "lr": scheduler.get_last_lr()[0],
+    &#125;)
+
+    # Log images, confusion matrices, histograms
+    wandb.log(&#123;"predictions": wandb.Image(sample_img, caption="epoch " + str(epoch))&#125;)
+
+# Save model as artifact
+artifact = wandb.Artifact("resnet50-classifier", type="model")
+artifact.add_file("model.pth")
+run.log_artifact(artifact)
+wandb.finish()</code></pre>
+  </div>
+
+  <!-- Sweeps -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">W&amp;B Sweeps: Automated Hyperparameter Search</h2>
+    <p class="text-sm text-text-muted mb-3">Define a sweep config, then launch agents that automatically sample and run experiments:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>import wandb
+
+# Define the search space and strategy
+sweep_config = &#123;
+    "method": "bayes",        # bayes | random | grid
+    "metric": &#123;"name": "val/accuracy", "goal": "maximize"&#125;,
+    "parameters": &#123;
+        "learning_rate": &#123;"distribution": "log_uniform_values", "min": 1e-5, "max": 1e-1&#125;,
+        "batch_size": &#123;"values": [16, 32, 64, 128]&#125;,
+        "dropout": &#123;"distribution": "uniform", "min": 0.1, "max": 0.5&#125;,
+        "optimizer": &#123;"values": ["adam", "adamw", "sgd"]&#125;,
+    &#125;,
+    "early_terminate": &#123;"type": "hyperband", "min_iter": 3&#125;,
+&#125;
+
+sweep_id = wandb.sweep(sweep_config, project="image-classifier")
+
+def train_sweep():
+    with wandb.init() as run:
+        cfg = run.config
+        model = build_model(dropout=cfg.dropout)
+        optimizer = get_optimizer(cfg.optimizer, cfg.learning_rate)
+        # ... training loop
+        wandb.log(&#123;"val/accuracy": final_acc&#125;)
+
+# Launch 10 parallel agents
+wandb.agent(sweep_id, function=train_sweep, count=50)</code></pre>
+  </div>
+
+  <!-- HuggingFace -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">HuggingFace Transformers Integration</h2>
+    <p class="text-sm text-text-muted mb-3">Zero-config logging with HuggingFace Trainer — just set <code class="bg-bg border border-border rounded px-1 text-xs">report_to="wandb"</code>:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>from transformers import TrainingArguments, Trainer
+import wandb
+
+wandb.init(project="llm-finetuning", name="llama3-8b-qlora")
+
+training_args = TrainingArguments(
+    output_dir="./results",
+    num_train_epochs=3,
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=4,
+    warmup_ratio=0.03,
+    lr_scheduler_type="cosine",
+    learning_rate=2e-4,
+    report_to="wandb",                # ← enable W&B logging
+    logging_steps=10,
+    evaluation_strategy="steps",
+    eval_steps=100,
+    save_strategy="steps",
+    save_steps=500,
+    load_best_model_at_end=True,
+    metric_for_best_model="eval_loss",
+)
+# W&B auto-logs: loss curves, learning rate, GPU util, eval metrics, model checkpoints</code></pre>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-4">W&amp;B vs MLflow vs Comet vs Neptune</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[620px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Feature</th>
+            <th class="text-left pb-2 pr-4">W&amp;B</th>
+            <th class="text-left pb-2 pr-4">MLflow</th>
+            <th class="text-left pb-2 pr-4">Comet ML</th>
+            <th class="text-left pb-2">Neptune.ai</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted">
+          <tr><td class="py-2 pr-4 font-medium text-text">Hyperparameter sweeps</td><td class="py-2 pr-4 text-green-500">Excellent (Bayesian)</td><td class="py-2 pr-4">Plugin (Optuna)</td><td class="py-2 pr-4">Optimizer</td><td class="py-2">Grid/random</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Collaboration reports</td><td class="py-2 pr-4 text-green-500">W&amp;B Reports (best)</td><td class="py-2 pr-4">Basic UI</td><td class="py-2 pr-4">Panels</td><td class="py-2">Dashboards</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Data/model versioning</td><td class="py-2 pr-4 text-green-500">Artifacts + lineage</td><td class="py-2 pr-4">MLflow Models</td><td class="py-2 pr-4">Model registry</td><td class="py-2">Artifact store</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Self-hostable</td><td class="py-2 pr-4">Enterprise only</td><td class="py-2 pr-4 text-green-500">Yes (open-source)</td><td class="py-2 pr-4">Enterprise only</td><td class="py-2">Enterprise only</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Free storage</td><td class="py-2 pr-4">100 GB</td><td class="py-2 pr-4 text-green-500">Unlimited (local)</td><td class="py-2 pr-4">Limited</td><td class="py-2">200 GB</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">HuggingFace integration</td><td class="py-2 pr-4 text-green-500">Native (report_to)</td><td class="py-2 pr-4">Manual</td><td class="py-2 pr-4">Callback</td><td class="py-2">Callback</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Best for</td><td class="py-2 pr-4">Research, DL teams</td><td class="py-2 pr-4">MLOps, self-hosted</td><td class="py-2 pr-4">Mid-size teams</td><td class="py-2">Scientific logs</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>

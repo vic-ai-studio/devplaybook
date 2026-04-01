@@ -1,0 +1,169 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is BentoML and why use it for model serving?", answer: "BentoML is an open-source framework that standardizes how ML models are packaged and served. It solves the 'packaging hell' problem: instead of writing custom Flask/FastAPI wrappers for each model, BentoML provides a unified abstraction. You define a Service with input/output schemas, and BentoML generates an HTTP API, handles serialization, manages model loading, and supports batching automatically." },
+  { question: "What is a Bento and how is it different from a Docker image?", answer: "A Bento is BentoML's deployment artifact — a self-contained package that bundles your model artifacts, Python dependencies, service code, and runner configurations. bento build creates a Bento from your project. Unlike a raw Docker image, a Bento is platform-aware: bentoml containerize converts it into an optimized Docker image with the right Python environment, CUDA drivers, and BentoML runtime." },
+  { question: "What is a Runner in BentoML?", answer: "A Runner is BentoML's abstraction for model inference that enables horizontal scaling. Each Runner runs in a separate process pool optimized for its workload — CPU-bound Runners can scale to multiple processes, GPU Runners lock to a GPU device. Your Service calls runners asynchronously via await runner.async_run(), so the HTTP server process is never blocked by inference." },
+  { question: "How does BentoML Adaptive Batching work?", answer: "Adaptive Batching automatically collects concurrent inference requests and processes them as a batch, improving GPU utilization without changing your model code. BentoML dynamically adjusts batch size based on observed latency and throughput. You set max_batch_size and max_latency_ms thresholds, and the batcher optimizes within those bounds. This is critical for transformer models where batch inference is 5-10x more efficient than single-sample." },
+  { question: "How do I deploy a BentoML service to production?", answer: "Options include: (1) Docker — bentoml containerize MyService:latest produces an image deployable to Kubernetes, ECS, or any container platform. (2) BentoCloud — managed serving platform by BentoML team with autoscaling and built-in monitoring. (3) Serverless — community deployers for AWS Lambda, Google Cloud Run. For Kubernetes, BentoML provides a Helm chart and supports KEDA-based autoscaling on queue depth." },
+  { question: "Can BentoML serve models from multiple frameworks simultaneously?", answer: "Yes. A single BentoML Service can include Runners for different frameworks: a PyTorch image encoder, an ONNX text model, and a scikit-learn post-processor can all run as separate Runners in the same service. The Service orchestrates calls between them. This enables building multi-stage pipelines (preprocess → embed → classify → postprocess) as a single deployable unit." },
+];
+---
+
+<BaseLayout
+  title="BentoML: Model Serving, Runners & Bento Packaging Guide"
+  description="Complete BentoML guide: @bentoml.service decorator, Runner API for model parallelism, Bento packaging with bento build, containerization, Adaptive Batching, and BentoML vs Ray Serve vs TorchServe comparison."
+  tool="BentoML, model serving, ML inference, Bento, model deployment, Python, BentoML Runner, Adaptive Batching"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({"@context":"https://schema.org","@type":"WebPage","name":"BentoML: Model Serving, Runners & Bento Packaging Guide","url":"https://devplaybook.cc/tools/bentoml-serving","description":"Complete guide to BentoML for ML model serving, packaging, and deployment with Runners, Adaptive Batching, and BentoCloud."})} />
+
+  <h1 class="text-3xl font-bold mb-2">BentoML: Model Serving, Runners &amp; Bento Packaging</h1>
+  <p class="text-text-muted mb-6">BentoML standardizes how you package and serve ML models. Define a Service once, get an HTTP API, Docker image, and cloud deployment — with automatic batching and horizontal scaling built in.</p>
+
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Framework-agnostic serving</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Adaptive batching for GPU efficiency</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Runner-based horizontal scaling</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> One-command Docker packaging</span>
+  </div>
+
+  <ToolPageCta />
+
+  <!-- Service definition -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Defining a BentoML Service</h2>
+    <p class="text-sm text-text-muted mb-3">Install with <code class="bg-bg border border-border rounded px-1 text-xs">pip install bentoml</code>. A Service is a Python class decorated with <code class="bg-bg border border-border rounded px-1 text-xs">@bentoml.service</code>:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>import bentoml
+import numpy as np
+from pydantic import BaseModel
+
+# Save your model to BentoML's model store first:
+# bentoml.sklearn.save_model("iris_classifier", clf)
+
+class ClassifyInput(BaseModel):
+    sepal_length: float
+    sepal_width: float
+    petal_length: float
+    petal_width: float
+
+@bentoml.service(
+    resources=&#123;"cpu": "2", "memory": "1Gi"&#125;,
+    traffic=&#123;"timeout": 10&#125;,
+)
+class IrisClassifier:
+    # Model is loaded once at startup and reused across requests
+    model_ref = bentoml.models.get("iris_classifier:latest")
+
+    def __init__(self):
+        import joblib
+        self.model = joblib.load(self.model_ref.path_of("model.pkl"))
+
+    @bentoml.api(input_spec=ClassifyInput)
+    def classify(self, input_data: ClassifyInput) -> dict:
+        features = np.array([[
+            input_data.sepal_length, input_data.sepal_width,
+            input_data.petal_length, input_data.petal_width
+        ]])
+        pred = self.model.predict(features)[0]
+        prob = self.model.predict_proba(features)[0]
+        return &#123;"species": str(pred), "confidence": float(prob.max())&#125;</code></pre>
+    <p class="text-sm text-text-muted">Run locally with <code class="bg-bg border border-border rounded px-1 text-xs">bentoml serve service:IrisClassifier</code>. The service exposes <code class="bg-bg border border-border rounded px-1 text-xs">POST /classify</code> and a Swagger UI at <code class="bg-bg border border-border rounded px-1 text-xs">/docs</code>.</p>
+  </div>
+
+  <!-- Runners -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Runner API: Scaling Inference Separately</h2>
+    <p class="text-sm text-text-muted mb-3">Runners decouple inference from your HTTP server, enabling independent scaling of each model component:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code>import bentoml
+from PIL import Image
+import io
+
+# Define runners from saved models
+embedding_runner = bentoml.pytorch.get("clip-vit:latest").to_runner()
+classifier_runner = bentoml.sklearn.get("image-classifier:latest").to_runner()
+
+@bentoml.service
+class ImagePipelineService:
+    # Runners are injected and managed by BentoML
+    runners = [embedding_runner, classifier_runner]
+
+    @bentoml.api()
+    async def predict(self, image: bytes) -> dict:
+        img = Image.open(io.BytesIO(image)).convert("RGB")
+
+        # Async calls — HTTP server is never blocked
+        embedding = await embedding_runner.encode.async_run(img)
+        label = await classifier_runner.predict.async_run(embedding)
+
+        return &#123;"label": label, "embedding_dim": len(embedding)&#125;
+
+# Scale runners independently in bentofile.yaml:
+# runners:
+#   clip-vit: &#123;replicas: 2, resources: &#123;gpu: 1&#125;&#125;
+#   image-classifier: &#123;replicas: 4, resources: &#123;cpu: 1&#125;&#125;</code></pre>
+  </div>
+
+  <!-- Packaging -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-3">Building &amp; Containerizing a Bento</h2>
+    <p class="text-sm text-text-muted mb-3">Package your service and all dependencies into a Bento, then convert to Docker:</p>
+    <pre class="bg-bg border border-border rounded-lg p-4 text-xs overflow-x-auto mb-3"><code># bentofile.yaml — defines what goes into the Bento
+service: "service:ImagePipelineService"
+include:
+  - "service.py"
+  - "*.py"
+python:
+  packages:
+    - torch==2.2.0
+    - torchvision
+    - Pillow
+    - scikit-learn
+docker:
+  base_image: "pytorch/pytorch:2.2.0-cuda11.8-cudnn8-runtime"
+  cuda_version: "11.8"
+
+# Build the Bento (bundles model artifacts + code + deps)
+$ bentoml build
+
+# Output: Successfully built Bento(tag="image-pipeline:a3f9b2c1")
+
+# Convert to Docker image (optimized, layered)
+$ bentoml containerize image-pipeline:a3f9b2c1
+
+# Deploy anywhere
+$ docker run --gpus all -p 3000:3000 image-pipeline:a3f9b2c1</code></pre>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="bg-bg-card border border-border rounded-xl p-5 mb-5">
+    <h2 class="text-xl font-semibold mb-4">BentoML vs Ray Serve vs TorchServe vs Triton</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[600px]">
+        <thead>
+          <tr class="text-text-muted text-xs uppercase border-b border-border">
+            <th class="text-left pb-2 pr-4">Feature</th>
+            <th class="text-left pb-2 pr-4">BentoML</th>
+            <th class="text-left pb-2 pr-4">Ray Serve</th>
+            <th class="text-left pb-2 pr-4">TorchServe</th>
+            <th class="text-left pb-2">Triton</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border text-text-muted">
+          <tr><td class="py-2 pr-4 font-medium text-text">Framework support</td><td class="py-2 pr-4 text-green-500">All (agnostic)</td><td class="py-2 pr-4 text-green-500">All (agnostic)</td><td class="py-2 pr-4">PyTorch only</td><td class="py-2">TensorRT/ONNX/TF/PT</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Adaptive batching</td><td class="py-2 pr-4 text-green-500">Built-in</td><td class="py-2 pr-4">Manual</td><td class="py-2 pr-4">Partial</td><td class="py-2 text-green-500">Dynamic batching</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Pipeline DAG</td><td class="py-2 pr-4">Runner composition</td><td class="py-2 pr-4 text-green-500">Deployment graph</td><td class="py-2 pr-4">No</td><td class="py-2">Ensemble models</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Packaging</td><td class="py-2 pr-4 text-green-500">Bento (artifact bundle)</td><td class="py-2 pr-4">Docker + Ray cluster</td><td class="py-2 pr-4">.mar archive</td><td class="py-2">Model repository</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">GPU throughput</td><td class="py-2 pr-4">Good</td><td class="py-2 pr-4">Good</td><td class="py-2 pr-4">Good</td><td class="py-2 text-green-500">Best (TensorRT)</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Learning curve</td><td class="py-2 pr-4 text-green-500">Low</td><td class="py-2 pr-4">Medium</td><td class="py-2 pr-4">Medium</td><td class="py-2">High</td></tr>
+          <tr><td class="py-2 pr-4 font-medium text-text">Best for</td><td class="py-2 pr-4">Multi-framework APIs</td><td class="py-2 pr-4">Distributed serving</td><td class="py-2 pr-4">PyTorch production</td><td class="py-2">Max GPU throughput</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+</BaseLayout>
