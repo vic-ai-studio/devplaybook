@@ -1,0 +1,198 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is a Sentry DSN?", answer: "A DSN (Data Source Name) is the connection string that tells the Sentry SDK where to send error reports. It encodes your Sentry organization, project, and an access key. The DSN is safe to include in client-side code — it can only submit events, not read them. Format: https://<key>@<org>.ingest.sentry.io/<project-id>." },
+  { question: "What is tracesSampleRate and how do I set it?", answer: "tracesSampleRate controls what percentage of transactions (page loads, API calls) are traced for performance monitoring. 1.0 traces 100% of requests, 0.1 traces 10%. For production, start at 0.1-0.2 to manage volume and costs. Use tracesSampler (a function) for dynamic sampling based on transaction name or user context." },
+  { question: "What is the difference between captureException and captureMessage?", answer: "captureException sends a full Error object with stack trace — use it in try/catch blocks. captureMessage sends a plain string message without a stack trace — use it for non-exception events like feature flags being hit or important user flows. Both support an optional scope/context object for extra data." },
+  { question: "Should I enable Sentry in development?", answer: "Generally no. Set environment: process.env.NODE_ENV and conditionally initialize only in production/staging. You can use environment configuration in Sentry to route events to different projects per environment. This prevents dev noise from polluting your production error feed." },
+  { question: "What are Sentry Releases and why do they matter?", answer: "A release is a version of your code deployed to an environment. When you associate a release with your Sentry config and upload source maps, Sentry can show you which release introduced a regression, mark errors as resolved in a specific version, and display unminified stack traces. Set release to your git commit SHA or semantic version." },
+];
+---
+
+<BaseLayout
+  title="Sentry DSN Configurator — Configure Sentry SDK Options, Sampling & Release Tracking"
+  description="Configure Sentry SDK initialization options visually. Set DSN, sampling rates, release, environment, integrations, and generate ready-to-use sentry.client.config.ts or Sentry.init() code. Free online tool."
+  tool="Sentry DSN configurator, Sentry SDK setup, Sentry init generator, Sentry tracesSampleRate, Sentry Next.js config"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Sentry DSN Configurator",
+    "url": "https://devplaybook.cc/tools/sentry-dsn-configurator",
+    "description": "Configure Sentry SDK initialization visually. Generate Sentry.init() code with sampling, release, integrations, and error filtering.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Sentry DSN Configurator</h1>
+  <p class="text-text-muted mb-4">Configure your Sentry SDK options visually and generate production-ready <code class="text-primary font-mono">Sentry.init()</code> code with sampling rates, release tracking, and integrations.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Error + performance sampling</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Release + environment</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Next.js / React / Node modes</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> beforeSend filter template</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-4">Connection</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-text-muted mb-1">DSN</label>
+            <input type="text" id="dsn" placeholder="https://key@org.ingest.sentry.io/project-id" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Environment</label>
+              <input type="text" id="env" value="production" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Release</label>
+              <input type="text" id="release" placeholder="1.0.0 or git SHA" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Framework</label>
+            <select id="framework" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+              <option value="react">React</option>
+              <option value="nextjs">Next.js</option>
+              <option value="node">Node.js</option>
+              <option value="vue">Vue</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-4">Sampling</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-text-muted mb-1">Error sample rate: <span id="err-rate-display">1.0</span></label>
+            <input type="range" id="err-rate" min="0" max="1" step="0.05" value="1" class="w-full accent-primary" />
+            <div class="flex justify-between text-xs text-text-muted mt-1"><span>0 (none)</span><span>1.0 (all)</span></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="perf-check" class="accent-primary" />
+            <span class="text-sm">Enable performance monitoring</span>
+          </div>
+          <div id="perf-opts" class="opacity-40 pointer-events-none">
+            <label class="block text-xs text-text-muted mb-1">Traces sample rate: <span id="traces-rate-display">0.1</span></label>
+            <input type="range" id="traces-rate" min="0" max="1" step="0.05" value="0.1" class="w-full accent-primary" />
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Options</h2>
+        <div class="space-y-2">
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="opt-debug" class="accent-primary" /> Enable debug mode (dev only)</label>
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="opt-before-send" class="accent-primary" /> Add beforeSend filter (PII, network errors)</label>
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="opt-tunnel" class="accent-primary" /> Add tunnel (bypass ad blockers)</label>
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="opt-replay" class="accent-primary" /> Session Replay integration</label>
+        </div>
+      </div>
+
+      <button id="gen-btn" class="w-full py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-primary/80 transition-colors">Generate Config</button>
+    </div>
+
+    <div>
+      <div class="bg-bg-card border border-border rounded-xl p-5 h-full flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold" id="output-label">sentry.client.config.ts</h2>
+          <button id="copy-btn" class="text-xs border border-border text-text-muted rounded px-2 py-0.5 hover:border-primary hover:text-primary">Copy</button>
+        </div>
+        <pre id="output" class="font-mono text-xs bg-bg rounded p-3 border border-border overflow-auto flex-1 whitespace-pre text-text min-h-96"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Sentry DSN Configurator" relatedTags={['monitoring', 'error-tracking', 'sentry', 'observability', 'react', 'nextjs']} />
+</BaseLayout>
+
+<script>
+  document.getElementById('err-rate')!.addEventListener('input', (e) => {
+    (document.getElementById('err-rate-display') as HTMLSpanElement).textContent = (e.target as HTMLInputElement).value;
+  });
+  document.getElementById('traces-rate')!.addEventListener('input', (e) => {
+    (document.getElementById('traces-rate-display') as HTMLSpanElement).textContent = (e.target as HTMLInputElement).value;
+  });
+  document.getElementById('perf-check')!.addEventListener('change', (e) => {
+    const opts = document.getElementById('perf-opts') as HTMLElement;
+    const checked = (e.target as HTMLInputElement).checked;
+    opts.classList.toggle('opacity-40', !checked);
+    opts.classList.toggle('pointer-events-none', !checked);
+  });
+
+  function generate() {
+    const dsn = (document.getElementById('dsn') as HTMLInputElement).value || 'YOUR_SENTRY_DSN';
+    const env = (document.getElementById('env') as HTMLInputElement).value || 'production';
+    const release = (document.getElementById('release') as HTMLInputElement).value;
+    const framework = (document.getElementById('framework') as HTMLSelectElement).value;
+    const errRate = parseFloat((document.getElementById('err-rate') as HTMLInputElement).value);
+    const perfEnabled = (document.getElementById('perf-check') as HTMLInputElement).checked;
+    const tracesRate = parseFloat((document.getElementById('traces-rate') as HTMLInputElement).value);
+    const debug = (document.getElementById('opt-debug') as HTMLInputElement).checked;
+    const beforeSend = (document.getElementById('opt-before-send') as HTMLInputElement).checked;
+    const tunnel = (document.getElementById('opt-tunnel') as HTMLInputElement).checked;
+    const replay = (document.getElementById('opt-replay') as HTMLInputElement).checked;
+
+    const lines: string[] = [];
+    if (framework === 'nextjs') {
+      lines.push("import * as Sentry from '@sentry/nextjs';");
+      (document.getElementById('output-label') as HTMLElement).textContent = 'sentry.client.config.ts';
+    } else if (framework === 'node') {
+      lines.push("import * as Sentry from '@sentry/node';");
+      (document.getElementById('output-label') as HTMLElement).textContent = 'instrument.ts';
+    } else {
+      lines.push("import * as Sentry from '@sentry/react';");
+      (document.getElementById('output-label') as HTMLElement).textContent = 'src/instrument.ts';
+    }
+    if (replay) lines.push("import { Replay } from '@sentry/browser';");
+    lines.push('');
+    lines.push('Sentry.init({');
+    lines.push(`  dsn: '${dsn}',`);
+    lines.push(`  environment: '${env}',`);
+    if (release) lines.push(`  release: '${release}',`);
+    if (debug) lines.push(`  debug: process.env.NODE_ENV === 'development',`);
+    if (errRate < 1) lines.push(`  sampleRate: ${errRate},`);
+    if (perfEnabled) lines.push(`  tracesSampleRate: ${tracesRate},`);
+    if (tunnel) lines.push(`  tunnel: '/api/sentry-tunnel',`);
+    if (replay) {
+      lines.push('  integrations: [');
+      lines.push('    new Replay({');
+      lines.push('      maskAllText: true,');
+      lines.push('      blockAllMedia: true,');
+      lines.push('    }),');
+      lines.push('  ],');
+      lines.push('  replaysSessionSampleRate: 0.1,');
+      lines.push('  replaysOnErrorSampleRate: 1.0,');
+    }
+    if (beforeSend) {
+      lines.push('  beforeSend(event) {');
+      lines.push('    // Filter out network errors and PII');
+      lines.push("    if (event.exception?.values?.[0]?.type === 'NetworkError') return null;");
+      lines.push('    return event;');
+      lines.push('  },');
+    }
+    lines.push('});');
+
+    (document.getElementById('output') as HTMLPreElement).textContent = lines.join('\n');
+  }
+
+  document.getElementById('gen-btn')!.addEventListener('click', generate);
+  document.getElementById('copy-btn')!.addEventListener('click', () => {
+    navigator.clipboard.writeText((document.getElementById('output') as HTMLPreElement).textContent || '');
+    const btn = document.getElementById('copy-btn') as HTMLButtonElement;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+
+  generate();
+</script>

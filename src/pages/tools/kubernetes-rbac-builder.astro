@@ -1,0 +1,274 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ToolPageCta from '../../components/ToolPageCta.astro';
+import FaqSection from '../../components/FaqSection.astro';
+
+const faq = [
+  { question: "What is Kubernetes RBAC?", answer: "RBAC (Role-Based Access Control) in Kubernetes controls what actions subjects (users, groups, service accounts) can perform on resources. It works through four objects: Role (namespaced permissions), ClusterRole (cluster-wide), RoleBinding (grants a Role to a subject in a namespace), and ClusterRoleBinding (grants a ClusterRole cluster-wide)." },
+  { question: "When should I use Role vs ClusterRole?", answer: "Use Role when permissions should be scoped to a single namespace (most application workloads). Use ClusterRole for cross-namespace access, cluster-level resources (nodes, PersistentVolumes, namespaces), or when you need to reuse the same permission set in multiple namespaces via multiple RoleBindings." },
+  { question: "What is the difference between RoleBinding and ClusterRoleBinding?", answer: "RoleBinding grants permissions within a specific namespace. ClusterRoleBinding grants permissions cluster-wide. You can use a RoleBinding with a ClusterRole — this lets you define permissions once in a ClusterRole and reuse them in specific namespaces. ClusterRoleBindings should be used sparingly as they grant broad access." },
+  { question: "What are common RBAC mistakes to avoid?", answer: "1. Binding cluster-admin to application service accounts. 2. Using wildcard verbs (*) or resources (*) without necessity. 3. Granting create/delete on pods directly — prefer Deployments with limited scope. 4. Forgetting that secrets access grants full secret contents. 5. Not auditing RBAC regularly with 'kubectl auth can-i'." },
+  { question: "How do I test if an RBAC rule works correctly?", answer: "Use kubectl auth can-i: 'kubectl auth can-i list pods --namespace=default --as=system:serviceaccount:default:my-sa'. The --as flag impersonates a user or service account. For comprehensive RBAC auditing, tools like rbac-lookup, kubectl-who-can, and Polaris can show all effective permissions." },
+];
+---
+
+<BaseLayout
+  title="Kubernetes RBAC Builder — Build Role, ClusterRole & RoleBinding YAML Visually"
+  description="Build Kubernetes RBAC policies visually. Configure Role or ClusterRole with resource/verb permissions, bind to service accounts, and export ready-to-apply YAML. Free online tool."
+  tool="Kubernetes RBAC builder, K8s Role YAML generator, ClusterRole builder, RoleBinding generator, Kubernetes RBAC policy tool"
+  faq={faq}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Kubernetes RBAC Builder",
+    "url": "https://devplaybook.cc/tools/kubernetes-rbac-builder",
+    "description": "Build Kubernetes Role/ClusterRole/RoleBinding YAML visually with resource and verb selectors.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  })} />
+
+  <h1 class="text-3xl font-bold mb-2">Kubernetes RBAC Builder</h1>
+  <p class="text-text-muted mb-4">Build Kubernetes RBAC policies visually — select resources, verbs, and subjects, then export production-ready <code class="text-primary font-mono">Role</code>, <code class="text-primary font-mono">ClusterRole</code>, and <code class="text-primary font-mono">RoleBinding</code> YAML.</p>
+  <div class="flex items-center gap-3 mb-6 text-sm text-text-muted flex-wrap">
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Role / ClusterRole</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Resource + verb selectors</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> Service account binding</span>
+    <span class="flex items-center gap-1.5"><span class="text-green-500">✓</span> kubectl test command</span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="space-y-4">
+      <!-- Role config -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-4">Role Configuration</h2>
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Kind</label>
+              <select id="role-kind" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+                <option value="Role">Role (namespaced)</option>
+                <option value="ClusterRole">ClusterRole (global)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Name</label>
+              <input type="text" id="role-name" value="app-reader" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div id="namespace-row">
+            <label class="block text-xs text-text-muted mb-1">Namespace</label>
+            <input type="text" id="role-namespace" value="default" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Resources -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Resources</h2>
+        <div class="grid grid-cols-3 gap-1 mb-3" id="resource-grid">
+          <!-- populated by JS -->
+        </div>
+        <div>
+          <label class="block text-xs text-text-muted mb-1">Custom resource (comma-separated)</label>
+          <input type="text" id="custom-resources" placeholder="customresources,anotherresource" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-mono" />
+        </div>
+      </div>
+
+      <!-- Verbs -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Verbs</h2>
+        <div class="flex gap-2 mb-3 flex-wrap">
+          <button class="preset-btn text-xs border border-border rounded px-2 py-1 hover:border-primary text-text-muted" data-preset="read">Read-only</button>
+          <button class="preset-btn text-xs border border-border rounded px-2 py-1 hover:border-primary text-text-muted" data-preset="write">Read-write</button>
+          <button class="preset-btn text-xs border border-border rounded px-2 py-1 hover:border-primary text-text-muted" data-preset="full">Full admin</button>
+        </div>
+        <div class="grid grid-cols-4 gap-1" id="verb-grid">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- Binding -->
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Binding Subject</h2>
+        <div class="space-y-2">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Subject Kind</label>
+              <select id="subject-kind" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+                <option value="ServiceAccount">ServiceAccount</option>
+                <option value="User">User</option>
+                <option value="Group">Group</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-text-muted mb-1">Subject Name</label>
+              <input type="text" id="subject-name" value="my-app-sa" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div id="subject-ns-row">
+            <label class="block text-xs text-text-muted mb-1">Subject Namespace</label>
+            <input type="text" id="subject-namespace" value="default" class="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+
+      <button id="gen-btn" class="w-full py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-primary/80 transition-colors">Generate YAML</button>
+    </div>
+
+    <!-- Output -->
+    <div class="space-y-4">
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold">YAML Output</h2>
+          <button id="copy-yaml" class="text-xs border border-border text-text-muted rounded px-2 py-0.5 hover:border-primary hover:text-primary">Copy</button>
+        </div>
+        <pre id="yaml-output" class="font-mono text-xs bg-bg rounded p-3 border border-border overflow-auto min-h-64 whitespace-pre text-text"></pre>
+      </div>
+      <div class="bg-bg-card border border-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-2">Test Commands</h2>
+        <pre id="test-output" class="font-mono text-xs bg-bg rounded p-3 border border-border overflow-auto whitespace-pre text-primary"></pre>
+      </div>
+    </div>
+  </div>
+
+  <FaqSection faq={faq} />
+  <ToolPageCta currentTool="Kubernetes RBAC Builder" relatedTags={['kubernetes', 'k8s', 'rbac', 'security', 'devops', 'cloud']} />
+</BaseLayout>
+
+<script>
+  const RESOURCES = ['pods', 'deployments', 'services', 'configmaps', 'secrets', 'ingresses', 'namespaces', 'nodes', 'persistentvolumes', 'jobs', 'cronjobs', 'serviceaccounts'];
+  const VERBS = ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete', 'deletecollection'];
+  const PRESETS: Record<string, string[]> = {
+    read: ['get', 'list', 'watch'],
+    write: ['get', 'list', 'watch', 'create', 'update', 'patch'],
+    full: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete', 'deletecollection'],
+  };
+
+  // Build resource checkboxes
+  const rgrid = document.getElementById('resource-grid') as HTMLDivElement;
+  RESOURCES.forEach(r => {
+    const label = document.createElement('label');
+    label.className = 'flex items-center gap-1 text-xs cursor-pointer';
+    label.innerHTML = `<input type="checkbox" class="res-check accent-primary" value="${r}" /> ${r}`;
+    rgrid.appendChild(label);
+  });
+
+  // Build verb checkboxes
+  const vgrid = document.getElementById('verb-grid') as HTMLDivElement;
+  VERBS.forEach(v => {
+    const label = document.createElement('label');
+    label.className = 'flex items-center gap-1 text-xs cursor-pointer';
+    label.innerHTML = `<input type="checkbox" class="verb-check accent-primary" value="${v}" /> ${v}`;
+    vgrid.appendChild(label);
+  });
+  // Default: read-only
+  PRESETS.read.forEach(v => { const cb = vgrid.querySelector(`[value="${v}"]`) as HTMLInputElement; if (cb) cb.checked = true; });
+  // Default resources: pods, services
+  ['pods', 'services'].forEach(r => { const cb = rgrid.querySelector(`[value="${r}"]`) as HTMLInputElement; if (cb) cb.checked = true; });
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const preset = (btn as HTMLElement).dataset.preset || 'read';
+      document.querySelectorAll('.verb-check').forEach(cb => {
+        (cb as HTMLInputElement).checked = PRESETS[preset].includes((cb as HTMLInputElement).value);
+      });
+    });
+  });
+
+  document.getElementById('role-kind')!.addEventListener('change', (e) => {
+    const isCluster = (e.target as HTMLSelectElement).value === 'ClusterRole';
+    (document.getElementById('namespace-row') as HTMLElement).style.display = isCluster ? 'none' : '';
+  });
+
+  document.getElementById('subject-kind')!.addEventListener('change', (e) => {
+    const isSa = (e.target as HTMLSelectElement).value === 'ServiceAccount';
+    (document.getElementById('subject-ns-row') as HTMLElement).style.display = isSa ? '' : 'none';
+  });
+
+  function getChecked(cls: string): string[] {
+    return Array.from(document.querySelectorAll(`.${cls}`) as NodeListOf<HTMLInputElement>)
+      .filter(cb => cb.checked).map(cb => cb.value);
+  }
+
+  function generate() {
+    const kind = (document.getElementById('role-kind') as HTMLSelectElement).value;
+    const name = (document.getElementById('role-name') as HTMLInputElement).value || 'my-role';
+    const ns = (document.getElementById('role-namespace') as HTMLInputElement).value || 'default';
+    const subjectKind = (document.getElementById('subject-kind') as HTMLSelectElement).value;
+    const subjectName = (document.getElementById('subject-name') as HTMLInputElement).value || 'my-sa';
+    const subjectNs = (document.getElementById('subject-namespace') as HTMLInputElement).value || 'default';
+
+    const resources = getChecked('res-check');
+    const custom = (document.getElementById('custom-resources') as HTMLInputElement).value.split(',').map(s => s.trim()).filter(Boolean);
+    const allResources = [...resources, ...custom];
+    const verbs = getChecked('verb-check');
+
+    if (allResources.length === 0 || verbs.length === 0) {
+      alert('Select at least one resource and one verb.');
+      return;
+    }
+
+    const bindingKind = kind === 'ClusterRole' ? 'ClusterRoleBinding' : 'RoleBinding';
+    const lines: string[] = [];
+
+    // Role/ClusterRole
+    lines.push(`apiVersion: rbac.authorization.k8s.io/v1`);
+    lines.push(`kind: ${kind}`);
+    lines.push(`metadata:`);
+    lines.push(`  name: ${name}`);
+    if (kind === 'Role') lines.push(`  namespace: ${ns}`);
+    lines.push(`rules:`);
+    lines.push(`  - apiGroups: ["", "apps", "batch"]`);
+    lines.push(`    resources: [${allResources.map(r => `"${r}"`).join(', ')}]`);
+    lines.push(`    verbs: [${verbs.map(v => `"${v}"`).join(', ')}]`);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+
+    // Binding
+    lines.push(`apiVersion: rbac.authorization.k8s.io/v1`);
+    lines.push(`kind: ${bindingKind}`);
+    lines.push(`metadata:`);
+    lines.push(`  name: ${name}-binding`);
+    if (kind === 'Role') lines.push(`  namespace: ${ns}`);
+    lines.push(`subjects:`);
+    lines.push(`  - kind: ${subjectKind}`);
+    lines.push(`    name: ${subjectName}`);
+    if (subjectKind === 'ServiceAccount') lines.push(`    namespace: ${subjectNs}`);
+    lines.push(`roleRef:`);
+    lines.push(`  kind: ${kind}`);
+    lines.push(`  name: ${name}`);
+    lines.push(`  apiGroup: rbac.authorization.k8s.io`);
+
+    (document.getElementById('yaml-output') as HTMLPreElement).textContent = lines.join('\n');
+
+    // Test commands
+    const saArg = subjectKind === 'ServiceAccount'
+      ? `--as=system:serviceaccount:${subjectNs}:${subjectName}`
+      : `--as=${subjectName}`;
+    const nsArg = kind === 'Role' ? `--namespace=${ns}` : '';
+    const testLines = [
+      `# Apply RBAC`,
+      `kubectl apply -f rbac.yaml`,
+      ``,
+      `# Test permissions`,
+      ...verbs.slice(0, 3).map(v => `kubectl auth can-i ${v} ${allResources[0]} ${saArg} ${nsArg}`.trim()),
+      ``,
+      `# List all permissions for this subject`,
+      `kubectl auth can-i --list ${saArg} ${nsArg}`.trim(),
+    ];
+    (document.getElementById('test-output') as HTMLPreElement).textContent = testLines.join('\n');
+  }
+
+  document.getElementById('gen-btn')!.addEventListener('click', generate);
+  document.getElementById('copy-yaml')!.addEventListener('click', () => {
+    navigator.clipboard.writeText((document.getElementById('yaml-output') as HTMLPreElement).textContent || '');
+    const btn = document.getElementById('copy-yaml') as HTMLButtonElement;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+
+  generate();
+</script>
