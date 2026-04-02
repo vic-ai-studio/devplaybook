@@ -1,0 +1,192 @@
+---
+title: "Playwright vs Cypress vs Selenium: E2E Testing in 2026"
+description: "Compare Playwright, Cypress, and Selenium for end-to-end testing in 2026. Feature comparison, architecture differences, when to use each, and migration considerations."
+date: "2026-04-02"
+tags: [testing, playwright, cypress, selenium, e2e, automation, javascript]
+readingTime: "10 min read"
+author: "DevPlaybook Team"
+---
+
+# Playwright vs Cypress vs Selenium: E2E Testing in 2026
+
+End-to-end testing tools have converged on similar capabilities, but their architectures, developer experience, and ideal use cases remain distinct. Playwright has emerged as the default for new projects, but Cypress's developer experience and Selenium's legacy ecosystem keep them relevant.
+
+## The Quick Answer
+
+- **New web app?** Playwright
+- **Need the best dev experience for frontend devs?** Cypress
+- **Legacy enterprise test suite or non-browser automation?** Selenium/WebDriver
+
+## Architecture Comparison
+
+### Playwright
+
+Microsoft-developed, Playwright communicates with browsers via the Chrome DevTools Protocol (CDP) and WebKit/Firefox equivalents. Tests run out-of-process — your test file runs in Node.js and sends commands to the browser.
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test('user can complete checkout', async ({ page }) => {
+  await page.goto('https://shop.example.com');
+  await page.click('[data-testid="product-1"] >> text=Add to Cart');
+  await page.click('text=Checkout');
+  await page.fill('input[name="email"]', 'test@example.com');
+  await page.fill('input[name="card"]', '4242424242424242');
+  await page.click('button[type="submit"]');
+
+  await expect(page.getByText('Order confirmed')).toBeVisible();
+});
+```
+
+### Cypress
+
+Cypress runs inside the browser process itself — your test code runs in the same JavaScript context as your application. This makes debugging easier (no async commands) but limits multi-tab and multi-domain scenarios.
+
+```javascript
+it('user can complete checkout', () => {
+  cy.visit('https://shop.example.com');
+  cy.get('[data-testid="product-1"]').contains('Add to Cart').click();
+  cy.contains('Checkout').click();
+  cy.get('input[name="email"]').type('test@example.com');
+  cy.get('input[name="card"]').type('4242424242424242');
+  cy.get('button[type="submit"]').click();
+
+  cy.contains('Order confirmed').should('be.visible');
+});
+```
+
+### Selenium WebDriver
+
+The original — communicates with browsers via WebDriver protocol. Tests run externally and send HTTP commands to a WebDriver server. Slowest of the three but has language bindings for Python, Java, C#, Ruby, and more.
+
+```python
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+
+driver = webdriver.Chrome()
+driver.get('https://shop.example.com')
+driver.find_element(By.CSS_SELECTOR, '[data-testid="product-1"] button').click()
+# ... (more verbose than Playwright/Cypress)
+driver.quit()
+```
+
+## Feature Comparison
+
+| Feature | Playwright | Cypress | Selenium |
+|---------|-----------|---------|----------|
+| Multi-browser | Chromium, Firefox, WebKit | Chrome, Edge, Firefox | All browsers |
+| Multi-tab | ✅ | ❌ | ✅ |
+| Multi-domain | ✅ | Limited | ✅ |
+| Component testing | ✅ | ✅ | ❌ |
+| API mocking | ✅ | ✅ | Manual |
+| Auto-wait | ✅ | ✅ | Manual |
+| Parallel tests | ✅ (free) | ✅ (paid CI) | Manual |
+| TypeScript | Native | With plugins | Via WebDriverIO |
+| Screenshot/video | Built-in | Built-in | Manual |
+| Network interception | ✅ | ✅ | Limited |
+| Languages | JS/TS, Python, Java, C# | JS/TS only | All major |
+| Setup complexity | Low | Very low | High |
+| Speed | Fast | Medium | Slow |
+
+## Playwright Deep Dive
+
+Playwright's strengths:
+
+**Auto-waiting**: Every action waits for the element to be actionable (visible, enabled, stable). No manual waits:
+
+```typescript
+// Playwright waits automatically — no explicit waits needed
+await page.click('button#submit');  // Waits until button is visible and enabled
+await expect(page.getByText('Success')).toBeVisible();  // Waits for visibility
+```
+
+**Parallel test execution** (free, built-in):
+
+```typescript
+// playwright.config.ts
+export default defineConfig({
+  workers: 4,  // Run 4 tests in parallel
+  fullyParallel: true,
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: 'Mobile Chrome', use: { ...devices['Pixel 5'] } },
+  ],
+});
+```
+
+**Network mocking**:
+
+```typescript
+await page.route('**/api/products', async route => {
+  await route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{ id: 1, name: 'Test Product', price: 9.99 }]),
+  });
+});
+```
+
+**Trace viewer**: Playwright records a trace of every test (screenshots, network, console) viewable at `playwright.dev/trace`:
+
+```bash
+npx playwright test --trace on
+npx playwright show-trace test-results/trace.zip
+```
+
+## Cypress Deep Dive
+
+Cypress's strengths:
+
+**Time-travel debugging**: Step through test commands in the browser with screenshots at each step. The most intuitive debugging experience of any E2E tool.
+
+**Component testing**: Test React/Vue/Angular components in isolation without a full browser:
+
+```javascript
+// Component test (runs in real browser, no jsdom)
+import { mount } from 'cypress/react18';
+import { CartButton } from './CartButton';
+
+it('shows item count', () => {
+  mount(<CartButton initialCount={3} />);
+  cy.get('[data-testid="count"]').should('have.text', '3');
+});
+```
+
+**Interactive test runner**: Cypress's GUI shows your app and tests side-by-side with real-time reload.
+
+## Selenium: When It's Still Right
+
+Selenium/WebDriver remains the right choice when:
+
+1. **Non-JavaScript teams**: Java, Python, or C# backend teams often prefer Selenium's native language bindings over Node.js-based alternatives
+2. **Legacy test suites**: Migrating thousands of Selenium tests is rarely worthwhile when they work
+3. **WebDriverIO**: Modern wrapper around WebDriver that adds auto-waiting and better TypeScript support, closing much of the DX gap
+4. **Non-web automation**: Some teams use WebDriver for automating native apps or legacy browser extensions
+
+## Migration Guide: Cypress to Playwright
+
+The most common migration in 2026. Key differences:
+
+```javascript
+// Cypress
+cy.get('[data-testid="email"]').type('test@example.com');
+cy.get('button[type="submit"]').click();
+cy.url().should('include', '/dashboard');
+
+// Playwright equivalent
+await page.getByTestId('email').fill('test@example.com');
+await page.getByRole('button', { name: 'Submit' }).click();
+await expect(page).toHaveURL(/dashboard/);
+```
+
+Playwright's `getByRole`, `getByTestId`, `getByLabel` locators are semantically similar to Cypress's commands. The main adjustment is async/await instead of Cypress's chainable syntax.
+
+## The Verdict
+
+**Playwright is the default for new projects** in 2026. It's faster, has better parallelism, handles complex scenarios (multi-tab, multi-domain), and has excellent TypeScript support. The Microsoft backing and rapid development pace make it the safest bet for new investments.
+
+**Cypress remains compelling** when your frontend team values its interactive debugging experience and component testing capabilities. If you're already invested in Cypress, the ROI of migrating to Playwright is questionable unless you hit Cypress's architectural limits.
+
+**Selenium** is for legacy maintenance and non-JavaScript environments. Don't start new web automation projects on raw Selenium in 2026 — use WebDriverIO if you need its ecosystem.

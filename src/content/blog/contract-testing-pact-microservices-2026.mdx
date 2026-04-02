@@ -1,0 +1,229 @@
+---
+title: "Contract Testing with Pact.io: Microservices Testing Strategy 2026"
+description: "Learn consumer-driven contract testing with Pact.io. How it prevents integration bugs in microservices, how Pact Broker works, and how to integrate with CI/CD pipelines."
+date: "2026-04-02"
+tags: [testing, contract-testing, pact, microservices, integration-testing, api]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# Contract Testing with Pact.io: Microservices Testing Strategy 2026
+
+Integration tests between microservices are expensive to run and slow to catch bugs — typically requiring deployed environments and specific test data. Contract testing provides the safety of integration tests with the speed of unit tests. Pact.io is the dominant tool for this approach.
+
+## The Problem Contract Testing Solves
+
+In a microservices architecture, Service A (consumer) calls Service B (provider). Integration failures happen when:
+
+1. Service B changes its API response shape
+2. Service B adds required fields that Service A doesn't send
+3. Service B deprecates an endpoint Service A still uses
+
+The traditional fix is extensive integration tests against deployed environments. But this requires coordination, is slow, and catches bugs late.
+
+**Contract testing** lets each service independently verify their side of the integration.
+
+## How Pact Works
+
+1. **Consumer writes a contract**: The consuming service defines what it expects from the provider (request format, response shape)
+2. **Contract stored in Pact Broker**: A central registry for all contracts
+3. **Provider verifies**: The providing service runs the contract's interactions against its real implementation
+4. **Both sides pass CI** → safe to deploy
+
+No shared environments. No coordination. Failures are caught in each service's own CI pipeline.
+
+## Consumer Side (JavaScript/TypeScript)
+
+```typescript
+import { PactV3, MatchersV3 } from '@pact-foundation/pact';
+import { OrderService } from '../src/order-service';
+
+const { like, eachLike } = MatchersV3;
+
+describe('OrderService (Pact Consumer)', () => {
+  const provider = new PactV3({
+    consumer: 'OrderService',
+    provider: 'ProductService',
+    dir: './pacts',  // Contract output directory
+  });
+
+  it('retrieves product details', async () => {
+    await provider.addInteraction({
+      states: [{ description: 'product 123 exists' }],
+      uponReceiving: 'a request for product 123',
+      withRequest: {
+        method: 'GET',
+        path: '/api/products/123',
+        headers: { Accept: 'application/json' },
+      },
+      willRespondWith: {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: {
+          id: like('123'),
+          name: like('Widget Pro'),
+          price: like(29.99),
+          inStock: like(true),
+          // Using 'like' means: match the TYPE, not the exact value
+          // The contract says "I need these fields with these types"
+        },
+      },
+    });
+
+    const result = await provider.executeTest(async (mockProvider) => {
+      const service = new OrderService(mockProvider.url);
+      return service.getProduct('123');
+    });
+
+    expect(result.id).toBe('123');
+    expect(result.price).toBe(29.99);
+  });
+});
+```
+
+Running this test:
+1. Starts a mock server that returns the specified response
+2. Runs the real consumer code against it
+3. Saves the interaction to `./pacts/OrderService-ProductService.json` if the test passes
+
+## The Contract File
+
+The generated contract looks like:
+
+```json
+{
+  "consumer": { "name": "OrderService" },
+  "provider": { "name": "ProductService" },
+  "interactions": [
+    {
+      "description": "a request for product 123",
+      "providerStates": [{ "name": "product 123 exists" }],
+      "request": {
+        "method": "GET",
+        "path": "/api/products/123"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": { "pact:matcher:type": "type", "value": "123" },
+          "name": { "pact:matcher:type": "type", "value": "Widget Pro" },
+          "price": { "pact:matcher:type": "type", "value": 29.99 }
+        }
+      }
+    }
+  ]
+}
+```
+
+## Provider Side: Verification
+
+The provider (ProductService) verifies its implementation against all consumer contracts:
+
+```typescript
+// provider.pact.spec.ts (in ProductService repo)
+import { Verifier } from '@pact-foundation/pact';
+
+describe('ProductService (Pact Provider)', () => {
+  it('verifies consumer contracts', () => {
+    return new Verifier({
+      providerBaseUrl: 'http://localhost:3001',
+      pactBrokerUrl: 'https://pact-broker.company.com',
+      provider: 'ProductService',
+      publishVerificationResult: true,
+      providerVersion: process.env.GIT_COMMIT,
+
+      // Provider states: set up test data
+      stateHandlers: {
+        'product 123 exists': async () => {
+          await db.products.upsert({ id: '123', name: 'Widget Pro', price: 29.99, inStock: true });
+        },
+        'product 123 does not exist': async () => {
+          await db.products.delete({ where: { id: '123' } });
+        },
+      },
+    }).verifyProvider();
+  });
+});
+```
+
+The verifier:
+1. Fetches all contracts from Pact Broker that reference `ProductService` as provider
+2. Runs each interaction against the real running service
+3. Publishes results back to Pact Broker
+
+## Pact Broker
+
+Pact Broker is the central registry. Self-host with Docker or use PactFlow (hosted):
+
+```yaml
+# docker-compose.yml
+services:
+  pact-broker:
+    image: pactfoundation/pact-broker:latest
+    ports:
+      - "9292:9292"
+    environment:
+      PACT_BROKER_DATABASE_URL: postgresql://pact:password@postgres/pact
+      PACT_BROKER_BASIC_AUTH_USERNAME: admin
+      PACT_BROKER_BASIC_AUTH_PASSWORD: admin
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: pact
+      POSTGRES_USER: pact
+      POSTGRES_PASSWORD: password
+```
+
+## Can I Deploy? (The Key Feature)
+
+Pact Broker's `can-i-deploy` command is the contract testing payoff — run it before deploying to know if the change is safe:
+
+```bash
+# Can OrderService v2.3.1 deploy to production?
+# (will it break with the current ProductService in production?)
+npx pact-broker can-i-deploy \
+  --pacticipant OrderService \
+  --version 2.3.1 \
+  --to-environment production
+
+# Output:
+# Computer says yes!
+# (or: Computer says no — shows which contracts fail)
+```
+
+## CI/CD Integration
+
+```yaml
+# GitHub Actions (Consumer CI)
+- name: Run Pact consumer tests
+  run: npm test -- --testPathPattern=pact
+
+- name: Publish pacts to broker
+  run: |
+    npx pact-broker publish ./pacts \
+      --consumer-app-version $GITHUB_SHA \
+      --broker-base-url https://pact-broker.company.com \
+      --tag $GITHUB_REF_NAME
+
+- name: Can I deploy?
+  run: |
+    npx pact-broker can-i-deploy \
+      --pacticipant OrderService \
+      --version $GITHUB_SHA \
+      --to-environment production
+```
+
+## When Contract Testing Is Worth It
+
+Contract testing pays off when:
+- Multiple teams own different services
+- Services deploy independently
+- Integration environments are slow or expensive to spin up
+- You've had production incidents from API mismatches
+
+It's overkill when:
+- One team owns all services (use integration tests instead)
+- Services deploy together as a monorepo with a single deployment
+- Your integration test suite is fast enough
+
+The investment in Pact setup is ~1 day per service pair. The return is immediate feedback on breaking changes without staging environments.

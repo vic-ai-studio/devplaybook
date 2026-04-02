@@ -1,0 +1,244 @@
+---
+title: "k6 Load Testing Guide: Performance Testing for APIs in 2026"
+description: "Master k6 for API load testing in 2026. Script structure, virtual users, scenarios, thresholds, metrics, CI/CD integration, and interpreting results."
+date: "2026-04-02"
+tags: [testing, k6, load-testing, performance, api, devops]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# k6 Load Testing Guide: Performance Testing for APIs in 2026
+
+k6 is Grafana's open-source load testing tool — JavaScript-scripted, developer-friendly, and designed to run in CI/CD pipelines. It's replaced JMeter and Gatling for most web API performance testing in modern stacks.
+
+## Why k6 Over JMeter/Gatling
+
+- **JavaScript scripts**: Tests are code, live in your repo, get code reviewed
+- **Low resource usage**: k6 uses goroutines internally — one instance can simulate thousands of VUs
+- **CI-native**: Runs as a CLI tool with JSON/text output, easy to integrate into GitHub Actions
+- **Grafana integration**: Built-in metrics compatible with Grafana dashboards
+
+## Installation and First Test
+
+```bash
+# macOS
+brew install k6
+
+# Linux
+sudo gpg -k
+sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+  --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+  | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt-get update && sudo apt-get install k6
+```
+
+```javascript
+// script.js
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export const options = {
+  vus: 10,        // Virtual users
+  duration: '30s', // Test duration
+};
+
+export default function () {
+  const res = http.get('https://api.example.com/products');
+
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+    'response time < 500ms': (r) => r.timings.duration < 500,
+    'has products array': (r) => JSON.parse(r.body).products !== undefined,
+  });
+
+  sleep(1); // Wait 1 second between iterations
+}
+```
+
+```bash
+k6 run script.js
+```
+
+## Key Concepts
+
+### Virtual Users (VUs)
+
+Each VU runs your `default` function in a loop for the duration of the test. With 10 VUs and a 1-second sleep, you get ~10 requests/second.
+
+### Scenarios
+
+Scenarios give fine-grained control over load patterns:
+
+```javascript
+export const options = {
+  scenarios: {
+    // Ramp up to 50 VUs, hold 2 minutes, ramp down
+    api_load_test: {
+      executor: 'ramping-vus',
+      startVUs: 0,
+      stages: [
+        { duration: '1m', target: 50 },   // Ramp up to 50 VUs over 1 minute
+        { duration: '2m', target: 50 },   // Hold at 50 VUs for 2 minutes
+        { duration: '30s', target: 0 },   // Ramp down
+      ],
+    },
+
+    // Separate checkout endpoint test: constant rate
+    checkout_stress: {
+      executor: 'constant-arrival-rate',
+      rate: 20,              // 20 requests per second
+      timeUnit: '1s',
+      duration: '3m',
+      preAllocatedVUs: 30,
+    },
+  },
+};
+```
+
+### Thresholds: Pass/Fail Criteria
+
+Thresholds make load tests a CI gate:
+
+```javascript
+export const options = {
+  thresholds: {
+    // 95th percentile response time < 500ms
+    http_req_duration: ['p(95)<500'],
+
+    // Less than 1% of requests fail
+    http_req_failed: ['rate<0.01'],
+
+    // 99th percentile < 1 second
+    'http_req_duration{endpoint:checkout}': ['p(99)<1000'],
+
+    // Custom metric threshold
+    order_creation_time: ['p(90)<800'],
+  },
+};
+```
+
+If thresholds aren't met, k6 exits with code 99 — which fails CI.
+
+## Realistic Load Test Script
+
+```javascript
+import http from 'k6/http';
+import { check, group, sleep } from 'k6';
+import { Trend, Rate, Counter } from 'k6/metrics';
+
+// Custom metrics
+const orderCreationTime = new Trend('order_creation_time', true);
+const checkoutSuccessRate = new Rate('checkout_success_rate');
+const totalOrders = new Counter('total_orders');
+
+export const options = {
+  scenarios: {
+    browse_products: {
+      executor: 'ramping-vus',
+      stages: [
+        { duration: '30s', target: 20 },
+        { duration: '2m', target: 20 },
+        { duration: '30s', target: 0 },
+      ],
+    },
+  },
+  thresholds: {
+    http_req_duration: ['p(95)<600', 'p(99)<1500'],
+    http_req_failed: ['rate<0.02'],
+    checkout_success_rate: ['rate>0.98'],
+  },
+};
+
+export function setup() {
+  // Run once before the test: create test user, get auth token
+  const res = http.post('https://api.example.com/auth/login', JSON.stringify({
+    email: 'loadtest@example.com',
+    password: 'testpass123'
+  }), { headers: { 'Content-Type': 'application/json' } });
+
+  return { token: JSON.parse(res.body).token };
+}
+
+export default function (data) {
+  const headers = {
+    'Authorization': `Bearer ${data.token}`,
+    'Content-Type': 'application/json',
+  };
+
+  group('Browse catalog', () => {
+    const products = http.get('https://api.example.com/products?limit=20', { headers });
+    check(products, { 'products loaded': (r) => r.status === 200 });
+    sleep(2);
+  });
+
+  group('Checkout flow', () => {
+    const start = Date.now();
+
+    const cart = http.post('https://api.example.com/cart', JSON.stringify({
+      productId: 'prod_123', quantity: 1
+    }), { headers });
+
+    const order = http.post('https://api.example.com/orders/checkout', JSON.stringify({
+      cartId: JSON.parse(cart.body).cartId,
+      paymentMethod: 'test_card'
+    }), { headers });
+
+    const success = check(order, { 'order created': (r) => r.status === 201 });
+    checkoutSuccessRate.add(success);
+
+    if (success) {
+      orderCreationTime.add(Date.now() - start);
+      totalOrders.add(1);
+    }
+
+    sleep(3);
+  });
+}
+```
+
+## Interpreting Results
+
+```
+✓ status is 200
+✓ response time < 500ms
+
+     checks.........................: 98.32% ✓ 5899  ✗ 99
+     data_received..................: 12 MB  67 kB/s
+     data_sent......................: 1.8 MB 9.8 kB/s
+   ✓ http_req_duration.............: avg=187ms  min=45ms  med=156ms  max=2.1s   p(90)=342ms p(95)=487ms
+   ✓ http_req_failed................: 1.65%  ✓ 99  ✗ 5900
+     http_reqs......................: 5999   32.77/s
+     iteration_duration.............: avg=3.23s
+     iterations.....................: 2345   12.81/s
+   ✓ order_creation_time............: avg=234ms  p(90)=456ms p(95)=612ms
+
+running (3m05.0s), 00/20 VUs, 2345 complete and 0 interrupted iterations
+```
+
+Key metrics to focus on:
+- **p(95) and p(99)**: Tail latency reveals worst-case user experience
+- **http_req_failed**: Error rate — should be < 1% for healthy APIs
+- **iteration_duration**: Full user journey time
+
+## CI/CD Integration
+
+```yaml
+# GitHub Actions
+- name: Run k6 load test
+  uses: grafana/k6-action@v0.3.1
+  with:
+    filename: tests/load/api.js
+    flags: --out json=results.json
+  env:
+    K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+
+- name: Upload results
+  if: always()
+  uses: actions/upload-artifact@v3
+  with:
+    name: k6-results
+    path: results.json
+```
+
+Run load tests on a schedule (nightly) rather than on every PR — they're too slow for every commit. Use thresholds as the gate: if the nightly run fails, open an issue and block the next release.

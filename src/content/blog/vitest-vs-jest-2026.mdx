@@ -1,0 +1,188 @@
+---
+title: "Vitest vs Jest: Modern JavaScript Testing in 2026"
+description: "Vitest vs Jest in 2026: a practical comparison. When to migrate, performance differences, configuration, and which to choose for new TypeScript projects."
+date: "2026-04-02"
+tags: [testing, vitest, jest, typescript, javascript, unit-testing]
+readingTime: "8 min read"
+author: "DevPlaybook Team"
+---
+
+# Vitest vs Jest: Modern JavaScript Testing in 2026
+
+Jest dominated JavaScript testing for almost a decade. Vitest launched in 2022 and has rapidly become the default for new projects, especially in the Vite ecosystem. In 2026, both are mature, but the choice has clearer defaults than it once did.
+
+## The Quick Answer
+
+- **New project?** Use Vitest.
+- **Existing Jest project?** Migrate if you're on Vite or Next.js 15+; stay on Jest if it's working and migration cost is high.
+- **CRA/webpack project?** Jest is still the natural fit.
+
+## Why Vitest Won for New Projects
+
+### Native ESM and TypeScript
+
+Jest was designed for CommonJS. Adding TypeScript and ESM support requires Babel, `ts-jest`, or `@swc/jest` — transform layers that add configuration complexity and can cause subtle differences between test and production behavior.
+
+Vitest uses Vite's native TypeScript and ESM handling. Zero configuration for TypeScript:
+
+```typescript
+// This just works in Vitest — no config needed
+import { describe, it, expect } from 'vitest';
+import { parseISO, formatDate } from './date-utils.js';  // .js extension, ESM-style
+
+describe('formatDate', () => {
+  it('formats ISO date to locale string', () => {
+    const date = parseISO('2026-04-02');
+    expect(formatDate(date, 'en-US')).toBe('April 2, 2026');
+  });
+});
+```
+
+The same code in Jest requires `jest.config.ts` with `transform` configured, `tsconfig.json` adjustments, and often fighting CJS/ESM interop issues.
+
+### Speed
+
+Vitest runs tests in parallel using Vite's build pipeline. On large TypeScript projects:
+
+| Project size | Jest (ts-jest) | Vitest |
+|-------------|----------------|--------|
+| 50 test files | ~12s | ~4s |
+| 200 test files | ~45s | ~12s |
+| 1000 test files | ~180s | ~40s |
+
+*(Real-world benchmarks vary by machine and test complexity, but 3–5x speedup is typical.)*
+
+The speedup comes from:
+1. Native TypeScript compilation (no Babel overhead)
+2. Thread-based parallelism (vs Jest's process-based workers)
+3. Module caching shared across test files
+
+### Watch Mode
+
+Vitest's watch mode is instant. It integrates with Vite's HMR to re-run only the tests affected by the changed module — similar to how Vite's dev server updates only the changed component.
+
+Jest's watch mode re-runs all tests in the changed file (plus files that import it). For large test suites, Vitest's granularity saves significant time.
+
+## Jest's Remaining Advantages
+
+### Ecosystem Maturity
+
+Jest has been around longer. If you're using:
+- `jest-axe` (accessibility testing)
+- `jest-openapi` (OpenAPI validation)
+- Obscure `@jest/...` packages
+
+...you may find Vitest equivalents are newer or absent. Most popular testing utilities (Testing Library, MSW, Faker) support both.
+
+### Create React App / Webpack
+
+If your project uses Create React App or a webpack-based setup without Vite, Jest is pre-configured and ready. Adding Vitest to a non-Vite project is possible but adds Vite as a dev dependency just for testing — which may not make sense.
+
+### Snapshot Testing
+
+Jest's snapshot testing is more mature with better serializers and a larger ecosystem of snapshot plugins. Vitest has snapshot support that's compatible with Jest's format, but edge cases exist.
+
+## API Compatibility
+
+Vitest's API is intentionally Jest-compatible:
+
+```typescript
+// Jest
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+const mockFn = jest.fn();
+jest.spyOn(module, 'method');
+jest.mock('./module');
+
+// Vitest — same API
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+const mockFn = vi.fn();
+vi.spyOn(module, 'method');
+vi.mock('./module');
+```
+
+Most Jest tests run in Vitest with only `jest` → `vi` substitution. Vitest's `vi.useFakeTimers()` API is nearly identical to Jest's timer mocking.
+
+## Configuration Comparison
+
+**Jest** (`jest.config.ts`):
+
+```typescript
+import type { Config } from 'jest';
+
+const config: Config = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts'],
+};
+
+export default config;
+```
+
+**Vitest** (`vitest.config.ts`):
+
+```typescript
+import { defineConfig } from 'vitest/config';
+import path from 'path';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+    },
+  },
+  resolve: {
+    alias: { '@': path.resolve(__dirname, './src') },
+  },
+});
+```
+
+Both are comparable in verbosity, but Vitest's config lives alongside your `vite.config.ts` (or you can merge them), keeping test and build configuration in sync.
+
+## Migration: Jest to Vitest
+
+For a typical TypeScript project:
+
+```bash
+# Remove Jest
+npm uninstall jest ts-jest @jest/globals @types/jest
+
+# Add Vitest
+npm install -D vitest @vitest/coverage-v8
+```
+
+Replace `jest.config.ts` with `vitest.config.ts` (see above), then do a find-replace:
+
+```bash
+# Replace jest with vi in test files
+sed -i 's/import.*from .@jest\/globals.*/import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";/g' src/**/*.test.ts
+sed -i 's/jest\./vi./g' src/**/*.test.ts
+```
+
+Update `package.json`:
+
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  }
+}
+```
+
+Most migrations complete in under an hour for medium projects. The primary gotchas are:
+- `jest.mock()` hoisting vs `vi.mock()` (Vitest handles this similarly but check your mocking patterns)
+- DOM environment setup (add `@vitest/browser` or configure `jsdom` environment)
+- Snapshot format differences (run `vitest --update` to regenerate)
+
+## The Verdict
+
+In 2026, Vitest is the default for TypeScript-first, Vite-based, or Next.js 15+ projects. Its speed, zero-config TypeScript, and native ESM support eliminate entire categories of configuration pain. Jest is a solid choice when you're invested in its ecosystem or running a non-Vite build setup.
+
+The migration cost from Jest to Vitest is low — for most projects, a couple hours of work — and pays back quickly in faster CI times.

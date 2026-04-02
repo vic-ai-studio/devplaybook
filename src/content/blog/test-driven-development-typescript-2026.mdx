@@ -1,0 +1,244 @@
+---
+title: "Test-Driven Development with TypeScript Best Practices 2026"
+description: "Practical TDD with TypeScript in 2026. The Red-Green-Refactor cycle, when TDD pays off, testing patterns for async code, mocking strategies, and TDD with React."
+date: "2026-04-02"
+tags: [testing, tdd, typescript, vitest, jest, best-practices, unit-testing]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# Test-Driven Development with TypeScript Best Practices 2026
+
+Test-driven development divides developer opinion more than almost any other practice. The honest truth: TDD is a powerful design tool that's worth the investment in certain contexts and actively counterproductive in others. This guide covers when and how to apply TDD effectively in TypeScript projects.
+
+## The Red-Green-Refactor Cycle
+
+TDD has one rule: **write the failing test first, then write the minimum code to make it pass, then clean up.**
+
+```
+RED → Write a failing test
+GREEN → Write minimal code to pass it
+REFACTOR → Clean up code (keep tests green)
+```
+
+In practice with TypeScript and Vitest:
+
+```typescript
+// Step 1 — RED: Write the failing test
+import { describe, it, expect } from 'vitest';
+import { calculateOrderTotal } from './order.js';
+
+describe('calculateOrderTotal', () => {
+  it('returns subtotal for items without discount', () => {
+    const items = [
+      { productId: 'p1', quantity: 2, unitPrice: 10.00 },
+      { productId: 'p2', quantity: 1, unitPrice: 25.00 },
+    ];
+
+    const result = calculateOrderTotal(items);
+
+    expect(result.subtotal).toBe(45.00);
+    expect(result.discount).toBe(0);
+    expect(result.total).toBe(45.00);
+  });
+});
+// Run: vitest → FAIL (calculateOrderTotal doesn't exist yet)
+```
+
+```typescript
+// Step 2 — GREEN: Minimum code to pass
+type OrderItem = { productId: string; quantity: number; unitPrice: number };
+type OrderTotal = { subtotal: number; discount: number; total: number };
+
+export function calculateOrderTotal(items: OrderItem[]): OrderTotal {
+  const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  return { subtotal, discount: 0, total: subtotal };
+}
+// Run: vitest → PASS
+```
+
+```typescript
+// Step 3 — REFACTOR + new test
+it('applies percentage discount', () => {
+  const items = [{ productId: 'p1', quantity: 1, unitPrice: 100.00 }];
+  const result = calculateOrderTotal(items, { type: 'percentage', value: 20 });
+
+  expect(result.discount).toBe(20.00);
+  expect(result.total).toBe(80.00);
+});
+// → RED again. Extend implementation. Green. Repeat.
+```
+
+## TypeScript-Specific TDD Patterns
+
+### Type-First Design
+
+TypeScript enables a powerful TDD variant: define types before implementation. Types are a form of test — they specify the interface your code must satisfy:
+
+```typescript
+// Define the interface first
+type PricingStrategy =
+  | { type: 'percentage'; value: number }    // e.g., 20% off
+  | { type: 'fixed'; value: number }         // e.g., $10 off
+  | { type: 'buyXgetY'; buy: number; free: number }; // e.g., buy 2 get 1 free
+
+export function calculateOrderTotal(
+  items: OrderItem[],
+  discount?: PricingStrategy
+): OrderTotal;
+```
+
+The type signature is a contract. TypeScript checks that every test call matches it, and that the implementation satisfies it. You get type errors before runtime errors.
+
+### Testing Discriminated Unions
+
+Discriminated unions appear frequently in TypeScript business logic and benefit from exhaustive testing:
+
+```typescript
+type PaymentResult =
+  | { status: 'success'; transactionId: string; amount: number }
+  | { status: 'declined'; reason: string }
+  | { status: 'pending'; checkAfter: Date };
+
+describe('processPayment', () => {
+  it('returns success result with transaction id', async () => {
+    const result = await processPayment({ amount: 99.99, card: VALID_CARD });
+
+    // TypeScript narrows the type after this check
+    if (result.status !== 'success') throw new Error(`Expected success, got ${result.status}`);
+    expect(result.transactionId).toMatch(/^txn_/);
+    expect(result.amount).toBe(99.99);
+  });
+
+  it('returns declined with reason for invalid card', async () => {
+    const result = await processPayment({ amount: 99.99, card: DECLINED_CARD });
+
+    expect(result.status).toBe('declined');
+    if (result.status === 'declined') {
+      expect(result.reason).toBe('insufficient_funds');
+    }
+  });
+});
+```
+
+### Async TDD
+
+Async code is where developers often skip tests. Don't:
+
+```typescript
+describe('UserRepository', () => {
+  it('creates a user and returns with id', async () => {
+    const repo = new UserRepository(testDb);
+    const user = await repo.create({
+      email: 'alice@example.com',
+      name: 'Alice',
+    });
+
+    expect(user.id).toBeDefined();
+    expect(user.email).toBe('alice@example.com');
+    expect(user.createdAt).toBeInstanceOf(Date);
+  });
+
+  it('throws UserAlreadyExistsError for duplicate email', async () => {
+    const repo = new UserRepository(testDb);
+    await repo.create({ email: 'alice@example.com', name: 'Alice' });
+
+    await expect(
+      repo.create({ email: 'alice@example.com', name: 'Alice 2' })
+    ).rejects.toThrow(UserAlreadyExistsError);
+  });
+});
+```
+
+## Mocking in TDD
+
+The rule: **mock at boundaries**. Don't mock internal implementation details — mock external dependencies (HTTP, database, file system).
+
+```typescript
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+
+// Mock the email service (external dependency)
+vi.mock('./email-service.js', () => ({
+  sendEmail: vi.fn().mockResolvedValue({ messageId: 'msg_123' }),
+}));
+
+import { sendEmail } from './email-service.js';
+import { UserService } from './user-service.js';
+
+describe('UserService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('sends welcome email after user creation', async () => {
+    const service = new UserService(mockRepo);
+    await service.createUser({ email: 'alice@example.com', name: 'Alice' });
+
+    expect(sendEmail).toHaveBeenCalledWith({
+      to: 'alice@example.com',
+      template: 'welcome',
+      data: { name: 'Alice' },
+    });
+  });
+
+  it('does not create user if email send fails', async () => {
+    vi.mocked(sendEmail).mockRejectedValueOnce(new Error('SMTP error'));
+
+    await expect(
+      service.createUser({ email: 'alice@example.com', name: 'Alice' })
+    ).rejects.toThrow();
+
+    // User should not be saved if email fails
+    expect(await mockRepo.findByEmail('alice@example.com')).toBeNull();
+  });
+});
+```
+
+## TDD with React Components
+
+For React, TDD with Testing Library focuses on behavior, not implementation:
+
+```typescript
+import { render, screen, userEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+
+// Write the test first
+describe('LoginForm', () => {
+  it('calls onSubmit with email and password', async () => {
+    const onSubmit = vi.fn();
+    render(<LoginForm onSubmit={onSubmit} />);
+
+    await userEvent.type(screen.getByLabelText('Email'), 'alice@example.com');
+    await userEvent.type(screen.getByLabelText('Password'), 'password123');
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      email: 'alice@example.com',
+      password: 'password123',
+    });
+  });
+
+  it('shows validation error for empty email', async () => {
+    render(<LoginForm onSubmit={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
+
+    expect(screen.getByText('Email is required')).toBeInTheDocument();
+  });
+});
+```
+
+## When TDD Pays Off (and When It Doesn't)
+
+**TDD works well for:**
+- Business logic with clear input/output (pricing, tax calculation, data transformation)
+- Algorithms and data structures
+- State machines and reducers
+- API endpoints with defined contracts
+
+**TDD is counterproductive for:**
+- Exploratory work where you don't know the design yet
+- UI layout and visual components
+- Code that's tightly coupled to infrastructure (write integration tests instead)
+- Prototypes and throwaway code
+
+The goal is not 100% TDD coverage — it's using TDD where it prevents real bugs and improves design. Apply it to the core domain logic where correctness matters most, write integration tests for infrastructure boundaries, and don't let the practice become dogma.
