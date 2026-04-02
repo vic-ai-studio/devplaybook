@@ -1,0 +1,261 @@
+---
+title: "Deno Deploy vs Bun vs Node.js: Serverless Runtime Comparison 2026"
+description: "Compare Deno Deploy, Bun, and Node.js for serverless workloads in 2026. Performance benchmarks, deployment models, compatibility, ecosystem, and use case recommendations."
+date: "2026-04-02"
+tags: [deno, bun, nodejs, serverless, runtime, edge, javascript, typescript]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# Deno Deploy vs Bun vs Node.js: Serverless Runtime Comparison 2026
+
+JavaScript serverless has three main runtime choices in 2026: the established **Node.js** (with AWS Lambda, Railway, Fly.io), the modern **Bun** runtime (faster performance, better DX), and **Deno Deploy** (edge-native, secure by default, TypeScript-first).
+
+This comparison cuts through the hype to tell you when each actually makes sense for serverless deployments.
+
+## Runtime Fundamentals
+
+### Node.js
+- Engine: V8
+- Package manager: npm/pnpm/yarn
+- Module system: CommonJS + ESM
+- TypeScript: Via ts-node, tsx, or compile step
+- Security: Unrestricted by default
+
+### Bun
+- Engine: JavaScriptCore (from WebKit/Safari)
+- Package manager: bun (fastest in benchmarks)
+- Module system: CommonJS + ESM (compatible with both)
+- TypeScript: First-class, no configuration needed
+- Security: Unrestricted (like Node.js)
+
+### Deno
+- Engine: V8
+- Package manager: npm compat + JSR + URL imports
+- Module system: ESM only
+- TypeScript: Built-in, zero configuration
+- Security: Explicit permission flags required (`--allow-net`, `--allow-read`)
+
+## Performance Benchmarks (2026)
+
+### HTTP Server Throughput (requests/second)
+
+A simple "Hello World" HTTP server across runtimes:
+
+| Runtime | Requests/sec | Latency P50 | Latency P99 |
+|---------|-------------|------------|------------|
+| Bun 1.2 | 180,000 | 0.8ms | 2.1ms |
+| Node.js 22 | 90,000 | 1.5ms | 4.2ms |
+| Deno 2.2 | 85,000 | 1.7ms | 4.8ms |
+
+```javascript
+// Bun HTTP server
+Bun.serve({
+  port: 3000,
+  fetch(req) {
+    return new Response("Hello World");
+  },
+});
+```
+
+```javascript
+// Node.js (with http module)
+import http from 'http';
+http.createServer((req, res) => {
+  res.end("Hello World");
+}).listen(3000);
+```
+
+```typescript
+// Deno server
+Deno.serve({ port: 3000 }, () => new Response("Hello World"));
+```
+
+### Package Install Speed
+
+For CI/CD and cold start performance, install speed matters:
+
+| Runtime | Install 50 packages | Install from lockfile |
+|---------|--------------------|--------------------|
+| bun install | ~1.2s | ~0.3s |
+| pnpm install | ~8s | ~3s |
+| npm install | ~15s | ~8s |
+| yarn install | ~12s | ~6s |
+
+Bun's package install speed is transformative for CI pipelines.
+
+### Startup Time
+
+| Runtime | Cold start (bare server) |
+|---------|--------------------------|
+| Bun | ~15ms |
+| Node.js | ~45ms |
+| Deno | ~30ms |
+
+## Deno Deploy: Edge-Native Serverless
+
+Deno Deploy is Deno's serverless platform that runs on edge infrastructure (powered by Deno's own CDN, similar to Cloudflare Workers).
+
+**Key characteristics:**
+- Runs at 35+ PoPs globally
+- V8 isolate-based (no cold starts)
+- TypeScript native (no compilation step)
+- Standard Web APIs (fetch, Request, Response, URL)
+- Built-in Deno KV (key-value store, globally replicated)
+- Free tier: 100K requests/day, 512MB storage
+
+```typescript
+// Deno Deploy: no configuration, just TypeScript
+import { Hono } from "hono/mod.ts";
+
+const app = new Hono();
+
+app.get("/", (c) => c.text("Hello from Deno Deploy!"));
+app.get("/users/:id", async (c) => {
+  const id = c.req.param("id");
+  const kv = await Deno.openKv();
+  const user = await kv.get(["users", id]);
+  return c.json(user.value);
+});
+
+Deno.serve(app.fetch);
+```
+
+### Deno KV: Built-in Global State
+
+```typescript
+// Deno KV: globally consistent key-value store
+const kv = await Deno.openKv();
+
+// Atomic operations for consistency
+const result = await kv.atomic()
+  .check({ key: ["users", userId], versionstamp: null })  // Only if doesn't exist
+  .set(["users", userId], { name: "Alice", createdAt: new Date() })
+  .commit();
+
+// Watch for changes (real-time updates)
+for await (const entry of kv.watch([["users", userId]])) {
+  console.log("User updated:", entry);
+}
+```
+
+Deno KV is available on Deno Deploy and works for session storage, rate limiting, and feature flags without needing an external Redis.
+
+### Deno Deploy Deployment
+
+```bash
+# Install Deno Deploy CLI
+deno install -A --no-check -r https://deno.land/x/deploy/deployctl.ts -n deployctl
+
+# Deploy
+deployctl deploy --project=my-app main.ts
+
+# Or via GitHub Actions (auto-deploy on push)
+# Link your GitHub repo in the Deno Deploy dashboard
+```
+
+**Limitations:**
+- No file system access (deploy-time assets only)
+- No native Node.js modules (Node compat available but limited)
+- 512MB memory limit
+- No custom Docker images
+
+## Bun for Serverless
+
+Bun isn't primarily a serverless platform — it's a runtime. But several platforms run Bun natively:
+
+- **Railway**: Deploy Bun apps natively
+- **Fly.io**: Run Bun containers
+- **Render**: Bun support for web services
+- **AWS Lambda**: Use Bun as custom runtime
+
+```bash
+# AWS Lambda with Bun (custom runtime)
+# Dockerfile for Lambda
+FROM public.ecr.aws/docker/library/node:20-alpine AS base
+
+# Install Bun
+RUN npm install -g bun@latest
+
+WORKDIR /app
+COPY package.json bun.lockb ./
+RUN bun install --production
+
+COPY . .
+
+# Lambda handler via Bun
+CMD ["bun", "run", "handler.ts"]
+```
+
+### Bun's Advantage: Drop-In Compatibility
+
+Bun's biggest advantage for serverless migration: it runs existing Node.js code. Most npm packages work without changes:
+
+```typescript
+// This Node.js code runs on Bun without modification
+import express from 'express';
+import { PrismaClient } from '@prisma/client';
+
+const app = express();
+const prisma = new PrismaClient();
+
+app.get('/users', async (req, res) => {
+  const users = await prisma.user.findMany();
+  res.json(users);
+});
+
+app.listen(3000);
+```
+
+This makes Bun the easiest migration path from Node.js — change your runtime, keep your code.
+
+## Node.js: The Safe Choice
+
+Node.js remains the default for serverless in 2026 because:
+- **Widest platform support**: Every serverless platform supports Node.js
+- **Largest ecosystem**: npm has 2M+ packages, all work with Node.js
+- **Battle-tested**: Years of production usage, well-understood behavior
+- **TypeScript toolchain**: tsx, ts-node, esbuild — mature ecosystem
+
+For AWS Lambda, Node.js remains the best-supported runtime with managed updates, official AWS SDK integration, and the most community resources.
+
+## Feature Comparison
+
+| Feature | Node.js (Lambda) | Bun | Deno Deploy |
+|---------|-----------------|-----|-------------|
+| TypeScript built-in | ❌ (requires setup) | ✅ | ✅ |
+| Edge deployment | Via Workers/Vercel | ❌ (containers) | ✅ Native |
+| Scale to zero | ✅ Lambda | Via platform | ✅ |
+| Cold start | 100–500ms | 50ms (est.) | < 5ms |
+| Built-in state | ❌ | ❌ | ✅ (Deno KV) |
+| Security model | Permissive | Permissive | Least-privilege |
+| npm compatibility | Full | Full | Good (compat mode) |
+| Custom runtime deps | Full | Full | Limited |
+| Max execution time | 15 min | Platform-dependent | 30s (Deploy) |
+
+## Choosing the Right Runtime
+
+### Choose Node.js if:
+- Deploying to AWS Lambda (best support, managed runtime)
+- Your codebase has many npm dependencies with native modules
+- Team is already expert in Node.js toolchain
+- You need the widest ecosystem compatibility
+
+### Choose Bun if:
+- You want faster performance without changing your code
+- CI pipeline speed is a bottleneck (Bun install is 10x faster)
+- Testing with Bun's built-in test runner
+- Railway, Render, or container-based serverless deployment
+
+### Choose Deno Deploy if:
+- Edge deployment is required (< 50ms globally)
+- TypeScript-first development without build steps
+- Security-by-default is important (explicit permissions)
+- You want Deno KV for simple global state (rate limiting, sessions)
+- Building with standard Web APIs for maximum portability
+
+## The Future Direction
+
+All three runtimes are converging on Web-standard APIs. The Web Platform APIs (fetch, Request, Response, URL, ReadableStream) work on Node.js 22+, Bun, and Deno. This convergence means more code will run across all runtimes without modification.
+
+For new serverless projects in 2026: write to Web APIs and you'll have maximum portability across Node.js, Bun, Deno, and even Cloudflare Workers.

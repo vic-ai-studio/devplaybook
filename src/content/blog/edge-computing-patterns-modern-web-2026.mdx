@@ -1,0 +1,399 @@
+---
+title: "Edge Computing Patterns for Modern Web Applications 2026"
+description: "Proven edge computing patterns for web applications in 2026. Authentication at the edge, A/B testing, geolocation routing, rate limiting, caching, and ISR — with implementation examples."
+date: "2026-04-02"
+tags: [edge-computing, cloudflare-workers, vercel, patterns, performance, caching, authentication]
+readingTime: "10 min read"
+author: "DevPlaybook Team"
+---
+
+# Edge Computing Patterns for Modern Web Applications 2026
+
+Edge computing has moved from "interesting experiment" to "production standard" for web applications. In 2026, the most performant web architectures run logic at the edge — authentication, rate limiting, A/B testing, and content personalization — reducing latency for global users while offloading work from origin servers.
+
+This guide covers the seven most valuable edge computing patterns with practical implementation examples.
+
+## What is Edge Computing?
+
+Edge computing runs code at geographically distributed nodes (CDN PoPs) rather than in central regional data centers. Cloudflare Workers runs in 300+ cities. Vercel Edge runs at their CDN nodes. The result: your code executes 20–50ms from most users globally, rather than 100–300ms from a central AWS region.
+
+Edge runtimes use V8 isolates rather than containers, enabling sub-5ms cold starts. The tradeoff: limited Node.js APIs, 128MB memory limit, and usually < 30 seconds execution time.
+
+## Pattern 1: Authentication at the Edge
+
+**Problem**: Every authenticated request hits your origin server to verify the JWT/session, adding latency.
+
+**Solution**: Verify tokens at the edge, reject unauthenticated requests before they reach the origin.
+
+```typescript
+// Cloudflare Workers: JWT verification at edge
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url)
+
+    // Public routes: skip auth
+    if (url.pathname.startsWith('/public') || url.pathname === '/login') {
+      return fetch(request)
+    }
+
+    // Extract and verify JWT
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response('Unauthorized', { status: 401 })
+    }
+
+    const token = authHeader.slice(7)
+
+    try {
+      const payload = await verifyJWT(token, env.JWT_PUBLIC_KEY)
+
+      // Add user info to downstream request
+      const modifiedRequest = new Request(request, {
+        headers: new Headers({
+          ...Object.fromEntries(request.headers),
+          'X-User-Id': payload.sub,
+          'X-User-Role': payload.role,
+          'X-User-Org': payload.orgId,
+        })
+      })
+
+      return fetch(modifiedRequest)
+    } catch {
+      return new Response('Invalid token', { status: 401 })
+    }
+  }
+}
+
+async function verifyJWT(token: string, publicKey: string): Promise<JWTPayload> {
+  // Use Web Crypto API (available in edge runtimes)
+  const key = await crypto.subtle.importKey(
+    'spki',
+    pemToArrayBuffer(publicKey),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['verify']
+  )
+
+  const [headerB64, payloadB64, signatureB64] = token.split('.')
+  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`)
+  const signature = base64UrlDecode(signatureB64)
+
+  const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, signature, data)
+  if (!valid) throw new Error('Invalid signature')
+
+  return JSON.parse(atob(payloadB64)) as JWTPayload
+}
+```
+
+**Benefits**:
+- Auth failures never reach origin server
+- 10–50ms latency reduction for all authenticated requests
+- Offloads JWT verification CPU from origin
+
+## Pattern 2: Rate Limiting at the Edge
+
+**Problem**: Abusive clients, scrapers, or DDoS attacks consume origin server resources.
+
+**Solution**: Rate limit at the edge using Workers KV or Durable Objects.
+
+```typescript
+// Cloudflare Workers: sliding window rate limiting
+import { Hono } from 'hono'
+
+const app = new Hono<{ Bindings: { RATE_LIMIT: KVNamespace } }>()
+
+const rateLimiter = async (c: any, next: any) => {
+  const ip = c.req.header('CF-Connecting-IP') ?? 'unknown'
+  const key = `rate:${ip}:${Math.floor(Date.now() / 60000)}`  // Per minute window
+
+  const current = parseInt(await c.env.RATE_LIMIT.get(key) ?? '0')
+
+  if (current >= 100) {  // 100 requests per minute
+    return c.json({
+      error: 'Rate limit exceeded',
+      retry_after: 60 - (Date.now() % 60000) / 1000
+    }, 429)
+  }
+
+  // Increment counter (atomic-ish with short TTL)
+  await c.env.RATE_LIMIT.put(key, String(current + 1), { expirationTtl: 120 })
+
+  c.header('X-RateLimit-Limit', '100')
+  c.header('X-RateLimit-Remaining', String(99 - current))
+
+  await next()
+}
+
+app.use('/api/*', rateLimiter)
+```
+
+For more precise rate limiting, use Durable Objects:
+
+```typescript
+// Durable Object for atomic rate limiting
+export class RateLimiter {
+  private state: DurableObjectState
+
+  constructor(state: DurableObjectState) {
+    this.state = state
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const { allowed, remaining } = await this.state.storage.transaction(async (txn) => {
+      const now = Date.now()
+      const window = Math.floor(now / 60000)
+      const key = `count:${window}`
+      const current = (await txn.get<number>(key)) ?? 0
+
+      if (current >= 100) {
+        return { allowed: false, remaining: 0 }
+      }
+
+      await txn.put(key, current + 1, { expiration: (window + 2) * 60 })
+      return { allowed: true, remaining: 99 - current }
+    })
+
+    return Response.json({ allowed, remaining })
+  }
+}
+```
+
+## Pattern 3: A/B Testing at the Edge
+
+**Problem**: A/B testing requires serving different content to different users. Doing this at origin adds latency and complexity.
+
+**Solution**: Assign users to experiments at the edge, serve variant-specific content or set cookies.
+
+```typescript
+// Vercel Edge Middleware: A/B testing
+import { NextResponse, NextRequest } from 'next/server'
+
+const EXPERIMENTS = {
+  'checkout-redesign': {
+    variants: ['control', 'variant-a', 'variant-b'],
+    weights: [0.5, 0.25, 0.25],
+    paths: ['/checkout/**']
+  }
+}
+
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next()
+
+  for (const [name, config] of Object.entries(EXPERIMENTS)) {
+    const cookieName = `exp_${name}`
+    let variant = request.cookies.get(cookieName)?.value
+
+    if (!variant) {
+      // Assign variant based on weights
+      const rand = Math.random()
+      let cumulative = 0
+      for (let i = 0; i < config.variants.length; i++) {
+        cumulative += config.weights[i]
+        if (rand < cumulative) {
+          variant = config.variants[i]
+          break
+        }
+      }
+      // Persist assignment
+      response.cookies.set(cookieName, variant!, {
+        maxAge: 60 * 60 * 24 * 30,  // 30 days
+        httpOnly: true,
+        sameSite: 'lax'
+      })
+    }
+
+    // Rewrite to variant-specific page
+    if (variant !== 'control') {
+      const url = request.nextUrl.clone()
+      url.pathname = `/_experiments/${name}/${variant}${request.nextUrl.pathname}`
+      return NextResponse.rewrite(url, { headers: response.headers })
+    }
+  }
+
+  return response
+}
+```
+
+## Pattern 4: Geolocation Routing
+
+**Problem**: Serve region-specific content (GDPR banners in EU, price localization, language).
+
+**Solution**: Use edge geolocation headers to route or modify requests.
+
+```typescript
+// Cloudflare Workers: Geolocation-based routing
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const country = request.cf?.country ?? 'US'
+    const url = new URL(request.url)
+
+    // Redirect EU users to GDPR-compliant endpoint
+    if (['DE', 'FR', 'IT', 'ES', 'NL', 'PL', 'SE', 'DK'].includes(country)) {
+      if (!url.pathname.startsWith('/eu')) {
+        url.pathname = '/eu' + url.pathname
+        return Response.redirect(url.toString(), 302)
+      }
+    }
+
+    // Add geolocation context to origin request
+    return fetch(request, {
+      cf: {
+        cacheTtl: 300,
+        cacheEverything: false,
+      },
+      headers: {
+        ...Object.fromEntries(request.headers),
+        'X-Country': country,
+        'X-City': request.cf?.city ?? '',
+        'X-Timezone': request.cf?.timezone ?? 'UTC',
+        'X-Currency': getCurrencyForCountry(country),
+      }
+    })
+  }
+}
+
+function getCurrencyForCountry(country: string): string {
+  const map: Record<string, string> = {
+    US: 'USD', GB: 'GBP', JP: 'JPY', AU: 'AUD',
+    CA: 'CAD', DE: 'EUR', FR: 'EUR',
+  }
+  return map[country] ?? 'USD'
+}
+```
+
+## Pattern 5: Intelligent Caching
+
+**Problem**: Default CDN caching doesn't understand your application's cache invalidation logic.
+
+**Solution**: Implement fine-grained cache control at the edge with tag-based invalidation.
+
+```typescript
+// Cloudflare Workers: Cache with custom keys and tags
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url)
+
+    // Only cache GET requests
+    if (request.method !== 'GET') return fetch(request)
+
+    // Custom cache key (vary by auth status, not full user)
+    const isAuthenticated = request.headers.has('Authorization')
+    const cacheKey = new Request(
+      `${url.origin}${url.pathname}?auth=${isAuthenticated}`,
+      { method: 'GET' }
+    )
+
+    const cache = caches.default
+    const cached = await cache.match(cacheKey)
+    if (cached) {
+      const response = new Response(cached.body, cached)
+      response.headers.set('X-Cache', 'HIT')
+      return response
+    }
+
+    const response = await fetch(request)
+
+    // Cache based on response headers
+    if (response.status === 200 && response.headers.get('Cache-Control')) {
+      const responseToCache = new Response(response.clone().body, response)
+      responseToCache.headers.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
+
+      // Tag for selective purging: purge all /products/* with one API call
+      responseToCache.headers.set('Cache-Tag', `product,${url.pathname.split('/')[2]}`)
+
+      await cache.put(cacheKey, responseToCache)
+    }
+
+    const responseWithHeader = new Response(response.body, response)
+    responseWithHeader.headers.set('X-Cache', 'MISS')
+    return responseWithHeader
+  }
+}
+```
+
+## Pattern 6: Bot Detection and Challenge
+
+**Problem**: Bots consuming resources, scraping, or attempting credential stuffing.
+
+**Solution**: Detect suspicious traffic patterns at the edge and challenge or block.
+
+```typescript
+// Workers: Bot scoring and challenge
+const BOT_THRESHOLDS = {
+  block: 0.9,    // High confidence bot → block
+  challenge: 0.6  // Medium confidence → serve challenge
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const botScore = parseInt(request.cf?.botManagement?.score as string ?? '100')
+    const isVerifiedBot = request.cf?.botManagement?.verifiedBot as boolean
+
+    // Allow verified bots (Googlebot, Bingbot, etc.)
+    if (isVerifiedBot) return fetch(request)
+
+    // Block high-confidence bots
+    if (botScore <= (1 - BOT_THRESHOLDS.block) * 100) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
+    // Challenge medium-confidence bots
+    if (botScore <= (1 - BOT_THRESHOLDS.challenge) * 100) {
+      return serveTurnstileChallenge()
+    }
+
+    return fetch(request)
+  }
+}
+```
+
+## Pattern 7: Request/Response Transformation
+
+**Problem**: Different clients need different data shapes; origin response needs modification.
+
+**Solution**: Transform requests and responses at the edge without changing the origin.
+
+```typescript
+// Add security headers to all responses
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const response = await fetch(request)
+    const newResponse = new Response(response.body, response)
+
+    // Security headers
+    newResponse.headers.set('X-Frame-Options', 'DENY')
+    newResponse.headers.set('X-Content-Type-Options', 'nosniff')
+    newResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+    newResponse.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    newResponse.headers.set(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:"
+    )
+
+    // Remove sensitive headers from origin
+    newResponse.headers.delete('X-Powered-By')
+    newResponse.headers.delete('Server')
+
+    return newResponse
+  }
+}
+```
+
+## Choosing What to Put at the Edge
+
+Not everything belongs at the edge. Use this guide:
+
+| Workload | Edge? | Reason |
+|----------|-------|--------|
+| JWT verification | ✅ Yes | Pure computation, no state needed |
+| Session cookie validation | ✅ Yes | Fast KV lookup |
+| Rate limiting | ✅ Yes | KV-based counter, prevents origin load |
+| A/B assignment | ✅ Yes | Deterministic based on cookie/IP |
+| Geolocation routing | ✅ Yes | Data available in request headers |
+| Security headers | ✅ Yes | Static transformation |
+| Business logic | ❌ No | Needs database, too complex |
+| Database queries | ❌ No | Need D1/Turso for edge-safe queries |
+| Payment processing | ❌ No | Needs Stripe SDK, complex state |
+| ML inference | ⚠️ Maybe | Workers AI supports some models |
+
+Edge computing is most powerful when combined with origin servers: move the fast, stateless logic to the edge and keep the complex, stateful logic at origin.

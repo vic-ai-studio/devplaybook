@@ -1,0 +1,319 @@
+---
+title: "Serverless Databases: PlanetScale vs Neon vs Turso 2026"
+description: "Comprehensive comparison of the top serverless databases in 2026. PlanetScale (MySQL), Neon (PostgreSQL), and Turso (SQLite/LibSQL) — pricing, performance, branching, edge support, and use cases."
+date: "2026-04-02"
+tags: [serverless, database, planetscale, neon, turso, mysql, postgresql, sqlite, edge]
+readingTime: "11 min read"
+author: "DevPlaybook Team"
+---
+
+# Serverless Databases: PlanetScale vs Neon vs Turso 2026
+
+The serverless database market has matured significantly. Three platforms now compete for the "serverless-first" developer: **PlanetScale** (serverless MySQL with Vitess), **Neon** (serverless PostgreSQL with branching), and **Turso** (serverless SQLite via LibSQL, edge-deployable).
+
+Each takes a different approach: PlanetScale for teams that need MySQL at massive scale, Neon for developers who want PostgreSQL with developer-experience features, and Turso for edge-deployed applications where every millisecond matters.
+
+## What Makes a Database "Serverless"?
+
+A serverless database:
+- **Scales to zero**: No charges when idle, no minimum instance size
+- **Scales automatically**: Handles traffic spikes without manual provisioning
+- **Consumption-based pricing**: Pay for what you use, not reserved capacity
+- **Connection-pooling built-in**: Handles thousands of connections without your own PgBouncer/ProxySQL
+
+Traditional managed databases (RDS, Cloud SQL) require you to provision capacity. Serverless databases autoscale and bill by the millisecond.
+
+## PlanetScale: Serverless MySQL at Vitess Scale
+
+PlanetScale is built on Vitess — the same horizontal MySQL sharding system that powers YouTube, Slack, and GitHub. It brings enterprise-grade scalability to individual developers and startups.
+
+**Key differentiators:**
+- **Database branching**: Create database branches like Git branches — development, staging, feature branch
+- **Non-blocking schema changes**: Deploy schema migrations without locking tables (even on tables with billions of rows)
+- **Boost**: Read replica that serves queries in seconds after a write (reduces read latency)
+- **Insights**: Query analyzer built into the console
+
+```bash
+# Install PlanetScale CLI
+brew install planetscale/tap/pscale
+
+# Create a database
+pscale database create my-app
+
+# Create a development branch
+pscale branch create my-app dev
+
+# Connect locally
+pscale connect my-app dev --port 3309
+```
+
+### PlanetScale Branching Workflow
+
+```bash
+# Development workflow
+pscale branch create my-app feature/add-user-roles
+
+# Apply schema change to feature branch
+mysql -h 127.0.0.1 -P 3309 my-app < schema.sql
+
+# Promote branch to main (non-blocking DDL)
+pscale deploy-request create my-app feature/add-user-roles
+pscale deploy-request deploy my-app 1
+
+# Branch is now merged into main with zero downtime
+```
+
+### PlanetScale Pricing (2026)
+
+| Plan | Price | Rows Read | Rows Written | Storage |
+|------|-------|-----------|--------------|---------|
+| Hobby | $0 | 5B/month | 10M/month | 5GB |
+| Scaler | $29/month | Unlimited | Unlimited | 10GB |
+| Scaler Pro | $39/database/month | Unlimited | Unlimited | 10GB |
+| Enterprise | Custom | Custom | Custom | Custom |
+
+**Important**: PlanetScale pricing is based on rows read/written, not compute time. Heavy read workloads can hit limits quickly on free tier.
+
+### PlanetScale Code Example
+
+```typescript
+// PlanetScale with Drizzle ORM
+import { drizzle } from 'drizzle-orm/planetscale-serverless';
+import { connect } from '@planetscale/database';
+
+const connection = connect({
+  host: process.env.DATABASE_HOST,
+  username: process.env.DATABASE_USERNAME,
+  password: process.env.DATABASE_PASSWORD,
+});
+
+const db = drizzle(connection);
+
+// Works exactly like any MySQL database
+const users = await db
+  .select()
+  .from(users)
+  .where(eq(users.active, true))
+  .limit(10);
+```
+
+## Neon: Serverless PostgreSQL with Time Travel
+
+Neon separates PostgreSQL's storage and compute, enabling true serverless behavior: compute scales to zero when idle, then starts in milliseconds when a request arrives.
+
+**Key differentiators:**
+- **Branching**: Full database branching with copy-on-write storage (instant, no data copying)
+- **Scale to zero**: Compute pauses after configurable inactivity (saves costs significantly)
+- **Time travel**: Query your database at any point in history
+- **Read replicas**: Instant read replicas that share storage with the primary
+- **Full PostgreSQL**: pgvector, pg_trgm, PostGIS — all extensions available
+
+```bash
+# Install Neon CLI
+npm install -g neonctl
+
+# Create database
+neonctl projects create --name my-app
+
+# Create a branch
+neonctl branches create --name dev --project-id your-project-id
+
+# Get connection string
+neonctl connection-string dev
+```
+
+### Neon Branching: The Killer Feature
+
+Neon's branching uses copy-on-write semantics — creating a branch is instant regardless of database size:
+
+```bash
+# Create a branch for a PR
+neonctl branches create \
+  --name feature/new-checkout \
+  --project-id abc123
+
+# Connection string for the branch
+# postgres://user:pass@ep-abc.us-east-2.aws.neon.tech/neondb?options=project%3Dabc123
+
+# Reset branch to main (rolls back all changes)
+neonctl branches reset feature/new-checkout
+
+# Delete branch when PR is merged
+neonctl branches delete feature/new-checkout
+```
+
+In CI/CD, create a database branch for each pull request:
+
+```yaml
+# GitHub Actions: Neon branch per PR
+- name: Create Neon Branch
+  id: create-branch
+  uses: neondatabase/create-branch-action@v5
+  with:
+    project_id: ${{ vars.NEON_PROJECT_ID }}
+    branch_name: pr-${{ github.event.pull_request.number }}
+    api_key: ${{ secrets.NEON_API_KEY }}
+
+- name: Run migrations
+  run: |
+    DATABASE_URL=${{ steps.create-branch.outputs.db_url }} \
+    npx prisma migrate deploy
+
+- name: Run tests
+  run: DATABASE_URL=${{ steps.create-branch.outputs.db_url }} npm test
+```
+
+### Neon Pricing (2026)
+
+| Plan | Price | Compute Hours | Storage | Branches |
+|------|-------|---------------|---------|----------|
+| Free | $0 | 191.9/month | 0.5GB | 10 |
+| Launch | $19/month | 300/month | 10GB | Unlimited |
+| Scale | $69/month | 750/month | 50GB | Unlimited |
+| Business | $700/month | 1000+/month | 500GB | Unlimited |
+
+**Note**: Compute hours apply when the database is active. Scale-to-zero means the free tier is generous for development.
+
+### Neon with pgvector (AI Use Cases)
+
+```sql
+-- Enable pgvector
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Create embeddings table
+CREATE TABLE embeddings (
+  id BIGSERIAL PRIMARY KEY,
+  content TEXT,
+  embedding vector(1536)  -- OpenAI ada-002 dimension
+);
+
+-- Search by semantic similarity
+SELECT content, 1 - (embedding <=> $1) AS similarity
+FROM embeddings
+ORDER BY embedding <=> $1
+LIMIT 10;
+```
+
+Neon is the best PostgreSQL option for AI apps that need pgvector with branching for development workflows.
+
+## Turso: SQLite at the Edge
+
+Turso is built on LibSQL — an open-source fork of SQLite — and distributed globally with data replicated close to users.
+
+**Key differentiators:**
+- **Edge-native**: Replicas in 300+ locations (Cloudflare-powered), data close to users
+- **SQLite compatible**: Use any SQLite client library
+- **Embedded replicas**: Replicate data INTO your application process — zero-latency reads
+- **Groups**: Manage hundreds of databases as a group with shared configuration
+- **Per-user databases**: Easily create isolated databases per user or tenant
+
+```bash
+# Install Turso CLI
+brew install tursodatabase/tap/turso
+
+# Create database
+turso db create my-app
+
+# Get connection URL
+turso db show my-app --url
+
+# Replicate to specific regions
+turso db create my-app --group production --locations iad,fra,nrt
+```
+
+### Turso Embedded Replicas
+
+The killer feature for edge deployments:
+
+```typescript
+import { createClient, createEmbeddedReplicaClient } from "@libsql/client";
+
+// Embedded replica: data synced into app process
+const client = createEmbeddedReplicaClient({
+  url: "libsql://my-db-myorg.turso.io",
+  authToken: process.env.TURSO_AUTH_TOKEN,
+  syncUrl: "libsql://my-db-myorg.turso.io",  // Sync from remote
+  syncInterval: 60,  // Sync every 60 seconds
+});
+
+// Reads are local (zero latency!)
+const result = await client.execute("SELECT * FROM users WHERE id = ?", [userId]);
+
+// Writes go to primary, then sync
+await client.execute("INSERT INTO users (name) VALUES (?)", ["Alice"]);
+```
+
+Embedded replicas achieve sub-millisecond read latency — the database is literally in the same process.
+
+### Turso Pricing (2026)
+
+| Plan | Price | Databases | Row Reads | Row Writes | Storage |
+|------|-------|-----------|-----------|------------|---------|
+| Starter | $0 | 500 | 500M/month | 10M/month | 5GB |
+| Scaler | $29/month | Unlimited | Unlimited | Unlimited | 24GB |
+| Enterprise | Custom | Unlimited | Unlimited | Unlimited | Custom |
+
+Turso's free tier supports 500 databases — making it ideal for per-user/per-tenant database architectures at zero cost.
+
+### Multi-Tenant Database per User
+
+```typescript
+// Create a database per user
+async function createUserDatabase(userId: string) {
+  const client = createTursoClient({ token: process.env.TURSO_API_TOKEN });
+
+  const db = await client.databases.create({
+    name: `user-${userId}`,
+    group: "production"
+  });
+
+  return db.hostname;
+}
+
+// Connect to user's database
+function getUserDb(hostname: string) {
+  return createClient({
+    url: `libsql://${hostname}`,
+    authToken: process.env.TURSO_AUTH_TOKEN,
+  });
+}
+```
+
+## Side-by-Side Comparison
+
+| Dimension | PlanetScale | Neon | Turso |
+|-----------|-------------|------|-------|
+| Database engine | MySQL (Vitess) | PostgreSQL | SQLite (LibSQL) |
+| Branching | ✅ Excellent | ✅ Excellent (CoW) | ❌ |
+| Scale to zero | Partial | ✅ | ✅ |
+| Edge deployment | Via HTTP API | Via connection string | ✅ Native |
+| Embedded replicas | ❌ | ❌ | ✅ |
+| Per-user DBs | Complex | Complex | ✅ Easy |
+| pgvector / AI | ❌ (MySQL) | ✅ | Limited |
+| Non-blocking DDL | ✅ | Partial | N/A |
+| Free tier | 5B rows/month | 191.9 compute-hours | 500 DBs |
+| Best for | MySQL at scale | PostgreSQL + AI | Edge + multi-tenant |
+
+## Choosing the Right Tool
+
+**Choose PlanetScale if:**
+- You need MySQL (existing codebase, team expertise)
+- Non-blocking schema changes are critical (high-traffic tables)
+- You're working at Vitess scale (billions of rows)
+- Database branching for team workflow is a priority
+
+**Choose Neon if:**
+- You need PostgreSQL
+- pgvector for AI/vector search is required
+- Branch-per-PR workflows for database testing
+- Scale-to-zero cost optimization is important
+- You want the most feature-rich serverless PostgreSQL experience
+
+**Choose Turso if:**
+- Edge deployment (Cloudflare Workers, Deno Deploy)
+- Per-user/per-tenant isolated databases
+- Embedded replicas for zero-latency reads
+- SQLite compatibility
+- Multi-region data distribution
+
+In 2026, many applications benefit from combining these: **Neon** as the primary database for complex queries + **Turso** at the edge for session data and user-specific reads.

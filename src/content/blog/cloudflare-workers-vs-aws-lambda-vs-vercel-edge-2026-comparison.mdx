@@ -1,0 +1,235 @@
+---
+title: "Cloudflare Workers vs AWS Lambda vs Vercel Edge Functions 2026"
+description: "Deep comparison of the three major serverless platforms: Cloudflare Workers, AWS Lambda, and Vercel Edge Functions. Latency benchmarks, pricing analysis, cold start comparison, and use case guide."
+date: "2026-04-02"
+tags: [cloudflare-workers, aws-lambda, vercel, serverless, edge-computing, comparison]
+readingTime: "12 min read"
+author: "DevPlaybook Team"
+---
+
+# Cloudflare Workers vs AWS Lambda vs Vercel Edge Functions 2026
+
+Serverless has fragmented. You no longer choose between "server or no server" — you choose *which kind* of serverless, *where* it runs, and *how much* of the V8 isolate vs Node.js runtime tradeoff you're willing to make.
+
+In 2026, three platforms dominate: **Cloudflare Workers** (edge, V8 isolates), **AWS Lambda** (regional, containers), and **Vercel Edge Functions** (CDN-layer, V8 isolates). Each has won specific use cases and each has real limitations.
+
+This guide compares them on what actually matters: latency, pricing, cold starts, capabilities, and ecosystem.
+
+## Architecture Comparison
+
+### AWS Lambda
+
+Lambda runs your code in containerized environments (Amazon Linux) in specific AWS regions. Your code executes in a sandboxed container that's either warm (previously used) or cold (starting fresh).
+
+**Key characteristics:**
+- Full Node.js (or Python, Go, Java, etc.) runtime
+- Up to 15 minutes execution time
+- Up to 10GB memory, 10GB ephemeral storage
+- Regional (us-east-1, eu-west-1, etc.) — not globally distributed
+- Cold start: 100ms–2s depending on runtime and package size
+
+### Cloudflare Workers
+
+Workers run at the edge — in 300+ data centers globally. Code runs as V8 isolates (not containers), which eliminates cold starts.
+
+**Key characteristics:**
+- V8 JavaScript runtime (no Node.js built-ins by default, but Node.js compat mode available)
+- 50ms CPU limit per request (Workers) or up to 15 minutes (Durable Objects, Queues)
+- 128MB memory limit
+- Truly global execution — runs in the city closest to the user
+- Cold start: **< 5ms** (V8 isolates have negligible startup time)
+
+### Vercel Edge Functions
+
+Vercel Edge Functions run at Vercel's CDN edge nodes, co-located with their CDN infrastructure.
+
+**Key characteristics:**
+- V8 JavaScript runtime (same as Workers)
+- 2MB code size limit
+- 1MB response size limit
+- Built for Next.js/React Server Components integration
+- Cold start: **< 10ms** (V8 isolates)
+
+## Latency Comparison
+
+This is where edge vs regional computing makes a concrete difference:
+
+| Metric | AWS Lambda (us-east-1) | Cloudflare Workers | Vercel Edge |
+|--------|----------------------|-------------------|-------------|
+| Cold start | 200ms–2000ms | < 5ms | < 10ms |
+| P50 response time (global user) | 80–200ms | 10–30ms | 15–35ms |
+| P99 response time | 500ms–3s | 50–100ms | 50–150ms |
+| CPU execution limit | 15 minutes | 50ms (standard) | 30s |
+
+For a user in Tokyo making a request to a Lambda in us-east-1: 150ms+ network latency alone before any code runs. For Cloudflare Workers: the function runs in a Tokyo data center, adding 5–20ms.
+
+**Winner for latency**: Cloudflare Workers > Vercel Edge > AWS Lambda
+
+## Pricing Comparison
+
+### AWS Lambda
+- **First 1M requests/month**: Free
+- **After free tier**: $0.20 per 1M requests
+- **Compute**: $0.0000166667 per GB-second
+- **Example**: 10M requests at 100ms, 256MB = ~$16.70/month
+
+### Cloudflare Workers
+- **Free tier**: 100,000 requests/day
+- **Paid (Workers Paid)**: $5/month for 10M requests
+- **Beyond 10M**: $0.50 per additional 1M
+- **Example**: 10M requests = $5/month
+
+### Vercel Edge Functions
+- **Hobby (free)**: 500,000 edge requests/month
+- **Pro ($20/month)**: 1M edge requests included
+- **Beyond included**: $2 per additional 1M
+- **Example**: 10M requests with Pro = $20 + (9M × $2/1M) = $38/month
+
+**Winner for pricing**: Cloudflare Workers > AWS Lambda > Vercel Edge
+
+## Runtime Capabilities
+
+This is where the tradeoffs become important:
+
+### What AWS Lambda has that others don't:
+- **Full Node.js**: `fs`, `child_process`, `crypto`, all native modules
+- **Long execution**: up to 15 minutes (data processing, ML inference)
+- **Large packages**: 250MB deployment package (10GB with Lambda layers)
+- **Persistent connections**: Can maintain DB connections with RDS Proxy
+- **Any language**: Python, Go, Java, Ruby, .NET, custom runtimes
+
+```javascript
+// Lambda can do things Workers can't:
+const { spawn } = require('child_process');  // Run shell commands
+const fs = require('fs');                    // Full filesystem access
+// Long-running processing
+await longRunningDataProcessing();            // No 50ms CPU limit
+```
+
+### What Cloudflare Workers has that Lambda doesn't:
+- **True global execution**: 300+ PoPs, runs near users globally
+- **Zero cold starts**: Isolates start in < 5ms always
+- **KV, D1, R2, Durable Objects**: Integrated data storage at edge
+- **Workers AI**: Run AI inference at the edge
+
+```javascript
+// Cloudflare-specific capabilities:
+const value = await env.MY_KV.get('user:123');    // Edge KV storage
+const db = env.DB;                                 // D1 SQLite at edge
+const object = env.ROOM.get(id);                  // Durable Objects
+```
+
+### What Vercel Edge Functions has that others don't:
+- **Next.js integration**: Seamless with `export const runtime = 'edge'` in Next.js
+- **Middleware**: Run at CDN layer before Next.js renders
+- **Image optimization**: Integrated with Vercel's image pipeline
+
+```typescript
+// Next.js edge middleware
+export function middleware(request: NextRequest) {
+  const country = request.geo?.country ?? 'US';
+  return NextResponse.rewrite(
+    new URL(`/${country.toLowerCase()}${request.nextUrl.pathname}`, request.url)
+  );
+}
+
+export const config = {
+  matcher: '/((?!api|_next|_vercel|.*\\.).*)',
+};
+```
+
+## Use Case Guide
+
+### Choose AWS Lambda when:
+- **Long-running processing** (data transformation, ML inference, video processing)
+- **Language diversity** (Python ML code, Go services, JVM-based apps)
+- **AWS ecosystem** (DynamoDB, RDS, SQS, S3 — Lambda integrates natively)
+- **High memory requirements** (> 128MB, up to 10GB)
+- **Existing Node.js code** with native modules or file system access
+
+**Best for**: APIs with complex business logic, data pipelines, scheduled jobs, event processing
+
+### Choose Cloudflare Workers when:
+- **Global latency is critical** (< 50ms P99 worldwide)
+- **Edge caching + compute** (cache API, CDN logic)
+- **Authentication at the edge** (JWT verification before requests hit your origin)
+- **A/B testing, feature flags** at the CDN layer
+- **Edge databases** (D1, KV, Durable Objects for real-time coordination)
+- **Cost optimization** at high volumes ($5/10M requests is unbeatable)
+
+**Best for**: Auth middleware, geolocation-based routing, rate limiting, edge APIs, real-time APIs
+
+### Choose Vercel Edge Functions when:
+- **You're already on Vercel** with a Next.js app
+- **Next.js Middleware** (auth, redirects, i18n routing)
+- **React Server Components** need edge execution
+- **Simplicity > control** (Vercel handles deployment, scaling, CDN)
+
+**Best for**: Next.js middleware, auth gates, i18n routing, preview environments
+
+## Cold Start Deep Dive
+
+Cold starts are the most misunderstood aspect of serverless:
+
+**Lambda cold starts** occur when:
+- First request after deployment
+- Scaling up rapidly (new containers needed)
+- Idle for > 15 minutes (container recycled)
+
+Cold start time varies by:
+- Runtime: Node.js ~200ms, Python ~200ms, Java ~500ms–2s
+- Package size: larger packages = longer cold starts
+- VPC configuration: Lambda in VPC adds 1–3s for initial ENI setup
+
+**Mitigation strategies:**
+```javascript
+// Keep Lambda warm with scheduled pings
+exports.handler = async (event) => {
+  if (event.source === 'serverless-plugin-warmup') {
+    return 'Lambda is warm';
+  }
+  // Normal handler
+};
+
+// Or use Provisioned Concurrency ($0.015/GB-hour)
+// Keeps N Lambda instances always warm
+```
+
+**Workers/Edge cold starts**: Essentially non-existent. V8 isolates start in 0–5ms because they don't boot a process — they create a new V8 context within an already-running process. This is the fundamental architectural advantage of isolate-based serverless.
+
+## Database Integration
+
+This is a critical consideration that's often overlooked:
+
+| Platform | Best DB Options |
+|----------|----------------|
+| AWS Lambda | RDS (+ RDS Proxy), DynamoDB, Aurora Serverless v2, DocumentDB |
+| Cloudflare Workers | D1 (SQLite), KV, Hyperdrive (proxied PlanetScale/Neon/Supabase), Durable Objects |
+| Vercel Edge | Vercel KV (Redis), Vercel Postgres (Neon), Planetscale (via fetch), Upstash |
+
+Lambda has the most database options (any TCP-based database) but struggles with connection pools. Workers has excellent native data primitives but requires Hyperdrive for external databases.
+
+## Migration Path
+
+### From Lambda to Workers:
+1. Audit: identify any native Node.js modules, file system access, or long-running operations
+2. Replace `require()` with ES module `import`
+3. Replace `context.callbackWaitsForEmptyEventLoop` with proper async/await
+4. Replace AWS SDK calls with fetch-based API calls
+5. Replace DynamoDB with D1 or KV where possible
+
+### From Vercel Edge to Workers:
+1. Replace Next.js-specific Request/Response objects with standard Web APIs
+2. Move away from Next.js middleware patterns to Workers routes
+3. Replace Vercel KV with Cloudflare KV
+4. Replace Vercel Postgres with D1 or Hyperdrive-proxied Neon
+
+## Conclusion
+
+The right choice depends on your specific constraints:
+
+- **Latency-critical global apps with simple logic**: Cloudflare Workers
+- **Complex server-side logic, existing Node.js, AWS ecosystem**: AWS Lambda
+- **Next.js apps on Vercel with edge middleware**: Vercel Edge Functions
+
+Most mature architectures use **multiple platforms**: Lambda for complex business logic, Workers at the edge for auth/routing/rate-limiting, and Vercel Edge for Next.js-specific middleware. The platforms are complementary, not mutually exclusive.

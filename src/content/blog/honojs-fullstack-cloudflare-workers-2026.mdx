@@ -1,0 +1,385 @@
+---
+title: "Building Full-Stack Apps with Hono.js on Cloudflare Workers 2026"
+description: "Hono.js is the fastest JavaScript framework for Cloudflare Workers. Learn to build full-stack applications with Hono, including APIs, React SSR, middleware, D1 database, and deployment patterns."
+date: "2026-04-02"
+tags: [hono, cloudflare-workers, fullstack, typescript, d1, edge-computing, deployment]
+readingTime: "11 min read"
+author: "DevPlaybook Team"
+---
+
+# Building Full-Stack Apps with Hono.js on Cloudflare Workers 2026
+
+Hono.js has become the go-to framework for building APIs and full-stack applications on Cloudflare Workers. It's fast (consistently tops benchmarks), TypeScript-first, Web Standards-based, and — critically — it works across Workers, Deno, Bun, Node.js, and Vercel Edge without code changes.
+
+In 2026, the Hono + Workers + D1 + R2 stack is a complete full-stack solution that's globally distributed, costs pennies at moderate scale, and deploys in seconds.
+
+## Why Hono on Workers?
+
+**Performance**: Hono has zero overhead — it's a thin wrapper around Web APIs. Sub-millisecond routing, no startup cost.
+
+**Multi-runtime**: Write once, deploy anywhere (Workers, Deno, Bun, Node.js, Vercel).
+
+**TypeScript-first**: Full type inference for routes, middleware, and validators.
+
+**JSX support**: Built-in JSX for rendering HTML — no framework needed for simple UIs.
+
+**Middleware ecosystem**: Auth, CORS, compression, caching, rate limiting — all available.
+
+## Project Setup
+
+```bash
+# Create a new Hono + Workers project
+npm create hono@latest my-app
+cd my-app
+
+# Choose: cloudflare-workers template
+# Framework: Hono
+# Package manager: npm/bun
+
+# Install dependencies
+npm install
+
+# Start development server (local Worker emulation)
+npm run dev
+# Local server running at http://localhost:8787
+```
+
+Project structure:
+
+```
+my-app/
+├── src/
+│   └── index.ts     # Main application
+├── wrangler.toml    # Workers configuration
+├── package.json
+└── tsconfig.json
+```
+
+## Basic API
+
+```typescript
+// src/index.ts
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { logger } from 'hono/logger'
+import { zValidator } from '@hono/zod-validator'
+import { z } from 'zod'
+
+// Type bindings for Cloudflare environment
+type Bindings = {
+  DB: D1Database        // D1 SQLite
+  KV: KVNamespace       // Workers KV
+  R2: R2Bucket          // R2 object storage
+  RESEND_API_KEY: string // Secret variable
+}
+
+const app = new Hono<{ Bindings: Bindings }>()
+
+// Global middleware
+app.use('*', logger())
+app.use('/api/*', cors({
+  origin: ['https://myapp.com', 'http://localhost:3000'],
+  credentials: true
+}))
+
+// Routes
+app.get('/', (c) => c.text('Hello from Cloudflare Workers!'))
+
+app.get('/api/health', (c) => c.json({ status: 'ok', edge: c.req.raw.cf?.city }))
+
+// Validated POST endpoint
+const createUserSchema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email(),
+})
+
+app.post('/api/users',
+  zValidator('json', createUserSchema),
+  async (c) => {
+    const { name, email } = c.req.valid('json')
+
+    const result = await c.env.DB.prepare(
+      'INSERT INTO users (name, email) VALUES (?, ?) RETURNING *'
+    ).bind(name, email).first()
+
+    return c.json(result, 201)
+  }
+)
+
+export default app
+```
+
+## D1 Database Integration
+
+D1 is Cloudflare's SQLite-based edge database, integrated natively with Workers:
+
+```toml
+# wrangler.toml
+name = "my-app"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-app-db"
+database_id = "your-database-id"
+```
+
+```bash
+# Create D1 database
+wrangler d1 create my-app-db
+
+# Create schema
+wrangler d1 execute my-app-db --local --command="
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS posts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER REFERENCES users(id),
+  title TEXT NOT NULL,
+  content TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);"
+```
+
+### Drizzle ORM with D1
+
+```bash
+npm install drizzle-orm
+npm install -D drizzle-kit
+```
+
+```typescript
+// src/db/schema.ts
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
+
+export const users = sqliteTable('users', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+})
+
+export const posts = sqliteTable('posts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').references(() => users.id),
+  title: text('title').notNull(),
+  content: text('content'),
+})
+```
+
+```typescript
+// src/index.ts — using Drizzle with D1
+import { drizzle } from 'drizzle-orm/d1'
+import { users, posts } from './db/schema'
+import { eq, desc } from 'drizzle-orm'
+
+app.get('/api/users/:id/posts', async (c) => {
+  const db = drizzle(c.env.DB)
+  const userId = parseInt(c.req.param('id'))
+
+  const userPosts = await db
+    .select({
+      title: posts.title,
+      content: posts.content,
+      author: users.name,
+    })
+    .from(posts)
+    .leftJoin(users, eq(posts.userId, users.id))
+    .where(eq(posts.userId, userId))
+    .orderBy(desc(posts.createdAt))
+    .limit(10)
+
+  return c.json(userPosts)
+})
+```
+
+## Authentication with JWT
+
+```typescript
+import { jwt } from 'hono/jwt'
+
+// Protected routes middleware
+const authMiddleware = jwt({
+  secret: (c) => c.env.JWT_SECRET,
+})
+
+// Apply to route group
+app.use('/api/admin/*', authMiddleware)
+
+// Login endpoint
+app.post('/api/auth/login', async (c) => {
+  const { email, password } = await c.req.json()
+
+  const user = await c.env.DB.prepare(
+    'SELECT * FROM users WHERE email = ?'
+  ).bind(email).first()
+
+  if (!user || !await verifyPassword(password, user.password_hash)) {
+    return c.json({ error: 'Invalid credentials' }, 401)
+  }
+
+  const token = await sign(
+    { sub: user.id, email: user.email, exp: Math.floor(Date.now() / 1000) + 86400 },
+    c.env.JWT_SECRET
+  )
+
+  return c.json({ token })
+})
+```
+
+## JSX for Server-Side Rendering
+
+Hono supports JSX natively for rendering HTML at the edge:
+
+```typescript
+// src/index.tsx
+/** @jsxImportSource hono/jsx */
+import { Hono } from 'hono'
+import { html } from 'hono/html'
+
+const Layout = ({ children }: { children: any }) => (
+  <html>
+    <head>
+      <title>My App</title>
+      <script src="https://cdn.tailwindcss.com" />
+    </head>
+    <body className="bg-gray-50">
+      <nav className="bg-white shadow px-6 py-4">
+        <h1 className="text-xl font-bold">My App</h1>
+      </nav>
+      <main className="container mx-auto px-6 py-8">{children}</main>
+    </body>
+  </html>
+)
+
+app.get('/blog', async (c) => {
+  const posts = await c.env.DB.prepare(
+    'SELECT * FROM posts ORDER BY created_at DESC LIMIT 20'
+  ).all()
+
+  return c.html(
+    <Layout>
+      <h2 className="text-2xl font-bold mb-6">Blog Posts</h2>
+      <ul className="space-y-4">
+        {posts.results.map((post: any) => (
+          <li key={post.id} className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold">{post.title}</h3>
+            <p className="text-gray-600 mt-2">{post.content?.slice(0, 200)}...</p>
+          </li>
+        ))}
+      </ul>
+    </Layout>
+  )
+})
+```
+
+## R2 File Storage
+
+```typescript
+// File upload to R2
+app.post('/api/upload', async (c) => {
+  const formData = await c.req.formData()
+  const file = formData.get('file') as File
+
+  if (!file) {
+    return c.json({ error: 'No file provided' }, 400)
+  }
+
+  const key = `uploads/${Date.now()}-${file.name}`
+  await c.env.R2.put(key, file.stream(), {
+    httpMetadata: {
+      contentType: file.type,
+    },
+  })
+
+  return c.json({
+    url: `https://cdn.myapp.com/${key}`,
+    size: file.size,
+  })
+})
+
+// Serve from R2
+app.get('/cdn/*', async (c) => {
+  const key = c.req.path.slice(5)  // Remove '/cdn/'
+  const object = await c.env.R2.get(key)
+
+  if (!object) return c.notFound()
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  headers.set('Cache-Control', 'public, max-age=31536000')
+
+  return new Response(object.body, { headers })
+})
+```
+
+## Deployment
+
+```bash
+# Deploy to Cloudflare Workers
+wrangler deploy
+
+# Deploy with environment (staging)
+wrangler deploy --env staging
+
+# View logs (streaming)
+wrangler tail
+
+# Run D1 migrations in production
+wrangler d1 execute my-app-db --command="ALTER TABLE users ADD COLUMN bio TEXT"
+```
+
+### CI/CD with GitHub Actions
+
+```yaml
+name: Deploy to Workers
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - name: Deploy
+        run: bun run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+```
+
+## Performance Tips
+
+### Cache API
+
+```typescript
+// Cache responses at the edge
+app.get('/api/products', async (c) => {
+  const cache = caches.default
+  const cacheKey = new Request(c.req.url)
+
+  const cachedResponse = await cache.match(cacheKey)
+  if (cachedResponse) return cachedResponse
+
+  const products = await c.env.DB.prepare('SELECT * FROM products').all()
+  const response = c.json(products.results)
+
+  // Cache for 5 minutes
+  response.headers.set('Cache-Control', 'public, max-age=300')
+  c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))
+
+  return response
+})
+```
+
+The Hono + Workers stack delivers global edge performance with a developer experience that rivals monolithic frameworks — at a fraction of the infrastructure cost.
