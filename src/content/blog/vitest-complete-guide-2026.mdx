@@ -1,0 +1,419 @@
+---
+title: "Vitest Complete Guide 2026: Fast Unit Testing for Vite & TypeScript Projects"
+description: "Everything you need to know about Vitest in 2026. Setup, configuration, mocking, coverage, component testing with Vue/React, and performance benchmarks vs Jest."
+date: "2026-04-03"
+readingTime: "12 min read"
+tags: ["Vitest", "Testing", "TypeScript", "Vite", "Unit Testing", "JavaScript"]
+slug: "vitest-complete-guide-2026"
+---
+
+Vitest has become the de facto testing framework for Vite-based projects — and in 2026, it's fast enough and feature-complete enough to replace Jest in most TypeScript codebases. This guide covers everything from setup to advanced patterns.
+
+## Why Vitest Over Jest in 2026
+
+Jest is still fine. But if your project already uses Vite, switching to Vitest gives you:
+
+- **Native ESM support** — no transform overhead for modern module syntax
+- **Shared Vite config** — your aliases, plugins, and transforms work in tests without duplication
+- **Dramatically faster cold start** — Vitest's watch mode starts in under 500ms on most projects
+- **In-source testing** — write tests next to the code in `if (import.meta.vitest)` blocks
+- **Compatible Jest API** — migration is mostly find-and-replace
+
+The performance difference is most noticeable in large projects. A 500-test Jest suite that takes 45 seconds to run cold often drops to under 8 seconds in Vitest.
+
+## Installation & Basic Setup
+
+```bash
+npm install -D vitest
+```
+
+Minimal `vite.config.ts`:
+
+```typescript
+import { defineConfig } from 'vite'
+import { defineConfig as defineTestConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    globals: true,        // Use describe/it/expect without imports
+    environment: 'node',  // or 'jsdom' for DOM testing
+    coverage: {
+      provider: 'v8',     // or 'istanbul'
+      reporter: ['text', 'html', 'lcov'],
+    },
+  },
+})
+```
+
+Add to `package.json`:
+
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  }
+}
+```
+
+## Writing Tests: Core Patterns
+
+### Basic Unit Test
+
+```typescript
+// math.ts
+export function add(a: number, b: number): number {
+  return a + b
+}
+
+// math.test.ts
+import { describe, it, expect } from 'vitest'
+import { add } from './math'
+
+describe('add', () => {
+  it('adds two positive numbers', () => {
+    expect(add(2, 3)).toBe(5)
+  })
+
+  it('handles negative numbers', () => {
+    expect(add(-1, 1)).toBe(0)
+  })
+})
+```
+
+### Async Testing
+
+```typescript
+import { describe, it, expect } from 'vitest'
+
+async function fetchUser(id: number) {
+  const res = await fetch(`/api/users/${id}`)
+  return res.json()
+}
+
+describe('fetchUser', () => {
+  it('returns user data', async () => {
+    const user = await fetchUser(1)
+    expect(user).toMatchObject({ id: 1, name: expect.any(String) })
+  })
+})
+```
+
+### Error Testing
+
+```typescript
+import { expect, it } from 'vitest'
+
+function parseJSON(str: string) {
+  if (!str) throw new Error('Input required')
+  return JSON.parse(str)
+}
+
+it('throws on empty string', () => {
+  expect(() => parseJSON('')).toThrowError('Input required')
+})
+
+it('rejects invalid JSON', () => {
+  expect(() => parseJSON('{bad}')).toThrow(SyntaxError)
+})
+```
+
+## Mocking
+
+Vitest's mocking API mirrors Jest closely.
+
+### Module Mocking
+
+```typescript
+import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { sendEmail } from './email'
+
+// Mock the entire module
+vi.mock('./email', () => ({
+  sendEmail: vi.fn().mockResolvedValue({ messageId: 'test-123' }),
+}))
+
+describe('sendEmail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('sends an email', async () => {
+    await sendEmail('user@example.com', 'Hello')
+    expect(sendEmail).toHaveBeenCalledWith('user@example.com', 'Hello')
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+  })
+})
+```
+
+### Spying on Methods
+
+```typescript
+import { vi, it, expect } from 'vitest'
+
+const logger = {
+  log: (msg: string) => console.log(msg),
+}
+
+it('logs the message', () => {
+  const spy = vi.spyOn(logger, 'log')
+  logger.log('hello')
+  expect(spy).toHaveBeenCalledWith('hello')
+  spy.mockRestore()
+})
+```
+
+### Mocking `fetch`
+
+```typescript
+import { vi, it, expect, beforeEach } from 'vitest'
+
+beforeEach(() => {
+  global.fetch = vi.fn()
+})
+
+it('handles API response', async () => {
+  vi.mocked(fetch).mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({ id: 1, name: 'Alice' }),
+  } as Response)
+
+  const result = await fetchUser(1)
+  expect(result.name).toBe('Alice')
+})
+```
+
+### Mocking Timers
+
+```typescript
+import { vi, it, expect, beforeEach, afterEach } from 'vitest'
+
+beforeEach(() => { vi.useFakeTimers() })
+afterEach(() => { vi.useRealTimers() })
+
+it('runs debounced function after delay', () => {
+  const fn = vi.fn()
+  const debounced = debounce(fn, 300)
+
+  debounced()
+  expect(fn).not.toHaveBeenCalled()
+
+  vi.advanceTimersByTime(300)
+  expect(fn).toHaveBeenCalledTimes(1)
+})
+```
+
+## Component Testing
+
+### React with `@testing-library/react`
+
+```bash
+npm install -D @testing-library/react @testing-library/jest-dom jsdom
+```
+
+```typescript
+// vite.config.ts
+test: {
+  environment: 'jsdom',
+  setupFiles: ['./src/test/setup.ts'],
+}
+```
+
+```typescript
+// src/test/setup.ts
+import '@testing-library/jest-dom'
+```
+
+```typescript
+// Counter.test.tsx
+import { render, screen, fireEvent } from '@testing-library/react'
+import { Counter } from './Counter'
+
+it('increments the count', () => {
+  render(<Counter initialCount={0} />)
+
+  const button = screen.getByRole('button', { name: /increment/i })
+  fireEvent.click(button)
+
+  expect(screen.getByText('Count: 1')).toBeInTheDocument()
+})
+```
+
+### Vue with `@testing-library/vue`
+
+```typescript
+import { render, screen } from '@testing-library/vue'
+import { userEvent } from '@testing-library/user-event'
+import MyButton from './MyButton.vue'
+
+it('emits click event', async () => {
+  const { emitted } = render(MyButton, {
+    props: { label: 'Click me' },
+  })
+
+  await userEvent.click(screen.getByText('Click me'))
+  expect(emitted().click).toBeTruthy()
+})
+```
+
+## Coverage Configuration
+
+```typescript
+// vite.config.ts
+test: {
+  coverage: {
+    provider: 'v8',
+    reporter: ['text', 'html', 'lcov'],
+    thresholds: {
+      lines: 80,
+      functions: 80,
+      branches: 70,
+      statements: 80,
+    },
+    include: ['src/**/*.{ts,tsx}'],
+    exclude: [
+      'src/**/*.d.ts',
+      'src/**/*.stories.{ts,tsx}',
+      'src/test/**',
+    ],
+  },
+}
+```
+
+Run with `vitest run --coverage`. HTML report lands at `coverage/index.html`.
+
+## Snapshot Testing
+
+```typescript
+import { expect, it } from 'vitest'
+import { formatDate } from './format'
+
+it('formats date correctly', () => {
+  expect(formatDate(new Date('2026-04-03'))).toMatchSnapshot()
+})
+```
+
+Update snapshots with `vitest --update-snapshots`.
+
+## In-Source Testing
+
+One of Vitest's unique features — write tests inside your source file:
+
+```typescript
+// utils.ts
+export function clamp(n: number, min: number, max: number) {
+  return Math.min(Math.max(n, min), max)
+}
+
+// Tests only run in dev/test, excluded from production builds
+if (import.meta.vitest) {
+  const { it, expect } = import.meta.vitest
+
+  it('clamps value within range', () => {
+    expect(clamp(5, 0, 10)).toBe(5)
+    expect(clamp(-5, 0, 10)).toBe(0)
+    expect(clamp(15, 0, 10)).toBe(10)
+  })
+}
+```
+
+Enable in config:
+
+```typescript
+test: {
+  includeSource: ['src/**/*.ts'],
+}
+```
+
+## Benchmarking
+
+Vitest includes a built-in benchmark runner:
+
+```typescript
+import { bench, describe } from 'vitest'
+
+describe('array methods', () => {
+  const arr = Array.from({ length: 10000 }, (_, i) => i)
+
+  bench('filter + map', () => {
+    arr.filter(n => n % 2 === 0).map(n => n * 2)
+  })
+
+  bench('reduce', () => {
+    arr.reduce<number[]>((acc, n) => {
+      if (n % 2 === 0) acc.push(n * 2)
+      return acc
+    }, [])
+  })
+})
+```
+
+Run with `vitest bench`.
+
+## CI Configuration
+
+```yaml
+# .github/workflows/test.yml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:coverage
+      - uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+```
+
+## Vitest vs Jest: Performance Comparison
+
+| Metric | Jest (Babel) | Jest (SWC) | Vitest |
+|--------|-------------|-----------|--------|
+| Cold start (100 tests) | ~8s | ~3s | ~0.8s |
+| Watch mode re-run | ~4s | ~2s | ~0.3s |
+| Config boilerplate | High | Medium | Low (shared Vite) |
+| ESM support | Needs transform | Needs transform | Native |
+| TypeScript | Transform needed | Transform needed | Native via Vite |
+
+## Migration from Jest
+
+Most Jest tests work in Vitest with minimal changes:
+
+```bash
+# 1. Install Vitest
+npm install -D vitest
+
+# 2. Update package.json scripts
+# "test": "jest" → "test": "vitest"
+
+# 3. Replace imports (optional — globals: true skips this)
+# import { describe, it, expect } from '@jest/globals'
+# → import { describe, it, expect } from 'vitest'
+
+# 4. Replace jest.fn() with vi.fn()
+# jest.fn() → vi.fn()
+# jest.mock() → vi.mock()
+# jest.spyOn() → vi.spyOn()
+```
+
+That's it for most projects. Edge cases to watch:
+
+- `jest.config.js` → `vitest` block in `vite.config.ts`
+- `__mocks__` directory automocking behaves slightly differently
+- Custom serializers need to be adapted
+
+## Summary
+
+Vitest is the right choice for any Vite-based project in 2026. The shared config, native ESM support, and dramatically faster watch mode make the migration worth it even for established Jest codebases. The API is close enough that it's rarely more than a day's work to switch.
+
+Start with `npm install -D vitest`, add a minimal config block, and run your existing tests — most will pass immediately.

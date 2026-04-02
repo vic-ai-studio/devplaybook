@@ -1,0 +1,430 @@
+---
+title: "AI Agents & Context Management 2026: Building Reliable Multi-Step Agents"
+description: "A practical guide to AI agent architecture in 2026. Covers context window management, tool calling patterns, memory systems, error recovery, and production deployment with Claude, GPT-4o, and open-source models."
+date: "2026-04-03"
+readingTime: "14 min read"
+tags: ["AI Agents", "LLM", "Context Management", "Tool Calling", "Claude", "Production AI"]
+slug: "ai-agents-context-management-2026"
+---
+
+AI agents are no longer a research curiosity — they're shipping in production in 2026. But building agents that *reliably* complete multi-step tasks is still hard. The two biggest failure modes are context mismanagement (agents lose track of their state) and poor error recovery (agents get stuck or spiral). This guide covers practical patterns that work.
+
+## What Makes an Agent Different from a Chatbot
+
+A chatbot responds to a message. An agent **plans and executes** a sequence of actions to accomplish a goal. The critical difference:
+
+- Agents call **tools** (functions, APIs, code execution)
+- Agents maintain **state** across multiple steps
+- Agents make **decisions** about what to do next
+- Agents encounter **errors** and must recover
+
+This means agents have qualitatively different failure modes than chatbots. A bad chatbot response is awkward. A bad agent action might send an email, commit broken code, or spend money.
+
+## The Context Window Problem
+
+Every LLM has a finite context window. In 2026:
+- Claude Sonnet 4.6: 200k tokens
+- GPT-4o: 128k tokens
+- Llama 3.1 70B: 128k tokens
+- Gemini 2.5 Pro: 1M tokens (but cost scales)
+
+For short tasks, this is fine. For long-running agents — research tasks, large codebase modifications, extended conversations — you'll hit limits. When you do, the model truncates the oldest context, and agents start forgetting what they've done.
+
+### The Three Failure Modes
+
+**1. Context overflow:** The agent's history exceeds the window. Older tool results, decisions, and facts get truncated. The agent may redo work it already completed or contradict earlier decisions.
+
+**2. Context pollution:** Too much irrelevant information crowds out important state. A 10,000-token tool response about an API that turned out to be wrong shouldn't stay in context if you've already pivoted.
+
+**3. Context drift:** Over many turns, the agent's focus shifts. Early instructions get buried under subsequent interactions. The agent drifts away from the original goal.
+
+## Context Management Strategies
+
+### 1. Structured System Prompts with State Injection
+
+Keep your system prompt focused on behavior. Inject dynamic state separately:
+
+```python
+def build_messages(goal: str, completed_steps: list, current_plan: dict) -> list:
+    return [
+        {
+            "role": "system",
+            "content": f"""You are a software agent completing a specific task.
+
+GOAL: {goal}
+
+COMPLETED STEPS:
+{format_completed_steps(completed_steps)}
+
+CURRENT PLAN:
+{json.dumps(current_plan, indent=2)}
+
+Rules:
+- Do not repeat completed steps
+- If a step fails twice, mark it blocked and move to the next
+- Always verify your work before marking a step complete"""
+        },
+        # Recent messages only
+        *recent_messages[-10:]  # Last 10 exchanges
+    ]
+```
+
+### 2. Summarize Instead of Truncate
+
+When context grows large, summarize rather than drop raw messages:
+
+```python
+async def compress_context(messages: list, llm_client) -> list:
+    if token_count(messages) < CONTEXT_THRESHOLD:
+        return messages
+
+    # Keep first message (original goal) and last N messages
+    head = messages[:2]
+    tail = messages[-6:]
+    middle = messages[2:-6]
+
+    if not middle:
+        return messages
+
+    summary = await llm_client.complete(
+        f"Summarize these agent actions and findings concisely:\n\n{format_messages(middle)}"
+    )
+
+    summary_message = {
+        "role": "system",
+        "content": f"[Summary of previous actions]: {summary}"
+    }
+
+    return head + [summary_message] + tail
+```
+
+### 3. Tool Result Compression
+
+Don't store raw tool results if they're verbose. Extract the signal:
+
+```python
+def compress_tool_result(tool_name: str, result: Any, max_tokens: int = 500) -> str:
+    raw = json.dumps(result) if not isinstance(result, str) else result
+
+    if token_count(raw) <= max_tokens:
+        return raw
+
+    # For code: keep first 50 lines + last 20 lines
+    if tool_name in ('read_file', 'run_code'):
+        lines = raw.split('\n')
+        if len(lines) > 70:
+            return '\n'.join(lines[:50]) + f'\n... ({len(lines) - 70} lines omitted) ...\n' + '\n'.join(lines[-20:])
+
+    # For API responses: keep status + first 500 chars
+    return f"[Truncated: {len(raw)} chars] " + raw[:500] + "..."
+```
+
+## Tool Calling Architecture
+
+### Defining Tools Clearly
+
+Models perform better when tools have unambiguous descriptions. The description is as important as the implementation:
+
+```python
+tools = [
+    {
+        "name": "read_file",
+        "description": "Read the contents of a file. Use this when you need to inspect source code, configuration, or data files. Returns the full file content as a string.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Absolute or relative path to the file"
+                },
+                "start_line": {
+                    "type": "integer",
+                    "description": "Optional: start reading from this line number (1-indexed)"
+                },
+                "end_line": {
+                    "type": "integer",
+                    "description": "Optional: stop reading at this line number"
+                }
+            },
+            "required": ["path"]
+        }
+    },
+    {
+        "name": "write_file",
+        "description": "Write content to a file, creating it if it doesn't exist. CAUTION: This overwrites existing content. Always read the file first if you're making targeted edits.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "content": {"type": "string"}
+            },
+            "required": ["path", "content"]
+        }
+    }
+]
+```
+
+### The Tool Execution Loop
+
+```python
+async def run_agent(goal: str, tools: list, max_steps: int = 20) -> AgentResult:
+    messages = [{"role": "user", "content": goal}]
+    steps = 0
+
+    while steps < max_steps:
+        response = await llm.complete(messages=messages, tools=tools)
+        steps += 1
+
+        # Agent is done
+        if response.stop_reason == "end_turn":
+            return AgentResult(success=True, output=response.content, steps=steps)
+
+        # Agent wants to call a tool
+        if response.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": response.content})
+
+            tool_results = []
+            for tool_call in response.tool_calls:
+                result = await execute_tool(tool_call.name, tool_call.input)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_call.id,
+                    "content": compress_tool_result(tool_call.name, result)
+                })
+
+            messages.append({"role": "user", "content": tool_results})
+
+            # Compress context if needed
+            messages = await compress_context(messages, llm)
+
+    return AgentResult(success=False, output="Max steps reached", steps=steps)
+```
+
+## Error Recovery Patterns
+
+### Retry with Exponential Backoff
+
+```python
+import asyncio
+from typing import Callable, TypeVar
+
+T = TypeVar('T')
+
+async def with_retry(
+    fn: Callable,
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    on_error: Callable | None = None
+) -> T:
+    for attempt in range(max_retries):
+        try:
+            return await fn()
+        except RateLimitError:
+            delay = base_delay * (2 ** attempt)
+            await asyncio.sleep(delay)
+        except ToolExecutionError as e:
+            if on_error:
+                on_error(e, attempt)
+            if attempt == max_retries - 1:
+                raise
+            await asyncio.sleep(base_delay)
+
+    raise MaxRetriesExceeded()
+```
+
+### Telling the Agent About Errors
+
+When a tool fails, don't just return an error code. Explain what went wrong and suggest alternatives:
+
+```python
+async def execute_tool_safe(name: str, inputs: dict) -> str:
+    try:
+        result = await execute_tool(name, inputs)
+        return result
+    except FileNotFoundError as e:
+        return f"ERROR: File not found at '{inputs.get('path')}'. Check if the path is correct or list the directory first with list_directory."
+    except PermissionError:
+        return f"ERROR: Permission denied reading '{inputs.get('path')}'. This file may be owned by another user or process."
+    except json.JSONDecodeError as e:
+        return f"ERROR: JSON parse failed at position {e.pos}. The response may be malformed. Raw first 200 chars: {str(e.doc)[:200]}"
+```
+
+### Dead-End Detection
+
+Agents can loop — trying the same failing action repeatedly. Detect and break loops:
+
+```python
+class LoopDetector:
+    def __init__(self, window: int = 4):
+        self.recent_actions: list[str] = []
+        self.window = window
+
+    def record(self, action: str) -> bool:
+        """Returns True if a loop is detected."""
+        self.recent_actions.append(action)
+        if len(self.recent_actions) > self.window * 2:
+            self.recent_actions.pop(0)
+
+        if len(self.recent_actions) >= self.window * 2:
+            first_half = self.recent_actions[:self.window]
+            second_half = self.recent_actions[self.window:]
+            if first_half == second_half:
+                return True
+
+        return False
+```
+
+## Memory Systems
+
+For agents that need to remember information across sessions, or share state with other agents:
+
+### Short-Term: Working Memory
+
+Keep a structured scratchpad in the system prompt:
+
+```python
+@dataclass
+class WorkingMemory:
+    goal: str
+    findings: list[str] = field(default_factory=list)
+    decisions: list[str] = field(default_factory=list)
+    blockers: list[str] = field(default_factory=list)
+
+    def to_prompt(self) -> str:
+        return f"""
+GOAL: {self.goal}
+
+KEY FINDINGS:
+{chr(10).join(f'- {f}' for f in self.findings[-10:])}
+
+DECISIONS MADE:
+{chr(10).join(f'- {d}' for d in self.decisions[-5:])}
+
+CURRENT BLOCKERS:
+{chr(10).join(f'- {b}' for b in self.blockers)}
+"""
+```
+
+### Long-Term: Vector Memory
+
+For research-heavy agents that accumulate knowledge over time:
+
+```python
+from typing import Optional
+import chromadb
+
+class AgentMemory:
+    def __init__(self, agent_id: str):
+        self.client = chromadb.PersistentClient(path=f"./memory/{agent_id}")
+        self.collection = self.client.get_or_create_collection("knowledge")
+
+    def store(self, content: str, metadata: dict = {}) -> None:
+        self.collection.add(
+            documents=[content],
+            metadatas=[{"timestamp": time.time(), **metadata}],
+            ids=[str(uuid4())]
+        )
+
+    def recall(self, query: str, n: int = 5) -> list[str]:
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=n
+        )
+        return results['documents'][0] if results['documents'] else []
+```
+
+## Production Considerations
+
+### Timeouts and Budgets
+
+Always set hard limits:
+
+```python
+@dataclass
+class AgentBudget:
+    max_steps: int = 30
+    max_tokens: int = 100_000
+    max_wall_time_seconds: int = 300
+    max_tool_calls: int = 50
+
+    current_steps: int = 0
+    current_tokens: int = 0
+    start_time: float = field(default_factory=time.time)
+    tool_calls: int = 0
+
+    def check(self) -> Optional[str]:
+        if self.current_steps >= self.max_steps:
+            return f"Step limit reached ({self.max_steps})"
+        if self.current_tokens >= self.max_tokens:
+            return f"Token budget exhausted ({self.max_tokens:,})"
+        if time.time() - self.start_time > self.max_wall_time_seconds:
+            return f"Time limit reached ({self.max_wall_time_seconds}s)"
+        if self.tool_calls >= self.max_tool_calls:
+            return f"Tool call limit reached ({self.max_tool_calls})"
+        return None
+```
+
+### Observability
+
+Log every agent decision for debugging:
+
+```python
+import structlog
+
+log = structlog.get_logger()
+
+async def logged_tool_call(agent_id: str, tool_name: str, inputs: dict, fn: Callable):
+    start = time.time()
+    log.info("tool_call", agent=agent_id, tool=tool_name, inputs=inputs)
+
+    try:
+        result = await fn()
+        log.info("tool_success", agent=agent_id, tool=tool_name,
+                 duration_ms=int((time.time() - start) * 1000))
+        return result
+    except Exception as e:
+        log.error("tool_error", agent=agent_id, tool=tool_name,
+                  error=str(e), duration_ms=int((time.time() - start) * 1000))
+        raise
+```
+
+### Human-in-the-Loop
+
+For high-stakes actions, pause and request confirmation:
+
+```python
+DANGEROUS_TOOLS = {'delete_file', 'send_email', 'deploy_to_production', 'charge_payment'}
+
+async def execute_with_confirmation(tool_name: str, inputs: dict) -> str:
+    if tool_name in DANGEROUS_TOOLS:
+        confirmation = await request_human_approval(
+            action=tool_name,
+            details=inputs,
+            timeout_seconds=300
+        )
+        if not confirmation.approved:
+            return f"Action '{tool_name}' was not approved by operator."
+
+    return await execute_tool(tool_name, inputs)
+```
+
+## Choosing the Right Model
+
+| Use Case | Recommended Model | Why |
+|----------|------------------|-----|
+| Long-horizon coding agent | Claude Sonnet 4.6 | Best tool use, strong code reasoning |
+| Fast iteration / low-stakes | Claude Haiku 4.5 | 10x cheaper, still reliable for simple tools |
+| Complex reasoning chains | Claude Opus 4.6 | Best multi-step reasoning |
+| Local / privacy-sensitive | Llama 3.1 70B (Ollama) | No data leaves your infra |
+| Massive context | Gemini 2.5 Pro | 1M token window for huge codebases |
+
+## Key Principles
+
+1. **Minimize context** — only keep what the agent needs for the next step
+2. **Compress early, not late** — summarize tool results before they pollute context
+3. **Give tools good error messages** — the model learns from what went wrong
+4. **Set hard budgets** — max steps, max tokens, max time; always
+5. **Log everything** — agent failures are impossible to debug without traces
+6. **Verify before irreversible actions** — a confirmation step is cheap vs the cost of a mistake
+
+Building reliable agents is mostly about managing failure gracefully. The LLMs themselves are capable — your job is to give them the right context, catch their mistakes, and keep them on track.
