@@ -1,0 +1,311 @@
+---
+title: "Internal Developer Portals: Backstage vs Port vs Cortex Compared"
+description: "Comprehensive comparison of Internal Developer Portals in 2026 — Backstage (open source), Port, and Cortex. Service catalogs, software templates, scorecards, and team fit guide."
+date: "2026-04-02"
+tags: [backstage, platform-engineering, developer-portal, service-catalog, developer-experience]
+readingTime: "11 min read"
+author: "DevPlaybook"
+---
+
+# Internal Developer Portals: Backstage vs Port vs Cortex Compared
+
+As engineering organizations grow past 50-100 engineers, a new problem emerges: nobody knows what exists. Which services are in production? Who owns the payments service? Where's the API documentation for the auth system? How do I spin up a new microservice the "right" way?
+
+Internal Developer Portals (IDPs) solve this. In 2026, the market has three dominant options: Spotify's open-source Backstage, the commercial Port, and the developer-scorecard-focused Cortex. This guide compares them in depth.
+
+## What Is an Internal Developer Portal?
+
+An IDP is a single place where engineers can:
+- **Discover** services, APIs, and infrastructure
+- **Understand** who owns what and how systems connect
+- **Create** new services using approved templates
+- **Monitor** service health, on-call status, and quality scores
+- **Access** documentation, runbooks, and changelogs
+
+The goal: reduce the cognitive overhead of working in a large, distributed engineering organization.
+
+## The Three Contenders
+
+### Backstage (Spotify / CNCF)
+
+Released as open source by Spotify in 2020, now a CNCF incubating project. Backstage is the most widely adopted IDP, used by companies like Netflix, Airbnb, DoorDash, American Airlines, and thousands of others.
+
+**Philosophy:** Maximum flexibility through a plugin architecture. Everything is a plugin — the catalog, TechDocs, scaffolding, CI status. You assemble the portal you need.
+
+**Deployment model:** Self-hosted. You run Backstage on your infrastructure.
+
+### Port
+
+Port is a commercial IDP that launched in 2022. It focuses on a low-code/no-code approach to building developer portals, targeting platform engineering teams who want faster time-to-value than Backstage's setup investment.
+
+**Philosophy:** Configurable without code. Build your catalog schema, actions, and scorecards through a UI and YAML config.
+
+**Deployment model:** SaaS (Port-hosted) with self-hosted agent for internal data.
+
+### Cortex
+
+Cortex focuses specifically on service quality and ownership — the "service catalog with scorecards" use case. It's less of a full developer platform and more of a service quality management tool.
+
+**Philosophy:** Accountability through scorecards. Every service has a score based on on-call setup, documentation completeness, CI health, and custom metrics.
+
+**Deployment model:** SaaS.
+
+## Feature Comparison
+
+| Feature | Backstage | Port | Cortex |
+|---------|-----------|------|--------|
+| Service catalog | ✅ | ✅ | ✅ |
+| Software templates | ✅ (Scaffolder) | ✅ (Actions) | Limited |
+| TechDocs / docs | ✅ | Limited | Limited |
+| Scorecards / quality | Via plugin | ✅ | ✅ (core feature) |
+| Self-service actions | ✅ | ✅ | Limited |
+| Kubernetes view | ✅ (plugin) | ✅ | ✅ |
+| Plugin ecosystem | 200+ | Growing | Growing |
+| GitHub/GitLab sync | ✅ | ✅ | ✅ |
+| PagerDuty integration | ✅ | ✅ | ✅ |
+| Custom dashboards | ✅ | ✅ | Limited |
+| AI features | Limited | ✅ | Growing |
+| Deployment | Self-hosted | SaaS | SaaS |
+| Setup complexity | High | Low-Medium | Low |
+| Pricing | Free (infra cost) | $~20/user/mo | $~25/user/mo |
+
+## Backstage Deep Dive
+
+### The Software Catalog
+
+The heart of Backstage is the catalog, fed by `catalog-info.yaml` files in each repo:
+
+```yaml
+# services/payment-service/catalog-info.yaml
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: payment-service
+  description: Core payment processing API
+  tags: [nodejs, payments, critical]
+  annotations:
+    github.com/project-slug: myorg/payment-service
+    backstage.io/techdocs-ref: dir:.
+    pagerduty.com/service-id: PABC123
+links:
+  - url: https://grafana.internal/d/payments
+    title: Grafana Dashboard
+    icon: dashboard
+spec:
+  type: service
+  lifecycle: production
+  owner: payments-team
+  system: checkout-platform
+  dependsOn:
+    - component:stripe-gateway
+    - resource:payments-postgres
+```
+
+Backstage scans GitHub/GitLab and discovers all these files automatically.
+
+### Software Templates (Golden Paths)
+
+Templates let engineers create new services with one click, pre-configured with your org's standards:
+
+```yaml
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: node-microservice-v2
+  title: Node.js Microservice (Standard)
+spec:
+  parameters:
+    - title: Service Details
+      properties:
+        name:
+          type: string
+          description: kebab-case service name
+        team:
+          type: string
+          ui:field: OwnerPicker
+        database:
+          type: boolean
+          title: Include PostgreSQL setup?
+
+  steps:
+    - id: fetch
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values: { name: ${{ parameters.name }} }
+    - id: create-repo
+      action: github:repo:create
+      input:
+        repoUrl: github.com?org=myorg&repo=${{ parameters.name }}
+    - id: push
+      action: github:repo:push
+    - id: register
+      action: catalog:register
+```
+
+### Plugin Ecosystem
+
+Backstage has 200+ community plugins:
+
+```typescript
+// packages/app/src/App.tsx
+import { KubernetesPage } from '@backstage/plugin-kubernetes';
+import { ArgoCDPage } from '@roadiehq/backstage-plugin-argo-cd';
+import { SonarQubeWidget } from '@backstage/plugin-sonarqube';
+import { DatadogPage } from '@roadiehq/backstage-plugin-datadog';
+```
+
+### Backstage Strengths
+- Maximum flexibility and extensibility
+- Huge ecosystem — someone has already built what you need
+- Active community and CNCF governance
+- TechDocs: generate docs from Markdown in each repo
+- Free (you pay only for infrastructure)
+
+### Backstage Weaknesses
+- Significant setup investment: 1-2 sprints to get production-ready
+- Requires TypeScript/React knowledge for customization
+- Plugin quality varies — some community plugins are unmaintained
+- You own the operational burden of running it
+
+## Port Deep Dive
+
+Port takes a data-model-first approach. You define entities (microservices, databases, environments) and their properties as blueprints, then populate them via integrations.
+
+```yaml
+# port-app-config.yaml (in your GitHub repo)
+resources:
+  - kind: repository
+    selector:
+      query: "true"
+    port:
+      entity:
+        mappings:
+          identifier: ".name"
+          title: ".name"
+          blueprint: '"service"'
+          properties:
+            language: ".language"
+            defaultBranch: ".default_branch"
+          relations:
+            team: ".teams[0].name"
+```
+
+Port ingests this via a lightweight agent that runs in your infrastructure and syncs data to Port's cloud.
+
+### Port Scorecards
+
+Port's scorecard system is a core feature for platform teams:
+
+```yaml
+# Scorecard definition in Port UI
+title: "Production Readiness"
+levels:
+  - title: Bronze
+    rules:
+      - title: Has README
+        identifier: has-readme
+        query: "entity.properties.hasReadme == true"
+      - title: Has On-Call
+        query: "entity.relations.pagerdutyService != null"
+
+  - title: Gold
+    rules:
+      - title: SLO Defined
+        query: "entity.properties.sloUrl != null"
+      - title: 80% Test Coverage
+        query: "entity.properties.testCoverage >= 80"
+```
+
+Services get Bronze/Silver/Gold badges visible to all engineers.
+
+### Port Strengths
+- Fast time-to-value: production-ready in days, not weeks
+- Low-code approach: no TypeScript needed for customization
+- Built-in scorecards and workflow automation
+- Strong integrations: GitHub, GitLab, Jira, PagerDuty, AWS, K8s
+- Port's cloud handles the operational burden
+
+### Port Weaknesses
+- Less flexible than Backstage for complex custom UIs
+- Vendor lock-in to Port's SaaS
+- Pricing adds up at scale
+- Smaller ecosystem than Backstage
+
+## Cortex Deep Dive
+
+Cortex is purpose-built for service ownership and quality. If your primary problem is "we don't know who owns things and our services have inconsistent quality standards," Cortex is the most focused solution.
+
+### Service Scorecards
+
+Cortex's scorecards are its flagship feature:
+
+```yaml
+# cortex.yaml (in each service repo)
+tag: payment-service
+owners:
+  - type: group
+    name: payments-team
+x-cortex-oncall:
+  pagerduty:
+    id: PABC123
+x-cortex-docs:
+  description: "Core payment processing API"
+  summaries:
+    - type: swagger
+      url: https://api.internal/payment/swagger.json
+```
+
+Cortex then runs automated checks and scores each service:
+- Is there an on-call rotation?
+- Does the service have an SLO defined?
+- Is the README up to date?
+- Are there open critical vulnerabilities?
+- Has the service deployed in the last 30 days?
+
+### Cortex Strengths
+- Most polished scorecard experience
+- Strong incident management integrations
+- Team-level reporting: which team has the worst production readiness?
+- Simple setup for the scorecard use case
+
+### Cortex Weaknesses
+- Less flexible for general developer portal use cases
+- No Software Templates / scaffolding
+- Fewer integrations than Backstage
+- Higher price per user
+
+## Decision Guide
+
+### Choose Backstage if:
+- You have 100+ engineers and want maximum flexibility
+- You have platform engineering resources to set it up and maintain it
+- You want TechDocs for distributed documentation
+- You need to build custom UI workflows
+- Budget is a constraint (free to run)
+- You want community-supported open source
+
+### Choose Port if:
+- You want fast time-to-value (days not weeks)
+- Your platform team is small and can't invest in Backstage setup
+- You want a managed SaaS (no operational overhead)
+- Scorecards and workflow automation are priorities
+- Engineers are not React/TypeScript developers
+
+### Choose Cortex if:
+- Service ownership and quality scoring are your primary problem
+- You want the best scorecard / production-readiness experience
+- You have existing investments in PagerDuty and SLO tooling
+- A simpler, more focused tool is preferred over a full portal
+
+## Getting Started Recommendation
+
+For most engineering organizations, the progression looks like:
+
+1. **0-50 engineers**: You don't need an IDP yet. A well-maintained README and ADR directory is enough.
+
+2. **50-150 engineers**: Start with Port or Cortex for low-friction adoption. Or use Backstage with the official `create-app` starter and 2-3 core plugins.
+
+3. **150+ engineers**: Backstage with a dedicated platform team, or Port with full integration suite.
+
+The worst outcome is spending months setting up Backstage with full bells and whistles, only to have a portal that's too complex to maintain. Start simple: service catalog + TechDocs + one golden-path template is enormously valuable and achievable in a sprint.
