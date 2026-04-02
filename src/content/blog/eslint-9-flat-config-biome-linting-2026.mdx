@@ -1,0 +1,252 @@
+---
+title: "ESLint 9 Flat Config + Biome: Modern JavaScript Linting in 2026"
+description: "Set up a modern JavaScript linting pipeline with ESLint 9's flat config system. Compare ESLint + Prettier vs Biome, migrate from legacy .eslintrc, and configure typescript-eslint with strict rules."
+date: "2026-04-02"
+tags: [linting, eslint, biome, typescript, javascript, prettier, dx, tooling]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# ESLint 9 Flat Config + Biome: Modern JavaScript Linting in 2026
+
+ESLint 9 shipped the new flat config system as the default, deprecating the old `.eslintrc.*` format. Biome emerged as a Rust-powered alternative that handles both linting and formatting 50x faster. In 2026, the choice between them — and how to configure each — has matured.
+
+## ESLint 9 Flat Config: What Changed
+
+The old `.eslintrc.json`/`.eslintrc.js` system used a cascading config model with complex `extends` and `overrides`. The new flat config (`eslint.config.mjs`) is a single JavaScript array — explicit, predictable, and easier to debug.
+
+### Old vs New
+
+```javascript
+// OLD: .eslintrc.json
+{
+  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
+  "parser": "@typescript-eslint/parser",
+  "rules": {
+    "no-unused-vars": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts"],
+      "rules": { "no-unused-vars": "off" }
+    }
+  ]
+}
+```
+
+```javascript
+// NEW: eslint.config.mjs (flat config)
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import vitest from '@vitest/eslint-plugin';
+
+export default [
+  eslint.configs.recommended,
+  ...tseslint.configs.strict,
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    languageOptions: {
+      parserOptions: {
+        project: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/consistent-type-imports': 'error',
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+    },
+  },
+  {
+    // Test files: relax some strict rules
+    files: ['**/*.test.ts', '**/*.spec.ts'],
+    plugins: { vitest },
+    rules: {
+      ...vitest.configs.recommended.rules,
+      '@typescript-eslint/no-explicit-any': 'warn',  // More relaxed in tests
+    },
+  },
+  {
+    // Ignored files
+    ignores: ['dist/**', 'node_modules/**', '*.min.js'],
+  },
+];
+```
+
+### Key Flat Config Changes
+
+1. **No more `extends` as strings** — import config objects directly
+2. **`files` applies rules to specific patterns** — replaces `overrides`
+3. **`ignores` at top level** — replaces `.eslintignore`
+4. **Plugin config is part of the array** — not a separate section
+
+## Complete TypeScript Project Setup
+
+```bash
+npm install -D eslint @eslint/js typescript-eslint
+```
+
+```javascript
+// eslint.config.mjs
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import importPlugin from 'eslint-plugin-import';
+import unusedImports from 'eslint-plugin-unused-imports';
+
+export default tseslint.config(
+  // Base: JS recommended
+  eslint.configs.recommended,
+
+  // TypeScript: strict with type-checking
+  ...tseslint.configs.strictTypeChecked,
+  ...tseslint.configs.stylisticTypeChecked,
+
+  {
+    files: ['**/*.{ts,tsx,mts,cts}'],
+    plugins: {
+      import: importPlugin,
+      'unused-imports': unusedImports,
+    },
+    languageOptions: {
+      parserOptions: {
+        project: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    settings: {
+      'import/resolver': {
+        typescript: { project: './tsconfig.json' },
+      },
+    },
+    rules: {
+      // TypeScript strict rules
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/prefer-nullish-coalescing': 'error',
+      '@typescript-eslint/prefer-optional-chain': 'error',
+
+      // Import ordering
+      'import/order': ['error', {
+        groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
+        'newlines-between': 'always',
+        alphabetize: { order: 'asc' },
+      }],
+
+      // Auto-remove unused imports
+      'unused-imports/no-unused-imports': 'error',
+      'unused-imports/no-unused-vars': ['warn', { varsIgnorePattern: '^_' }],
+    },
+  },
+
+  // Ignore patterns
+  { ignores: ['dist/**', 'coverage/**', '*.config.js'] }
+);
+```
+
+## Migrating from ESLint 8 to ESLint 9
+
+```bash
+# Run the migration tool
+npx @eslint/migrate-config .eslintrc.json
+# Generates eslint.config.mjs from your existing config
+
+# Check for deprecated plugins
+npx eslint --print-config src/index.ts
+```
+
+Common migration issues:
+- Plugins that haven't updated for flat config — check their GitHub for `eslint.config.mjs` examples
+- `extends: ['next/core-web-vitals']` becomes `...nextConfig` (import the array)
+- `env: { browser: true, node: true }` becomes `languageOptions: { globals: { ...globals.browser, ...globals.node } }`
+
+## ESLint + Prettier vs Biome
+
+### ESLint + Prettier (Classic Stack)
+
+```bash
+npm install -D prettier eslint-config-prettier
+```
+
+Add Prettier to your ESLint config to disable conflicting formatting rules:
+
+```javascript
+import prettierConfig from 'eslint-config-prettier';
+
+export default [
+  // ... your rules
+  prettierConfig,  // Must be last — disables ESLint formatting rules
+];
+```
+
+```json
+// .prettierrc
+{
+  "semi": true,
+  "singleQuote": true,
+  "tabWidth": 2,
+  "trailingComma": "es5",
+  "printWidth": 100
+}
+```
+
+### Biome: The Alternative
+
+Biome replaces both ESLint and Prettier with a single Rust tool:
+
+```bash
+npm install -D @biomejs/biome
+npx biome init  # Creates biome.json
+```
+
+```json
+// biome.json
+{
+  "$schema": "https://biomejs.dev/schemas/1.8.0/schema.json",
+  "organizeImports": { "enabled": true },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": { "noExplicitAny": "error" },
+      "correctness": { "noUnusedVariables": "error" }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "es5",
+      "semicolons": "always"
+    }
+  }
+}
+```
+
+```bash
+biome check --write src/   # Lint + format in one command (50x faster than ESLint + Prettier)
+```
+
+### Choosing ESLint vs Biome
+
+| | ESLint + Prettier | Biome |
+|--|------------------|-------|
+| Speed | ~5s for 1000 files | ~0.1s for 1000 files |
+| Rules | 500+ (+ plugins) | 200+ (growing fast) |
+| TypeScript rules | Excellent (typescript-eslint) | Good (improving) |
+| Plugin ecosystem | Huge | Minimal |
+| Config complexity | High (especially v9) | Low |
+| IDE integration | VS Code, all IDEs | VS Code, IntelliJ |
+
+**Choose ESLint** for projects that need: strict TypeScript type-checking rules, existing ESLint plugins (import, security, react-specific rules), or team familiarity.
+
+**Choose Biome** for: new projects prioritizing simplicity and speed, projects already using consistent style where format speed matters more than rules coverage.
+
+Many teams use **both**: Biome for formatting (replace Prettier) + ESLint for type-aware linting (replace Prettier's ESLint integration).

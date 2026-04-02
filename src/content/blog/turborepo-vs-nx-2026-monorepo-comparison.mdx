@@ -1,0 +1,248 @@
+---
+title: "Turborepo vs Nx: Monorepo Build Tool Comparison 2026"
+description: "Turborepo vs Nx in 2026: an honest technical comparison. Build caching, task pipelines, affected analysis, generator scaffolding, and which to choose for your team size and stack."
+date: "2026-04-02"
+tags: [monorepo, turborepo, nx, build-tools, javascript, typescript, ci, tooling]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# Turborepo vs Nx: Monorepo Build Tool Comparison 2026
+
+Both Turborepo and Nx solve the monorepo problem: running builds, tests, and lint tasks efficiently across many packages, with caching to avoid redundant work. They've converged on similar features, but their philosophy and sweet spots differ.
+
+## The Core Problem They Both Solve
+
+Without a build orchestrator:
+```bash
+# Run tests for everything — even unchanged packages
+npm run test  # 8 minutes
+
+# With monorepo tool: only run tests for changed packages
+# + cache results for unchanged packages
+turbo run test  # 45 seconds (7/10 packages from cache)
+```
+
+## Turborepo
+
+Turborepo (Vercel) is configuration-minimal — define task dependencies, it handles the rest.
+
+### Setup
+
+```bash
+npx create-turbo@latest my-monorepo
+cd my-monorepo
+
+# Or add to existing monorepo
+npm install turbo --save-dev
+```
+
+```json
+// turbo.json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],  // Build deps first (^ = topological)
+      "outputs": [".next/**", "dist/**"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "lint": {
+      "outputs": []
+    },
+    "dev": {
+      "cache": false,  // Never cache dev server
+      "persistent": true
+    }
+  },
+  "remoteCache": {
+    "enabled": true  // Vercel Remote Cache for team-shared cache
+  }
+}
+```
+
+```json
+// package.json scripts
+{
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test --filter=...[HEAD^1]",  // Only changed packages
+    "lint": "turbo run lint"
+  }
+}
+```
+
+### Filtering
+
+```bash
+# Only build packages that changed since last commit
+turbo run build --filter=...[HEAD^1]
+
+# Build a specific package and its dependencies
+turbo run build --filter=@myorg/web...
+
+# Build everything that depends on a package
+turbo run build --filter=...@myorg/ui
+```
+
+## Nx
+
+Nx (Nrwl) is a more opinionated, feature-rich platform with generators, plugins, and an IDE extension.
+
+### Setup
+
+```bash
+npx create-nx-workspace@latest my-workspace --preset=ts
+```
+
+```json
+// nx.json
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": ["default", "!{projectRoot}/**/*.spec.ts"]
+  },
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["production"],
+      "outputs": ["{projectRoot}/dist"],
+      "cache": true
+    },
+    "test": {
+      "inputs": ["default"],
+      "outputs": ["{projectRoot}/coverage"],
+      "cache": true
+    }
+  }
+}
+```
+
+### Affected Analysis
+
+```bash
+# Run only affected projects (compared to main branch)
+nx affected -t build test lint
+
+# Show affected projects
+nx show projects --affected
+
+# Visualize project graph
+nx graph
+```
+
+### Generators (Nx's Differentiator)
+
+```bash
+# Generate a new library
+nx g @nx/js:library feature-auth --directory=libs/feature/auth
+
+# Generate a React app
+nx g @nx/react:app shop-frontend
+
+# Generate a component in a specific project
+nx g @nx/react:component Button --project=ui-kit
+
+# Create a custom generator
+nx g @nx/devkit:generator my-generator --factory
+```
+
+Generators produce consistent code scaffolding across the entire monorepo, enforcing architectural conventions.
+
+### Nx Plugins
+
+```bash
+# Plugins for specific frameworks/tools
+npm install @nx/next @nx/react @nx/node @nx/express @nx/jest @nx/vite
+```
+
+Plugins provide:
+- Project graph inference (auto-detect package structure)
+- Optimized build targets
+- Migration executors for framework upgrades
+
+## Feature Comparison
+
+| Feature | Turborepo | Nx |
+|---------|-----------|-----|
+| Local caching | ✅ | ✅ |
+| Remote caching | Vercel (free) | Nx Cloud (free tier) |
+| Affected analysis | ✅ (via filter) | ✅ (native) |
+| Task graph visualization | Basic | Interactive (`nx graph`) |
+| Generators/scaffolding | None | Extensive |
+| Plugins | None | 20+ official |
+| Configuration | Minimal | More verbose |
+| Learning curve | Low | Medium |
+| IDE extension | No | VS Code + WebStorm |
+| Project constraints | None | Via module boundary rules |
+| Framework support | Any | React, Next, Angular, Node, etc. |
+
+## Performance
+
+Both tools achieve similar cache hit rates. Raw performance differences:
+
+- **Turborepo**: Faster to execute cached tasks (Go runtime)
+- **Nx**: Better affected analysis using full project graph
+- **Both**: Support parallel execution and remote caching
+
+For most teams, performance is not the deciding factor.
+
+## When to Choose Turborepo
+
+- Existing monorepo with a Vite/Next.js stack
+- Small to medium team (< 20 engineers)
+- Minimal configuration overhead is a priority
+- Using Vercel for deployment (free remote cache)
+- No need for code generation or scaffolding
+
+```bash
+# Minimal turbo.json for a pnpm workspace monorepo
+{
+  "tasks": {
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "test": { "dependsOn": ["build"] },
+    "lint": {}
+  }
+}
+```
+
+## When to Choose Nx
+
+- Large monorepos (20+ packages, 10+ engineers)
+- Need code generators for consistent scaffolding
+- Multiple frameworks (React, Angular, Node)
+- Want project graph visualization for architecture analysis
+- Enforce module boundaries (no circular deps, constrain which packages can import which)
+
+```typescript
+// Nx module boundary rules
+// .eslintrc.json
+{
+  "rules": {
+    "@nx/enforce-module-boundaries": ["error", {
+      "allow": [],
+      "depConstraints": [
+        { "sourceTag": "type:app", "onlyDependOnLibsWithTags": ["type:feature", "type:ui", "type:util"] },
+        { "sourceTag": "type:feature", "onlyDependOnLibsWithTags": ["type:ui", "type:data", "type:util"] },
+        { "sourceTag": "type:ui", "onlyDependOnLibsWithTags": ["type:util"] }
+      ]
+    }]
+  }
+}
+```
+
+## Practical Recommendation
+
+For a new JavaScript/TypeScript monorepo in 2026:
+
+- **Greenfield, small team**: Start with Turborepo + pnpm workspaces. Add Nx later if you need generators.
+- **Rapid growth expected**: Start with Nx for its architectural guardrails.
+- **Enterprise / multi-framework**: Nx is the clear choice.
+- **Migrating an existing Lerna repo**: Turborepo migration is simpler; Nx migration is more complete.
+
+Both tools actively develop and compete. The gap has narrowed — you can't go wrong with either choice for a well-structured monorepo.

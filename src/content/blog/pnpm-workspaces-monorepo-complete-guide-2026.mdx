@@ -1,0 +1,275 @@
+---
+title: "pnpm Workspaces: The Complete Monorepo Guide 2026"
+description: "Set up a production monorepo with pnpm workspaces in 2026. Workspace protocols, shared configs, TypeScript project references, publishing packages, and integrating with Turborepo."
+date: "2026-04-02"
+tags: [monorepo, pnpm, workspaces, typescript, packages, npm, tooling]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# pnpm Workspaces: The Complete Monorepo Guide 2026
+
+pnpm workspaces is the foundation layer for JavaScript monorepos in 2026. Unlike npm/yarn workspaces, pnpm's symlink-free, content-addressable store eliminates phantom dependencies and dramatically reduces `node_modules` size. Combined with Turborepo or Nx, it's the standard stack for multi-package JavaScript repositories.
+
+## Why pnpm Over npm/yarn Workspaces
+
+```bash
+# npm workspaces: hoisting creates phantom dependencies
+# Package A can import Package B's dependencies even without declaring them
+# → Works locally, fails in production
+
+# pnpm: strict isolation
+# Package A can ONLY import what it declares in package.json
+# → Prevents phantom deps, catches missing deps early
+```
+
+Storage efficiency: pnpm's content-addressable store means all packages sharing a dependency version store it once globally:
+
+```
+# 10 projects, each with React 18 as dependency
+# npm: 10 copies of React 18 (10 × 120MB = 1.2GB)
+# pnpm: 1 copy of React 18 (120MB) — hardlinked to each project
+```
+
+## Project Structure
+
+```
+my-monorepo/
+├── apps/
+│   ├── web/                  # Next.js frontend
+│   │   ├── package.json
+│   │   └── src/
+│   ├── api/                  # Node.js API
+│   │   ├── package.json
+│   │   └── src/
+│   └── mobile/               # React Native
+├── packages/
+│   ├── ui/                   # Shared UI components
+│   │   ├── package.json
+│   │   └── src/
+│   ├── types/                # Shared TypeScript types
+│   │   ├── package.json
+│   │   └── src/
+│   ├── config/               # Shared configs (ESLint, TS, Tailwind)
+│   │   ├── eslint/
+│   │   ├── typescript/
+│   │   └── tailwind/
+│   └── utils/                # Shared utilities
+├── pnpm-workspace.yaml
+├── package.json              # Root package.json
+└── turbo.json
+```
+
+## Configuration
+
+```yaml
+# pnpm-workspace.yaml
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - '!**/node_modules/**'
+```
+
+```json
+// package.json (root)
+{
+  "name": "my-monorepo",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.1.0"
+}
+```
+
+## Workspace Protocol: Internal Dependencies
+
+The `workspace:` protocol links internal packages — no version number required:
+
+```json
+// apps/web/package.json
+{
+  "name": "@myorg/web",
+  "dependencies": {
+    "@myorg/ui": "workspace:*",     // Always latest local version
+    "@myorg/utils": "workspace:^",  // Semver-compatible local version
+    "@myorg/types": "workspace:*",
+    "next": "15.0.0",
+    "react": "18.3.0"
+  }
+}
+```
+
+When you run `pnpm install`, these workspace packages are linked as symlinks in `node_modules`. When you publish packages (with `pnpm publish`), the `workspace:*` is replaced with the actual published version.
+
+## Shared TypeScript Configuration
+
+```json
+// packages/config/typescript/base.json
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}
+```
+
+```json
+// packages/config/typescript/nextjs.json
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+    "plugins": [{ "name": "next" }]
+  }
+}
+```
+
+```json
+// apps/web/tsconfig.json
+{
+  "extends": "@myorg/config/typescript/nextjs.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*", "next.config.ts", ".next/types/**/*.ts"]
+}
+```
+
+## Shared ESLint Configuration
+
+```javascript
+// packages/config/eslint/base.js
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.strict,
+  { ignores: ['dist/**', 'node_modules/**'] }
+);
+```
+
+```javascript
+// apps/web/eslint.config.mjs
+import baseConfig from '@myorg/config/eslint/base.js';
+import nextPlugin from '@next/eslint-plugin-next';
+
+export default [
+  ...baseConfig,
+  nextPlugin.flatConfig.recommended,
+];
+```
+
+## pnpm Commands
+
+```bash
+# Install all packages
+pnpm install
+
+# Add dependency to a specific workspace
+pnpm add react --filter @myorg/web
+pnpm add -D typescript --filter @myorg/api
+
+# Add dependency to ALL workspaces
+pnpm add -D prettier -r --filter="*"
+
+# Run script in all workspaces
+pnpm -r run build
+
+# Run script in specific workspace
+pnpm --filter @myorg/web run dev
+
+# Run script in workspace and its dependencies
+pnpm --filter @myorg/web... run build
+
+# List all workspace packages
+pnpm list -r --depth 0 --json
+
+# Check for outdated packages
+pnpm outdated -r
+```
+
+## Publishing Packages
+
+For public packages from a monorepo:
+
+```bash
+# Changeset workflow (recommended)
+pnpm add -Dw @changesets/cli
+npx changeset init
+
+# Create a changeset (when making changes)
+npx changeset  # Interactive: select packages + version bump
+
+# Version packages
+npx changeset version  # Bumps versions, updates CHANGELOG.md
+
+# Publish
+pnpm build -r  # Build all packages first
+npx changeset publish  # Publishes changed packages to npm
+```
+
+## CI Pipeline
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for turbo --filter with git comparison
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-
+
+      - run: pnpm turbo run build test lint --filter=...[HEAD^1]
+```
+
+pnpm workspaces + Turborepo is the most efficient JavaScript monorepo stack in 2026 for teams that want fast, reliable builds with minimal configuration overhead.
