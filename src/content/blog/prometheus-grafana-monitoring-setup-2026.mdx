@@ -1,0 +1,265 @@
+---
+title: "Prometheus + Grafana Monitoring Setup Guide 2026"
+description: "Complete Prometheus and Grafana setup guide for 2026. Instrument applications, write PromQL queries, create dashboards, configure alerting with AlertManager, and deploy the kube-prometheus-stack."
+date: "2026-04-02"
+tags: [observability, prometheus, grafana, monitoring, alerting, promql, kubernetes]
+readingTime: "10 min read"
+author: "DevPlaybook Team"
+---
+
+# Prometheus + Grafana Monitoring Setup Guide 2026
+
+Prometheus and Grafana remain the standard open-source monitoring stack in 2026. Prometheus scrapes and stores time-series metrics; Grafana visualizes them and manages alerts. Together they cover the metrics pillar of observability for most organizations.
+
+## Architecture Overview
+
+```
+Application → /metrics endpoint → Prometheus scrapes → Grafana visualizes
+                                          ↓
+                                   AlertManager → PagerDuty/Slack/Email
+```
+
+## Running the Stack with Docker Compose
+
+```yaml
+# docker-compose.yml
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-remote-write-receiver'
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+
+volumes:
+  prometheus_data:
+  grafana_data:
+```
+
+## Prometheus Configuration
+
+```yaml
+# prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - "alerts/*.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  - job_name: 'order-service'
+    static_configs:
+      - targets: ['order-service:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Kubernetes service discovery
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+```
+
+## Instrumenting Your Application
+
+```typescript
+// Node.js with prom-client
+import promClient from 'prom-client';
+import express from 'express';
+
+const register = new promClient.Registry();
+promClient.collectDefaultMetrics({ register }); // Node.js process metrics
+
+// HTTP request duration histogram
+const httpDuration = new promClient.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'Duration of HTTP requests in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
+  registers: [register],
+});
+
+// Business metric counter
+const ordersCreated = new promClient.Counter({
+  name: 'orders_created_total',
+  help: 'Total number of orders created',
+  labelNames: ['source', 'status'],
+  registers: [register],
+});
+
+// Express middleware: record all request durations
+app.use((req, res, next) => {
+  const end = httpDuration.startTimer({
+    method: req.method,
+    route: req.route?.path ?? req.path,
+  });
+  res.on('finish', () => end({ status_code: res.statusCode }));
+  next();
+});
+
+// Expose /metrics endpoint
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
+```
+
+## PromQL: Essential Queries
+
+```promql
+# Request rate (per second, 5-minute window)
+rate(http_requests_total{job="order-service"}[5m])
+
+# Error rate percentage
+rate(http_requests_total{status_code=~"5.."}[5m])
+  / rate(http_requests_total[5m]) * 100
+
+# 95th percentile latency
+histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))
+
+# Apdex score (fraction of requests under 0.3s target)
+(
+  sum(rate(http_request_duration_seconds_bucket{le="0.3"}[5m]))
+  + sum(rate(http_request_duration_seconds_bucket{le="1.2"}[5m])) * 0.5
+) / sum(rate(http_request_duration_seconds_count[5m]))
+
+# Memory usage trend
+rate(process_resident_memory_bytes[1h])
+
+# Top 5 slowest endpoints (p99)
+topk(5, histogram_quantile(0.99,
+  sum by (route, le) (rate(http_request_duration_seconds_bucket[5m]))
+))
+```
+
+## Alerting Rules
+
+```yaml
+# alerts/service-alerts.yml
+groups:
+  - name: service_alerts
+    interval: 1m
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          rate(http_requests_total{status_code=~"5.."}[5m])
+          / rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate is {{ $value | humanizePercentage }} on {{ $labels.job }}"
+
+      - alert: SlowResponses
+        expr: |
+          histogram_quantile(0.95, sum by (le, job) (
+            rate(http_request_duration_seconds_bucket[5m])
+          )) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow p95 latency on {{ $labels.job }}"
+          description: "p95 latency is {{ $value | humanizeDuration }}"
+
+      - alert: ServiceDown
+        expr: up{job=~"order-service|payment-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+```
+
+## AlertManager: Route Alerts
+
+```yaml
+# alertmanager.yml
+route:
+  group_by: ['alertname', 'job']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'default'
+  routes:
+    - match:
+        severity: critical
+      receiver: 'pagerduty'
+    - match:
+        severity: warning
+      receiver: 'slack'
+
+receivers:
+  - name: 'pagerduty'
+    pagerduty_configs:
+      - service_key: ${PAGERDUTY_KEY}
+
+  - name: 'slack'
+    slack_configs:
+      - api_url: ${SLACK_WEBHOOK_URL}
+        channel: '#alerts'
+        title: '[{{ .Status | toUpper }}] {{ .CommonAnnotations.summary }}'
+```
+
+## Kubernetes: kube-prometheus-stack
+
+```bash
+# Install the complete monitoring stack (Prometheus + Grafana + Alertmanager + exporters)
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm install kube-prometheus prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --create-namespace \
+  --set grafana.adminPassword=admin \
+  --set prometheus.prometheusSpec.retention=30d
+```
+
+This single Helm chart deploys: Prometheus, Grafana (with pre-built Kubernetes dashboards), AlertManager, node-exporter (host metrics), kube-state-metrics (cluster metrics), and ServiceMonitor CRDs for auto-discovering application metrics.
+
+## Grafana Dashboard Best Practices
+
+1. **USE method per service**: Utilization, Saturation, Errors — the minimum viable dashboard
+2. **RED method for APIs**: Rate, Errors, Duration — three panels per endpoint
+3. **Consistent time ranges**: Compare current vs last week with time shift
+4. **Annotations**: Mark deploys on graphs to correlate changes with metric changes
+5. **Exemplars**: Link histogram buckets to specific traces in Tempo

@@ -1,0 +1,236 @@
+---
+title: "Distributed Tracing with Jaeger and Grafana Tempo 2026"
+description: "Set up distributed tracing with Jaeger and Grafana Tempo. Understand trace anatomy, sampling strategies, trace-to-log correlation, and how to debug latency issues with waterfall views."
+date: "2026-04-02"
+tags: [observability, tracing, jaeger, tempo, grafana, opentelemetry, microservices]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# Distributed Tracing with Jaeger and Grafana Tempo 2026
+
+Distributed tracing answers the question: "What happened during this request?" It follows a request as it flows through multiple services, databases, and caches, recording timing and context at each step. When latency spikes or errors occur, traces tell you exactly where.
+
+## Trace Anatomy
+
+A trace is a directed acyclic graph of **spans**:
+
+```
+Trace: POST /api/orders (400ms total)
+│
+├── OrderController.createOrder (395ms)
+│   ├── validateRequest (5ms)
+│   ├── DB: SELECT * FROM products (45ms)        ← SQL span (auto-instrumented)
+│   ├── HTTP: POST payment-service/charge (280ms) ← HTTP client span
+│   │   └── payment-service: processCharge (275ms)
+│   │       ├── DB: SELECT * FROM cards (20ms)
+│   │       ├── HTTP: POST stripe.com/charges (200ms) ← External call
+│   │       └── DB: INSERT payments (8ms)
+│   └── DB: INSERT orders (60ms)
+```
+
+The trace shows: the 200ms Stripe call is the bottleneck. Without tracing, you'd see a slow `/api/orders` endpoint with no insight into which downstream call caused it.
+
+## Jaeger
+
+Jaeger (CNCF project, originally by Uber) is the most widely deployed open-source tracing backend.
+
+### Running Jaeger
+
+```yaml
+# docker-compose.yml
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.55
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC receiver
+      - "4318:4318"     # OTLP HTTP receiver
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: "badger"  # For dev; use Elasticsearch/Cassandra in prod
+```
+
+### Querying Traces
+
+Jaeger UI at `http://localhost:16686`:
+
+1. Select service from dropdown
+2. Filter by operation name, tags, duration, or error
+3. Click a trace to see the waterfall view
+
+**Key searches**:
+- `tags={"error":"true"}` — find all erroring traces
+- `minDuration=500ms` — find slow requests
+- `tags={"customer.id":"cust-123"}` — find all traces for a specific customer
+
+### Jaeger API
+
+```python
+import requests
+
+# Find traces for slow order requests
+response = requests.get("http://jaeger:16686/api/traces", params={
+    "service": "order-service",
+    "operation": "POST /api/orders",
+    "minDuration": "500ms",
+    "limit": 20,
+})
+
+traces = response.json()["data"]
+for trace in traces:
+    duration_ms = trace["spans"][0]["duration"] / 1000
+    trace_id = trace["traceID"]
+    print(f"Trace {trace_id}: {duration_ms:.0f}ms")
+```
+
+## Grafana Tempo
+
+Tempo is Grafana Labs' distributed tracing backend, designed to be cost-efficient by storing traces in object storage (S3/GCS) rather than Elasticsearch.
+
+### Tempo Setup
+
+```yaml
+# docker-compose.yml
+services:
+  tempo:
+    image: grafana/tempo:latest
+    ports:
+      - "3200:3200"     # Tempo HTTP API
+      - "4317:4317"     # OTLP gRPC
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo.yaml
+    command: ["-config.file=/etc/tempo.yaml"]
+```
+
+```yaml
+# tempo-config.yaml
+server:
+  http_listen_port: 3200
+
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: my-traces-bucket
+      region: us-east-1
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+        http:
+
+compactor:
+  compaction:
+    block_retention: 336h  # 14 days
+```
+
+### Tempo in Grafana
+
+Tempo's power comes from its Grafana integration — traces link directly to logs (Loki) and metrics (Prometheus):
+
+```yaml
+# Grafana datasource: traces to logs correlation
+datasources:
+  - name: Tempo
+    type: tempo
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogs:
+        datasourceUid: loki
+        tags: [{ key: 'service.name', value: 'service' }]
+        filterByTraceID: true
+        filterBySpanID: true
+      tracesToMetrics:
+        datasourceUid: prometheus
+        tags: [{ key: 'service.name' }]
+        queries:
+          - name: "Request Rate"
+            query: "rate(http_requests_total{$__tags}[5m])"
+```
+
+With this config, clicking a span in a trace opens the corresponding logs and metrics — the full observability context in one click.
+
+## Sampling Strategies
+
+Tracing every request at high traffic volumes is expensive. Sampling controls what percentage of traces you keep.
+
+### Head-Based Sampling (Simple)
+
+```typescript
+// OpenTelemetry: trace 10% of requests
+import { TraceIdRatioBased } from '@opentelemetry/sdk-trace-base';
+
+const sdk = new NodeSDK({
+  sampler: new TraceIdRatioBased(0.1),  // 10% of traces
+});
+```
+
+Problem: head-based sampling makes the sampling decision before you know if the request is interesting. You'll miss rare errors.
+
+### Tail-Based Sampling (Smart)
+
+Tail-based sampling buffers traces and makes the sampling decision AFTER the trace completes — keeping 100% of errors, 100% of slow requests, and 1% of fast successful requests:
+
+```yaml
+# OpenTelemetry Collector: tail sampling
+processors:
+  tail_sampling:
+    decision_wait: 30s
+    policies:
+      - name: errors
+        type: status_code
+        status_code: { status_codes: [ERROR] }
+      - name: slow-requests
+        type: latency
+        latency: { threshold_ms: 500 }
+      - name: low-rate-sampling
+        type: probabilistic
+        probabilistic: { sampling_percentage: 1 }
+```
+
+## Trace-to-Log Correlation
+
+The most valuable observability pattern — link every log line to the trace it belongs to:
+
+```typescript
+// Winston logger that injects trace context
+import { trace, context } from '@opentelemetry/api';
+import winston from 'winston';
+
+const logger = winston.createLogger({
+  format: winston.format.combine(
+    winston.format.json(),
+    winston.format((info) => {
+      const span = trace.getActiveSpan();
+      if (span) {
+        const { traceId, spanId } = span.spanContext();
+        info.trace_id = traceId;
+        info.span_id = spanId;
+      }
+      return info;
+    })()
+  ),
+  transports: [new winston.transports.Console()],
+});
+
+// Every log line now includes trace_id and span_id
+logger.info('Processing order', { orderId: '123', customerId: 'abc' });
+// Output: { "message": "Processing order", "trace_id": "abc123...", "span_id": "def456...", ... }
+```
+
+In Grafana, click a log line with `trace_id` → jumps to the corresponding trace in Tempo.
+
+## Jaeger vs Tempo Decision
+
+| | Jaeger | Grafana Tempo |
+|--|--------|---------------|
+| Storage | Elasticsearch/Cassandra | S3/GCS (cheap) |
+| UI | Standalone Jaeger UI | Grafana |
+| Trace-metric correlation | Manual | Built-in via Grafana |
+| Scaling complexity | High | Low (stateless) |
+| Best for | Jaeger-only deployments | Grafana stack (Loki + Prometheus) |
+
+If you're already using Grafana for dashboards and Loki for logs, Tempo is the natural choice — one UI for everything. If you want a standalone tracing tool with a focused UI, Jaeger is solid.

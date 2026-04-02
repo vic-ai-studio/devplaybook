@@ -1,0 +1,251 @@
+---
+title: "Log Aggregation with Grafana Loki 2026: Setup and LogQL Guide"
+description: "Set up Grafana Loki for log aggregation in 2026. Configure Promtail, write LogQL queries, create log-based metrics, integrate with Grafana dashboards, and ship logs from Kubernetes."
+date: "2026-04-02"
+tags: [observability, loki, grafana, logging, logql, kubernetes, promtail]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# Log Aggregation with Grafana Loki 2026
+
+Grafana Loki is the log aggregation system designed to integrate with Prometheus and Grafana. Unlike Elasticsearch (which indexes every field), Loki only indexes labels — making it 10x cheaper while remaining fast for label-based queries. In 2026, it's the default choice for teams already running the Grafana stack.
+
+## Loki's Design Philosophy
+
+Loki stores log lines as compressed chunks, indexed only by labels (metadata about the log stream, not the content). When you search, Loki filters by labels first, then applies a regex/text search on the content.
+
+This trade-off: **Loki is cheaper and faster for label-based queries; Elasticsearch is better for full-text search across arbitrary fields.**
+
+For most application logging (finding logs by service, pod, error message), Loki is more than sufficient.
+
+## Setup with Docker Compose
+
+```yaml
+# docker-compose.yml (adds to Prometheus/Grafana setup)
+services:
+  loki:
+    image: grafana/loki:3.0.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./promtail-config.yaml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+
+volumes:
+  loki_data:
+```
+
+```yaml
+# loki-config.yaml (minimal single-binary config)
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/boltdb-shipper-active
+    shared_store: filesystem
+  filesystem:
+    directory: /loki/chunks
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+compactor:
+  working_directory: /loki/boltdb-shipper-compactor
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_period: 744h  # 31 days
+```
+
+## Promtail: Shipping Application Logs
+
+```yaml
+# promtail-config.yaml
+server:
+  http_listen_port: 9080
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Docker container logs
+  - job_name: containers
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: containerlogs
+          __path__: /var/lib/docker/containers/*/*-json.log
+    pipeline_stages:
+      - json:
+          expressions:
+            output: log
+            stream: stream
+            attrs:
+      - json:
+          source: attrs
+          expressions:
+            container_name: /(\w+)$/
+      - labels:
+          stream:
+          container_name:
+      - output:
+          source: output
+
+  # Application JSON logs
+  - job_name: order-service
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: order-service
+          env: production
+          __path__: /var/log/order-service/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            trace_id: trace_id
+            user_id: user_id
+      - labels:
+          level:
+          trace_id:
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+```
+
+## Structured Logging for Better Loki Queries
+
+JSON structured logs maximize Loki's utility — labels extracted from log content enable powerful queries:
+
+```typescript
+// Winston JSON logger
+import winston from 'winston';
+
+const logger = winston.createLogger({
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json(),
+  ),
+  transports: [new winston.transports.Console()],
+});
+
+// Log with context
+logger.info('Order created', {
+  service: 'order-service',
+  event: 'order.created',
+  order_id: 'ord-123',
+  customer_id: 'cust-456',
+  amount: 99.99,
+  duration_ms: 45,
+  // trace_id injected by OTel (see previous article)
+});
+
+logger.error('Payment failed', {
+  event: 'payment.failed',
+  order_id: 'ord-124',
+  error: 'Card declined',
+  error_code: 'card_declined',
+});
+```
+
+## LogQL: Querying Logs
+
+LogQL has two query types: log queries (return log lines) and metric queries (return time-series from logs).
+
+**Log Queries**:
+
+```logql
+# All logs from order-service in production
+{job="order-service", env="production"}
+
+# Filter for errors
+{job="order-service"} |= "error"
+
+# JSON parsing + filter
+{job="order-service"} | json | level="error"
+
+# Find specific customer's orders
+{job="order-service"} | json | customer_id="cust-456"
+
+# Trace correlation: find all logs for a trace
+{job=~"order-service|payment-service"} | json | trace_id="abc123def456"
+
+# Pattern matching
+{job="order-service"} | pattern "<_> order_id=<order_id> <_>" | order_id="ord-123"
+```
+
+**Metric Queries (log-based metrics)**:
+
+```logql
+# Error rate from logs (per service, per minute)
+sum by (job) (rate({job=~"order-service|payment-service"} | json | level="error" [1m]))
+
+# Count orders created per minute
+sum(rate({job="order-service"} | json | event="order.created" [1m]))
+
+# p99 payment duration from log fields
+histogram_quantile(0.99, sum(rate({job="payment-service"} | json | unwrap duration_ms [5m])) by (le))
+
+# Top 10 error messages
+topk(10,
+  sum by (error) (
+    count_over_time({job="order-service"} | json | level="error" [1h])
+  )
+)
+```
+
+## Kubernetes Log Collection
+
+```yaml
+# values.yaml for promtail Helm chart
+config:
+  clients:
+    - url: http://loki:3100/loki/api/v1/push
+
+  snippets:
+    extraScrapeConfigs: |
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+        pipeline_stages:
+          - cri: {}  # Parse CRI format (containerd)
+          - json:
+              expressions:
+                level: level
+                trace_id: trace_id
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+```
+
+## Grafana Loki Dashboard
+
+In Grafana, add Loki as a data source and use the Explore view to:
+1. Filter logs by labels (service, environment, level)
+2. Click a log line with `trace_id` to jump to the corresponding trace in Tempo
+3. Use **Logs to Metrics** to create panels showing log event rates over time
+
+The power of the Grafana stack: one tool to navigate between metrics (Prometheus), traces (Tempo), and logs (Loki), with automatic correlation via labels and trace IDs.

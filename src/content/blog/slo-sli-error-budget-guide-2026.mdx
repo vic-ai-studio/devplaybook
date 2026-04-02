@@ -1,0 +1,201 @@
+---
+title: "SLOs, SLIs, and Error Budgets: A Practical Guide 2026"
+description: "Define and implement SLOs and SLIs for production services in 2026. Calculate error budgets, set up SLO alerting with Prometheus, and use error budgets to balance reliability with feature velocity."
+date: "2026-04-02"
+tags: [observability, slo, sli, error-budget, reliability, sre, monitoring, prometheus]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# SLOs, SLIs, and Error Budgets: A Practical Guide 2026
+
+Service Level Objectives, Indicators, and error budgets are the foundation of Site Reliability Engineering. They answer the question every engineering team faces: "How reliable does our service need to be, and when does reliability work take priority over new features?" This guide goes from theory to implementation.
+
+## The Three Concepts
+
+**SLI (Service Level Indicator)**: A quantitative measure of service behavior. The raw metric.
+
+```
+SLI = good requests / total requests × 100%
+```
+
+**SLO (Service Level Objective)**: Your target for the SLI over a time window.
+
+```
+SLO: 99.9% of requests complete successfully over a 30-day rolling window
+```
+
+**Error Budget**: The amount of failure your SLO allows.
+
+```
+Error budget = 100% - SLO target = 0.1% of requests can fail
+In a 30-day window with 10M requests: 10,000 failed requests allowed
+```
+
+## Defining Good SLIs
+
+### Request-Based SLI (Availability)
+
+The most common SLI:
+
+```
+Good event: HTTP request completed with status < 500
+Total events: All HTTP requests
+SLI = count(status < 500) / count(all requests)
+```
+
+### Latency SLI
+
+```
+Good event: Request completed in < 300ms
+Total events: All requests
+SLI = count(duration < 300ms) / count(all requests)
+```
+
+### Choosing Your SLO Target
+
+Common targets by service criticality:
+
+| Service Type | Typical SLO | Monthly Downtime Allowed |
+|-------------|-------------|------------------------|
+| Non-critical internal tool | 99% | 7.3 hours |
+| Customer-facing API | 99.9% | 43.8 minutes |
+| Payment/auth service | 99.95% | 21.9 minutes |
+| Core infrastructure | 99.99% | 4.4 minutes |
+
+**Key principle**: Don't set SLOs higher than you need. A 99.99% SLO on a marketing page wastes reliability investment that could go elsewhere.
+
+## Implementing SLOs with Prometheus
+
+### Recording Rules (SLI Calculation)
+
+```yaml
+# prometheus/rules/slo-rules.yml
+groups:
+  - name: slo_recording_rules
+    interval: 30s
+    rules:
+      # 5-minute request rate
+      - record: job:http_requests:rate5m
+        expr: sum by (job, status_code) (rate(http_requests_total[5m]))
+
+      # 5-minute error rate
+      - record: job:http_errors:rate5m
+        expr: |
+          sum by (job) (rate(http_requests_total{status_code=~"5.."}[5m]))
+          / sum by (job) (rate(http_requests_total[5m]))
+
+      # 30-day SLI (rolling window)
+      - record: job:sli_availability:30d
+        expr: |
+          sum_over_time(job:http_errors:rate5m[30d]) < bool 0.001
+          # This simplification tracks the fraction of 5-min windows within SLO
+
+      # Latency SLI: fraction of requests under 300ms
+      - record: job:sli_latency:rate5m
+        expr: |
+          sum by (job) (rate(http_request_duration_seconds_bucket{le="0.3"}[5m]))
+          / sum by (job) (rate(http_request_duration_seconds_count[5m]))
+```
+
+### Error Budget Burn Rate Alerts
+
+The critical pattern: alert when you're burning through error budget too fast, not just when SLI drops:
+
+```yaml
+# prometheus/rules/slo-alerts.yml
+groups:
+  - name: slo_alerts
+    rules:
+      # Fast burn: consuming 5% of monthly budget in 1 hour
+      # 36x normal burn rate (5% of budget in 1h = 5% × 720h/month = 36x)
+      - alert: HighErrorBudgetBurn
+        expr: |
+          job:http_errors:rate5m{job="order-service"} > (36 * 0.001)
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: "High error budget burn for {{ $labels.job }}"
+          description: >
+            Error rate is {{ $value | humanizePercentage }}.
+            At this rate, 30-day error budget will be exhausted in
+            {{ printf "%.1f" (div 0.001 $value | mul 720) }} hours.
+
+      # Slow burn: consuming 10% of monthly budget in 6 hours
+      # 6x normal burn rate
+      - alert: MediumErrorBudgetBurn
+        expr: |
+          job:http_errors:rate5m{job="order-service"} > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: warning
+          slo: availability
+        annotations:
+          summary: "Elevated error budget burn for {{ $labels.job }}"
+```
+
+Multi-window alerting catches both sudden spikes (fast burn) and gradual degradation (slow burn).
+
+## Error Budget Policy
+
+An error budget policy defines what happens when the budget is exhausted or nearly exhausted:
+
+```markdown
+## Error Budget Policy: Order Service
+
+**SLO**: 99.9% availability over 30-day rolling window
+**Error Budget**: 0.1% = ~43 minutes/month
+
+### Budget Status Actions
+
+| Budget Remaining | Action |
+|-----------------|--------|
+| > 50% | Normal operations, features and reliability work balanced |
+| 25-50% | Reliability issues get priority in next sprint |
+| 10-25% | Freeze non-critical feature work, focus on reliability |
+| < 10% | All hands on reliability, no feature deployments without approval |
+| 0% (exhausted) | Incident response, mandatory postmortem, deployment freeze |
+```
+
+## SLO Dashboard in Grafana
+
+```json
+{
+  "title": "Order Service SLO",
+  "panels": [
+    {
+      "title": "Availability SLI (7d)",
+      "type": "stat",
+      "targets": [{
+        "expr": "1 - (sum_over_time(job:http_errors:rate5m{job=\"order-service\"}[7d]) / count_over_time(job:http_errors:rate5m{job=\"order-service\"}[7d]))",
+        "legendFormat": "Availability"
+      }],
+      "thresholds": [
+        { "value": 0.999, "color": "green" },
+        { "value": 0.995, "color": "yellow" },
+        { "value": 0, "color": "red" }
+      ]
+    },
+    {
+      "title": "Error Budget Remaining (30d)",
+      "type": "gauge",
+      "targets": [{
+        "expr": "1 - (sum_over_time(job:http_errors:rate5m{job=\"order-service\"}[30d]) / (0.001 * count_over_time(job:http_errors:rate5m{job=\"order-service\"}[30d])))",
+        "legendFormat": "Budget"
+      }]
+    }
+  ]
+}
+```
+
+## Common Mistakes
+
+**SLO too high**: A 99.999% SLO on a non-critical service means no deploys, ever. Match reliability requirements to actual user impact.
+
+**Wrong SLI**: Measuring what's easy to measure, not what matters. HTTP status code is easy; user-perceived success (did the order actually go through?) is harder but more meaningful.
+
+**Alerting on SLI directly**: `error_rate > 1%` fires too often. Burn rate alerts reduce alert fatigue while still catching real incidents.
+
+**Not publishing SLOs**: SLOs only work when shared with stakeholders. Published SLOs create accountability and enable prioritization conversations with product management.
