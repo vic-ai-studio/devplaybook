@@ -1,0 +1,299 @@
+---
+title: "Next.js App Router Best Practices 2026"
+description: "Master Next.js App Router in 2026. Learn Server Components, Client Components boundaries, data fetching patterns, caching strategies, Suspense integration, and common pitfalls to avoid."
+date: "2026-04-02"
+tags: [nextjs, react, app-router, server-components, typescript, performance]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# Next.js App Router Best Practices 2026
+
+The Next.js App Router (introduced in Next.js 13, stable in 14, mature in 15) fundamentally changes how you build React applications. Server Components, the new data fetching model, and nested layouts require new mental models and patterns.
+
+This guide covers the practices that distinguish production-quality App Router applications.
+
+## Server vs Client Components: The Golden Rule
+
+The most important decision in every component:
+
+- **Server Component** (default): Runs on the server. Can access databases, secrets, file system. No useState, no useEffect, no event handlers.
+- **Client Component** (`'use client'`): Runs in the browser. Has interactivity, hooks, and browser APIs.
+
+**The rule**: Push `'use client'` boundaries as far down the tree as possible.
+
+```tsx
+// ✅ GOOD: data fetching in Server Component, interactivity in Client
+// app/products/page.tsx (Server Component)
+import { AddToCartButton } from './AddToCartButton';
+
+async function ProductsPage() {
+  const products = await db.query.products.findMany({ where: { active: true } });
+
+  return (
+    <div>
+      {products.map(product => (
+        <div key={product.id}>
+          <h2>{product.name}</h2>
+          <p>{product.price}</p>
+          {/* Only the interactive button is a Client Component */}
+          <AddToCartButton productId={product.id} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ❌ BAD: making the whole page a Client Component for one interactive button
+'use client';
+function ProductsPage() {
+  const [products, setProducts] = useState([]);
+  useEffect(() => { fetchProducts().then(setProducts) }, []);
+  // ...
+}
+```
+
+## Data Fetching Patterns
+
+### Parallel Data Fetching with Promise.all
+
+```tsx
+// ❌ Sequential — waterfall (slow)
+async function Dashboard() {
+  const user = await getUser();          // Wait 100ms
+  const stats = await getStats();        // Wait 100ms
+  const notifications = await getNotifs(); // Wait 100ms
+  // Total: 300ms
+}
+
+// ✅ Parallel — concurrent (fast)
+async function Dashboard() {
+  const [user, stats, notifications] = await Promise.all([
+    getUser(),
+    getStats(),
+    getNotifications(),
+  ]);
+  // Total: ~100ms (limited by slowest)
+}
+```
+
+### Streaming with Suspense
+
+```tsx
+// app/dashboard/page.tsx
+import { Suspense } from 'react';
+
+export default function Dashboard() {
+  return (
+    <div>
+      {/* This renders immediately */}
+      <DashboardHeader />
+
+      {/* These stream in as they resolve */}
+      <Suspense fallback={<StatsSkeleton />}>
+        <StatsSection />  {/* Slow server fetch */}
+      </Suspense>
+
+      <Suspense fallback={<ActivitySkeleton />}>
+        <RecentActivity />  {/* Another slow fetch */}
+      </Suspense>
+    </div>
+  );
+}
+
+// StatsSection fetches its own data
+async function StatsSection() {
+  const stats = await getSlowStats();  // 2 second fetch
+  return <StatsDisplay stats={stats} />;
+}
+```
+
+The user sees the header immediately and the stats stream in without a full-page loading state.
+
+## Caching Strategy
+
+Next.js App Router has a complex caching system. Understanding it prevents surprise stale data:
+
+```tsx
+// 1. Force dynamic (no caching) — for frequently changing data
+async function LivePrices() {
+  const prices = await fetch('https://api.example.com/prices', {
+    cache: 'no-store'  // Never cache
+  });
+}
+
+// 2. Revalidate on interval — for semi-static data
+async function ProductCatalog() {
+  const products = await fetch('https://api.example.com/products', {
+    next: { revalidate: 3600 }  // Revalidate every hour
+  });
+}
+
+// 3. Static (cached at build time) — for truly static data
+async function AboutPage() {
+  const content = await fetch('https://cms.example.com/about', {
+    cache: 'force-cache'  // Default for Server Components
+  });
+}
+
+// 4. Tag-based revalidation — for on-demand cache invalidation
+async function getPost(slug: string) {
+  const post = await fetch(`https://cms.example.com/posts/${slug}`, {
+    next: { tags: [`post:${slug}`, 'posts'] }
+  });
+}
+
+// Server Action to invalidate
+import { revalidateTag } from 'next/cache';
+
+async function publishPost(slug: string) {
+  await db.post.update({ where: { slug }, data: { published: true } });
+  revalidateTag(`post:${slug}`);  // Invalidate this post's cache
+  revalidateTag('posts');          // Invalidate the posts list cache
+}
+```
+
+## Server Actions: Type-Safe Form Handling
+
+```tsx
+// app/profile/actions.ts
+'use server'
+
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+
+const profileSchema = z.object({
+  name: z.string().min(1).max(100),
+  bio: z.string().max(500).optional(),
+});
+
+export async function updateProfile(formData: FormData) {
+  // Validate
+  const result = profileSchema.safeParse({
+    name: formData.get('name'),
+    bio: formData.get('bio'),
+  });
+
+  if (!result.success) {
+    return { error: result.error.flatten().fieldErrors };
+  }
+
+  // Get user from session
+  const session = await getSession();
+  if (!session) return { error: 'Unauthorized' };
+
+  // Update
+  await db.user.update({
+    where: { id: session.userId },
+    data: result.data,
+  });
+
+  revalidatePath('/profile');
+  return { success: true };
+}
+
+// app/profile/page.tsx
+import { updateProfile } from './actions';
+
+function ProfileForm({ user }: { user: User }) {
+  return (
+    <form action={updateProfile}>
+      <input name="name" defaultValue={user.name} />
+      <textarea name="bio" defaultValue={user.bio} />
+      <button type="submit">Save</button>
+    </form>
+  );
+}
+```
+
+## Route Groups and Layouts
+
+Organize your app with route groups for shared layouts:
+
+```
+app/
+├── (marketing)/       # Route group: no URL impact
+│   ├── layout.tsx     # Marketing layout (navbar, footer)
+│   ├── page.tsx       # / (home)
+│   ├── about/page.tsx # /about
+│   └── pricing/page.tsx # /pricing
+│
+├── (app)/             # Route group: authenticated app
+│   ├── layout.tsx     # App layout (sidebar, user menu)
+│   ├── dashboard/page.tsx
+│   └── settings/page.tsx
+│
+└── (auth)/            # Route group: auth pages
+    ├── layout.tsx     # Minimal layout
+    ├── login/page.tsx
+    └── signup/page.tsx
+```
+
+## Common Mistakes to Avoid
+
+### 1. Context in Server Components
+
+```tsx
+// ❌ This crashes — useContext only works in Client Components
+async function ServerComponent() {
+  const theme = useContext(ThemeContext);  // ERROR
+}
+
+// ✅ Pass data as props from Server Component to Client Component
+async function ServerComponent() {
+  const theme = await getThemeFromDB();
+  return <ClientComponent theme={theme} />;
+}
+```
+
+### 2. Fetching in useEffect When Server Component Works
+
+```tsx
+// ❌ Unnecessary client-side fetching
+'use client';
+function ProductList() {
+  const [products, setProducts] = useState([]);
+  useEffect(() => {
+    fetch('/api/products').then(r => r.json()).then(setProducts);
+  }, []);
+  return <div>{products.map(...)}</div>;
+}
+
+// ✅ Server Component handles this better
+async function ProductList() {
+  const products = await db.products.findMany();
+  return <div>{products.map(...)}</div>;
+}
+```
+
+### 3. Missing Loading and Error States
+
+```
+app/products/
+├── page.tsx          # The page
+├── loading.tsx       # Shown while page.tsx awaits
+└── error.tsx         # Shown if page.tsx throws
+```
+
+```tsx
+// app/products/loading.tsx — automatic Suspense boundary
+export default function ProductsLoading() {
+  return <ProductListSkeleton />;  // Skeleton UI
+}
+
+// app/products/error.tsx — automatic error boundary
+'use client';
+export default function ProductsError({ error, reset }: {
+  error: Error;
+  reset: () => void;
+}) {
+  return (
+    <div>
+      <p>Failed to load products: {error.message}</p>
+      <button onClick={reset}>Try again</button>
+    </div>
+  );
+}
+```
+
+The App Router makes it easy to build fast, streaming React applications — but it requires understanding the Server/Client boundary and the caching model.

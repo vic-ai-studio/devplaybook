@@ -1,0 +1,263 @@
+---
+title: "Node.js + TypeScript Project Setup Guide 2026"
+description: "Set up a modern Node.js project with TypeScript in 2026. Covers tsconfig strict mode, ESM vs CJS, path aliases, tsx for development, Vitest for testing, and ESLint with typescript-eslint."
+date: "2026-04-02"
+tags: [nodejs, typescript, setup, vitest, eslint, esm]
+readingTime: "9 min read"
+author: "DevPlaybook Team"
+---
+
+# Node.js + TypeScript Project Setup Guide 2026
+
+Starting a new Node.js project in 2026 means making several decisions upfront: ESM or CommonJS, how to run TypeScript in development, which test runner to use, and how strict to make your TypeScript configuration. This guide gives you a production-ready setup that you can adapt.
+
+## Project Initialization
+
+```bash
+mkdir my-project && cd my-project
+npm init -y
+npm install -D typescript @types/node tsx
+npx tsc --init
+```
+
+`tsx` is the recommended TypeScript runner for Node.js in 2026. It uses esbuild internally, requires no configuration, and handles both `.ts` and `.tsx` files without a separate compilation step during development.
+
+## tsconfig.json: The Right Settings
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+Key decisions explained:
+
+- **`"module": "NodeNext"`**: Tells TypeScript you're using Node's native ESM (or CJS with explicit extensions). Requires `.js` extensions in imports.
+- **`"strict": true`**: Enables all strict checks. Always use this for new projects.
+- **`"noUncheckedIndexedAccess": true`**: Array index access returns `T | undefined`. Prevents the most common runtime errors.
+- **`"exactOptionalPropertyTypes": true`**: `{ x?: string }` means `x` is `string | undefined` — not `string | undefined | missing`. More precise.
+
+## ESM vs CommonJS: The 2026 State
+
+Node.js supports both module systems. ESM (`.mjs`, or `.js` in a package with `"type": "module"`) is the modern standard. CommonJS (`.cjs`, or `.js` without `"type": "module"`) is still widely used.
+
+**For new projects, use ESM:**
+
+```json
+// package.json
+{
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  }
+}
+```
+
+**ESM import rules in TypeScript with NodeNext:**
+
+```typescript
+// ✅ Correct: use .js extension (even for .ts source files)
+import { createUser } from './user.js';
+import type { User } from './types.js';
+
+// ❌ Wrong: no extension
+import { createUser } from './user';
+```
+
+This trips up many developers: you write `.js` extensions even though the source file is `.ts`. TypeScript resolves them correctly.
+
+**When to stay on CommonJS:** If you're writing a library consumed by projects that haven't migrated to ESM, CJS is safer. The ecosystem is still partially in transition.
+
+## Development Scripts
+
+```json
+// package.json scripts
+{
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit && tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint src"
+  }
+}
+```
+
+`tsx watch` gives you file-watching with instant restarts — no build step during development. The `build` script runs a type check before compiling so you don't ship broken types.
+
+## Path Aliases
+
+Path aliases eliminate `../../../` chains. With the `paths` config above, you can use:
+
+```typescript
+// Instead of:
+import { db } from '../../../lib/db.js';
+import { logger } from '../../utils/logger.js';
+
+// Use:
+import { db } from '@/lib/db.js';
+import { logger } from '@/utils/logger.js';
+```
+
+Path aliases in TypeScript work at type-checking time. For the compiled output to work at runtime, you need to resolve them:
+
+```bash
+npm install -D tsc-alias
+```
+
+```json
+// package.json
+"build": "tsc --noEmit && tsc && tsc-alias"
+```
+
+`tsc-alias` rewrites the path aliases in the compiled `.js` files to relative paths.
+
+## Testing with Vitest
+
+Vitest is the standard test runner for TypeScript projects in 2026. It's Jest-compatible, faster, and has native TypeScript support.
+
+```bash
+npm install -D vitest @vitest/coverage-v8
+```
+
+```typescript
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import path from 'path';
+
+export default defineConfig({
+  test: {
+    globals: true,        // describe, it, expect without imports
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      exclude: ['**/*.d.ts', 'dist/**'],
+    },
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+});
+```
+
+Writing tests:
+
+```typescript
+// src/utils/math.test.ts
+import { describe, it, expect } from 'vitest';
+import { add, divide } from './math.js';
+
+describe('math utils', () => {
+  it('adds numbers', () => {
+    expect(add(2, 3)).toBe(5);
+  });
+
+  it('throws on division by zero', () => {
+    expect(() => divide(10, 0)).toThrow('Division by zero');
+  });
+});
+```
+
+## ESLint with typescript-eslint
+
+```bash
+npm install -D eslint @eslint/js typescript-eslint
+```
+
+```typescript
+// eslint.config.mjs (flat config)
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.strictTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        project: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/consistent-type-imports': 'error',
+      '@typescript-eslint/no-floating-promises': 'error',
+    },
+  },
+  {
+    ignores: ['dist/**', 'node_modules/**'],
+  }
+);
+```
+
+`strictTypeChecked` includes rules that use type information — like catching unhandled promises and flagging unsafe operations. It's slower than plain `strict` but catches real bugs.
+
+## Final Project Structure
+
+```
+my-project/
+├── src/
+│   ├── index.ts          # Entry point
+│   ├── lib/              # Core business logic
+│   ├── utils/            # Shared utilities
+│   └── types/            # Shared TypeScript types
+├── dist/                 # Compiled output (gitignored)
+├── tsconfig.json
+├── vitest.config.ts
+├── eslint.config.mjs
+└── package.json
+```
+
+```typescript
+// src/index.ts
+import { createServer } from './lib/server.js';
+import { logger } from './utils/logger.js';
+
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+
+const server = createServer();
+server.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT}`);
+});
+```
+
+## The Quick Checklist
+
+- [ ] `"module": "NodeNext"` in tsconfig
+- [ ] `"strict": true` + `"noUncheckedIndexedAccess": true`
+- [ ] `.js` extensions on all imports
+- [ ] `tsx` for development, `tsc` for production builds
+- [ ] Vitest for tests with `globals: true`
+- [ ] ESLint with `strictTypeChecked` rules
+- [ ] Path aliases resolved with `tsc-alias`
+
+This setup catches the majority of runtime errors at compile time and gives you a fast, ergonomic development experience. The initial configuration investment pays back quickly on any project that lasts more than a few weeks.

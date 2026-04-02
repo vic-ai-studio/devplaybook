@@ -1,0 +1,267 @@
+---
+title: "Best TypeScript 5.x Tips & Tricks for Real Projects 2026"
+description: "Advanced TypeScript 5.x features and patterns that actually matter in production. Covers const type parameters, variadic tuple types, template literal types, satisfies, and practical patterns for large codebases."
+date: "2026-04-02"
+tags: [typescript, javascript, tips, performance, type-safety]
+readingTime: "8 min read"
+author: "DevPlaybook Team"
+---
+
+# Best TypeScript 5.x Tips & Tricks for Real Projects 2026
+
+TypeScript 5.x introduced features that meaningfully change how you write production code. Not just syntax improvements — actual type-level capabilities that eliminate entire classes of bugs and improve DX. Here are the patterns that matter most.
+
+## 1. `satisfies` Operator: Type-Checking Without Type Assertion
+
+One of the most practically useful additions. `satisfies` validates a value against a type *without widening the inferred type*.
+
+```typescript
+// Problem: 'as' loses type information
+const config = {
+  host: "localhost",
+  port: 5432,
+  ssl: true,
+} as DatabaseConfig;
+// TypeScript forgot config.host is a string literal — it's now 'string'
+
+// satisfies: validates the type, keeps the specific inferred type
+const config = {
+  host: "localhost",
+  port: 5432,
+  ssl: true,
+} satisfies DatabaseConfig;
+// config.host is still "localhost" (literal type)
+// But TypeScript checks it's valid DatabaseConfig
+
+// Real use case: type-safe route definitions
+type Route = { path: string; component: React.ComponentType; exact?: boolean };
+
+const routes = {
+  home: { path: "/", component: HomePage, exact: true },
+  about: { path: "/about", component: AboutPage },
+  notFound: { path: "*", component: NotFoundPage },
+} satisfies Record<string, Route>;
+
+// routes.home.path is "/" (literal), not just string
+// routes still passes the Route validation
+```
+
+## 2. Const Type Parameters
+
+TypeScript 5.0 added `const` modifier to generic type parameters, inferring literal types instead of widening:
+
+```typescript
+// Without const: infers string[]
+function createTuple<T extends readonly string[]>(arr: T) {
+  return arr;
+}
+const result = createTuple(["a", "b", "c"]);
+// result: string[] — lost the specific values
+
+// With const: infers readonly ["a", "b", "c"]
+function createTuple<const T extends readonly string[]>(arr: T) {
+  return arr;
+}
+const result = createTuple(["a", "b", "c"]);
+// result: readonly ["a", "b", "c"] — preserves literal types
+
+// Practical: type-safe event names
+function on<const Events extends readonly string[]>(
+  emitter: EventEmitter,
+  events: Events
+): Record<Events[number], () => void> {
+  const handlers = {} as any;
+  events.forEach(e => {
+    handlers[e] = () => emitter.emit(e);
+  });
+  return handlers;
+}
+
+const handlers = on(emitter, ["click", "hover", "focus"]);
+handlers.click();  // ✅ TypeScript knows "click" is valid
+handlers.typo();   // ❌ TypeScript error: property 'typo' doesn't exist
+```
+
+## 3. Template Literal Types for Type-Safe APIs
+
+Use template literal types to enforce naming conventions and build type-safe string-based APIs:
+
+```typescript
+// Type-safe CSS class names
+type ColorShade = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+type TailwindColor = "blue" | "red" | "green" | "yellow" | "purple" | "gray";
+type TailwindClass = `${TailwindColor}-${ColorShade}`;
+
+function bg(cls: TailwindClass): string {
+  return `bg-${cls}`;
+}
+
+bg("blue-500");   // ✅
+bg("red-700");    // ✅
+bg("blue-150");   // ❌ TypeScript error: 150 not in ColorShade
+
+// Type-safe event emitter
+type EventMap = {
+  "user:created": { userId: string; email: string };
+  "order:completed": { orderId: string; amount: number };
+  "payment:failed": { orderId: string; reason: string };
+};
+
+type EventKey = keyof EventMap;
+type EventPayload<K extends EventKey> = EventMap[K];
+
+function emit<K extends EventKey>(event: K, payload: EventPayload<K>): void {
+  // implementation
+}
+
+emit("user:created", { userId: "123", email: "alice@example.com" });  // ✅
+emit("order:completed", { orderId: "456", amount: 99.99 });            // ✅
+emit("payment:failed", { orderId: "789", userId: "oops" });            // ❌ Wrong payload shape
+```
+
+## 4. Discriminated Unions: The Right Pattern
+
+TypeScript's most powerful pattern for modeling complex state:
+
+```typescript
+// Instead of optional properties (hard to type-narrow)
+type UserResult = {
+  data?: User;
+  error?: Error;
+  loading?: boolean;
+};
+
+// Use discriminated unions
+type UserResult =
+  | { status: "loading" }
+  | { status: "success"; data: User }
+  | { status: "error"; error: Error };
+
+function UserProfile({ result }: { result: UserResult }) {
+  switch (result.status) {
+    case "loading":
+      return <Spinner />;
+    case "error":
+      return <Error message={result.error.message} />;  // TypeScript knows result.error exists
+    case "success":
+      return <Profile user={result.data} />;  // TypeScript knows result.data exists
+  }
+}
+```
+
+## 5. Infer in Conditional Types
+
+Extract types from complex generics:
+
+```typescript
+// Extract the element type from an array
+type ElementType<T> = T extends (infer E)[] ? E : never;
+
+type UserArray = User[];
+type SingleUser = ElementType<UserArray>;  // User
+
+// Extract Promise return type (TypeScript has this built-in as Awaited<T>)
+type Unwrap<T> = T extends Promise<infer R> ? R : T;
+
+// Extract function parameter types
+type FirstParam<T> = T extends (first: infer F, ...rest: any[]) => any ? F : never;
+
+type GetUsersFirstParam = FirstParam<typeof getUsers>;
+
+// More complex: extract router params
+type ExtractParams<T extends string> =
+  T extends `${string}:${infer Param}/${infer Rest}`
+    ? Param | ExtractParams<`/${Rest}`>
+    : T extends `${string}:${infer Param}`
+    ? Param
+    : never;
+
+type Params = ExtractParams<"/users/:userId/posts/:postId">;
+// Params = "userId" | "postId"
+```
+
+## 6. `noUncheckedIndexedAccess`: Safer Array Access
+
+Enable in `tsconfig.json` for safer array and object access:
+
+```json
+{
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true
+  }
+}
+```
+
+```typescript
+// With noUncheckedIndexedAccess enabled:
+const items = [1, 2, 3];
+const first = items[0];  // first: number | undefined (not just number!)
+
+// Forces you to handle the undefined case:
+if (first !== undefined) {
+  console.log(first * 2);  // ✅ TypeScript knows it's a number here
+}
+
+// Also applies to object index signatures:
+const map: Record<string, User> = {};
+const user = map["alice"];  // user: User | undefined (not just User!)
+```
+
+This catches `Cannot read properties of undefined` errors at compile time.
+
+## 7. Type-Safe Object.keys and Object.entries
+
+A common TypeScript frustration:
+
+```typescript
+// Object.keys returns string[], not (keyof T)[]
+const user = { id: 1, name: "Alice", email: "alice@example.com" };
+Object.keys(user).forEach(key => {
+  user[key];  // ❌ TypeScript error: Element implicitly has 'any' type
+});
+
+// Fix: typed utility functions
+function typedKeys<T extends object>(obj: T): (keyof T)[] {
+  return Object.keys(obj) as (keyof T)[];
+}
+
+function typedEntries<T extends object>(obj: T): [keyof T, T[keyof T]][] {
+  return Object.entries(obj) as [keyof T, T[keyof T]][];
+}
+
+typedKeys(user).forEach(key => {
+  user[key];  // ✅ TypeScript knows key is "id" | "name" | "email"
+});
+```
+
+## 8. Branded Types for Domain Safety
+
+Prevent mixing incompatible IDs:
+
+```typescript
+// Without branding: easy to mix up IDs
+function getUser(userId: string) { /* ... */ }
+function getPost(postId: string) { /* ... */ }
+
+// BUG: passes TypeScript but wrong!
+const post = await getPost(userId);  // No error!
+
+// With branded types
+type UserId = string & { __brand: "UserId" };
+type PostId = string & { __brand: "PostId" };
+
+function createUserId(id: string): UserId { return id as UserId; }
+function createPostId(id: string): PostId { return id as PostId; }
+
+function getUser(userId: UserId) { /* ... */ }
+function getPost(postId: PostId) { /* ... */ }
+
+const userId = createUserId("user-123");
+const postId = createPostId("post-456");
+
+getUser(userId);   // ✅
+getPost(postId);   // ✅
+getPost(userId);   // ❌ TypeScript error: UserId is not assignable to PostId
+```
+
+These patterns represent the difference between "TypeScript that prevents bugs" and "TypeScript that just adds syntax". Apply them progressively as your project matures.
