@@ -3,6 +3,19 @@ title: "Velero"
 description: "Backup, restore, and migrate Kubernetes cluster resources and persistent volumes with schedule-based automation"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "backup", "disaster-recovery", "cloud"]
+pricing: "Open Source"
+website: "https://velero.io"
+github: "https://github.com/vmware-tanzu/velero"
+date: "2026-04-03"
+pros:
+  - "Comprehensive backup covering both Kubernetes resources and persistent volume data"
+  - "Schedule-based backups with configurable retention policies for automated disaster recovery"
+  - "Cluster migration support enables moving workloads across providers or regions"
+  - "Plugin architecture supports custom object stores and volume snapshotters"
+cons:
+  - "Restoring to a different cluster version or provider can require manual adjustments"
+  - "Large cluster backups can be slow and consume significant storage in the object store"
+  - "Limited support for application-consistent backups of stateful workloads like databases"
 ---
 
 ## Velero: Kubernetes Backup and Disaster Recovery

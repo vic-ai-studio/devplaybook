@@ -3,6 +3,19 @@ title: "Tekton"
 description: "Cloud-native CI/CD framework for Kubernetes that defines pipelines as reusable, composable building blocks"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "ci-cd", "cloud", "pipelines"]
+pricing: "Open Source"
+website: "https://tekton.dev"
+github: "https://github.com/tektoncd/pipeline"
+date: "2026-04-03"
+pros:
+  - "Kubernetes-native CRDs make pipelines first-class cluster resources manageable with kubectl"
+  - "Highly composable — reusable Tasks can be shared across teams via Tekton Hub"
+  - "Tekton Chains provides built-in supply chain security with SLSA compliance"
+  - "Vendor-neutral with backing from Google, Red Hat, IBM, and the CD Foundation"
+cons:
+  - "Requires a running Kubernetes cluster, making it heavyweight for simple CI/CD needs"
+  - "Steeper learning curve than hosted CI services like GitHub Actions or GitLab CI"
+  - "Dashboard and UI are basic compared to Jenkins or other mature CI/CD platforms"
 ---
 
 ## Tekton: Cloud-Native CI/CD Pipelines

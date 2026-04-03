@@ -2,7 +2,20 @@
 title: "ArgoCD"
 description: "GitOps continuous delivery tool for Kubernetes that syncs your cluster state with Git repositories"
 category: "cloud-native"
+pricing: "Open Source"
+website: "https://argoproj.github.io/cd/"
+github: "https://github.com/argoproj/argo-cd"
 tags: ["kubernetes", "devops", "gitops", "continuous-delivery", "cloud"]
+pros:
+  - "Rich built-in web dashboard for real-time monitoring"
+  - "Native multi-cluster support"
+  - "CNCF graduated project with strong community"
+  - "One-click rollback via Git history"
+cons:
+  - "Requires Kubernetes — not for non-K8s workloads"
+  - "Can be resource-heavy in large-scale deployments"
+  - "Learning curve for advanced RBAC configuration"
+date: "2026-04-03"
 ---
 
 ## ArgoCD: GitOps Continuous Delivery for Kubernetes

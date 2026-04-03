@@ -3,6 +3,19 @@ title: "Helm"
 description: "The package manager for Kubernetes that simplifies deploying and managing complex applications"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "package-manager", "cloud", "deployment"]
+pricing: "Open Source"
+website: "https://helm.sh"
+github: "https://github.com/helm/helm"
+date: "2026-04-03"
+pros:
+  - "De facto standard for Kubernetes packaging with massive ecosystem on Artifact Hub"
+  - "Release management with built-in rollback, upgrade history, and atomic installs"
+  - "Go templating engine enables highly parameterized, reusable chart definitions"
+  - "OCI registry support for storing charts alongside container images"
+cons:
+  - "Go template syntax can become complex and hard to debug in large charts"
+  - "Helm charts can obscure the underlying Kubernetes resources, making troubleshooting harder"
+  - "No built-in drift detection — Helm does not reconcile if resources are modified outside of Helm"
 ---
 
 ## Helm: Kubernetes Package Manager

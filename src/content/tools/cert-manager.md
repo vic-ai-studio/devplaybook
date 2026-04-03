@@ -3,6 +3,19 @@ title: "cert-manager"
 description: "Automates TLS certificate provisioning, renewal, and management for Kubernetes workloads"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "tls", "security", "cloud", "certificates"]
+pricing: "Open Source"
+website: "https://cert-manager.io"
+github: "https://github.com/cert-manager/cert-manager"
+date: "2026-04-03"
+pros:
+  - "Fully automates certificate lifecycle including issuance, renewal, and revocation"
+  - "Supports multiple certificate authorities (Let's Encrypt, Vault, Venafi, self-signed)"
+  - "Kubernetes-native CRDs integrate seamlessly with existing GitOps workflows"
+  - "CNCF graduated project with strong community support and active maintenance"
+cons:
+  - "Initial setup can be complex, especially for DNS-01 challenge solvers across providers"
+  - "Debugging certificate issuance failures requires understanding of ACME protocol internals"
+  - "Resource overhead from running multiple controllers in the cert-manager namespace"
 ---
 
 ## cert-manager: TLS Certificate Automation for Kubernetes

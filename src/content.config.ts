@@ -2,21 +2,23 @@ import { defineCollection, z } from 'astro:content';
 import { glob } from 'astro/loaders';
 
 const blog = defineCollection({
-  loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
+  loader: glob({ pattern: '**/*.{md,mdx}', base: './src/content/blog' }),
   schema: z.object({
     title: z.string(),
     description: z.string(),
-    date: z.string(),
+    date: z.union([z.string(), z.date()]).optional(),
+    pubDate: z.union([z.string(), z.date()]).optional(),
     author: z.string().default('DevPlaybook Team'),
-    tags: z.array(z.string()),
-    readingTime: z.string(),
-    updatedDate: z.string().optional(),
+    tags: z.array(z.string()).optional().default([]),
+    readingTime: z.union([z.string(), z.number()]).optional(),
+    updatedDate: z.union([z.string(), z.date()]).optional(),
     ogImage: z.string().optional(),
+    category: z.string().optional(),
     faq: z.array(z.object({
       question: z.string(),
       answer: z.string(),
     })).optional(),
-  }),
+  }).passthrough(),
 });
 
 const tools = defineCollection({

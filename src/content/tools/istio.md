@@ -3,6 +3,19 @@ title: "Istio"
 description: "Feature-rich service mesh for Kubernetes providing traffic management, observability, and security for microservices"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security"]
+pricing: "Open Source"
+website: "https://istio.io"
+github: "https://github.com/istio/istio"
+date: "2026-04-03"
+pros:
+  - "Most feature-complete service mesh with traffic management, security, and observability"
+  - "Ambient mesh mode eliminates sidecar proxy overhead for simpler deployments"
+  - "Extensive ecosystem integration with Prometheus, Grafana, Jaeger, and Kiali"
+  - "Strong multi-cluster and multi-cloud support for enterprise deployments"
+cons:
+  - "High resource consumption and operational complexity compared to lighter alternatives like Linkerd"
+  - "Steep learning curve with many CRDs, configuration options, and abstraction layers"
+  - "Envoy sidecar injection (in non-ambient mode) adds latency and memory overhead per pod"
 ---
 
 ## Istio: Service Mesh for Microservices

@@ -3,6 +3,19 @@ title: "Linkerd"
 description: "Lightweight, security-first service mesh for Kubernetes with minimal overhead and operational simplicity"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security"]
+pricing: "Open Source"
+website: "https://linkerd.io"
+github: "https://github.com/linkerd/linkerd2"
+date: "2026-04-03"
+pros:
+  - "Ultralight Rust-based proxy consumes far less CPU and memory than Envoy-based meshes"
+  - "mTLS enabled by default with zero configuration — security out of the box"
+  - "Significantly simpler to install and operate compared to Istio"
+  - "Golden metrics (success rate, RPS, latency) available immediately without instrumentation"
+cons:
+  - "Fewer features than Istio — no advanced traffic management like fault injection or mirroring"
+  - "Smaller ecosystem and fewer third-party integrations compared to Istio"
+  - "License changed to non-OSI in 2024, which may affect adoption in some organizations"
 ---
 
 ## Linkerd: Lightweight Service Mesh

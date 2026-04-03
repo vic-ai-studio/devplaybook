@@ -3,6 +3,19 @@ title: "Kustomize"
 description: "Template-free Kubernetes configuration management using layered overlays and strategic merge patches"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "configuration", "cloud", "gitops"]
+pricing: "Open Source"
+website: "https://kustomize.io"
+github: "https://github.com/kubernetes-sigs/kustomize"
+date: "2026-04-03"
+pros:
+  - "Template-free approach keeps manifests as plain, valid YAML that can be applied directly"
+  - "Built into kubectl — no additional tool installation required"
+  - "Base and overlay pattern makes multi-environment config management clean and auditable"
+  - "First-class support in ArgoCD and FluxCD for GitOps workflows"
+cons:
+  - "Limited expressiveness compared to Helm templates for complex conditional logic"
+  - "Strategic merge patches can be confusing when dealing with lists and nested structures"
+  - "No built-in package sharing or repository system like Helm's Artifact Hub"
 ---
 
 ## Kustomize: Kubernetes Configuration Management

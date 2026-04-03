@@ -3,6 +3,19 @@ title: "KEDA"
 description: "Kubernetes event-driven autoscaler that scales workloads based on external metrics from queues, databases, and cloud services"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "autoscaling", "cloud", "event-driven"]
+pricing: "Open Source"
+website: "https://keda.sh"
+github: "https://github.com/kedacore/keda"
+date: "2026-04-03"
+pros:
+  - "Scale-to-zero capability eliminates idle resource costs for event-driven workloads"
+  - "60+ built-in scalers covering major message queues, databases, and cloud services"
+  - "Works alongside native Kubernetes HPA without replacing it"
+  - "ScaledJob support enables autoscaling for batch and one-off workloads"
+cons:
+  - "Adds an additional layer of complexity on top of Kubernetes autoscaling primitives"
+  - "Custom scaler development requires implementing a gRPC interface"
+  - "Monitoring and debugging scaling decisions requires correlating KEDA metrics with HPA state"
 ---
 
 ## KEDA: Kubernetes Event-Driven Autoscaling

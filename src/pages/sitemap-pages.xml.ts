@@ -25,6 +25,20 @@ const staticPages: Array<{ slug: string; changefreq: string; priority: string }>
   { slug: 'sponsors',       changefreq: 'monthly', priority: '0.4' },
   { slug: 'advertise',      changefreq: 'monthly', priority: '0.4' },
   { slug: 'pro-waitlist',   changefreq: 'monthly', priority: '0.5' },
+  // Compare pages
+  { slug: 'compare/base64-vs-url-encoder',       changefreq: 'monthly', priority: '0.6' },
+  { slug: 'compare/css-vs-js-minifier',           changefreq: 'monthly', priority: '0.6' },
+  { slug: 'compare/json-formatter-vs-validator',   changefreq: 'monthly', priority: '0.6' },
+  { slug: 'compare/jwt-vs-base64-decoder',         changefreq: 'monthly', priority: '0.6' },
+  { slug: 'compare/markdown-vs-html-editor',       changefreq: 'monthly', priority: '0.6' },
+  { slug: 'compare/regex-tester-vs-generator',     changefreq: 'monthly', priority: '0.6' },
+  // Products pages
+  { slug: 'products',                              changefreq: 'weekly',  priority: '0.7' },
+  { slug: 'products/ai-developer-prompts-pack',    changefreq: 'monthly', priority: '0.6' },
+  { slug: 'products/developer-interview-vault',    changefreq: 'monthly', priority: '0.6' },
+  { slug: 'products/prompt-pack',                  changefreq: 'monthly', priority: '0.6' },
+  { slug: 'products/typescript-quick-reference-toolkit', changefreq: 'monthly', priority: '0.6' },
+  { slug: 'products/workflow-pack',                changefreq: 'monthly', priority: '0.6' },
 ];
 
 function buildUrl(url: string, changefreq: string, priority: string, lastmod: string) {

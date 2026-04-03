@@ -3,6 +3,19 @@ title: "FluxCD"
 description: "GitOps operator for Kubernetes that automatically keeps your cluster in sync with configuration stored in Git"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "gitops", "continuous-delivery", "cloud"]
+pricing: "Open Source"
+website: "https://fluxcd.io"
+github: "https://github.com/fluxcd/flux2"
+date: "2026-04-03"
+pros:
+  - "First-class support for both Kustomize and Helm without extra wrappers or plugins"
+  - "Image automation controller closes the CI/CD loop by auto-updating image tags in Git"
+  - "Built-in multi-tenancy with fine-grained RBAC and namespace isolation"
+  - "CNCF graduated project with a modular, controller-based architecture"
+cons:
+  - "No built-in web UI for visualizing sync status (relies on CLI or third-party dashboards)"
+  - "Bootstrapping and initial configuration requires familiarity with Git provider APIs"
+  - "Debugging reconciliation failures across multiple controllers can be challenging"
 ---
 
 ## FluxCD: GitOps Operator for Kubernetes

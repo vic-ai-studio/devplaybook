@@ -3,6 +3,19 @@ title: "Cilium"
 description: "eBPF-powered networking, observability, and security for Kubernetes with high performance and deep kernel-level visibility"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "networking", "security", "ebpf", "cloud"]
+pricing: "Open Source"
+website: "https://cilium.io"
+github: "https://github.com/cilium/cilium"
+date: "2026-04-03"
+pros:
+  - "eBPF dataplane delivers significantly lower latency and higher throughput than iptables-based CNIs"
+  - "Hubble provides deep L3/L4/L7 network observability without additional tooling"
+  - "Can replace kube-proxy, service mesh sidecars, and CNI plugin in a single solution"
+  - "CNCF graduated with backing from major cloud providers including AWS, Google, and Azure"
+cons:
+  - "Requires Linux kernel 4.19+ with eBPF support, limiting compatibility with older systems"
+  - "Steep learning curve due to the breadth of features (CNI, service mesh, observability)"
+  - "Migrating from an existing CNI plugin to Cilium requires careful planning and cluster downtime"
 ---
 
 ## Cilium: eBPF-Based Networking and Security

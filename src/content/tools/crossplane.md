@@ -3,6 +3,19 @@ title: "Crossplane"
 description: "Extend Kubernetes to provision and manage cloud infrastructure using the same GitOps workflows as your applications"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "infrastructure-as-code", "cloud", "platform-engineering"]
+pricing: "Open Source"
+website: "https://www.crossplane.io"
+github: "https://github.com/crossplane/crossplane"
+date: "2026-04-03"
+pros:
+  - "Unifies infrastructure and application management under a single Kubernetes control plane"
+  - "Composite Resources (XR) let platform teams expose curated, self-service infrastructure APIs"
+  - "Rich provider ecosystem covering AWS, GCP, Azure, and Terraform-backed resources"
+  - "Continuous drift detection and reconciliation keeps actual cloud state in sync with desired state"
+cons:
+  - "Significant conceptual overhead with Compositions, XRDs, Claims, and provider configs"
+  - "Debugging failed cloud resource provisioning can be difficult across multiple abstraction layers"
+  - "Provider maturity varies — some cloud resources have incomplete or lagging coverage"
 ---
 
 ## Crossplane: Infrastructure as Code for Kubernetes
