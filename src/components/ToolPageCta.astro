@@ -4,6 +4,7 @@ import ShareButtons from './ShareButtons.astro';
 import { getCollection } from 'astro:content';
 import ExitIntentCta from './ExitIntentCta';
 import NewsletterForm from './NewsletterForm.astro';
+import toolKeywordMap from '../data/tool-keyword-map.json';
 
 interface Props {
   /** Tags to match related products, e.g. ['api-testing', 'cli'] */
@@ -13,6 +14,8 @@ interface Props {
 }
 
 const { relatedTags = [], currentTool } = Astro.props;
+// Auto-derive slug from URL path (e.g. /tools/jwt-decoder → jwt-decoder)
+const currentSlug = Astro.url.pathname.replace(/^\/tools\//, '').replace(/\/$/, '') || '';
 
 // Find related blog articles by tag overlap
 const allPosts = await getCollection('blog');
@@ -26,38 +29,57 @@ const relatedPosts = relatedTags.length > 0
     .sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime())
     .slice(0, 5);
 
-const tools = [
-  { name: 'JSON Formatter', href: '/tools/json-formatter' },
-  { name: 'JSON Formatter Pro', href: '/tools/json-formatter-pro' },
-  { name: 'JSON Diff Viewer', href: '/tools/json-diff-viewer' },
-  { name: 'CSS Grid Generator', href: '/tools/css-grid-generator' },
-  { name: 'Regex Tester', href: '/tools/regex-tester' },
-  { name: 'Regex Tester Pro', href: '/tools/regex-tester-pro' },
-  { name: 'SQL Formatter', href: '/tools/sql-formatter' },
-  { name: 'API Response Formatter', href: '/tools/api-response-formatter' },
-  { name: 'Color Palette Generator', href: '/tools/color-palette-generator' },
-  { name: 'Cron Expression Generator', href: '/tools/cron-generator' },
-  { name: 'TypeScript Playground', href: '/tools/typescript-playground' },
-  { name: 'Git Command Builder', href: '/tools/git-command-builder' },
-  { name: 'HTTP Status Codes', href: '/tools/http-status-codes' },
-  { name: 'Base64 Encode / Decode', href: '/tools/base64' },
-  { name: 'Base64 Encoder & Decoder', href: '/tools/base64-encoder' },
-  { name: 'Password Generator', href: '/tools/password-generator' },
-  { name: 'Markdown Preview', href: '/tools/markdown-preview' },
-  { name: 'API Request Builder', href: '/tools/api-request-builder' },
-  { name: 'Regex Playground', href: '/tools/regex-playground' },
-  { name: 'Docker Compose Generator', href: '/tools/docker-compose-generator' },
-  { name: 'UUID Generator', href: '/tools/uuid-generator' },
-  { name: 'Hash Generator', href: '/tools/hash-generator' },
-  { name: 'SMTP Server Tester', href: '/tools/smtp-tester' },
-  { name: 'JSON-LD Schema Generator', href: '/tools/json-ld-generator' },
-  { name: 'Passphrase Generator', href: '/tools/passphrase-generator' },
-  { name: 'HMAC Generator', href: '/tools/hmac-generator' },
-  { name: 'CSP Header Builder', href: '/tools/csp-header-builder' },
-  { name: 'Twitter Card Preview', href: '/tools/twitter-card-preview' },
+// Build related tools from keyword map using relatedTags overlap
+// Falls back to high-value evergreen tools when no tag match
+const FALLBACK_TOOLS = [
+  'json-formatter', 'regex-tester', 'base64-encoder', 'uuid-generator',
+  'git-command-builder', 'docker-compose-generator', 'http-status-codes',
+  'cron-generator', 'api-request-builder', 'password-generator',
+  'json-diff-viewer', 'markdown-preview', 'hash-generator', 'sql-formatter',
+  'css-grid-generator', 'color-picker', 'jwt-decoder', 'cors-tester',
+  'typescript-playground', 'regex-playground',
 ];
 
-const otherTools = tools.filter(t => t.name !== currentTool);
+type ToolEntry = { title: string; description: string; path: string; keywords: string[] };
+const kwMap = toolKeywordMap as Record<string, ToolEntry>;
+
+// Score every entry in keyword map by overlap with relatedTags
+const normalizedTags = relatedTags.map((t: string) => t.toLowerCase());
+const kwScored = Object.entries(kwMap)
+  .filter(([slug]) => slug !== currentSlug)
+  .map(([slug, t]) => {
+    const score = (t as ToolEntry).keywords.filter((kw: string) =>
+      normalizedTags.some(tag => tag.includes(kw) || kw.includes(tag))
+    ).length;
+    return { slug, name: (t as ToolEntry).title, href: (t as ToolEntry).path, description: (t as ToolEntry).description, score };
+  })
+  .filter(t => t.score > 0)
+  .sort((a, b) => b.score - a.score);
+
+// Top 3 for "You Might Also Need" cards (keyword-relevant or fallback)
+const topRelated = kwScored.slice(0, 3).length >= 3
+  ? kwScored.slice(0, 3)
+  : FALLBACK_TOOLS
+      .filter(slug => slug !== currentSlug)
+      .slice(0, 3)
+      .map(slug => {
+        const t = kwMap[slug] as ToolEntry | undefined;
+        return { slug, name: t?.title ?? slug, href: t?.path ?? `/tools/${slug}`, description: t?.description ?? '', score: 0 };
+      });
+
+// All keyword-relevant tools for the "More Free Tools" tag cloud
+// If fewer than 8 keyword matches, pad with fallbacks
+const allRelated = kwScored.length >= 8
+  ? kwScored
+  : [
+      ...kwScored,
+      ...FALLBACK_TOOLS
+        .filter(slug => slug !== currentSlug && !kwScored.find(t => t.slug === slug))
+        .map(slug => {
+          const t = kwMap[slug] as ToolEntry | undefined;
+          return { slug, name: t?.title ?? slug, href: t?.path ?? `/tools/${slug}`, description: '', score: 0 };
+        }),
+    ];
 
 // Pick up to 3 related products by tag overlap
 const scored = products.map(p => ({
@@ -117,21 +139,21 @@ const BUNDLE_ORIGINAL = 241;
     ))}
   </div>
 
-  <!-- You might also need: 3 featured tool cards -->
+  <!-- You might also need: 3 contextually related tool cards -->
   <h2 class="text-xl font-bold mb-4">You Might Also <span class="text-primary">Need</span></h2>
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-    {otherTools.slice(0, 3).map(tool => (
-      <a href={tool.href} class="block bg-bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors group text-center">
-        <div class="text-2xl mb-2">🛠️</div>
-        <h3 class="font-semibold text-sm group-hover:text-primary transition-colors">{tool.name}</h3>
-        <p class="text-primary text-xs mt-1 font-medium">Open free tool →</p>
+    {topRelated.map(tool => (
+      <a href={tool.href} class="block bg-bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors group">
+        <h3 class="font-semibold text-sm group-hover:text-primary transition-colors mb-1">{tool.name}</h3>
+        {tool.description && <p class="text-text-muted text-xs line-clamp-2 mb-2">{tool.description}</p>}
+        <p class="text-primary text-xs font-medium">Open free tool →</p>
       </a>
     ))}
   </div>
 
   <h2 class="text-xl font-bold mb-4">More Free <span class="text-primary">Tools</span></h2>
   <div class="flex flex-wrap gap-3 mb-12">
-    {otherTools.map(tool => (
+    {allRelated.map(tool => (
       <a href={tool.href} class="text-sm bg-bg-card border border-border rounded-lg px-4 py-2 hover:border-primary hover:text-primary transition-colors">
         {tool.name}
       </a>
