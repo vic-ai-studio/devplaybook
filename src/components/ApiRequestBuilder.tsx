@@ -11,7 +11,16 @@ export default function ApiRequestBuilder() {
   const [body, setBody] = useState('');
   const [response, setResponse] = useState('');
   const [status, setStatus] = useState('');
+  const [statusCode, setStatusCode] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyText = (text: string, key: string) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  };
 
   const addHeader = () => setHeaders([...headers, { key: '', value: '' }]);
   const removeHeader = (i: number) => setHeaders(headers.filter((_, idx) => idx !== i));
@@ -35,10 +44,12 @@ export default function ApiRequestBuilder() {
       const elapsed = Math.round(performance.now() - start);
       const text = await res.text();
       setStatus(`${res.status} ${res.statusText} — ${elapsed}ms`);
+      setStatusCode(res.status);
       try { setResponse(JSON.stringify(JSON.parse(text), null, 2)); }
       catch { setResponse(text); }
     } catch (e: any) {
       setStatus('Error');
+      setStatusCode(0);
       setResponse(e.message || 'Request failed');
     }
     setLoading(false);
@@ -124,14 +135,42 @@ export default function ApiRequestBuilder() {
 
       {/* cURL */}
       <div class="bg-bg-card border border-border rounded-xl p-4">
-        <h3 class="font-semibold mb-2">cURL Command</h3>
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-semibold">cURL Command</h3>
+          <button
+            onClick={() => copyText(curlCmd(), 'curl')}
+            class="text-xs bg-bg-input border border-border hover:border-primary text-text-muted px-3 py-1 rounded-lg transition-colors"
+          >
+            {copied === 'curl' ? '✓ Copied' : 'Copy'}
+          </button>
+        </div>
         <pre class="text-sm text-text-muted font-mono whitespace-pre-wrap break-all">{curlCmd()}</pre>
       </div>
 
       {/* Response */}
       {(response || status) && (
         <div class="bg-bg-card border border-border rounded-xl p-4">
-          <h3 class="font-semibold mb-2">Response {status && <span class="text-sm text-text-muted ml-2">{status}</span>}</h3>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold flex items-center gap-2">
+              Response
+              {status && (
+                <span class={`text-sm font-mono px-2 py-0.5 rounded ${
+                  statusCode && statusCode >= 200 && statusCode < 300 ? 'bg-green-500/15 text-green-400' :
+                  statusCode && statusCode >= 400 && statusCode < 500 ? 'bg-yellow-500/15 text-yellow-400' :
+                  statusCode && statusCode >= 500 ? 'bg-red-500/15 text-red-400' :
+                  'bg-bg-input text-text-muted'
+                }`}>{status}</span>
+              )}
+            </h3>
+            {response && (
+              <button
+                onClick={() => copyText(response, 'response')}
+                class="text-xs bg-bg-input border border-border hover:border-primary text-text-muted px-3 py-1 rounded-lg transition-colors"
+              >
+                {copied === 'response' ? '✓ Copied' : 'Copy'}
+              </button>
+            )}
+          </div>
           <pre class="text-sm font-mono whitespace-pre-wrap break-all max-h-96 overflow-auto text-secondary">{response}</pre>
         </div>
       )}

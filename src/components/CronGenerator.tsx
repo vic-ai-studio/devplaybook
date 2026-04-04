@@ -1,6 +1,17 @@
 import { useState, useMemo, useEffect } from 'preact/hooks';
 import { isProUser } from '../utils/pro';
 
+function useCopy() {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = (text: string, key: string) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  };
+  return { copied, copy };
+}
+
 const PRESETS = [
   { name: 'Every minute', cron: '* * * * *' },
   { name: 'Every hour', cron: '0 * * * *' },
@@ -101,6 +112,7 @@ export default function CronGenerator() {
   const [pro, setPro] = useState(false);
   const [savedSchedules, setSavedSchedules] = useState<{label: string; cron: string}[]>([]);
   const [saveLabel, setSaveLabel] = useState('');
+  const { copied, copy } = useCopy();
 
   useEffect(() => {
     setPro(isProUser());
@@ -151,9 +163,15 @@ export default function CronGenerator() {
       </div>
 
       {/* Expression display */}
-      <div class="bg-bg-card border border-border rounded-xl p-6 text-center">
+      <div class="bg-bg-card border border-border rounded-xl p-6 text-center relative">
         <div class="font-mono text-3xl font-bold text-primary mb-2">{cron}</div>
         <p class="text-text-muted">{description}</p>
+        <button
+          onClick={() => copy(cron, 'expr')}
+          class="absolute top-3 right-3 text-xs bg-bg-input border border-border hover:border-primary text-text-muted px-3 py-1 rounded-lg transition-colors"
+        >
+          {copied === 'expr' ? '✓ Copied' : 'Copy'}
+        </button>
       </div>
 
       {/* Field editors */}
@@ -199,11 +217,26 @@ export default function CronGenerator() {
 
       {/* Copy section */}
       <div class="bg-bg-card border border-border rounded-xl p-4">
-        <h3 class="font-semibold mb-2">Usage Examples</h3>
-        <div class="space-y-2 text-sm font-mono text-text-muted">
-          <div>crontab: <span class="text-text">{cron} /path/to/command</span></div>
-          <div>GitHub Actions: <span class="text-text">cron: '{cron}'</span></div>
-          <div>node-cron: <span class="text-text">cron.schedule('{cron}', callback)</span></div>
+        <h3 class="font-semibold mb-3">Usage Examples</h3>
+        <div class="space-y-2 text-sm">
+          {[
+            { label: 'crontab', value: `${cron} /path/to/command`, key: 'crontab' },
+            { label: 'GitHub Actions', value: `cron: '${cron}'`, key: 'gha' },
+            { label: 'node-cron', value: `cron.schedule('${cron}', callback)`, key: 'nodecron' },
+          ].map(({ label, value, key }) => (
+            <div key={key} class="flex items-center justify-between gap-2 bg-bg-input rounded-lg px-3 py-2">
+              <div class="font-mono text-text-muted overflow-x-auto">
+                <span class="text-text-muted mr-2">{label}:</span>
+                <span class="text-text">{value}</span>
+              </div>
+              <button
+                onClick={() => copy(value, key)}
+                class="shrink-0 text-xs border border-border hover:border-primary text-text-muted px-2 py-0.5 rounded transition-colors"
+              >
+                {copied === key ? '✓' : 'Copy'}
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 
