@@ -34,13 +34,15 @@ function Highlight({ text, words }: { text: string; words: string[] }) {
   const pattern = words
     .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('|');
-  const regex = new RegExp(`(${pattern})`, 'gi');
-  const parts = text.split(regex);
+  // Use separate regexes: 'g' for split, non-'g' for test (avoids lastIndex statefulness bug)
+  const splitRegex = new RegExp(`(${pattern})`, 'gi');
+  const testRegex = new RegExp(pattern, 'i');
+  const parts = text.split(splitRegex);
 
   return (
     <>
       {parts.map((part, i) =>
-        regex.test(part) ? (
+        testRegex.test(part) ? (
           <mark key={i} class="bg-primary/20 text-primary rounded px-0.5 font-medium not-italic">
             {part}
           </mark>
