@@ -50,7 +50,7 @@ export default function ToolsDiscovery({ categories, featuredTools }: Props) {
           type="search"
           value={query}
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-          placeholder="Search 134+ tools (JWT, regex, cron…)"
+          placeholder="Search 200+ tools (JWT, regex, cron…)"
           class="flex-1 px-4 py-3 rounded-xl border border-border bg-bg-card text-text placeholder-text-muted focus:outline-none focus:border-primary text-sm"
           autocomplete="off"
         />
