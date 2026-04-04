@@ -6,7 +6,7 @@ pricing: "Freemium"
 pricingDetail: "Free: 100K requests/day, 100GB transfer; Pro $20/month; Business $50/month"
 website: "https://deno.com/deploy"
 github: "https://github.com/denoland/deploy_feedback"
-tags: [edge-computing, serverless, deno, typescript, javascript, runtime]
+tags: ["edge-computing", "serverless", "deno", "typescript", "javascript", "runtime", "cloud", "web-api"]
 pros:
   - "Built-in TypeScript support — no build step, deploy .ts files directly"
   - "npm compatibility — use npm packages with `npm:` prefix"

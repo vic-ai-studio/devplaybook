@@ -1,12 +1,12 @@
 ---
 title: "ArgoCD"
-description: "GitOps continuous delivery tool for Kubernetes that syncs your cluster state with Git repositories"
+description: "GitOps continuous delivery tool for Kubernetes that automatically syncs your cluster state with Git repositories and provides a rich management dashboard"
 category: "cloud-native"
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). Akuity Platform offers hosted ArgoCD with managed upgrades and enterprise SLA."
 website: "https://argoproj.github.io/cd/"
 github: "https://github.com/argoproj/argo-cd"
-tags: ["kubernetes", "devops", "gitops", "continuous-delivery", "cloud"]
+tags: ["kubernetes", "devops", "gitops", "continuous-delivery", "cloud", "cloud-native", "ci-cd", "infrastructure"]
 pros:
   - "Rich built-in web dashboard for real-time monitoring"
   - "Native multi-cluster support"

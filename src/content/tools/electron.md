@@ -6,7 +6,7 @@ pricing: "Open Source"
 pricingDetail: "Free and open source. No licensing fees."
 website: "https://electronjs.org"
 github: "https://github.com/electron/electron"
-tags: ["desktop", "javascript", "nodejs", "chromium", "cross-platform", "electron"]
+tags: ["desktop", "javascript", "nodejs", "chromium", "cross-platform", "electron", "gui", "web-technologies"]
 pros:
   - "Massive npm ecosystem — virtually any Node.js or web library works"
   - "Web developers can build full-featured desktop apps with existing skills"

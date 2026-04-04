@@ -6,7 +6,7 @@ pricing: "Free"
 pricingDetail: "Open source (Apache 2.0); Spotify-hosted Backstage.io SaaS available"
 website: "https://backstage.io"
 github: "https://github.com/backstage/backstage"
-tags: [developer-portal, service-catalog, platform-engineering, open-source, documentation]
+tags: ["developer-portal", "service-catalog", "platform-engineering", "open-source", "documentation", "devops", "kubernetes", "internal-developer-platform"]
 pros:
   - "Software Catalog: single source of truth for all services, APIs, libraries, and pipelines"
   - "TechDocs: auto-generate docs sites from markdown in each repo"

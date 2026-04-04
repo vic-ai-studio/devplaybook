@@ -6,7 +6,7 @@ pricing: "Paid"
 pricingDetail: "$0.60 per 1M requests + $0.00005001 per 100ms of duration; No free tier for Lambda@Edge"
 website: "https://aws.amazon.com/lambda/edge"
 github: ""
-tags: [edge-computing, aws, lambda, cloudfront, cdn, serverless]
+tags: ["edge-computing", "aws", "lambda", "cloudfront", "cdn", "serverless", "cloud", "javascript"]
 pros:
   - "Deep CloudFront integration — hooks for all four request/response lifecycle events"
   - "Full Lambda feature set (IAM, VPC, layers) at the edge"

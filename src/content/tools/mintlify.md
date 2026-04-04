@@ -6,7 +6,7 @@ pricing: "Freemium"
 pricingDetail: "Free: 1 deployment; Growth $150/month (custom domain + analytics); Enterprise custom"
 website: "https://mintlify.com"
 github: ""
-tags: [documentation, mdx, hosted, api-reference, developer-tools, ai-search]
+tags: ["documentation", "mdx", "hosted", "api-reference", "developer-tools", "ai-search", "openapi", "docs-site"]
 pros:
   - "Zero infrastructure — hosted, deployed from GitHub automatically"
   - "AI-powered search and chat (ask questions about your docs)"

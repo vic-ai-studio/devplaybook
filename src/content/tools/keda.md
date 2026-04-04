@@ -2,7 +2,7 @@
 title: "KEDA"
 description: "Kubernetes event-driven autoscaler that scales workloads based on external metrics from queues, databases, and cloud services"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "autoscaling", "cloud", "event-driven"]
+tags: ["kubernetes", "devops", "autoscaling", "cloud", "event-driven", "cloud-native", "serverless", "k8s"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). CNCF graduated project — no licensing cost for self-hosted use."
 website: "https://keda.sh"

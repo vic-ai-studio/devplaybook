@@ -6,7 +6,7 @@ pricing: "Free"
 pricingDetail: "Fully free and open source (Apache 2.0)"
 website: "https://assemblyscript.org"
 github: "https://github.com/AssemblyScript/assemblyscript"
-tags: [webassembly, wasm, typescript, performance, compiler]
+tags: ["webassembly", "wasm", "typescript", "performance", "compiler", "javascript", "edge-computing", "low-level"]
 pros:
   - "TypeScript-like syntax — familiar to JavaScript developers"
   - "Faster learning curve than Rust or C++ for WASM"

@@ -2,7 +2,7 @@
 title: "Velero"
 description: "Backup, restore, and migrate Kubernetes cluster resources and persistent volumes with schedule-based automation"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "backup", "disaster-recovery", "cloud"]
+tags: ["kubernetes", "devops", "backup", "disaster-recovery", "cloud", "cloud-native", "k8s", "storage"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). VMware-backed project. Cloud provider storage costs apply for backup storage."
 website: "https://velero.io"

@@ -5,7 +5,7 @@ category: "Mobile"
 pricing: "Free"
 pricingDetail: "Free as part of Apple's SDK. Requires Xcode (free from Mac App Store). Apple Developer Program ($99/year) required to publish to App Store."
 website: "https://developer.apple.com/xcode/swiftui"
-tags: ["ios", "macos", "swift", "apple", "swiftui", "declarative-ui"]
+tags: ["ios", "macos", "swift", "apple", "swiftui", "declarative-ui", "mobile", "ui-framework"]
 pros:
   - "Declarative syntax — describe what UI should look like, not how to build it"
   - "Live Preview in Xcode — see changes instantly without running the simulator"

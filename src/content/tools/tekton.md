@@ -2,7 +2,7 @@
 title: "Tekton"
 description: "Cloud-native CI/CD framework for Kubernetes that defines pipelines as reusable, composable building blocks"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "ci-cd", "cloud", "pipelines"]
+tags: ["kubernetes", "devops", "ci-cd", "cloud", "pipelines", "cloud-native", "continuous-delivery", "build-automation"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). CD Foundation project. OpenShift Pipelines includes Tekton with Red Hat support."
 website: "https://tekton.dev"

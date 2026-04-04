@@ -2,7 +2,7 @@
 title: "Linkerd"
 description: "Lightweight, security-first service mesh for Kubernetes with minimal overhead and operational simplicity"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security"]
+tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security", "cloud-native", "mtls"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). Buoyant offers Buoyant Enterprise for Linkerd with production SLA."
 website: "https://linkerd.io"

@@ -2,7 +2,7 @@
 title: "Kustomize"
 description: "Template-free Kubernetes configuration management using layered overlays and strategic merge patches"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "configuration", "cloud", "gitops"]
+tags: ["kubernetes", "devops", "configuration", "cloud", "gitops", "cloud-native", "k8s", "infrastructure"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). Built into kubectl since v1.14 — no separate installation or licensing required."
 website: "https://kustomize.io"

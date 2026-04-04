@@ -6,7 +6,7 @@ pricing: "Free"
 pricingDetail: "Open source (MIT)"
 website: "https://nextra.site"
 github: "https://github.com/shuding/nextra"
-tags: [documentation, nextjs, mdx, static-site, open-source, developer-tools]
+tags: ["documentation", "nextjs", "mdx", "static-site", "open-source", "developer-tools", "react", "docs-site"]
 pros:
   - "Built on Next.js — full React ecosystem, image optimization, ISR"
   - "File-system routing — folder structure becomes navigation automatically"

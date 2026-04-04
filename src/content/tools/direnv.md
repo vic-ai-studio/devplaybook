@@ -6,7 +6,7 @@ pricing: "Free"
 pricingDetail: "Open source (MIT)"
 website: "https://direnv.net"
 github: "https://github.com/direnv/direnv"
-tags: [developer-tools, shell, environment, devex, open-source, dotenv]
+tags: ["developer-tools", "shell", "environment", "devex", "open-source", "dotenv", "cli", "productivity"]
 pros:
   - "Zero friction — environments activate on `cd`, deactivate on `cd ..`"
   - "Works with any shell (bash, zsh, fish, elvish)"

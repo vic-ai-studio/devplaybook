@@ -2,7 +2,7 @@
 title: "Cilium"
 description: "eBPF-powered networking, observability, and security for Kubernetes with high performance and deep kernel-level visibility"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "networking", "security", "ebpf", "cloud"]
+tags: ["kubernetes", "devops", "networking", "security", "ebpf", "cloud", "cloud-native", "service-mesh"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). Isovalent (acquired by Cisco) offers enterprise support and managed Cilium cloud."
 website: "https://cilium.io"

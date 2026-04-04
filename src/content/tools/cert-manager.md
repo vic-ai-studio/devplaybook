@@ -1,8 +1,8 @@
 ---
 title: "cert-manager"
-description: "Automates TLS certificate provisioning, renewal, and management for Kubernetes workloads"
+description: "Automates TLS certificate provisioning, renewal, and management for Kubernetes workloads, supporting Let's Encrypt, Vault, and custom CAs"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "tls", "security", "cloud", "certificates"]
+tags: ["kubernetes", "devops", "tls", "security", "cloud", "certificates", "cloud-native", "pki"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). CNCF incubating project — no licensing cost; cloud support via provider support plans."
 website: "https://cert-manager.io"

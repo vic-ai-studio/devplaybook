@@ -2,7 +2,7 @@
 title: "Istio"
 description: "Feature-rich service mesh for Kubernetes providing traffic management, observability, and security for microservices"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security"]
+tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security", "cloud-native", "observability"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). Solo.io and Tetrate offer enterprise Istio distributions with support."
 website: "https://istio.io"

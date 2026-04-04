@@ -6,7 +6,7 @@ pricing: "Open Source"
 pricingDetail: "Free and open source. No commercial licensing fees."
 website: "https://tauri.app"
 github: "https://github.com/tauri-apps/tauri"
-tags: ["desktop", "rust", "javascript", "mobile", "cross-platform", "tauri"]
+tags: ["desktop", "rust", "javascript", "mobile", "cross-platform", "tauri", "webview", "gui"]
 pros:
   - "Tiny bundle size — 3-10MB vs Electron's 150MB+ (no bundled Chromium)"
   - "Uses native OS WebView (WebKit on macOS, WebView2 on Windows, WebKitGTK on Linux)"

@@ -6,7 +6,7 @@ pricing: "Freemium"
 pricingDetail: "Free for personal/academic use; Teams from $50/user/month; Enterprise custom pricing"
 website: "https://wandb.ai"
 github: "https://github.com/wandb/wandb"
-tags: [mlops, experiment-tracking, ml, training, monitoring, wandb]
+tags: ["mlops", "experiment-tracking", "ml", "training", "monitoring", "wandb", "machine-learning", "ai"]
 pros:
   - "Near-zero setup: two lines of code to start logging experiments"
   - "Rich visualizations — loss curves, confusion matrices, sample predictions"

@@ -6,7 +6,7 @@ pricing: "Free"
 pricingDetail: "Open source; Databricks Managed MLflow available as a hosted service"
 website: "https://mlflow.org"
 github: "https://github.com/mlflow/mlflow"
-tags: [mlops, experiment-tracking, ml, model-registry, python, databricks]
+tags: ["mlops", "experiment-tracking", "ml", "model-registry", "python", "databricks", "machine-learning", "ai"]
 pros:
   - "Fully open source — no SaaS dependency, runs on your infrastructure"
   - "Model Registry: version, stage, and promote models (staging → production)"

@@ -2,7 +2,7 @@
 title: "Crossplane"
 description: "Extend Kubernetes to provision and manage cloud infrastructure using the same GitOps workflows as your applications"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "infrastructure-as-code", "cloud", "platform-engineering"]
+tags: ["kubernetes", "devops", "infrastructure-as-code", "cloud", "platform-engineering", "cloud-native", "gitops", "k8s"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). CNCF graduated project. Upbound Cloud offers managed control planes."
 website: "https://www.crossplane.io"

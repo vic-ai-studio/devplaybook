@@ -2,7 +2,7 @@
 title: "FluxCD"
 description: "GitOps operator for Kubernetes that automatically keeps your cluster in sync with configuration stored in Git"
 category: "cloud-native"
-tags: ["kubernetes", "devops", "gitops", "continuous-delivery", "cloud"]
+tags: ["kubernetes", "devops", "gitops", "continuous-delivery", "cloud", "cloud-native", "ci-cd", "infrastructure"]
 pricing: "Open Source"
 pricingDetail: "Free and open-source (Apache 2.0). CNCF graduated project — no licensing cost for self-hosted deployment."
 website: "https://fluxcd.io"

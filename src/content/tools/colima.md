@@ -6,7 +6,7 @@ pricing: "Free"
 pricingDetail: "Open source (MIT)"
 website: "https://github.com/abiosoft/colima"
 github: "https://github.com/abiosoft/colima"
-tags: [docker, containers, macos, developer-tools, open-source, devex]
+tags: ["docker", "containers", "macos", "developer-tools", "open-source", "devex", "container-runtime", "kubernetes"]
 pros:
   - "Free alternative to Docker Desktop (which requires paid license for companies >250 employees)"
   - "Native Apple Silicon (M1/M2/M3) support with Rosetta x86 emulation"
