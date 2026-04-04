@@ -6,7 +6,7 @@ pricing: "Free"
 pricingDetail: "Fully free and open source"
 website: "https://rustwasm.github.io/wasm-pack"
 github: "https://github.com/rustwasm/wasm-pack"
-tags: [webassembly, wasm, rust, npm, performance, tooling]
+tags: ["webassembly", "wasm", "rust", "npm", "performance", "tooling", "build-tool"]
 pros:
   - "Generates TypeScript type definitions automatically from Rust code"
   - "Publishes directly to npm — works with standard JS bundlers (Webpack, Vite)"

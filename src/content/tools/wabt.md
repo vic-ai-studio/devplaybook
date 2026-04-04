@@ -6,7 +6,7 @@ pricing: "Free"
 pricingDetail: "Fully free and open source (Apache 2.0)"
 website: "https://github.com/WebAssembly/wabt"
 github: "https://github.com/WebAssembly/wabt"
-tags: [webassembly, wasm, tooling, debugging, binary, text-format]
+tags: ["webassembly", "wasm", "tooling", "debugging", "binary", "text-format", "compiler"]
 pros:
   - "Essential for WASM debugging — read and write .wat (text format)"
   - "wat2wasm: compile text format to binary for learning and testing"

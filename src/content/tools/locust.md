@@ -6,7 +6,7 @@ pricing: "Open Source"
 pricingDetail: "100% free and open source (MIT license)"
 website: "https://locust.io"
 github: "https://github.com/locustio/locust"
-tags: ["performance-testing", "load-testing", "python", "open-source", "web-ui", "distributed"]
+tags: ["performance-testing", "load-testing", "python", "open-source", "web-ui", "distributed", "ci-cd"]
 pros:
   - "Tests written in pure Python — full language expressiveness"
   - "Built-in web UI for real-time metrics and controlling tests"
