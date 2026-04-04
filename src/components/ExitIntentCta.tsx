@@ -71,17 +71,17 @@ export default function ExitIntentCta({ productName, productUrl, productPrice }:
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) dismiss(); }}
     >
-      <div class="bg-bg-card border border-primary/40 rounded-2xl p-8 max-w-md w-full shadow-2xl relative">
+      <div role="dialog" aria-modal="true" aria-labelledby="exit-intent-title" class="bg-bg-card border border-primary/40 rounded-2xl p-8 max-w-md w-full shadow-2xl relative">
         <button
           onClick={dismiss}
-          aria-label="Close"
+          aria-label="Close dialog"
           class="absolute top-4 right-4 text-text-muted hover:text-text transition-colors text-lg leading-none"
         >
           ✕
         </button>
 
         <p class="text-xs font-bold uppercase tracking-widest text-primary mb-3">Wait — before you go</p>
-        <h2 class="text-2xl font-bold mb-2">
+        <h2 id="exit-intent-title" class="text-2xl font-bold mb-2">
           {productName
             ? `Get ${productName} — $${productPrice}`
             : 'DevPlaybook Pro Bundle'}
