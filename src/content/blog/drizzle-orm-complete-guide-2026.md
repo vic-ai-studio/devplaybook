@@ -1,6 +1,6 @@
 ---
 title: "Drizzle ORM Complete Guide: TypeScript Database Toolkit 2026"
-description: "Master Drizzle ORM in 2026 — schema definition, migrations, relations, RLS support, Drizzle Studio, and how it compares to Prisma for TypeScript database access."
+description: "Master Drizzle ORM 2026: schema definition, migrations, relations, RLS support, and Drizzle Studio. See how it compares to Prisma for TypeScript projects."
 date: "2026-03-28"
 author: "DevPlaybook Team"
 tags: ["drizzle-orm", "typescript", "database", "orm", "postgresql", "prisma", "sql"]

@@ -1,6 +1,6 @@
 ---
 title: "Docker for Beginners: Complete Setup + Essential Commands Cheatsheet"
-description: "Learn Docker from scratch: installation on Mac, Linux, and Windows, core concepts explained simply, your first container, Dockerfile best practices, Docker Compose, and 20+ essential commands with examples."
+description: "Docker for beginners: installation on Mac, Linux, and Windows, core concepts, your first container, Dockerfile best practices, and 20+ essential commands."
 date: "2026-03-21"
 author: "DevPlaybook Team"
 tags: [docker, containers, devops, beginners, deployment]

@@ -1,6 +1,6 @@
 ---
 title: "Docker vs Podman: Container Runtime Comparison 2026"
-description: "Complete Docker vs Podman container runtime comparison for 2026. Covers architecture, security, performance, use cases, migration guide, and when to choose each tool."
+description: "Docker vs Podman container runtime comparison 2026: architecture, security, performance, migration guide, and when to choose each container tool."
 date: "2026-03-26"
 author: "DevPlaybook Team"
 tags: ["docker", "podman", "containers", "devops", "kubernetes", "security", "container runtime"]

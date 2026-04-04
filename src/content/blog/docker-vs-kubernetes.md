@@ -1,6 +1,6 @@
 ---
 title: "Docker vs Kubernetes: When to Use What (Decision Framework)"
-description: "Docker or Kubernetes? This decision framework helps you choose the right container technology based on team size, scale, and complexity. Includes migration paths and real-world examples."
+description: "Docker vs Kubernetes: decision framework for choosing container technology by team size and scale. Includes migration paths and real-world use cases."
 date: "2026-03-18"
 author: "DevPlaybook Team"
 tags: ["docker", "kubernetes", "devops", "containers", "infrastructure"]

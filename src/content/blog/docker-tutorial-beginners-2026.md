@@ -1,6 +1,6 @@
 ---
 title: "Docker Tutorial for Beginners 2026: From Zero to Running Containers"
-description: "Learn Docker from scratch in 2026. This step-by-step tutorial covers installation, images, containers, volumes, Docker Compose, and real-world examples for developers."
+description: "Learn Docker from scratch in 2026: installation, images, containers, volumes, Docker Compose, and real-world examples. Perfect for developer beginners."
 date: "2026-03-25"
 author: "DevPlaybook Team"
 tags: ["docker", "containers", "devops", "tutorial", "beginners", "docker-compose", "2026"]

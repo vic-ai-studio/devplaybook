@@ -1,6 +1,6 @@
 ---
 title: "Docker for Developers: Essential Commands Guide (2026)"
-description: "The practical Docker commands guide every developer needs. Covers containers, images, volumes, networking, Docker Compose, and real-world workflows with copy-paste examples."
+description: "Docker essential commands guide 2026: containers, images, volumes, networking, Docker Compose, and real-world workflows with copy-paste examples."
 date: "2026-03-24"
 author: "DevPlaybook Team"
 tags: ["docker", "containers", "devops", "command-line", "developer-tools", "cheatsheet"]

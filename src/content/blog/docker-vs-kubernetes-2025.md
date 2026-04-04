@@ -1,6 +1,6 @@
 ---
 title: "Docker vs Kubernetes: When to Use Each (2025 Guide)"
-description: "Docker vs Kubernetes explained clearly: key differences, real-world use cases, Docker Compose vs Kubernetes, cost comparison, migration path, and a decision framework for 2025."
+description: "Docker vs Kubernetes 2025: key differences, Docker Compose vs Kubernetes, cost comparison, and a clear decision framework with real-world use cases."
 date: "2026-03-27"
 author: "DevPlaybook Team"
 tags: ["docker", "kubernetes", "devops", "containers", "docker-compose", "infrastructure", "microservices"]

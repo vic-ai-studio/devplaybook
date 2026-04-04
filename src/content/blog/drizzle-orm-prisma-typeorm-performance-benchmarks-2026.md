@@ -1,6 +1,6 @@
 ---
 title: "Drizzle ORM vs Prisma vs TypeORM: Performance Benchmarks & Migration Guide 2026"
-description: "Deep-dive comparison of Drizzle ORM, Prisma, and TypeORM with real performance benchmarks, type-safety analysis, and a practical migration experience guide for 2026."
+description: "Drizzle ORM vs Prisma vs TypeORM: real performance benchmarks, type-safety analysis, and migration guide for 2026. Choose the right ORM with data."
 date: "2026-03-28"
 author: "DevPlaybook Team"
 tags: ["drizzle-orm", "prisma", "typeorm", "orm", "node-js", "typescript", "database", "performance"]

@@ -1,6 +1,6 @@
 ---
 title: "End-to-End Testing in 2026: Writing Tests That Don't Lie"
-description: "A practical guide to E2E testing in 2026 — choosing between Playwright and Cypress, eliminating flakiness, structuring test suites for real CI/CD pipelines, and understanding what E2E tests can and cannot tell you about your application's quality."
+description: "E2E testing guide 2026: choose Playwright or Cypress, eliminate flakiness, structure test suites for CI/CD, and understand real application quality limits."
 date: "2026-04-02"
 tags: [e2e, testing, playwright, cypress, ci-cd]
 readingTime: "14 min read"

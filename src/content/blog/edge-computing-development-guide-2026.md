@@ -1,6 +1,6 @@
 ---
 title: "Edge Computing for Developers 2026: Cloudflare Workers, Deno Deploy & Fastly"
-description: "Complete edge computing guide for 2026: Cloudflare Workers, Deno Deploy, Fastly Compute, edge databases, Durable Objects, latency benefits, and when to choose edge vs serverless vs containers."
+description: "Edge computing guide 2026: Cloudflare Workers, Deno Deploy, Fastly Compute. Covers latency benefits, edge databases, and edge vs serverless decision."
 date: "2026-04-01"
 tags: [edge-computing, cloudflare-workers, deno-deploy, serverless, performance]
 readingTime: "14 min read"

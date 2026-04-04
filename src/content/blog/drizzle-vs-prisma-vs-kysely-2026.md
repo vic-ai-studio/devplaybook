@@ -1,6 +1,6 @@
 ---
 title: "Drizzle ORM vs Prisma vs Kysely: The 2026 TypeScript ORM Battle"
-description: "Deep comparison of TypeScript ORMs in 2026. Drizzle ORM zero-runtime, Prisma DX, Kysely query builder - benchmarks, edge support, and migration strategies to pick the right tool."
+description: "Drizzle ORM vs Prisma vs Kysely 2026: benchmarks, edge support, type-safety, and migration strategies. Pick the right TypeScript ORM for your stack."
 date: "2026-03-28"
 tags: ["orm", "typescript", "database", "drizzle", "prisma"]
 readingTime: "7 min read"

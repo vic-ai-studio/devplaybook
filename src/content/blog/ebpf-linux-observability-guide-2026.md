@@ -1,6 +1,6 @@
 ---
 title: "eBPF and Linux Observability 2026: Cilium, Tetragon, Falco, and Production Tracing"
-description: "Complete guide to eBPF-powered Linux observability in 2026. Learn eBPF fundamentals, Cilium networking, Tetragon security, Falco threat detection, Pixie profiling, network policies, and bpftrace for production tracing."
+description: "eBPF Linux observability 2026: Cilium networking, Tetragon security, Falco threat detection, Pixie profiling, and bpftrace for production tracing."
 date: "2026-03-28"
 author: "DevPlaybook Team"
 tags: ["ebpf", "linux", "observability", "cilium", "tetragon", "falco", "pixie", "bpftrace", "kubernetes", "security", "tracing"]

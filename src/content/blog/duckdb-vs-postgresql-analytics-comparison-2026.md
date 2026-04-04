@@ -1,6 +1,6 @@
 ---
 title: "DuckDB vs PostgreSQL for Analytics: When to Choose Each 2026"
-description: "DuckDB vs PostgreSQL for analytics 2026: OLAP vs OLTP, query performance on large datasets, in-process vs server architecture, Parquet/CSV support, and when to use DuckDB."
+description: "DuckDB vs PostgreSQL 2026: OLAP vs OLTP, query performance on large datasets, Parquet/CSV support, and when to choose DuckDB for analytics workloads."
 pubDate: "2026-04-02"
 author: "DevPlaybook Team"
 tags: ["duckdb", "postgresql", "analytics", "olap", "data-engineering", "sql", "data-science"]

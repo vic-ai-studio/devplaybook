@@ -1,6 +1,6 @@
 ---
 title: "Docker Security Hardening: Container Best Practices 2026"
-description: "Docker security hardening guide: non-root users, minimal base images, multi-stage builds, read-only filesystems, Seccomp/AppArmor profiles, image scanning with Trivy, and Docker Bench."
+description: "Docker security hardening 2026: non-root users, minimal base images, multi-stage builds, Seccomp/AppArmor profiles, and image scanning with Trivy."
 pubDate: "2026-04-02"
 author: "DevPlaybook Team"
 tags: ["Docker", "container security", "Dockerfile", "security hardening", "Trivy", "DevSecOps"]

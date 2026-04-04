@@ -1,6 +1,6 @@
 ---
 title: "DSPy: Building Self-Optimizing LLM Pipelines in 2026"
-description: "Learn how DSPy revolutionizes LLM development with self-optimizing pipelines. Covers signatures, modules, teleprompters, and real-world examples vs manual prompting."
+description: "DSPy 2026: build self-optimizing LLM pipelines with signatures, modules, and teleprompters. Real-world examples vs manual prompting for developers."
 date: "2026-04-01"
 author: "DevPlaybook Team"
 tags: ["dspy", "llm", "ai", "python", "prompt-engineering", "machine-learning"]

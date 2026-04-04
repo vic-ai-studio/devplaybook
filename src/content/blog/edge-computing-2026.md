@@ -1,6 +1,6 @@
 ---
 title: "Edge Computing in 2026: From CDN Scripts to Distributed Compute Fabric"
-description: "A deep dive into edge computing architecture, comparing Cloudflare Workers, AWS Lambda@Edge, Fastly Compute, and Deno Deploy. Learn when to use edge functions, their limitations, and how to design applications that exploit sub-10ms latency."
+description: "Edge computing 2026: compare Cloudflare Workers, Lambda@Edge, Fastly, and Deno Deploy. Learn when to use edge functions and design for sub-10ms latency."
 pubDate: "2026-03-15"
 author: "DevPlaybook Team"
 category: "Cloud Native"

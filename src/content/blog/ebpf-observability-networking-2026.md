@@ -1,6 +1,6 @@
 ---
 title: "eBPF: Revolutionizing Linux Observability and Networking in 2026"
-description: "eBPF lets you run sandboxed programs in the Linux kernel for networking, security, and observability. Learn how Cilium, Falco, and Pixie use eBPF, with code examples."
+description: "eBPF in 2026: run sandboxed kernel programs for networking, security, and observability. Learn how Cilium, Falco, and Pixie use eBPF with code examples."
 date: "2026-04-02"
 author: "DevPlaybook Team"
 tags: ["ebpf", "linux", "networking", "observability", "cilium"]

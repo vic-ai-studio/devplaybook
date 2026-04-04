@@ -1,6 +1,6 @@
 ---
 title: "Edge Computing Architecture: Deploy Closer to Users 2026"
-description: "Complete guide to edge computing architecture in 2026: edge vs CDN vs regional serverless, use cases, Cloudflare vs Vercel vs Fastly vs Deno Deploy, data consistency patterns, and edge-native design."
+description: "Edge computing architecture 2026: edge vs CDN vs serverless, Cloudflare vs Vercel vs Fastly, data consistency patterns, and edge-native design guide."
 date: "2026-04-02"
 author: "DevPlaybook Team"
 tags: [edge-computing, cloudflare, vercel, fastly, architecture, serverless]

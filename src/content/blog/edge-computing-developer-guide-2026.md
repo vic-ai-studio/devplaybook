@@ -1,6 +1,6 @@
 ---
 title: "Edge Computing Developer Guide 2026: Cloudflare Workers, Deno Deploy, and Vercel Edge"
-description: "Complete developer guide to edge computing in 2026. Compare Cloudflare Workers vs Deno Deploy vs Vercel Edge Functions, latency benefits, KV storage, and deployment patterns."
+description: "Edge computing developer guide 2026: compare Cloudflare Workers, Deno Deploy, and Vercel Edge. Learn latency benefits, KV storage, and deployment patterns."
 date: "2026-04-01"
 tags: [edge-computing, cloudflare-workers, deno-deploy, vercel, serverless]
 readingTime: "15 min read"
