@@ -1,6 +1,6 @@
 ---
 title: "Free URL Encoder Decoder Tool — Encode & Decode URLs Online"
-description: "Free online URL encoder and decoder. Convert special characters to percent-encoding and back. No signup, no install — instant URL encoding in your browser."
+description: "Free online URL encoder and decoder. Convert special characters to percent-encoding instantly. Supports RFC 3986 and form encoding — no signup, no install needed."
 date: "2026-03-20"
 author: "DevPlaybook Team"
 tags: ["url-encoding", "percent-encoding", "developer-tools", "free-tools", "online-tools"]
@@ -113,6 +113,30 @@ This is especially useful for:
 - Webhook callbacks with embedded parameters
 - Search engine result URLs with tracking parameters
 - Third-party API requests logged by your backend
+
+---
+
+## Real-World Scenario
+
+A developer is building a search feature that accepts user-supplied filters and passes them as query parameters to a backend API. The filter includes a date range, a category name with spaces and slashes, and a free-text search term. A user types "women's clothing / spring 2025" as a category and "budget < $100" as a search term. When the developer constructs the URL manually without encoding, the request breaks — the slash is interpreted as a path separator and the `<` and `$` characters cause the backend parser to fail.
+
+They paste the category string into the URL encoder, select "Encode component" mode, and get the correctly encoded value: `women%27s%20clothing%20%2F%20spring%202025`. They do the same for the search term: `budget%20%3C%20%24100`. They update their `fetch` call to use `encodeURIComponent()` on each parameter value before concatenating the URL. The problem is solved — and they now understand why `encodeURIComponent` and `encodeURI` exist as separate functions.
+
+A second scenario involves debugging an OAuth flow. The authorization server is rejecting the `redirect_uri` parameter with a "mismatched redirect URI" error. The developer inspects the outgoing request in the browser network tab and sees the redirect URI is `https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback`. They paste this into the decoder and immediately see it's the correctly encoded form of their callback URL. The issue turns out to be that the registered URI in the OAuth provider dashboard had a trailing slash and theirs did not — the decoding step made the comparison possible without writing a script. A URL decoder is one of those tools that saves 20 minutes of frustrating OAuth debugging every time.
+
+---
+
+## Quick Tips
+
+1. **Always use `encodeURIComponent` for query parameter values in code, not `encodeURI`.** `encodeURI` preserves URL structure characters like `?`, `&`, and `=` — which means it won't encode them even when they appear inside a parameter value and will break your URL. `encodeURIComponent` encodes everything that isn't an unreserved character.
+
+2. **Decode the full URL from browser logs before comparing URIs.** When debugging redirect mismatches or webhook failures, the logged URL is almost always percent-encoded. Decode it first — what looks like a different URL is often the same one with different encoding applied.
+
+3. **Watch out for double-encoding.** If you encode a string that's already encoded, `%20` becomes `%2520`. Paste your output into the decoder to verify — if decoding it twice gives you the original string, you've double-encoded.
+
+4. **Use the tool to verify OAuth redirect URIs.** OAuth errors are cryptic. Decode the `redirect_uri` parameter from your outgoing request and compare it character-for-character against what's registered in your OAuth provider. Trailing slashes and encoding differences are the two most common causes of redirect mismatch errors.
+
+5. **Encode file paths and usernames before including them in REST API URLs.** A username like `alice@example.com` contains `@` and `.` — characters that have meaning in URLs. Always encode dynamic path segments: `encodeURIComponent(username)` before building `/users/${username}/profile`.
 
 ---
 

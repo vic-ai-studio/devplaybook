@@ -1,6 +1,6 @@
 ---
 title: "HTML to Markdown Converter Online: Clean Up Any HTML in Seconds"
-description: "Convert HTML to Markdown online for free — no install, no account. Paste any HTML from a webpage, CMS, or email and get clean Markdown ready for GitHub, docs, or static sites."
+description: "Convert HTML to Markdown free online — paste any webpage, CMS export, or email HTML and get clean Markdown ready for GitHub, docs, or static sites."
 author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["markdown", "html", "converter", "developer-tools", "documentation", "free-tools"]

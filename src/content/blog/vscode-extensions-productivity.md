@@ -1,6 +1,6 @@
 ---
 title: "VS Code Extensions That Make You 10x More Productive"
-description: "The best VS Code extensions for code quality, navigation, git, AI assistance, and workflow — curated for developers who want a faster, smarter editor."
+description: "The best VS Code extensions for code quality, Git, navigation, and remote dev — curated picks that genuinely change how you work, not just bloat your editor."
 date: "2026-03-20"
 author: "DevPlaybook Team"
 tags: ["vscode", "productivity", "developer-tools", "extensions", "ide"]

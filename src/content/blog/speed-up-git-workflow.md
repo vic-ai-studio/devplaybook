@@ -1,6 +1,6 @@
 ---
 title: "How to Speed Up Your Git Workflow: Practical Tips for 2026"
-description: "Speed up your Git workflow with aliases, hooks, better commit messages, and browser-based tools. Practical tips that reduce friction without changing how your team works."
+description: "Speed up your Git workflow with aliases, pre-commit hooks, patch staging, and fuzzy branch switching. Practical tips that save real time every single day."
 date: "2026-03-24"
 author: "DevPlaybook Team"
 tags: ["git", "git-workflow", "productivity", "developer-tips", "version-control", "2026"]

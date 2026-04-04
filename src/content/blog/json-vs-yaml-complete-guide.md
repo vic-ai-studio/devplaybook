@@ -1,6 +1,6 @@
 ---
 title: "JSON vs YAML: Complete Developer Guide"
-description: "JSON vs YAML: a complete comparison of syntax, use cases, performance, and tooling. Know when to choose each format and how to convert between them."
+description: "JSON vs YAML: full syntax comparison, real gotchas, performance notes, and a practical decision guide for APIs, config files, and CI/CD pipelines."
 date: "2026-03-24"
 author: "DevPlaybook Team"
 tags: ["json", "yaml", "data-formats", "configuration", "developer-guide", "comparison"]

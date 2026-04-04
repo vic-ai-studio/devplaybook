@@ -1,6 +1,6 @@
 ---
 title: "How to Use curl for API Testing"
-description: "Learn how to test REST APIs using curl — GET, POST, headers, auth tokens, JSON payloads, debugging flags, and real-world examples."
+description: "Master curl for API testing: GET, POST, auth tokens, JSON payloads, debugging flags, and real-world examples every backend developer needs."
 date: "2026-03-20"
 author: "DevPlaybook Team"
 tags: ["curl", "api", "rest", "developer-tools", "command-line"]
@@ -208,6 +208,38 @@ curl -s -X POST \
   "https://api.github.com/repos/owner/repo/issues" \
   -d '{"title": "Bug: login fails", "body": "Steps to reproduce..."}'
 ```
+
+## Real-World Scenario: Debugging a Broken Webhook Integration
+
+Imagine you're integrating a third-party payment provider and their webhooks aren't reaching your server. You have an endpoint at `https://yourapp.com/webhooks/payment` and you need to verify it behaves correctly before pointing the payment provider at it. curl is the fastest way to simulate the exact request the provider sends.
+
+Start by inspecting what a real webhook payload looks like from the provider's documentation, then replay it manually. Use `-v` to capture the full request/response cycle and `-w` to measure response time — if your endpoint takes more than a second to respond, most webhook providers will retry and you'll get duplicate events:
+
+```bash
+curl -v -X POST https://yourapp.com/webhooks/payment \
+  -H "Content-Type: application/json" \
+  -H "X-Webhook-Signature: sha256=abc123" \
+  -d @sample_webhook.json \
+  -w "\nHTTP %{http_code} in %{time_total}s\n"
+```
+
+Once the endpoint is responding correctly, you can automate regression checks by saving the command in a shell script alongside your test fixtures. This gives you a lightweight integration test you can run against any environment — local, staging, or production — without spinning up a full test suite. Store common requests as `.sh` files or use shell variables for tokens so the commands are reusable across the team.
+
+---
+
+## Quick Tips
+
+1. **Store tokens as environment variables, never hardcoded.** Use `curl -H "Authorization: Bearer $API_TOKEN"` and set `API_TOKEN` in your shell profile or `.env`. This keeps credentials out of your shell history and makes commands safe to share.
+
+2. **Use `-s -o /dev/null -w "%{http_code}"` for health checks.** The combination suppresses output noise and returns just the status code — perfect for monitoring scripts or CI pipeline smoke tests.
+
+3. **Pipe JSON responses through `jq` with a filter to drill into nested data immediately.** For example, `| jq '.data.users[0].email'` extracts a deeply nested field without needing to read the full response.
+
+4. **When a request fails, add `--trace-ascii -` to dump the full wire-level conversation** including request body bytes. This is more detailed than `-v` and essential for debugging encoding or content-type mismatches.
+
+5. **Use `--netrc` to load credentials from `~/.netrc`** instead of passing them on the command line. This keeps sensitive credentials out of shell history (`~/.bash_history`) entirely.
+
+---
 
 ## Quick Reference
 
