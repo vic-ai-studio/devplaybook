@@ -117,3 +117,45 @@ rosetta: true  # x86 emulation via Rosetta
 | Resource usage | Lower | Higher |
 
 For most backend developers who only need `docker run` and `docker compose up`, Colima is a drop-in replacement that starts faster and uses less memory.
+
+## Quick Start
+
+Replace Docker Desktop with Colima in under 5 minutes on macOS:
+
+```bash
+# 1. Uninstall Docker Desktop (optional but recommended to avoid conflicts)
+# Applications → Docker → uninstall, or: brew uninstall --cask docker
+
+# 2. Install Colima and the Docker CLI tools
+brew install colima docker docker-compose docker-credential-helper
+
+# 3. Start Colima with sensible defaults for M-series Macs
+colima start --cpu 4 --memory 8 --disk 60 --vm-type vz --vz-rosetta
+
+# --vm-type vz     → Apple Virtualization Framework (faster than QEMU on M1/M2/M3)
+# --vz-rosetta     → enables x86 emulation for amd64 images via Rosetta 2
+
+# 4. Verify everything works
+docker info          # should show Colima as the server
+docker run hello-world
+docker compose version
+
+# 5. Make Colima start automatically at login
+colima start --foreground &   # or use a launchd agent
+```
+
+```bash
+# Day-to-day usage — same Docker commands you already know
+docker build -t myapp .
+docker compose up -d
+docker ps
+docker logs myapp
+
+# Stop Colima when not in use (frees RAM)
+colima stop
+
+# Check status
+colima status
+```
+
+To persist startup settings so you don't have to repeat flags every time, edit `~/.colima/default/colima.yaml` after the first start. Set `cpu`, `memory`, `disk`, and `vmType` to your preferred defaults. Colima reads this file on every `colima start`.

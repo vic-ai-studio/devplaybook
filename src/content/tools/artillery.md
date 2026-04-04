@@ -65,3 +65,41 @@ scenarios:
 - API load testing with complex multi-step scenarios (auth → fetch → mutate)
 - WebSocket and real-time app testing
 - DevOps teams integrating load tests into CI/CD pipelines
+
+## Use Cases
+
+**API contract load testing**: Use Artillery's `expect` plugin to assert status codes, response shapes, and latency thresholds during load runs. A test that fails assertions under load is more useful than one that just counts errors — Artillery makes this first-class.
+
+**Real-time app testing**: Artillery natively supports WebSocket and Socket.io, making it one of the few tools that can properly stress-test chat apps, live dashboards, or collaborative editors with concurrent connections.
+
+**CI/CD performance gates**: Artillery's YAML format is version-control-friendly and integrates cleanly with GitHub Actions. Teams commit test scenarios alongside their code and run them on every PR to catch regressions before merge.
+
+**Spike and soak testing**: Built-in phase definitions make it easy to simulate sudden traffic spikes (10x normal load for 30 seconds) or overnight soak tests (sustained moderate load for 8 hours) without writing custom ramp logic.
+
+## Advanced: Custom JavaScript Processors
+
+When YAML isn't enough, Artillery lets you hook in JavaScript functions for dynamic data, custom auth flows, or response parsing:
+
+```javascript
+// processor.js
+module.exports = { generatePayload };
+
+function generatePayload(userContext, events, done) {
+  userContext.vars.orderId = `ord-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  userContext.vars.amount = Math.floor(Math.random() * 1000) + 1;
+  return done();
+}
+```
+
+```yaml
+config:
+  processor: "./processor.js"
+scenarios:
+  - flow:
+      - function: "generatePayload"
+      - post:
+          url: "/orders"
+          json:
+            orderId: "{{ orderId }}"
+            amount: "{{ amount }}"
+```

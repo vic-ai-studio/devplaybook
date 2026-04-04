@@ -133,3 +133,48 @@ mise use deno@latest
 | Maturity | 2023+ | 2014+ | 2010+ | 2011+ |
 
 For new projects, mise is the recommended choice. For existing asdf setups, mise is a drop-in replacement that reads `.tool-versions` files.
+
+## Quick Start
+
+Get from zero to a fully pinned, reproducible dev environment in under 5 minutes:
+
+```bash
+# 1. Install mise
+curl https://mise.run | sh
+echo 'eval "$(mise activate bash)"' >> ~/.bashrc
+source ~/.bashrc
+
+# 2. In your project directory, pin your tools
+mise use node@20.11.0
+mise use python@3.12.2
+# This creates/updates .mise.toml — commit it to Git
+
+# 3. Install all pinned versions
+mise install
+
+# 4. Verify
+node --version   # v20.11.0
+python --version # Python 3.12.2
+```
+
+```toml
+# .mise.toml — what your teammates will see after git pull
+[tools]
+node = "20.11.0"
+python = "3.12.2"
+
+[env]
+NODE_ENV = "development"
+
+[tasks.dev]
+run = "npm run dev"
+description = "Start the development server"
+```
+
+```bash
+# After a teammate clones the repo:
+mise install   # installs all tools defined in .mise.toml
+mise run dev   # start the dev server with the correct Node version
+```
+
+The key workflow benefit: every developer on the team gets the exact same tool versions automatically, without needing a `.nvmrc`, `.python-version`, and `.tool-versions` file all maintained separately. One `.mise.toml` file replaces all of them.

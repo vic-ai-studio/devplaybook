@@ -84,3 +84,63 @@ Module.onRuntimeInitialized = function() {
 ## When to Use
 
 Emscripten is ideal for porting existing C/C++ codebases to the web: game engines (Unity, Godot), scientific computing libraries (OpenCV, FFTW), multimedia codecs (FFmpeg), and physics engines (Bullet). For new WASM projects, consider wasm-pack (Rust) for better ergonomics.
+
+## Quick Start
+
+Port a C library to the browser in four steps:
+
+```bash
+# 1. Install the Emscripten SDK
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk && ./emsdk install latest && ./emsdk activate latest
+source ./emsdk_env.sh   # adds emcc/em++ to PATH
+
+# 2. Write your C function
+cat > image_utils.c << 'EOF'
+#include <stdlib.h>
+#include <emscripten.h>
+
+EMSCRIPTEN_KEEPALIVE
+void grayscale(unsigned char* pixels, int width, int height) {
+    for (int i = 0; i < width * height * 4; i += 4) {
+        unsigned char avg = (pixels[i] + pixels[i+1] + pixels[i+2]) / 3;
+        pixels[i] = pixels[i+1] = pixels[i+2] = avg;
+    }
+}
+EOF
+
+# 3. Compile to WASM
+emcc image_utils.c -o image_utils.js \
+  -s WASM=1 \
+  -s EXPORTED_FUNCTIONS='["_grayscale","_malloc","_free"]' \
+  -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","HEAPU8"]' \
+  -O2
+
+# 4. Use in the browser
+```
+
+```html
+<script src="image_utils.js"></script>
+<script>
+Module.onRuntimeInitialized = function() {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  // Copy pixel data into WASM memory
+  const nBytes = imageData.data.length;
+  const ptr = Module._malloc(nBytes);
+  Module.HEAPU8.set(imageData.data, ptr);
+
+  // Run C function on the pixel buffer
+  Module._grayscale(ptr, canvas.width, canvas.height);
+
+  // Copy result back and render
+  imageData.data.set(Module.HEAPU8.subarray(ptr, ptr + nBytes));
+  Module._free(ptr);
+  ctx.putImageData(imageData, 0, 0);
+};
+</script>
+```
+
+For production builds, add `-s ENVIRONMENT=web` to strip Node.js support from the glue code, reducing output size. Use `--closure 1` for additional minification if your build pipeline supports it. Output `.wasm` files should be served with `Content-Type: application/wasm` for browsers to stream-compile them efficiently.

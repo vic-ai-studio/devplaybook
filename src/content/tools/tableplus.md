@@ -53,3 +53,25 @@ PostgreSQL, MySQL, MariaDB, SQLite, Microsoft SQL Server, Oracle, MongoDB, Cassa
 - Frontend/full-stack devs who want visual row editing over writing SQL
 - Teams managing multiple environments (dev/staging/prod) with connection groups
 - Anyone who finds DBeaver too heavy or ugly
+
+## Quick Start
+
+Download from [tableplus.com](https://tableplus.com) — native installers for macOS (`.dmg`), Windows (`.exe`), and Linux (`.deb`). No Electron, no Java runtime.
+
+To connect to a remote database through SSH:
+
+1. Create a new connection → fill in the database host/port/credentials
+2. Enable **Use SSH Tunnel** → enter your jump host IP, SSH username, and key path
+3. TablePlus establishes the tunnel automatically before each session
+
+For Supabase, PlanetScale, Neon, or other cloud Postgres providers, paste the connection string directly into the URL field — TablePlus parses it automatically.
+
+## Use Cases
+
+**Safe production data edits**: The staged-edit model is critical for production work. Click to edit a cell, make changes across multiple rows, then review the generated SQL before hitting "Commit" — or cancel everything with one click. Combined with Safe Mode (which blocks WHERE-less deletes), this dramatically reduces the risk of accidental data loss.
+
+**Multi-environment management**: Connection groups let you organize connections by environment with color-coding (red for production, yellow for staging, green for dev). A visual reminder that you're in the production database prevents costly mistakes.
+
+**Inspecting Redis alongside SQL**: TablePlus's Redis support means you can browse cache keys, inspect values, and run commands in the same tool you use for PostgreSQL — useful when debugging cache invalidation issues or inspecting session storage.
+
+**Fast schema exploration during development**: The schema sidebar lets you quickly browse tables, foreign keys, indexes, and views without writing SQL. When onboarding to a new codebase, this visual overview of the database structure is faster than reading migration files.

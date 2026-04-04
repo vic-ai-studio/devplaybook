@@ -74,3 +74,47 @@ result = agent.invoke({"messages": [("user", "What's the latest on AI?")]})
 ## When to Use
 
 LangChain is best for: RAG applications, multi-step LLM pipelines, agent systems with tool use, and projects that need to swap LLM providers without rewriting application code. For simple single-prompt applications, calling the LLM SDK directly is simpler.
+
+## Quick Start
+
+```bash
+pip install langchain langchain-openai langchain-community faiss-cpu
+export OPENAI_API_KEY=sk-...
+```
+
+The fastest way to get a working LLM chain running:
+
+```python
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+
+llm = ChatOpenAI(model="gpt-4o-mini")
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful assistant that answers concisely."),
+    ("user", "{question}")
+])
+
+chain = prompt | llm
+response = chain.invoke({"question": "What is LCEL in LangChain?"})
+print(response.content)
+```
+
+For a minimal RAG pipeline that reads local text files:
+
+```python
+from langchain_community.document_loaders import DirectoryLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+
+loader = DirectoryLoader("./docs", glob="**/*.txt")
+docs = loader.load()
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+chunks = splitter.split_documents(docs)
+vectorstore = FAISS.from_documents(chunks, OpenAIEmbeddings())
+# Now use vectorstore.as_retriever() in a RetrievalQA chain
+```
+
+## LangSmith: Observability for LLM Apps
+
+LangSmith is LangChain's tracing and evaluation platform. Set `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` in your environment, and every chain invocation is automatically logged with inputs, outputs, token counts, and latency. This is invaluable for debugging prompt quality issues or unexpected agent behavior in production.

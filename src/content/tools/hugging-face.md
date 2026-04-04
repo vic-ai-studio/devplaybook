@@ -76,3 +76,13 @@ When using models from the Hub:
 - **`accelerate`**: Multi-GPU and mixed-precision training
 - **`peft`**: Parameter-efficient fine-tuning (LoRA, QLoRA)
 - **`trl`**: Reinforcement learning from human feedback (RLHF)
+
+## Use Cases
+
+**Semantic search and RAG pipelines**: Use Hugging Face embedding models (like `sentence-transformers/all-MiniLM-L6-v2` or `BAAI/bge-m3`) to embed documents and queries into vectors for similarity search. These run locally and have no per-call cost — ideal for embedding large document collections for RAG applications.
+
+**Fine-tuning open models for domain tasks**: With `peft` and `trl`, fine-tune a 7B or 13B model on your own dataset using QLoRA on a single consumer GPU. Use Cases include training a model on your company's internal documentation, customer support transcripts, or domain-specific code.
+
+**Prototyping before committing to a paid API**: The Hub lets you evaluate dozens of open models before deciding whether to pay for GPT-4o or Claude. Run the same benchmark prompt against Llama, Mistral, Gemma, and Qwen locally to find the smallest model that meets your quality bar — reducing inference costs significantly.
+
+**Deploying private model demos**: Hugging Face Spaces lets you host Gradio or Streamlit apps backed by any model from the Hub. This is the fastest way to share a demo of your fine-tuned model or a custom AI pipeline with stakeholders — free for public Spaces, paid for private.

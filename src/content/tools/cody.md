@@ -48,3 +48,33 @@ Cody is Sourcegraph's AI coding assistant that combines LLM capabilities with So
 - Teams already using Sourcegraph for code search
 - Enterprise engineering orgs that need audit/compliance controls
 - Anyone wanting strong cross-file context at a lower cost than Cursor
+
+## Quick Start
+
+Install the Cody extension in VS Code or JetBrains, then sign in with a free Sourcegraph account:
+
+```
+VS Code: Extensions → search "Cody AI" → Install → Sign in
+JetBrains: Settings → Plugins → search "Cody" → Install
+```
+
+Once installed, use the Cody sidebar to chat or trigger commands directly from the editor. The `/explain` command on any selected block is a fast way to understand unfamiliar code in a large codebase.
+
+```
+# Useful built-in commands (trigger from command palette or sidebar):
+/explain   → Explain what selected code does
+/edit      → Rewrite selected code per your instruction
+/test      → Generate unit tests for the selected function
+/smell     → Identify potential code quality issues
+/doc       → Generate docstring/JSDoc for the selection
+```
+
+## Use Cases
+
+**Navigating large monorepos**: In repos with hundreds of services, Cody uses Sourcegraph's code graph to find the actual implementation of a function across files — not just open tabs. Ask "where is `calculateTax` defined and what calls it?" and get an accurate answer with links.
+
+**Cross-repo context in enterprise**: Enterprise teams can configure multi-repo context so Cody understands how a shared library in one repo is consumed by services in other repos. This is especially useful for SDK teams or platform engineering.
+
+**Onboarding new developers**: New team members can ask Cody natural-language questions about the codebase ("how does our auth middleware work?", "what's the standard way to add a new API endpoint here?") and get context-aware answers grounded in your actual code — not generic documentation.
+
+**Code review acceleration**: Use Cody to generate explanations of PRs, suggest test cases for changed code, or flag potential issues in a diff — all within the IDE without leaving the review workflow.

@@ -77,3 +77,25 @@ locust -f locustfile.py --worker --master-host=<master-ip>
 - Complex user flows with loops, conditionals, and state
 - Developers who need a quick visual dashboard without extra tooling
 - Load testing non-HTTP protocols via custom clients
+
+## Use Cases
+
+**Staging environment stress tests**: Before a major release, spin up 500–1000 simulated users against your staging environment. Locust's real-time chart lets you see the exact VU count where response times degrade or errors start appearing — giving you a clear capacity ceiling.
+
+**Regression benchmarks in CI**: Run Locust headlessly in GitHub Actions after every deployment. Store the p95 latency results as artifacts and fail the pipeline if they regress beyond a threshold. This catches performance regressions before they reach production.
+
+**Stateful user journeys**: Because tests are plain Python, you can model realistic flows like login → browse → add to cart → checkout with shared session state, conditional logic based on responses, and randomized user behavior — things that are nearly impossible in XML-based tools.
+
+**Non-HTTP protocol testing**: By implementing a custom `User` class with your own client, Locust can load-test WebSocket servers, gRPC services, databases, or any TCP-based protocol — something most load testing tools can't do without plugins.
+
+## vs Alternatives
+
+| | Locust | k6 | Artillery | JMeter |
+|---|---|---|---|---|
+| **Script language** | Python | JavaScript | YAML/JS | XML GUI |
+| **Extensibility** | Excellent (Python) | Good (JS) | Moderate | Plugins |
+| **Built-in UI** | Yes (live) | No | No | Yes (heavy) |
+| **Distributed** | Manual master/worker | Cloud or manual | Artillery Cloud | Manual |
+| **Best for** | Python teams, complex flows | CI/CD, high throughput | DevOps YAML fans | Enterprise legacy |
+
+Locust wins on flexibility and Python-native extensibility. k6 wins on raw throughput. Choose Locust when your team already writes Python and you need complex, stateful user behavior.

@@ -89,3 +89,13 @@ You are working on a Next.js 15 app with TypeScript strict mode.
 - **Cursor Pro/Free**: Code is sent to Cursor's servers for model inference
 - **Business/Privacy Mode**: Code is not stored or used for training
 - **Local models**: Not currently supported for codebase-indexed chat
+
+## Use Cases
+
+**Accelerating greenfield development**: When starting a new service or feature from scratch, use Agent mode to scaffold the entire structure — directory layout, base classes, config files, test setup — in one prompt. Cursor handles the boilerplate so you can focus on the actual logic from the start.
+
+**Large-scale refactors**: Ask Cursor to rename a type across 30 files, migrate from one state management library to another, or add TypeScript strict mode compliance throughout a codebase. The multi-file diff view lets you review every change before committing, making large refactors auditable and reversible.
+
+**Codebase Q&A for onboarding**: New team members can use Cursor Chat with `@codebase` to ask "how does authentication work in this project?", "what's the pattern for adding a new API route?", or "where are environment variables configured?" — and get accurate answers grounded in the actual code rather than outdated documentation.
+
+**Debugging with context**: Paste an error stack trace into Cursor Chat alongside `@file` references to the relevant modules. Cursor can trace the error through multiple files and suggest a fix that accounts for how the code actually interacts — more effective than searching StackOverflow for generic solutions.

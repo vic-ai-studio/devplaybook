@@ -132,3 +132,15 @@ Mintlify deploys automatically from your GitHub repository:
 ```
 
 Every PR gets a preview URL — team members can review doc changes without local setup.
+
+## Use Cases
+
+- **Developer tool and API startups**: Mintlify is the default choice for developer-focused SaaS companies (Resend, Trigger.dev, Loops, and hundreds of others use it). The OpenAPI auto-generation means your API reference stays in sync with your spec file without manual work. The professional default theme signals credibility to developers evaluating your product — first impressions from the docs matter.
+
+- **Teams that want docs-as-code without ops overhead**: If you want to write docs in MDX and sync from GitHub but don't want to maintain a Docusaurus deployment, CDN configuration, and Algolia search index yourself, Mintlify handles all of it. You get automatic deploys on push, PR preview URLs, and built-in search without owning any infrastructure.
+
+- **Products where users ask the same questions repeatedly**: Mintlify's AI chat widget lets users ask natural-language questions and get answers sourced from your docs. This reduces support ticket volume for common integration questions. Teams that add Mintlify's AI search report measurable drops in "how do I..." support requests within weeks of launch.
+
+- **Multi-product documentation with consistent branding**: Companies with several products or SDKs can give each product its own Mintlify deployment with a shared `docs.json` theme configuration. All products get consistent navigation, colors, and component styles without duplicating design work — just point each product's repo at the shared theme values.
+
+- **Replacing static README-only documentation**: Open source maintainers and indie developers who currently document their tools in a GitHub README get dramatically better UX by migrating to Mintlify's free tier. Features like code group tabs, callout cards, step-by-step guides, and versioned changelogs are impossible in plain Markdown but trivial with Mintlify's MDX component library.

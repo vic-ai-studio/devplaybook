@@ -49,3 +49,38 @@ Aider itself is free and open source. You pay only for the API tokens consumed b
 - Large refactors that touch many files at once
 - CI/CD automation and scripted code generation
 - Teams that want full LLM flexibility without vendor lock-in
+
+## Quick Start
+
+```bash
+pip install aider-chat
+
+# Start with Claude Sonnet (recommended for code quality)
+export ANTHROPIC_API_KEY=sk-ant-...
+aider --model claude-3-5-sonnet-20241022
+
+# Or with GPT-4o
+export OPENAI_API_KEY=sk-...
+aider --model gpt-4o
+
+# Add specific files to the context
+aider src/auth/middleware.py src/routes/users.py
+```
+
+Once in the session, type natural language instructions. Aider shows a diff before applying and commits automatically:
+
+```
+> Add rate limiting to the login endpoint — max 5 attempts per IP per minute
+> Refactor the user service to use async/await throughout
+> Write pytest tests for all public methods in auth.py
+```
+
+## Use Cases
+
+**Multi-file refactors**: Ask Aider to rename a function across the entire codebase, migrate from one library to another, or enforce a coding convention everywhere. The repo-map ensures changes are consistent — it doesn't miss files where the old pattern exists.
+
+**Automated scripting in CI**: Aider can be run non-interactively in CI pipelines. For example, auto-generate boilerplate when a new module is added, or apply code standards checks with auto-fix. Use `--yes` to auto-confirm all changes without prompts.
+
+**Exploration with cheap models**: Use a fast, cheap model (GPT-4o mini or Claude Haiku) for initial scaffolding or boilerplate generation, then switch to a smarter model for the tricky logic. Aider's `--model` flag makes swapping trivial.
+
+**Working without an IDE**: On remote servers, in Docker containers, or in environments where installing VS Code extensions isn't practical, Aider provides full AI-assisted coding from a plain SSH session. It's the most practical AI coding tool for server-side work.

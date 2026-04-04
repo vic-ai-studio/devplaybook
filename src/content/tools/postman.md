@@ -86,3 +86,29 @@ newman run my-collection.json \
       -e postman/env.staging.json \
       --bail  # Stop on first test failure
 ```
+
+## Quick Start: From Zero to Tested API
+
+1. **Download** the desktop app from [postman.com](https://postman.com) or use the web version at `web.postman.co`
+2. **Create a collection** — click "New Collection" and name it after your API
+3. **Add a request** — set method (GET/POST/etc.), URL, headers, and body
+4. **Add an environment** — store `BASE_URL`, `API_KEY`, and other variables that differ per environment
+5. **Write a test** in the "Tests" tab to assert the response, then click Send
+
+```javascript
+// Minimal test to get started — paste in the Tests tab
+pm.test("Request succeeded", () => {
+    pm.response.to.have.status(200);
+    pm.expect(pm.response.responseTime).to.be.below(1000);
+});
+```
+
+To share with your team: export the collection as JSON and commit it to your repo, or use Postman's built-in workspace sharing.
+
+## Use Cases
+
+**API-first development**: Design and document an API in Postman before writing a single line of server code. Mock servers let frontend developers start building against the API immediately using Postman's simulated responses — eliminating the frontend/backend dependency bottleneck.
+
+**Regression testing suite**: Build a collection of 50–200 requests that covers all critical API paths. Add test assertions to each. Run the collection via Newman in CI after every deployment — if any assertion fails, the build breaks and you know immediately which endpoint regressed.
+
+**Exploratory debugging**: When diagnosing a bug in a third-party API integration, Postman lets you quickly tweak headers, auth tokens, and request bodies and see raw responses without modifying code. The built-in console shows timing breakdowns, redirect chains, and TLS details that are hard to get from curl alone.

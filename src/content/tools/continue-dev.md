@@ -63,3 +63,42 @@ Continue itself is completely free. You only pay for the API tokens consumed by 
 - Developers who want Copilot-like features without vendor lock-in
 - Teams handling sensitive code who need local/private model support
 - Power users who want to fine-tune which model handles which task
+
+## Quick Start
+
+Install the VS Code extension, then configure your LLM in `~/.continue/config.json`. You can use a cloud model, a local Ollama instance, or both:
+
+```json
+{
+  "models": [
+    {
+      "title": "Claude 3.5 Sonnet",
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "apiKey": "sk-ant-..."
+    },
+    {
+      "title": "Local Llama (Ollama)",
+      "provider": "ollama",
+      "model": "llama3.2"
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "Qwen Coder (fast)",
+    "provider": "ollama",
+    "model": "qwen2.5-coder:3b"
+  }
+}
+```
+
+Use `Cmd+I` for inline edits, `Cmd+L` to open the chat sidebar, and `Tab` to accept completions. Use `@file` in chat to reference a specific file, `@codebase` to search across the indexed repo.
+
+## Use Cases
+
+**Privacy-sensitive codebases**: For companies with strict data policies, Continue + Ollama is the only Copilot-style workflow that keeps all code on-premise. The extension sends nothing to Continue's servers — only to whichever LLM endpoint you configure.
+
+**Cost optimization with model tiering**: Configure a fast, cheap model (Qwen 2.5 Coder 3B on Ollama) for tab autocomplete, and a more capable cloud model (Claude Sonnet) for chat and complex edits. This keeps costs low for the high-volume completions while preserving quality for reasoning tasks.
+
+**JetBrains users**: For IntelliJ, PyCharm, or GoLand developers who can't switch to VS Code or Cursor, Continue is one of the few AI coding tools with real JetBrains support — giving them inline completions and chat in their existing IDE.
+
+**Custom slash commands for your team**: Define project-specific commands in `config.json` — `/pr-description`, `/api-docs`, `/migration` — that run a custom prompt with your team's standards baked in. This lets you standardize how AI assistance is used across the team.

@@ -137,3 +137,15 @@ jobs:
     key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
     restore-keys: ${{ runner.os }}-node-
 ```
+
+## Tips & Best Practices
+
+- **Pin action versions to a full SHA**, not a floating tag like `@v4`. Tags can be force-pushed by the action author; a SHA is immutable. Use tools like `dependabot` or `renovate` to keep pins up to date automatically.
+
+- **Use `concurrency` groups to cancel redundant runs.** When a developer pushes multiple commits quickly, you usually only want the latest run to finish. Add `concurrency: { group: ${{ github.ref }}, cancel-in-progress: true }` at the workflow level to avoid wasting minutes on stale commits.
+
+- **Separate fast checks from slow ones.** Put lint and type-check in an early job that runs in ~60 seconds. Only run full integration tests in later jobs that depend on the fast job passing. Developers get signal faster and you don't waste runner time on code that doesn't even compile.
+
+- **Use `if: always()` on artifact uploads and notification steps.** Without it, a test failure will skip your coverage upload or Slack notification, leaving you without the artifacts you need to diagnose the failure.
+
+- **Store secrets in GitHub Environments, not repo-level secrets.** Environments let you require manual approval before a job can access production credentials, add deployment protection rules, and get per-environment audit logs. This is especially important for production deploy jobs.

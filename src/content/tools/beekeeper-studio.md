@@ -61,3 +61,26 @@ Beekeeper Studio is an open-source SQL editor and database GUI that prioritizes 
 - Developers who want a free, polished database GUI
 - Linux users (TablePlus is macOS/Windows only)
 - Teams that need a consistent cross-platform experience
+
+## Quick Start
+
+Download and install from [beekeeperstudio.io](https://www.beekeeperstudio.io). On Linux, the AppImage version requires no installation — just download and run.
+
+Adding a connection takes under a minute:
+
+1. Click **New Connection** → select database type (PostgreSQL, MySQL, SQLite, etc.)
+2. Enter host, port, database name, and credentials
+3. For private databases: enable **SSH Tunnel** and provide jump host details
+4. Click **Test** to verify, then **Connect**
+
+Connections are saved locally and can be exported as JSON for team sharing.
+
+## Use Cases
+
+**Daily query work on multiple databases**: The tabbed interface lets you work across different databases — dev PostgreSQL, staging MySQL, local SQLite — without context-switching between separate tools. Saved queries act as a personal SQL snippet library.
+
+**Safe production edits**: When you need to update a production row (customer email, config flag, etc.), Beekeeper's inline editor stages the change with a preview before executing — reducing the risk of accidental data corruption compared to running raw UPDATE statements.
+
+**Cross-platform team standardization**: When a team includes macOS, Windows, and Linux developers, Beekeeper is one of the few GUI tools that works well on all three. Everyone gets the same interface, so sharing saved queries or troubleshooting steps is frictionless.
+
+**SQLite development**: For local-first apps, embedded databases, or tools like Datasette, Beekeeper provides the best SQLite GUI experience on any OS — a category where most paid tools (including TablePlus) have weaker support.

@@ -83,3 +83,17 @@ GitHub Copilot Enterprise can be fine-tuned on your private codebase to:
 | `/doc` | Add documentation |
 | `/simplify` | Simplify complex code |
 | `/optimize` | Improve performance |
+
+## Tips & Best Practices
+
+**Write descriptive comments before the code**: Copilot uses surrounding context to generate completions. A well-written comment like `// Validate email format using RFC 5322 regex and return error message if invalid` produces far better suggestions than starting to type with no context. Treat comments as prompts.
+
+**Accept completions selectively**: Use `Ctrl+Right` (word-by-word acceptance) instead of `Tab` (full line acceptance) to incorporate parts of a suggestion while keeping your intent. This is especially useful when Copilot's suggestion is mostly right but diverges in the last few tokens.
+
+**Use Copilot Chat for architecture decisions**: Before writing a complex function, ask Copilot Chat to outline the approach, edge cases, and gotchas. This acts as a rubber duck + code review hybrid — often surfacing issues before a single line of code is written.
+
+**Reference specific files in chat**: In VS Code, use `#file:src/lib/auth.ts` in your Copilot Chat message to include the contents of a specific file in context. This makes answers much more accurate than asking general questions. Use `#selection` to reference highlighted code.
+
+**Keep `.github/copilot-instructions.md` current**: This file (Copilot's equivalent of `.cursorrules`) tells Copilot about your project's conventions, preferred libraries, and coding standards. Update it when your architecture changes so suggestions stay aligned with your actual codebase patterns.
+
+**Disable autocomplete in sensitive files**: Add `"github.copilot.enable": {"*.env": false, "*.pem": false}` to VS Code settings to prevent Copilot from suggesting completions in files that contain secrets or private keys.

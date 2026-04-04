@@ -120,3 +120,13 @@ ollama show llama3.2
 | Embeddings | `nomic-embed-text` |
 | Low memory (4GB RAM) | `phi3:mini` or `gemma2:2b` |
 | High quality (16GB+ VRAM) | `llama3.1:70b` or `qwen2.5:72b` |
+
+## Use Cases
+
+**Local development with zero API costs**: Run Ollama as a drop-in OpenAI replacement during development. Point your app's `OPENAI_BASE_URL` to `http://localhost:11434/v1` and `OPENAI_API_KEY` to `"ollama"` — all API calls go to your local model with no charges, no rate limits, and no internet required. Switch back to the real OpenAI API for production by changing one env variable.
+
+**Private document processing**: For applications that process sensitive documents (legal contracts, medical records, internal reports), Ollama keeps all inference local — no data ever leaves the machine. Pair with LlamaIndex or LangChain to build a private RAG pipeline where embeddings and LLM calls both run locally.
+
+**Powering local AI coding assistants**: Ollama is the backend for Continue.dev and similar tools when configured with local models. A `qwen2.5-coder:7b` model running on a Mac with Apple Silicon delivers fast tab autocomplete at zero cost — a practical alternative to paying for Copilot for offline or privacy-sensitive development.
+
+**Rapid model evaluation and comparison**: Before choosing which open-source model to deploy in production, pull several candidates with `ollama pull` and run the same benchmark prompts against each. No cloud accounts, no billing, no waiting for API access — just `ollama run model-name` and you're evaluating in seconds.

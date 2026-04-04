@@ -91,3 +91,15 @@ inso export spec "My API" --output openapi.yaml
 | Git-based storage | ✅ (paid team) | ❌ | ✅ (native) |
 | Test scripting | Basic | Full JS | Basic |
 | Offline collection format | Proprietary JSON | Proprietary JSON | Markdown-like |
+
+## Use Cases
+
+- **GraphQL API development**: Insomnia's GraphQL support is the strongest among GUI API clients. It auto-discovers the schema via introspection, provides field-level autocomplete in the query editor, and displays response data in a readable tree format. Teams building or consuming GraphQL APIs find it significantly faster than Postman for this workflow.
+
+- **gRPC service testing**: Unlike Bruno and most other alternatives, Insomnia supports gRPC natively — import a `.proto` file, browse available services and methods, and call them with a form-based interface. This makes it the go-to tool for backend teams who work with microservices that mix REST and gRPC endpoints.
+
+- **Multi-environment API testing**: Insomnia's environment system lets you define `base_url`, auth tokens, and any number of variables per environment (local, staging, production). Switching environments is a single dropdown — useful when you're tracing a bug that only reproduces in staging by running the exact same request sequence across environments.
+
+- **Design-first API workflows**: Insomnia supports importing OpenAPI specs and using them as the source of truth for your request collection. When the spec updates, re-import to sync. This keeps your test collection aligned with your API contract without manually recreating requests.
+
+- **Small team collaboration without SaaS overhead**: Teams comfortable with Git can use Insomnia's Git Sync to share collections in a private repository. The free tier handles solo development; Git Sync covers small teams who already have a Git workflow and don't want to pay for Postman's workspace tiers. Each developer clones the repo and their Insomnia workspace stays current via `git pull`.

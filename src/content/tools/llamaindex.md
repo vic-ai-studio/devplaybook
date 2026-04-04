@@ -75,3 +75,44 @@ query_engine = index.as_query_engine(
 ## When to Use
 
 LlamaIndex is the better choice over LangChain when your primary challenge is document ingestion and retrieval quality. Its chunking strategies, rerankers, and query engines give you more control over RAG pipeline performance. LangChain is better when you need general agent orchestration beyond document Q&A.
+
+## Quick Start
+
+```bash
+pip install llama-index llama-index-llms-openai llama-index-embeddings-openai
+export OPENAI_API_KEY=sk-...
+```
+
+The simplest working RAG setup takes under 10 lines:
+
+```python
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+
+# Load all files from a directory (PDF, TXT, DOCX, etc.)
+documents = SimpleDirectoryReader("./data").load_data()
+
+# Build an in-memory vector index
+index = VectorStoreIndex.from_documents(documents)
+
+# Query it in natural language
+engine = index.as_query_engine()
+response = engine.query("Summarize the key points about deployment.")
+print(response)
+```
+
+To persist the index to disk so you don't rebuild on every run:
+
+```python
+from llama_index.core import StorageContext, load_index_from_storage
+
+# Save
+index.storage_context.persist(persist_dir="./index_store")
+
+# Load later
+storage_context = StorageContext.from_defaults(persist_dir="./index_store")
+index = load_index_from_storage(storage_context)
+```
+
+## Improving Retrieval Quality
+
+The default chunking and retrieval settings work for simple cases, but real production RAG needs tuning. Start by experimenting with `chunk_size` (try 256–1024) and `similarity_top_k` (how many chunks to retrieve). Then add a reranker — Cohere Rerank or a local cross-encoder — to re-score the retrieved chunks before passing them to the LLM. This single step often improves answer quality significantly without changing the embedding model.

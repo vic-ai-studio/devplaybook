@@ -71,3 +71,46 @@ Beyond role-based access, Keycloak supports attribute-based access control (ABAC
 - Internal tooling with LDAP/AD user directories needing modern OIDC tokens
 - Microservice architectures requiring centralized token issuance and validation
 - Teams building multi-tenant SaaS who need realm-per-tenant isolation
+
+## Quick Start
+
+Get Keycloak running and protect a Node.js app in under 10 minutes:
+
+```bash
+# 1. Start Keycloak in dev mode (not for production)
+docker run -p 8080:8080 \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+  -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+  quay.io/keycloak/keycloak:latest start-dev
+
+# 2. Open http://localhost:8080/admin — log in with admin/admin
+# 3. Create a new Realm: "myrealm"
+# 4. Create a Client: type "OpenID Connect", client ID "my-app"
+#    Set Valid Redirect URIs: http://localhost:3000/*
+# 5. Create a test User, set a permanent password
+```
+
+```javascript
+// 6. Install the JS adapter in your app
+// npm install keycloak-js
+
+import Keycloak from 'keycloak-js';
+
+const keycloak = new Keycloak({
+  url: 'http://localhost:8080',
+  realm: 'myrealm',
+  clientId: 'my-app',
+});
+
+// Initialize — silently checks for existing session
+await keycloak.init({ onLoad: 'check-sso' });
+
+if (!keycloak.authenticated) {
+  keycloak.login();  // Redirect to Keycloak login page
+} else {
+  console.log('Token:', keycloak.token);
+  // Pass token in Authorization: Bearer <token> to your API
+}
+```
+
+For production, replace `start-dev` with `start` and configure a PostgreSQL database via `KC_DB`, `KC_DB_URL`, `KC_DB_USERNAME`, and `KC_DB_PASSWORD` environment variables. Set `KC_HOSTNAME` to your public domain and terminate TLS at a reverse proxy (nginx or a load balancer) in front of Keycloak.

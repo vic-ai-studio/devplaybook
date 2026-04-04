@@ -96,3 +96,15 @@ For most use cases, `Q4_K_M` is the best balance of quality and resource use.
 | Docker support | Yes | No |
 | Auto-updates | Manual | Built-in |
 | Best for | Dev/server | Exploration/testing |
+
+## Use Cases
+
+- **Private code assistance**: Run a code-focused model (DeepSeek Coder, Qwen2.5-Coder) locally and point your editor's AI extension at `http://localhost:1234/v1`. No code leaves your machine — important for proprietary codebases, client work, or regulated industries where sending code to OpenAI or Anthropic is not permitted.
+
+- **Offline development and air-gapped environments**: LM Studio works entirely offline after the initial model download. It's the right choice for development on planes, at client sites with restrictive firewalls, or in secure labs where internet access is prohibited.
+
+- **Rapid model evaluation and benchmarking**: When you want to compare Llama 3.1 8B vs Mistral 7B vs Gemma 2 9B on your specific prompts, LM Studio lets you switch models instantly without re-writing code. The GUI makes it easy to run the same prompt against different models back to back and compare outputs.
+
+- **Local RAG and embedding pipelines**: Use LM Studio's embedding endpoint to generate vectors locally with models like `nomic-embed-text`. Combined with a local vector DB (e.g., ChromaDB or LanceDB), you can build a fully offline retrieval-augmented generation pipeline — no cloud costs, no data leaving your infrastructure.
+
+- **Teaching and experimentation**: LM Studio's hardware compatibility indicators and quantization comparisons make it an excellent learning tool. Developers new to local LLMs can explore model sizes, understand the VRAM constraints, and experiment with system prompts without writing any infrastructure code.
