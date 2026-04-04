@@ -4,6 +4,7 @@ description: "Automates TLS certificate provisioning, renewal, and management fo
 category: "cloud-native"
 tags: ["kubernetes", "devops", "tls", "security", "cloud", "certificates"]
 pricing: "Open Source"
+pricingDetail: "Free and open-source (Apache 2.0). CNCF incubating project — no licensing cost; cloud support via provider support plans."
 website: "https://cert-manager.io"
 github: "https://github.com/cert-manager/cert-manager"
 date: "2026-04-03"

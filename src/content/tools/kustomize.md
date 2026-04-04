@@ -4,6 +4,7 @@ description: "Template-free Kubernetes configuration management using layered ov
 category: "cloud-native"
 tags: ["kubernetes", "devops", "configuration", "cloud", "gitops"]
 pricing: "Open Source"
+pricingDetail: "Free and open-source (Apache 2.0). Built into kubectl since v1.14 — no separate installation or licensing required."
 website: "https://kustomize.io"
 github: "https://github.com/kubernetes-sigs/kustomize"
 date: "2026-04-03"

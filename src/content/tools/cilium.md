@@ -4,6 +4,7 @@ description: "eBPF-powered networking, observability, and security for Kubernete
 category: "cloud-native"
 tags: ["kubernetes", "devops", "networking", "security", "ebpf", "cloud"]
 pricing: "Open Source"
+pricingDetail: "Free and open-source (Apache 2.0). Isovalent (acquired by Cisco) offers enterprise support and managed Cilium cloud."
 website: "https://cilium.io"
 github: "https://github.com/cilium/cilium"
 date: "2026-04-03"

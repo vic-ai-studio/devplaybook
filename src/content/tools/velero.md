@@ -4,6 +4,7 @@ description: "Backup, restore, and migrate Kubernetes cluster resources and pers
 category: "cloud-native"
 tags: ["kubernetes", "devops", "backup", "disaster-recovery", "cloud"]
 pricing: "Open Source"
+pricingDetail: "Free and open-source (Apache 2.0). VMware-backed project. Cloud provider storage costs apply for backup storage."
 website: "https://velero.io"
 github: "https://github.com/vmware-tanzu/velero"
 date: "2026-04-03"

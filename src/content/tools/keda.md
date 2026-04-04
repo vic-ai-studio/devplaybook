@@ -4,6 +4,7 @@ description: "Kubernetes event-driven autoscaler that scales workloads based on 
 category: "cloud-native"
 tags: ["kubernetes", "devops", "autoscaling", "cloud", "event-driven"]
 pricing: "Open Source"
+pricingDetail: "Free and open-source (Apache 2.0). CNCF graduated project — no licensing cost for self-hosted use."
 website: "https://keda.sh"
 github: "https://github.com/kedacore/keda"
 date: "2026-04-03"

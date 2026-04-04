@@ -4,6 +4,7 @@ description: "The package manager for Kubernetes that simplifies deploying and m
 category: "cloud-native"
 tags: ["kubernetes", "devops", "package-manager", "cloud", "deployment"]
 pricing: "Open Source"
+pricingDetail: "Free and open-source (Apache 2.0). The official Kubernetes package manager — no paid tiers or licensing required."
 website: "https://helm.sh"
 github: "https://github.com/helm/helm"
 date: "2026-04-03"

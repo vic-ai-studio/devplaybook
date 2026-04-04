@@ -4,6 +4,7 @@ description: "Cloud-native CI/CD framework for Kubernetes that defines pipelines
 category: "cloud-native"
 tags: ["kubernetes", "devops", "ci-cd", "cloud", "pipelines"]
 pricing: "Open Source"
+pricingDetail: "Free and open-source (Apache 2.0). CD Foundation project. OpenShift Pipelines includes Tekton with Red Hat support."
 website: "https://tekton.dev"
 github: "https://github.com/tektoncd/pipeline"
 date: "2026-04-03"

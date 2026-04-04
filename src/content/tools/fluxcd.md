@@ -4,6 +4,7 @@ description: "GitOps operator for Kubernetes that automatically keeps your clust
 category: "cloud-native"
 tags: ["kubernetes", "devops", "gitops", "continuous-delivery", "cloud"]
 pricing: "Open Source"
+pricingDetail: "Free and open-source (Apache 2.0). CNCF graduated project — no licensing cost for self-hosted deployment."
 website: "https://fluxcd.io"
 github: "https://github.com/fluxcd/flux2"
 date: "2026-04-03"
