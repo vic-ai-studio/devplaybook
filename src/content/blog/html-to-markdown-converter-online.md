@@ -1,6 +1,6 @@
 ---
 title: "HTML to Markdown Converter Online: Clean Up Any HTML in Seconds"
-description: "Convert HTML to Markdown free online — paste any webpage, CMS export, or email HTML and get clean Markdown ready for GitHub, docs, or static sites."
+description: "Convert HTML to Markdown free online — paste any webpage, CMS export, or email HTML and get clean Markdown output ready for GitHub, docs, or static sites."
 author: "DevPlaybook Team"
 date: "2026-03-24"
 tags: ["markdown", "html", "converter", "developer-tools", "documentation", "free-tools"]
@@ -159,6 +159,30 @@ Notion accepts Markdown natively. Converting HTML to Markdown first gives you cl
 - **[HTML Formatter](/tools/html-formatter)** — clean up messy HTML before converting
 - **[JSON Formatter](/tools/json-formatter)** — format JSON data alongside your Markdown docs
 - **[Base64 Encoder/Decoder](/tools/base64)** — encode images for embedding in Markdown
+
+---
+
+## Real-World Scenario
+
+A technical writer at a software company needs to migrate 80 blog posts from a legacy WordPress installation to a new Astro-based documentation site. The posts were exported as HTML, and each file contains a mix of paragraphs, `<h2>` headings, code snippets wrapped in `<pre><code>` blocks, and the occasional image. Rewriting all of this by hand would take days.
+
+Using a batch HTML-to-Markdown conversion workflow — either through an online tool for spot-checking or Pandoc for bulk processing — the migration takes a few hours instead. Each post gets converted, the Markdown output is reviewed for the known problem areas (tables with complex structure, inline styles on pulled quotes, custom WordPress shortcodes that the converter passes through as raw HTML), and those edge cases are fixed manually. The result is a clean `src/content/blog/` directory of `.md` files with proper frontmatter, ready to deploy.
+
+The same pattern applies to internal documentation. A team using Confluence decides to move their docs to a GitHub wiki. Exporting Confluence pages produces HTML. Running each page through an HTML-to-Markdown converter gives them a workable starting point. They add frontmatter, fix any heading hierarchy issues, and commit. Version-controlled, searchable, and no longer locked in a paid SaaS tool — the migration pays for itself in weeks.
+
+---
+
+## Quick Tips
+
+1. **Clean your HTML before converting.** Run messy HTML through an HTML formatter or Prettier first. Well-structured HTML produces significantly cleaner Markdown output — the converter relies on semantic tags, not rendered appearance.
+
+2. **Handle `<div>` soup manually for critical sections.** When the source HTML uses `<div class="callout">` or similar non-semantic wrappers, the converter will strip the class and flatten the content. Identify these patterns before batch conversion and decide how to handle them — usually a blockquote or a custom Markdown component in your target system.
+
+3. **Use Pandoc for batch jobs, online tools for inspection.** For single files or quick spot-checks, an online converter is faster. For converting 10+ files, write a one-liner with Pandoc and process the whole directory at once: `for f in *.html; do pandoc -f html -t markdown "$f" -o "${f%.html}.md"; done`
+
+4. **Add frontmatter after conversion, not before.** Convert the HTML first, then prepend the YAML frontmatter block (`title`, `date`, `tags`). Adding frontmatter beforehand causes some converters to try to parse it as HTML.
+
+5. **Verify code blocks have the right language tag.** Most HTML-to-Markdown converters preserve `<code class="language-python">` as ` ```python `, but they sometimes drop the language attribute when the class name format differs. Scan your output for plain ` ``` ` blocks and add the language manually for syntax highlighting.
 
 ---
 

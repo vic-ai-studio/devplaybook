@@ -144,6 +144,30 @@ Start every project with a proper `.gitignore`. Cleaning up accidentally committ
 
 ---
 
+## Real-World Scenario: Joining a New Team with an Unfamiliar Codebase
+
+You've just joined a team mid-sprint. There are 40 open branches, three of which are "ready to merge," and no one has documented what changed where. Your first two days are a productivity cliff: every branch checkout feels like a context switch, and commit messages like `fix` and `updates` tell you nothing about intent.
+
+This is exactly where Git workflow habits pay off. Start with `git log --oneline --graph --decorate --all` (or the `git lg` alias from this guide) to get a visual map of the branch topology. You'll immediately see which branches diverged from main, how far behind they are, and which ones are likely stale. For any branch you need to understand quickly, `git log origin/main..branch-name --oneline` lists every commit that branch adds — far faster than checking out and reading code cold.
+
+For your own work, enforce `git add -p` from day one. On a new codebase you'll frequently touch multiple concerns in a single file — understanding the existing code, fixing the bug, and adding a comment to clarify something confusing. Staging only the bug fix as one commit and the clarification comment as another keeps your PRs clean and makes the reviewer's job easier. Combined with a pre-commit hook that runs the existing test suite, you'll catch regressions immediately rather than in code review, which matters a lot when you don't yet know which parts of the codebase are fragile.
+
+---
+
+## Quick Tips
+
+1. **Set up your aliases on day one of any project.** The four-line alias block at the top of this guide takes 30 seconds to configure and pays back immediately. Add them globally (`--global`) so they work in every repo on your machine.
+
+2. **Use `git log --author="Your Name" --since="1 week ago" --oneline` to summarize your own recent work.** This is useful for writing standup updates without trying to remember what you did — let the commit history tell you.
+
+3. **Before a rebase or force-related operation, create a backup branch.** `git branch backup/feature-name-$(date +%Y%m%d)` takes two seconds and gives you a safe recovery point if something goes wrong. Delete it after the operation succeeds.
+
+4. **Configure `git rerere` (reuse recorded resolution) on long-running branches.** Run `git config --global rerere.enabled true` once. Git will remember how you resolved merge conflicts and replay the same resolution automatically next time — especially valuable on branches that regularly rebase against a fast-moving main.
+
+5. **Use `git bisect` when tracking down a regression, not manual binary search.** Mark the last known good commit as `git bisect good <hash>` and the broken one as `git bisect bad HEAD`, then let Git walk you through the binary search. On a 1000-commit history, it finds the culprit in 10 steps or fewer.
+
+---
+
 ## Summary: Quick Wins First
 
 If you implement one thing from this list today:

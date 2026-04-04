@@ -186,6 +186,30 @@ The [CSV to JSON converter](/tools/csv-to-json) supports custom delimiters — s
 
 ---
 
+## Real-World Scenario: Migrating a Product Catalog from Spreadsheet to API
+
+Your client maintains their product catalog in Google Sheets — 400 rows, columns for SKU, name, price, description, category, and stock count. You need to seed this data into a new e-commerce backend that accepts a JSON array via a REST endpoint. Re-typing it is out of the question. Exporting directly from Google Sheets as CSV and converting it is the right approach, and it takes about two minutes.
+
+Export the sheet as CSV (File → Download → CSV). Open the CSV-to-JSON converter, paste the contents, and confirm the delimiter is a comma. The tool maps each column header to a JSON key automatically. The output is a valid JSON array ready to POST. Before sending it to the API, run the result through a JSON formatter to spot any malformed rows — empty description fields showing as `""` instead of `null`, for example, which might cause validation errors on the backend. Handle type coercion in a small script: `price` should be `parseFloat`, `in_stock` (stored as `"true"/"false"` in the spreadsheet) should become a boolean.
+
+This workflow scales. When the client updates the spreadsheet next month, you export again, convert, run the same coercion script, and POST the diff. Pair it with a simple Node.js migration script that compares existing IDs and only upserts changed records — suddenly a repeatable, error-free import pipeline replaces a fragile manual process.
+
+---
+
+## Quick Tips
+
+1. **Always inspect the first few rows of output before importing.** Check that column headers mapped correctly, that quoted fields with commas inside them parsed as single values, and that numeric-looking strings like `"9.99"` or boolean strings like `"true"` are flagged for type coercion.
+
+2. **Use a consistent header naming convention in your source spreadsheet.** Headers with spaces (like `Product Name`) become awkward JSON keys. Rename them to `snake_case` or `camelCase` before exporting — it saves a post-processing step every time.
+
+3. **Handle null vs empty string explicitly.** CSV has no native null type — empty cells become empty strings `""` in JSON. If your API distinguishes between a missing field and an empty value, add a post-processing step: `Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v === '' ? null : v]))`.
+
+4. **For large files (10,000+ rows), process programmatically instead of in a browser tool.** Use `csv-parse` in Node.js or Python's `csv.DictReader` with streaming to avoid memory issues and handle encoding edge cases like BOM markers from Excel exports.
+
+5. **Save your coercion script alongside your data.** The next time you need to re-import, the transformation logic is already written. Version-control both the raw CSV and the conversion script so you can reproduce the import exactly if something goes wrong.
+
+---
+
 ## JSON to CSV: Going the Other Way
 
 Need to reverse the process? The [JSON to CSV tool](/tools/json-to-csv) converts a flat JSON array back to CSV — useful for exporting API data to a spreadsheet.
