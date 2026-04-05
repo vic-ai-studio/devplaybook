@@ -1,6 +1,6 @@
 ---
 title: "Docusaurus"
-description: "Meta's open-source documentation framework — build fast, searchable docs sites with MDX, versioning, i18n, and Algolia search, powered by React under the hood."
+description: "Docusaurus handles enterprise docs at scale — MDX + React, built-in versioning for multi-release docs, Algolia DocSearch, and i18n for translated content."
 category: "Documentation & DX Tools"
 pricing: "Free"
 pricingDetail: "Open source (MIT)"

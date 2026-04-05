@@ -1,6 +1,6 @@
 ---
 title: "LlamaIndex"
-description: "Data framework for LLM applications — specialized in connecting LLMs to private data sources via indexing, querying, and retrieval pipelines."
+description: "LlamaIndex is the RAG specialist — connects LLMs to private data via 100+ connectors, composable query pipelines, and production-grade chunking and reranking."
 category: "AI/ML Dev Tools"
 pricing: "Free"
 pricingDetail: "Open source; LlamaCloud (managed indexing) has paid tiers"

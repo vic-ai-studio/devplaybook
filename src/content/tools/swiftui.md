@@ -1,6 +1,6 @@
 ---
 title: "SwiftUI — Apple's Declarative UI Framework for iOS & macOS"
-description: "SwiftUI is Apple's declarative UI framework for building iOS, macOS, watchOS, and tvOS apps with Swift. Write once, run across Apple platforms with live preview in Xcode."
+description: "Apple's declarative UI for all platforms — SwiftUI adapts the same code to iOS, macOS, watchOS, and visionOS with live Xcode Preview and deep Swift/SwiftData integration."
 category: "Mobile"
 pricing: "Free"
 pricingDetail: "Free as part of Apple's SDK. Requires Xcode (free from Mac App Store). Apple Developer Program ($99/year) required to publish to App Store."

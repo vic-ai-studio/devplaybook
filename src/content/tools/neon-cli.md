@@ -1,6 +1,6 @@
 ---
 title: "Neon CLI — Command-Line Tool for Neon Serverless PostgreSQL"
-description: "The Neon CLI (neonctl) manages Neon PostgreSQL projects, branches, databases, and connection strings from the command line. Perfect for CI/CD workflows with database-per-PR branching."
+description: "Manage serverless Neon PostgreSQL from CLI — create instant database branches per PR, generate types, and integrate with CI/CD using non-interactive neonctl commands."
 category: "Database"
 pricing: "Free"
 pricingDetail: "Neon CLI is free and open-source. Neon free tier: 10GB storage, 191.9 compute hours/month, 10 branches."

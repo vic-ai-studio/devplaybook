@@ -1,6 +1,6 @@
 ---
 title: "PlanetScale CLI — Command-Line Tool for PlanetScale MySQL"
-description: "The PlanetScale CLI (pscale) manages PlanetScale databases, branches, deploy requests, and connections from the command line. Essential for integrating PlanetScale into CI/CD workflows."
+description: "Operate PlanetScale MySQL from CLI — pscale branches databases like Git, reviews schema changes via deploy requests, and tunnels connections securely for CI/CD."
 category: "Database"
 pricing: "Free"
 pricingDetail: "pscale CLI is free and open-source (Apache 2.0). PlanetScale platform pricing applies separately."

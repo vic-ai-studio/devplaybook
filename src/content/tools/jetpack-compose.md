@@ -1,6 +1,6 @@
 ---
 title: "Jetpack Compose — Android's Modern Declarative UI Toolkit"
-description: "Jetpack Compose is Android's modern declarative UI framework replacing XML layouts. Build Android UI with Kotlin composable functions with live preview and Material 3."
+description: "Android's Kotlin-first declarative UI toolkit — replace XML with composable functions, get live preview in Android Studio, and Material 3 theming baked in from day one."
 category: "Mobile"
 pricing: "Free"
 pricingDetail: "Free as part of Android Jetpack. Android Studio and the Android SDK are free to use."

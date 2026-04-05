@@ -1,6 +1,6 @@
 ---
 title: "Nextra"
-description: "Next.js-based documentation framework — write docs in MDX and get a fast, beautiful site with file-system routing, built-in search, and full Next.js ecosystem access."
+description: "Nextra brings file-system routing and full React ecosystem to docs — minimal config, built-in search, and the same Next.js stack your app already uses."
 category: "Documentation & DX Tools"
 pricing: "Free"
 pricingDetail: "Open source (MIT)"
@@ -123,3 +123,89 @@ export default {
 | Search | Built-in (basic) | Algolia |
 | Customization | Limited | High |
 | Best for | Simple/medium docs | Large product docs |
+
+---
+
+## Concrete Use Case: Building a Library's API Documentation
+
+Imagine you're maintaining an open-source TypeScript library with 50+ exported functions. Users constantly ask "which parameters does this function accept?" and "what does it return?" You need a docs site that:
+
+1. Renders your existing README and contribution guides in MDX
+2. Auto-generates API reference pages from your TSDoc comments
+3. Has full-text search so users can find functions by name
+4. Looks polished without weeks of customization work
+
+Nextra handles this end-to-end. Your `pages/api/` folder maps directly to URL paths, so adding a new API page is just creating an MDX file. The built-in `note`, `warning`, and `danger` callout components let you highlight breaking changes and migration guides. Since Nextra is built on Next.js, you can sprinkle in React components anywhere in MDX — for example, an interactive parameter table component that renders from your type definitions.
+
+The result is a documentation site that a solo maintainer can set up in an afternoon and extend indefinitely without fighting a plugin system.
+
+## Real Code Example: Adding an API Reference Page with Auto-Generated Props
+
+Here's a pattern for a library that uses TypeScript and exports types alongside implementations:
+
+```mdx
+---
+title: useLocalStorage Hook
+---
+
+import { Callout } from 'nextra/components'
+
+# useLocalStorage
+
+A React hook that syncs state to `localStorage` with SSR safety.
+
+## Usage
+
+```tsx
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+
+function ThemeToggle() {
+  const [theme, setTheme] = useLocalStorage('theme', 'light');
+  return <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
+    Current: {theme}
+  </button>;
+}
+```
+
+## Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `key` | `string` | — | `localStorage` key to sync with |
+| `initialValue` | `T` | — | Default value if key is absent |
+
+## Returns
+
+A `useState`-style tuple: `[value, setValue]`.
+
+<Callout type="warning">
+**SSR Note:** This hook returns `initialValue` on the first render (server-side) and the stored value after hydration. Wrap in a `useEffect` if you need the stored value immediately on mount.
+</Callout>
+```
+
+The key insight is that Nextra's MDX support lets you mix prose, tables, and callouts with live code blocks — no separate documentation generator required.
+
+## When to Use Nextra
+
+**Use Nextra when:**
+- You already know Next.js or React and want docs that feel like a natural extension of your existing stack
+- You're building docs for a library, API, or developer tool where MDX gives you the right expressiveness
+- You want a fast, lightweight docs site without the overhead of Docusaurus's plugin ecosystem
+- You're comfortable with file-system routing as your primary navigation model
+- You want a polished blog and docs site from the same codebase (Nextra supports both themes)
+
+**When NOT to use Nextra:**
+- You need built-in internationalization (i18n) — Docusaurus or VitePress handle this better out of the box
+- You're documenting a large, multi-versioned product (Docusaurus's versioning system is battle-tested for this)
+- You need deep theming customization beyond what the theme.config.tsx API exposes
+- You want to use an existing Docusaurus plugin or the broader React ecosystem of documentation tooling
+- Your team has no React/Next.js experience and needs the fastest possible ramp-up — raw VitePress may be simpler
+
+## Other Notable Alternatives
+
+| Tool | Framework | Best For |
+|------|-----------|----------|
+| **VitePress** | Vue + Vite | Simpler than Nextra, fast, good for static docs |
+| **Docusaurus** | React (custom) | Large docs, versioning, i18n, Algolia search |
+| **Docsify** | None (runtime) | Quick docs from markdown, no build step |
+| **GitBook** | SaaS | Teams that want hosted docs with CMS features |

@@ -108,3 +108,130 @@ mlflow server \
   --backend-store-uri postgresql://user:pass@localhost/mlflow \
   --default-artifact-root s3://my-bucket/mlflow-artifacts
 ```
+
+## Concrete Use Case: Fraud Detection Model Lifecycle
+
+A payments team trains a fraud detection model on transaction data. They run experiments across three approaches — Random Forest, XGBoost, and a neural network — then pick the best one for production via the Model Registry.
+
+**Step 1: Track experiments**
+
+```python
+mlflow.set_experiment("fraud-detection")
+
+# Run 1: Random Forest
+with mlflow.start_run(run_name="rf-baseline"):
+    mlflow.log_params({"model": "random_forest", "n_estimators": 200, "max_depth": 15})
+    model = RandomForestClassifier(n_estimators=200, max_depth=15)
+    model.fit(X_train, y_train)
+    mlflow.log_metrics({
+        "precision": precision_score(y_test, model.predict(X_test)),
+        "recall": recall_score(y_test, model.predict(X_test)),
+        "f1": f1_score(y_test, model.predict(X_test)),
+    })
+    mlflow.sklearn.log_model(model, "rf-model")
+
+# Run 2: XGBoost
+with mlflow.start_run(run_name="xgboost-tuned"):
+    mlflow.log_params({"model": "xgboost", "learning_rate": 0.05, "max_depth": 8})
+    model = xgb.XGBClassifier(learning_rate=0.05, max_depth=8, eval_metric="logloss")
+    model.fit(X_train, y_train)
+    mlflow.log_metrics({
+        "precision": precision_score(y_test, model.predict(X_test)),
+        "recall": recall_score(y_test, model.predict(X_test)),
+        "f1": f1_score(y_test, model.predict(X_test)),
+    })
+    mlflow.sklearn.log_model(model, "xgb-model")
+```
+
+**Step 2: Compare runs in the MLflow UI**
+
+Open the UI at `http://localhost:5000`. The Runs table shows all experiments side-by-side with logged metrics, parameters, and artifacts. Sort by `f1` to surface the best performer. In this scenario, `xgboost-tuned` wins with F1=0.87 vs RF's F1=0.81.
+
+**Step 3: Register and promote the winning model**
+
+```python
+client = mlflow.tracking.MlflowClient()
+
+# Register the best run's model
+best_run_id = "..."  # copy from UI or query with mlflow.search_runs()
+registered = mlflow.register_model(
+    f"runs:/{best_run_id}/xgb-model",
+    "FraudDetectionModel"
+)
+
+# Move to Production after validation
+client.transition_model_version_stage(
+    name="FraudDetectionModel",
+    version=registered.version,
+    stage="Production",
+)
+```
+
+**Step 4: Serve and call the production model**
+
+```python
+# Load production model
+model = mlflow.sklearn.load_model("models:/FraudDetectionModel/Production")
+
+# Predict on a new transaction
+transaction = [[amount, frequency, country_risk, ...]]
+is_fraud = model.predict_proba(transaction)[:, 1] > 0.7
+```
+
+This workflow — track → compare → register → serve — keeps every team member aligned on which model is live, why it was selected, and how to reproduce it.
+
+## MLflow vs Alternatives
+
+| Feature | MLflow | Weights & Biases | Neptune.ai | Manual Logging |
+|---|---|---|---|---|
+| Open source | ✅ | ❌ (SaaS) | ❌ (SaaS) | ✅ |
+| Self-hosted | ✅ | ❌ | ❌ | ✅ |
+| Model Registry | ✅ | ✅ | ✅ | ❌ |
+| Experiment tracking | ✅ | ✅ | ✅ | ❌ |
+| Built-in hyperparameter sweeps | ❌ | ✅ | ✅ | ❌ |
+| Collaboration / sharing | Basic | Excellent | Excellent | None |
+| SaaS offering | Databricks (paid) | W&B hosted | Neptune hosted | N/A |
+| Best for | Enterprise + Databricks | Research teams | PM/sharing-heavy teams | Solo projects |
+
+**Before MLflow (manual logging):**
+
+```python
+# Manual approach — brittle, no searchability
+import pickle
+from datetime import datetime
+model = RandomForestClassifier().fit(X_train, y_train)
+score = f1_score(y_test, model.predict(X_test))
+with open(f"model_{datetime.now().strftime('%Y%m%d_%H%M%S')}_f1{score:.3f}.pkl", "wb") as f:
+    pickle.dump(model, f)
+# Version control? Git? Who knows. Which params gave this score? Good luck.
+```
+
+**After MLflow:**
+
+```python
+# One extra line sets you up for full reproducibility
+mlflow.sklearn.log_model(model, "model")
+# Instantly searchable, comparable, promotable to production.
+```
+
+## When to Use MLflow / When Not to Use
+
+**Use MLflow when:**
+
+- You need **data sovereignty** — data cannot leave your infrastructure (healthcare, finance, defense).
+- Your team uses **Databricks** or plans to adopt it; MLflow is the native experiment tracking layer.
+- You want an **open-source Model Registry** without paying for a SaaS product.
+- You need **framework-agnostic tracking** — PyTorch, TensorFlow, XGBoost, and sklearn in the same project.
+- You're running **reproducible ML pipelines** with MLflow Projects (conda/docker packaging).
+- You need **production model staging** — promote Candidate → Staging → Production with approval gates.
+
+**Do not use MLflow when:**
+
+- Your team is small (1–3 people) and wants the **fastest setup**; W&B `wandb.init()` is one line and the UI works out of the box.
+- You need **native hyperparameter sweeps** — MLflow doesn't have this; use Optuna, Ray Tune, or Hyperopt alongside it.
+- You need a **polished, modern UI** with native charts, sweep visualization, and collaborative features; W&B is more mature here.
+- You're doing **pure research** where experiment results need to be shareable via public links with non-technical collaborators; Neptune or W&B handle this better.
+- Your artifact data is huge and you don't want to manage your own S3/GCS bucket; a managed SaaS handles this transparently.
+- You want **zero infrastructure management** — self-hosting MLflow at scale means managing the tracking server, PostgreSQL, artifact storage, and backups yourself.
+
+In short: MLflow is the right choice when control and ownership outweigh convenience. If you're on Databricks or need enterprise-grade governance with no vendor lock-in, MLflow is purpose-built for that. If you want to open a browser and start comparing runs in 60 seconds with no server to maintain, a SaaS alternative will serve you better.

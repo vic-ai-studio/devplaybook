@@ -1,6 +1,6 @@
 ---
 title: "LangChain"
-description: "Framework for building applications with LLMs — chains, agents, tools, memory, and retrieval pipelines in Python and JavaScript."
+description: "Build LLM apps with chains, agents, and memory in Python/JS — LangChain's ecosystem spans 100+ LLM providers, vector stores, and LangGraph for stateful multi-agent workflows."
 category: "AI/ML Dev Tools"
 pricing: "Free"
 pricingDetail: "Open source; LangSmith (observability platform) has paid tiers"

@@ -1,6 +1,6 @@
 ---
 title: "FluxCD"
-description: "GitOps operator for Kubernetes that automatically keeps your cluster in sync with configuration stored in Git"
+description: "FluxCD is the GitOps operator that closes the CI/CD loop — auto-updates image tags in Git, supports multi-tenancy with namespace isolation, and manages Helm/Kustomize natively."
 category: "cloud-native"
 tags: ["kubernetes", "devops", "gitops", "continuous-delivery", "cloud", "cloud-native", "ci-cd", "infrastructure"]
 pricing: "Open Source"

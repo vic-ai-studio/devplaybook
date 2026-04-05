@@ -1,6 +1,6 @@
 ---
 title: "React Native — Cross-Platform Mobile with JavaScript/TypeScript"
-description: "React Native lets you build native iOS and Android apps using JavaScript/TypeScript with React. Share up to 90% of code between platforms with access to native APIs."
+description: "React Native builds native iOS/Android apps using React and JavaScript — leverage the massive npm ecosystem and share ~90% of code between platforms."
 category: "Mobile"
 pricing: "Open Source"
 pricingDetail: "Free and open source (Meta). You pay for your own API services and any paid Expo EAS tiers."

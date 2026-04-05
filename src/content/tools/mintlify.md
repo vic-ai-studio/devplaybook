@@ -1,6 +1,6 @@
 ---
 title: "Mintlify"
-description: "Modern hosted documentation platform — write docs in MDX, sync from GitHub, and get a polished branded site with AI-powered search, analytics, and API reference generation."
+description: "Mintlify is the hosted docs platform for API-first companies — MDX from GitHub, auto-generated API references from OpenAPI specs, and AI-powered doc search and chat."
 category: "Documentation & DX Tools"
 pricing: "Freemium"
 pricingDetail: "Free: 1 deployment; Growth $150/month (custom domain + analytics); Enterprise custom"

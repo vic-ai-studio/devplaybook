@@ -1,6 +1,6 @@
 ---
 title: "NativeScript — Build Native iOS & Android with JavaScript"
-description: "NativeScript lets you build truly native iOS and Android apps using JavaScript or TypeScript with Angular, React, Vue, or Svelte. Direct access to native APIs without bridges."
+description: "NativeScript builds truly native iOS/Android apps from JS/TS with direct access to 100% of native APIs — no WebView, no bridge, no performance overhead."
 category: "Mobile"
 pricing: "Open Source"
 pricingDetail: "Free and open source. NativeScript Pro (enterprise support) is paid."

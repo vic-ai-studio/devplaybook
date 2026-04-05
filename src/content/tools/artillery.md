@@ -1,6 +1,6 @@
 ---
 title: "Artillery — Cloud-Native Load Testing for Modern Apps"
-description: "Artillery is an open-source load testing platform for APIs, microservices, and web apps. Write tests in YAML or JavaScript, run on cloud infrastructure, and get actionable performance reports."
+description: "YAML-first load testing for APIs, WebSockets, and browsers — Artillery runs distributed tests from cloud infrastructure with actionable metrics and scenario automation."
 category: "Performance Testing"
 pricing: "Open Source"
 pricingDetail: "Open source CLI is free; Artillery Cloud starts at free tier, then paid plans"
