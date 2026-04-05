@@ -1,6 +1,6 @@
 ---
 title: "Flutter — Google's Cross-Platform UI Toolkit for Native Apps"
-description: "Flutter lets you build natively compiled iOS, Android, Web, Desktop apps from a single Dart codebase with pixel-perfect UI and 60fps animations using the Skia/Impeller engine."
+description: "Build natively compiled iOS, Android, web, and desktop apps from one Dart codebase — pixel-perfect UI with 60fps Skia/Impeller rendering engine."
 category: "Mobile"
 pricing: "Open Source"
 pricingDetail: "Free and open source (Google). No licensing fees for any platform target."

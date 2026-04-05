@@ -1,6 +1,6 @@
 ---
 title: "GitHub Copilot"
-description: "AI pair programmer integrated into VS Code, JetBrains, and Neovim — provides inline code completions, chat, multi-file edits, and code review via GitHub models."
+description: "AI pair programmer for VS Code, JetBrains, and Neovim — inline code completions, chat, multi-file edits, and AI-powered code review by GitHub."
 category: "AI/ML Dev Tools"
 pricing: "Paid"
 pricingDetail: "Individual $10/month; Business $19/user/month; Enterprise $39/user/month; Free for students/OSS maintainers"

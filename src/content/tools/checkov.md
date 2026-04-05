@@ -1,6 +1,6 @@
 ---
 title: "Checkov — Infrastructure as Code Security Scanner"
-description: "Checkov is the leading open-source IaC security scanner. It finds misconfigurations in Terraform, CloudFormation, Kubernetes, Helm, ARM templates, and Dockerfile before they reach production."
+description: "Leading open-source IaC scanner — finds misconfigurations in Terraform, CloudFormation, Kubernetes, Helm, and Dockerfile before they reach production."
 category: "Security"
 pricing: "Free / Open Source"
 pricingDetail: "Checkov is 100% free and open-source (Apache 2.0). Prisma Cloud by Palo Alto Networks offers enterprise features."

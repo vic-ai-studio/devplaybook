@@ -1,6 +1,6 @@
 ---
 title: "Backstage — Open-Source Developer Portal by Spotify"
-description: "Spotify's open-source developer portal — centralize service catalogs, documentation, scaffolding, and tooling into one internal developer platform for large engineering orgs."
+description: "Spotify's open-source developer portal — centralize service catalogs, docs, scaffolding, and tooling into one internal platform for engineering teams."
 category: "Documentation & DX Tools"
 pricing: "Free"
 pricingDetail: "Open source (Apache 2.0); Spotify-hosted Backstage.io SaaS available"

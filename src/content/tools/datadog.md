@@ -1,6 +1,6 @@
 ---
 title: "Datadog — Unified Monitoring & Observability Platform"
-description: "Datadog is the leading commercial observability platform combining infrastructure metrics, APM, logs, security monitoring, and synthetics in one unified platform. The default choice for enterprise engineering teams."
+description: "Datadog is the leading observability platform — unified infrastructure metrics, APM, logs, security monitoring, and synthetics for enterprise teams."
 category: "Observability"
 pricing: "Paid"
 pricingDetail: "Infrastructure: $15-23/host/month. APM: $31/host/month. Logs: $0.10/GB ingested. Free trial available. Costs scale quickly with traffic."

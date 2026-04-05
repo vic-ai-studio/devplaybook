@@ -1,6 +1,6 @@
 ---
 title: "Crossplane — Cloud Infrastructure as Kubernetes Custom Resources"
-description: "Extend Kubernetes to provision and manage cloud infrastructure using the same GitOps workflows as your applications"
+description: "Crossplane extends Kubernetes to provision and manage cloud infrastructure (AWS, GCP, Azure) using the same GitOps workflows as your applications."
 category: "cloud-native"
 tags: ["kubernetes", "devops", "infrastructure-as-code", "cloud", "platform-engineering", "cloud-native", "gitops", "k8s"]
 pricing: "Open Source"

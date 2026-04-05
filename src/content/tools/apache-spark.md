@@ -1,6 +1,6 @@
 ---
 title: "Apache Spark — Unified Engine for Large-Scale Data Processing"
-description: "Unified analytics engine for large-scale data processing — batch ETL, SQL, streaming, and ML on datasets too large for single machines."
+description: "Apache Spark is a unified analytics engine for large-scale data processing — batch ETL, SQL, streaming, and ML on datasets too large for one machine."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source; Databricks Runtime (managed Spark) from $0.07/DBU; EMR, Dataproc also available"

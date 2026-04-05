@@ -1,6 +1,6 @@
 ---
 title: "Apache Flink — Stream & Batch Processing for Real-Time Data"
-description: "Stateful stream processing framework — true event-time processing, exactly-once semantics, and low-latency real-time analytics at scale."
+description: "Apache Flink is a stateful stream processing framework with true event-time processing, exactly-once semantics, and low-latency analytics at scale."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source; Confluent Cloud for Flink, Amazon Kinesis Data Analytics (Flink), Ververica Platform available"

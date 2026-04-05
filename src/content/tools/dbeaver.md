@@ -1,6 +1,6 @@
 ---
 title: "DBeaver — Universal Database Tool for Developers"
-description: "DBeaver is the most popular universal database tool supporting 100+ databases including PostgreSQL, MySQL, MongoDB, Redis, Cassandra, SQLite, and more. Free community edition with powerful query and schema tools."
+description: "Universal database tool supporting 100+ databases including PostgreSQL, MySQL, MongoDB, and Redis. Free community edition with powerful query tools."
 category: "Database"
 pricing: "Free / Paid"
 pricingDetail: "DBeaver Community is free and open-source (Apache 2.0). DBeaver Pro/Enterprise adds advanced features (cloud, NoSQL, ERD export) at $99/year."

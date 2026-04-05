@@ -1,6 +1,6 @@
 ---
 title: "Apache Druid — Real-Time Analytics Database for Sub-Second Queries"
-description: "Real-time analytics database designed for sub-second queries on high-cardinality event data — powers dashboards and drill-down analytics at Airbnb, Netflix, Lyft scale."
+description: "Real-time analytics database for sub-second queries on high-cardinality event data — powers dashboards and drill-down analytics at massive scale."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source; Imply Cloud (managed Druid) from $750/month; AWS DSQL based on Druid"

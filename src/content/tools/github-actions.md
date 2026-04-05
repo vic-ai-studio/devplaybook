@@ -1,6 +1,6 @@
 ---
 title: "GitHub Actions"
-description: "GitHub's built-in CI/CD platform — automate build, test, and deployment workflows triggered by GitHub events with 20,000+ community-built actions in the marketplace."
+description: "GitHub's built-in CI/CD — automate build, test, and deploy workflows triggered by GitHub events with 20,000+ community actions in the marketplace."
 category: "API Testing & CI/CD"
 pricing: "Freemium"
 pricingDetail: "Free: 2,000 minutes/month (public repos unlimited); Pro $4/month includes more minutes; self-hosted runners are free"

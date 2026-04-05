@@ -1,6 +1,6 @@
 ---
 title: "Dagster — Data Orchestrator for Machine Learning & Analytics"
-description: "Data orchestration platform with an asset-centric model — define, observe, and test data assets instead of just scheduling tasks."
+description: "Dagster is a data orchestration platform with an asset-centric model — define, observe, and test data assets instead of just scheduling task DAGs."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source (Dagster Core); Dagster Cloud Serverless free tier; Pro from $600/month"

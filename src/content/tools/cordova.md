@@ -1,6 +1,6 @@
 ---
 title: "Apache Cordova — Legacy Hybrid Mobile Apps with HTML/CSS/JS"
-description: "Apache Cordova (formerly PhoneGap) lets you build hybrid mobile apps using HTML, CSS, and JavaScript wrapped in a native WebView with plugin access to device APIs."
+description: "Apache Cordova builds hybrid mobile apps using HTML, CSS, and JavaScript in a native WebView with plugin access to device APIs across platforms."
 category: "Mobile"
 pricing: "Open Source"
 pricingDetail: "Free and open source (Apache Software Foundation). No licensing fees."

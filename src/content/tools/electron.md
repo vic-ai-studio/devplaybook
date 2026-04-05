@@ -1,6 +1,6 @@
 ---
 title: "Electron — Build Desktop Apps with JavaScript, HTML & CSS"
-description: "Electron packages Node.js + Chromium to build cross-platform desktop apps (Windows/Mac/Linux) using web technologies. Powers VS Code, Slack, Discord, and GitHub Desktop."
+description: "Build cross-platform desktop apps for Windows, Mac, and Linux using Node.js and Chromium. Powers VS Code, Slack, Discord, and GitHub Desktop."
 category: "Desktop"
 pricing: "Open Source"
 pricingDetail: "Free and open source. No licensing fees."

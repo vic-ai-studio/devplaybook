@@ -1,6 +1,6 @@
 ---
 title: "Cody — AI Coding Assistant by Sourcegraph"
-description: "Cody is Sourcegraph's AI coding assistant. It combines LLM power with deep codebase understanding via Sourcegraph's code search. Available for VS Code, JetBrains, and as a web app."
+description: "Sourcegraph Cody is an AI coding assistant combining LLM power with deep codebase understanding via code search. For VS Code, JetBrains, and web."
 category: "AI Coding"
 pricing: "Freemium"
 pricingDetail: "Free tier available; Pro $9/month; Enterprise pricing custom"

@@ -1,6 +1,6 @@
 ---
 title: "Buildkite — Scalable CI/CD on Your Own Infrastructure"
-description: "Hybrid CI/CD platform — Buildkite manages the orchestration and UI in the cloud, while your own infrastructure runs the build agents, giving you speed without cloud vendor lock-in."
+description: "Hybrid CI/CD platform — Buildkite manages orchestration in the cloud while your infrastructure runs build agents for speed without vendor lock-in."
 category: "API Testing & CI/CD"
 pricing: "Freemium"
 pricingDetail: "Free for open source; Developer $45/month (25 users); Business from $450/month; Enterprise custom"

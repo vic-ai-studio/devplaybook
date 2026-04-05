@@ -1,6 +1,6 @@
 ---
 title: "Falco — Cloud-Native Runtime Security for Kubernetes"
-description: "Falco is the open-source runtime security tool for Kubernetes and cloud-native environments. It detects threats and anomalous behavior in real time using eBPF-based system call monitoring."
+description: "Falco is the open-source runtime security tool for Kubernetes — detects threats and anomalous behavior in real time via eBPF system call monitoring."
 category: "Security"
 pricing: "Free / Open Source"
 pricingDetail: "Falco is 100% free and open-source (Apache 2.0). Sysdig offers enterprise features and managed deployment."

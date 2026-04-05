@@ -1,6 +1,6 @@
 ---
 title: "Apache Iceberg — Open Table Format for Huge Analytic Datasets"
-description: "Open table format for huge analytic datasets — ACID transactions, schema evolution, hidden partitioning, and time travel on data lakes."
+description: "Apache Iceberg is an open table format for analytic datasets — ACID transactions, schema evolution, hidden partitioning, and time travel on data lakes."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source (Apache Software Foundation); managed via Snowflake, BigQuery, AWS Glue, Databricks"

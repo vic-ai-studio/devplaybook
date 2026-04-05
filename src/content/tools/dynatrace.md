@@ -1,6 +1,6 @@
 ---
 title: "Dynatrace — AI-Powered Full-Stack Observability"
-description: "Dynatrace is the enterprise observability platform powered by its Davis AI engine. It provides automatic full-stack monitoring from infrastructure to user experience with automatic root cause analysis."
+description: "Enterprise observability platform powered by Davis AI — automatic full-stack monitoring with root cause analysis from infrastructure to user experience."
 category: "Observability"
 pricing: "Paid"
 pricingDetail: "Dynatrace uses a unit-based pricing model (DDU — Dynatrace Data Units). Infrastructure: ~$0.08/hour/host. APM: ~$0.12/hour. Custom pricing at scale."

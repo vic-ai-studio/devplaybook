@@ -1,6 +1,6 @@
 ---
 title: "Drizzle ORM — Lightweight TypeScript ORM for Edge & Serverless"
-description: "Drizzle ORM is the TypeScript ORM designed for serverless and edge environments. Schema-as-TypeScript, SQL-like query API, zero dependencies, and 40KB bundle — the fastest-growing ORM in 2026."
+description: "TypeScript ORM for serverless and edge — SQL-like query API, schema-as-TypeScript, zero dependencies, and a tiny 40KB bundle for modern web apps."
 category: "Database"
 pricing: "Free / Open Source"
 pricingDetail: "Drizzle ORM is 100% free and open-source (Apache 2.0). Drizzle Studio is free."

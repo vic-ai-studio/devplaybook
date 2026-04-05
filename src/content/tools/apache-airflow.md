@@ -1,6 +1,6 @@
 ---
 title: "Apache Airflow — Workflow Orchestration Platform for Data Pipelines"
-description: "Open-source workflow orchestration platform — define, schedule, and monitor data pipelines as Python DAGs with a web UI and rich operator ecosystem."
+description: "Apache Airflow is an open-source workflow orchestrator — define, schedule, and monitor data pipelines as Python DAGs with a web UI and rich ecosystem."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source; Astronomer (managed Airflow) from $299/month; AWS MWAA and GCP Composer available"

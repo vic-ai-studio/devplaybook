@@ -1,6 +1,6 @@
 ---
 title: "Bruno"
-description: "Open-source API client that stores collections as plain text files in your Git repository — no proprietary cloud sync, no subscription required, just files in your codebase."
+description: "Open-source API client that stores collections as plain-text files in your Git repo — no cloud sync or subscription required, just files in your codebase."
 category: "API Testing & CI/CD"
 pricing: "Free"
 pricingDetail: "Open source (MIT); Bruno Golden Edition (one-time $19) for advanced features"

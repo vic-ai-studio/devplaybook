@@ -1,6 +1,6 @@
 ---
 title: "Beekeeper Studio — Open-Source SQL Editor & Database Manager"
-description: "Beekeeper Studio is a free, open-source SQL editor and database manager for MySQL, PostgreSQL, SQLite, SQL Server, and more. Cross-platform with a clean, modern UI."
+description: "Beekeeper Studio is a free, open-source SQL editor and database manager supporting MySQL, PostgreSQL, SQLite, and SQL Server. Cross-platform."
 category: "Database GUI"
 pricing: "Open Source"
 pricingDetail: "Community edition is free and open source; Ultimate edition $99 one-time"

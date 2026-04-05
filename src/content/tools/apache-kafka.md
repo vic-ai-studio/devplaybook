@@ -1,6 +1,6 @@
 ---
 title: "Apache Kafka — Distributed Event Streaming Platform"
-description: "Distributed event streaming platform — high-throughput, fault-tolerant message queue for real-time data pipelines, event-driven architectures, and stream processing."
+description: "Distributed event streaming platform for high-throughput, fault-tolerant real-time data pipelines, event-driven architectures, and stream processing."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source; Confluent Cloud from $0.10/GB + compute; Amazon MSK, Redpanda Cloud also available"

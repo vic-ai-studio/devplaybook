@@ -1,6 +1,6 @@
 ---
 title: "Fastly Compute — High-Performance Edge Computing Platform"
-description: "WebAssembly-powered edge compute platform — run Rust, JavaScript, Go, or any WASM-compiled language at Fastly's global CDN with near-zero cold starts and streaming responses."
+description: "WebAssembly-powered edge compute — run Rust, JavaScript, Go, or any WASM language at Fastly's global CDN with near-zero cold starts and streaming."
 category: "WebAssembly & Edge Computing"
 pricing: "Paid"
 pricingDetail: "Pay-per-use: $0.05 per million requests + $0.30/GB for bandwidth; Free trial available"

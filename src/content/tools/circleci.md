@@ -1,6 +1,6 @@
 ---
 title: "CircleCI — Cloud-Native CI/CD Platform"
-description: "Cloud-native CI/CD platform — fast pipelines with Docker-first workflows, parallelism, test splitting, and deep GitHub/Bitbucket integration with a generous free tier."
+description: "Cloud-native CI/CD platform with fast Docker-first pipelines, parallelism, test splitting, and deep GitHub/Bitbucket integration plus a generous free tier."
 category: "API Testing & CI/CD"
 pricing: "Freemium"
 pricingDetail: "Free: 6,000 credits/month; Performance plan from $15/month; Scale plan custom pricing; self-hosted runners available"

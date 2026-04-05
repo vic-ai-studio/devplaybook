@@ -1,6 +1,6 @@
 ---
 title: "Artillery — Cloud-Native Load Testing for Modern Apps"
-description: "YAML-first load testing for APIs, WebSockets, and browsers — Artillery runs distributed tests from cloud infrastructure with actionable metrics and scenario automation."
+description: "Artillery is a YAML-first load testing tool for APIs, WebSockets, and browsers — distributed cloud tests with actionable metrics and automation."
 category: "Performance Testing"
 pricing: "Open Source"
 pricingDetail: "Open source CLI is free; Artillery Cloud starts at free tier, then paid plans"

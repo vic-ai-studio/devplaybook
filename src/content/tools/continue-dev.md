@@ -1,6 +1,6 @@
 ---
 title: "Continue.dev — Open-Source AI Coding Assistant for VS Code & JetBrains"
-description: "Continue is an open-source AI code assistant that integrates directly into VS Code and JetBrains IDEs. Connect any LLM — Claude, GPT-4, Mistral, or local models — for inline autocomplete and chat."
+description: "Open-source AI code assistant for VS Code and JetBrains — connect any LLM (Claude, GPT-4, Mistral, or local models) for autocomplete and chat."
 category: "AI Coding"
 pricing: "Open Source"
 pricingDetail: "Free (you supply your own API keys or use local models)"

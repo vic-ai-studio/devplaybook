@@ -1,6 +1,6 @@
 ---
 title: "Expo — The Easiest Way to Build React Native Apps"
-description: "Expo is the managed React Native platform providing a toolchain (Expo CLI, EAS Build, EAS Submit), SDK of pre-built modules, and OTA updates for iOS and Android."
+description: "Expo is the managed React Native platform — Expo CLI, EAS Build/Submit, pre-built SDK modules, and over-the-air updates for iOS and Android."
 category: "Mobile"
 pricing: "Freemium"
 pricingDetail: "Expo SDK and CLI are free. EAS Build has a free tier (30 builds/month) then paid plans from $29/month."

@@ -1,6 +1,6 @@
 ---
 title: "AWS Lambda@Edge — Run Code at CloudFront Edge Locations"
-description: "Run Lambda functions at CloudFront edge locations — customize CDN behavior, implement A/B testing, add authentication, and transform requests/responses without a central origin."
+description: "Run Lambda functions at CloudFront edge locations — customize CDN behavior, add authentication, A/B testing, and transform requests without an origin."
 category: "WebAssembly & Edge Computing"
 pricing: "Paid"
 pricingDetail: "$0.60 per 1M requests + $0.00005001 per 100ms of duration; No free tier for Lambda@Edge"

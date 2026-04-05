@@ -1,6 +1,6 @@
 ---
 title: "Cosign — Container Image Signing & Verification"
-description: "Cosign is the standard tool for signing, verifying, and attaching metadata to container images. Part of the Sigstore project, it enables software supply chain security without managing key infrastructure."
+description: "Sign, verify, and attach metadata to container images with Sigstore — the standard for software supply chain security without key infrastructure."
 category: "Security"
 pricing: "Free / Open Source"
 pricingDetail: "Cosign is 100% free and open-source (Apache 2.0). Part of the Sigstore project, hosted by the OpenSSF."

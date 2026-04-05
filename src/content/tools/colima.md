@@ -1,6 +1,6 @@
 ---
 title: "Colima"
-description: "Free, minimal container runtime for macOS and Linux — run Docker and containerd without Docker Desktop, using Lima VMs under the hood."
+description: "Colima is a free, minimal container runtime for macOS and Linux — run Docker and containerd without Docker Desktop, powered by Lima VMs."
 category: "Documentation & DX Tools"
 pricing: "Free"
 pricingDetail: "Open source (MIT)"

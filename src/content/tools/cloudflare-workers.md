@@ -1,6 +1,6 @@
 ---
 title: "Cloudflare Workers — Serverless JavaScript at the Edge"
-description: "Edge serverless platform running JavaScript/TypeScript and WebAssembly at 300+ global PoPs — sub-millisecond cold starts, KV storage, D1 database, R2 object storage, and Durable Objects."
+description: "Edge serverless platform running JS/TS and WebAssembly at 300+ global PoPs — sub-millisecond cold starts with KV, D1, R2, and Durable Objects."
 category: "WebAssembly & Edge Computing"
 pricing: "Freemium"
 pricingDetail: "Free: 100K requests/day; Paid $5/month for 10M requests + compute time"

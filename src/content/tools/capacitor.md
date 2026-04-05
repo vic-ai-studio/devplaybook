@@ -1,6 +1,6 @@
 ---
 title: "Ionic Capacitor — Hybrid Mobile Apps with Web Technologies"
-description: "Capacitor is Ionic's modern bridge layer for running web apps as native iOS/Android apps. Use any web framework with access to native APIs via capacitor plugins."
+description: "Ionic Capacitor bridges web apps to native iOS and Android — use any web framework with full access to native device APIs via a plugin ecosystem."
 category: "Mobile"
 pricing: "Open Source"
 pricingDetail: "Free and open source. Capacitor Cloud (advanced features) has paid tiers."

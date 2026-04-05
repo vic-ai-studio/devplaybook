@@ -1,6 +1,6 @@
 ---
 title: "ClickHouse — Fast Open-Source Columnar Database for Analytics"
-description: "Column-oriented OLAP database — blazing-fast analytics queries on billions of rows, real-time data ingestion, and efficient compression."
+description: "ClickHouse is a column-oriented OLAP database for blazing-fast analytics on billions of rows — real-time ingestion with efficient compression."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source; ClickHouse Cloud from $0.0222/hour per replica; Altinity Cloud also available"

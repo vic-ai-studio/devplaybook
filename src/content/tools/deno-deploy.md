@@ -1,6 +1,6 @@
 ---
 title: "Deno Deploy — Serverless Edge Runtime for Deno Applications"
-description: "Global edge runtime for Deno scripts — deploy TypeScript functions to 35+ regions with zero configuration, built-in npm compatibility, and instant deployments from GitHub."
+description: "Global edge runtime for Deno and TypeScript — deploy to 35+ regions with zero config, built-in npm compatibility, and instant GitHub deployments."
 category: "WebAssembly & Edge Computing"
 pricing: "Freemium"
 pricingDetail: "Free: 100K requests/day, 100GB transfer; Pro $20/month; Business $50/month"

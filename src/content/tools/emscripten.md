@@ -1,6 +1,6 @@
 ---
 title: "Emscripten"
-description: "Compiler toolchain for converting C and C++ code to WebAssembly and JavaScript — powers many high-performance web applications including games, image editors, and scientific tools."
+description: "Compile C and C++ code to WebAssembly and JavaScript — powers high-performance web apps including games, image editors, and scientific tools."
 category: "WebAssembly & Edge Computing"
 pricing: "Free"
 pricingDetail: "Fully free and open source (MIT/University of Illinois)"

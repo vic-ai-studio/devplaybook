@@ -1,6 +1,6 @@
 ---
 title: "Aider — AI Pair Programmer in Your Terminal"
-description: "Aider is an open-source AI pair programming tool that works in your terminal. Edit code across multiple files using GPT-4o, Claude, or any LLM. Works with any git repo."
+description: "Open-source AI pair programming tool for your terminal. Edit code across multiple files using GPT-4o, Claude, or any LLM with full git integration."
 category: "AI Coding"
 pricing: "Open Source"
 pricingDetail: "Free (you pay only for your own API key — OpenAI/Anthropic usage)"
