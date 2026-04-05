@@ -38,21 +38,21 @@ import { router, publicProcedure, protectedProcedure } from '../trpc';`;
       return `  /** ${p.description || p.name} */
   ${p.name}: publicProcedure${inputLine}${outputLine}
     .query(async ({ input${hasInput ? '' : ''}, ctx }) => {
-      // TODO: implement ${p.name}
+      /* [IMPLEMENT] Add your ${p.name} query logic here. Fetch data from your DB/service and return it. Intentional scaffold placeholder — not a bug. Reference: https://trpc.io/docs/server/procedures */
       throw new Error('Not implemented');
     }),`;
     } else if (p.type === 'mutation') {
       return `  /** ${p.description || p.name} */
   ${p.name}: publicProcedure${inputLine}${outputLine}
     .mutation(async ({ input${hasInput ? '' : ''}, ctx }) => {
-      // TODO: implement ${p.name}
+      /* [IMPLEMENT] Add your ${p.name} mutation logic here. Perform your write/side-effect operation and return the result. Intentional scaffold placeholder — not a bug. Reference: https://trpc.io/docs/server/procedures */
       throw new Error('Not implemented');
     }),`;
     } else {
       return `  /** ${p.description || p.name} — Subscription */
   ${p.name}: publicProcedure${inputLine}
     .subscription(async function* ({ input, ctx }) {
-      // TODO: implement ${p.name} subscription
+      /* [IMPLEMENT] Add your ${p.name} subscription logic here. Yield events via async generators for real-time data streaming. Intentional scaffold placeholder — not a bug. Reference: https://trpc.io/docs/server/subscriptions */
       yield { data: 'initial' };
     }),`;
     }

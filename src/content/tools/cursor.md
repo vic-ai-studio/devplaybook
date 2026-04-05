@@ -99,3 +99,24 @@ You are working on a Next.js 15 app with TypeScript strict mode.
 **Codebase Q&A for onboarding**: New team members can use Cursor Chat with `@codebase` to ask "how does authentication work in this project?", "what's the pattern for adding a new API route?", or "where are environment variables configured?" — and get accurate answers grounded in the actual code rather than outdated documentation.
 
 **Debugging with context**: Paste an error stack trace into Cursor Chat alongside `@file` references to the relevant modules. Cursor can trace the error through multiple files and suggest a fix that accounts for how the code actually interacts — more effective than searching StackOverflow for generic solutions.
+
+## Concrete Use Case: Extracting a Payment Module from a Django Monolith Using Agent Mode
+
+A platform engineering team at a fintech startup is tasked with extracting the payments module from a 130,000-line Python Django monolith into a standalone FastAPI microservice. The module handles card tokenization, recurring billing, refund processing, and webhook delivery — deeply entangled with the user session system, the internal event bus, and four database models. Two senior engineers estimated the extraction at six weeks; prior similar work taught them how manually tracing cross-file dependencies drains time.
+
+The team configures Cursor with a `.cursorrules` file specifying the target architecture: FastAPI with Pydantic V2, async SQLAlchemy 2.0, and an event schema matching their internal Kafka message format. Using `@codebase`, the lead engineer asks Cursor to map all entry points into the payments module — every import, every foreign key reference, every call site. Cursor identifies 52 call sites across 28 files in under two minutes, producing a structured list that becomes the migration checklist. For each call site, Cursor's multi-file edit mode refactors callers to use a thin `PaymentsClient` abstraction instead of direct imports, with the engineer reviewing and accepting diffs 4-6 files at a time. Agent mode handles scaffolding: given a prompt describing the FastAPI service's required endpoints, it generates the router layer, SQLAlchemy models, Alembic migration, Pydantic schemas, and pytest fixtures in a single session — 22 files that pass `mypy --strict` without manual intervention.
+
+The extraction completes in 11 working days — under half the original estimate. The speed gain traces to two factors: eliminating manual search-and-replace across 52 call sites (handled by audited multi-file diffs), and using Agent mode for FastAPI scaffolding that previously occupied the first two days of any new service. Cursor Tab's predictive completions further accelerate the custom business logic that can't be auto-generated — particularly the webhook retry logic and idempotency key handling. Total cost: two Cursor Pro subscriptions at $40/month — a small fraction of the 3-4 weeks of senior engineering time saved.
+
+## When to Use Cursor
+
+**Use Cursor when:**
+- You are tackling multi-file refactors where cross-file context matters — Cursor's whole-repo indexing produces far more accurate edits than single-file AI tools
+- You want Agent mode for autonomous scaffolding of new services, features, or test suites with minimal hand-holding
+- Onboarding new team members who need to explore an unfamiliar codebase through conversational Q&A rather than reading documentation
+- You need inline code generation (Cmd+K) that understands your project's conventions, not just generic patterns
+
+**When NOT to use Cursor:**
+- Your team is entrenched in JetBrains IDEs and IT policy prevents adopting new editor binaries — GitHub Copilot's plugin model fits better
+- You work primarily on single-file edits where whole-codebase indexing adds no value over standard Copilot
+- Privacy constraints prohibit sending code to cloud inference endpoints and you need a fully local AI coding solution

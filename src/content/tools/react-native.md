@@ -105,3 +105,24 @@ npx @react-native-community/cli init MyApp
 ```
 
 React Native's combination of a massive ecosystem, familiar React patterns, Expo's managed infrastructure, and the performance gains of the New Architecture make it the most practical choice for most cross-platform mobile projects in 2026.
+
+## Concrete Use Case: Shipping a B2C Consumer App to iOS and Android from a Web React Team
+
+A startup with a React/Next.js web team of six engineers is tasked with shipping a consumer mobile app on both iOS and Android within three months. Hiring native iOS and Android specialists is budget-prohibitive; the team has no Swift or Kotlin experience. They choose Expo's managed workflow with React Native, betting that the team's React knowledge transfers directly.
+
+The team bootstraps with `npx create-expo-app` using the TypeScript template, which provides Expo Router (file-based navigation), EAS Build for cloud-based binary compilation (critical — nobody has a macOS machine for iOS builds), and EAS Update for over-the-air hotfixes between App Store releases. Navigation uses React Navigation v6 with a Stack + BottomTab hybrid pattern the team finds immediately familiar from web routing. State management uses Zustand (same library the web team uses) for global state and React Query for API caching — zero new libraries to learn for server state. For the core smooth-scroll feed feature, they use FlashList instead of FlatList after benchmarking, and Reanimated 3 for gesture-driven like-button animations that run at 60fps on the native UI thread.
+
+The app ships to both App Store and Google Play in 11 weeks. EAS Build handles all binary compilation in the cloud — iOS and Android builds run in parallel and upload directly to TestFlight and Google Play Internal Testing without any local Xcode/Android Studio environment. When a critical bug surfaces in the onboarding flow two days after launch, the team deploys a fix via EAS Update in 20 minutes: an over-the-air JavaScript bundle push that reaches active users without an App Store review cycle. Code sharing between web and mobile reaches approximately 65% — business logic, API integration, Zod validation schemas, and utility functions are shared via a `packages/core` workspace; only navigation and UI components are platform-specific. The engineering cost is two months of team productivity on new technology versus the 12+ months required to hire and onboard dedicated iOS/Android engineers.
+
+## When to Use React Native
+
+**Use React Native when:**
+- Your development team has existing React and JavaScript/TypeScript skills and you want to apply that knowledge directly to mobile without learning Swift, Kotlin, or Dart
+- You need to ship to both iOS and Android from a single codebase and can accept minor platform-specific divergences
+- You want a large, mature ecosystem — thousands of npm packages, strong community support, Meta's long-term investment, and Expo's managed infrastructure
+- Time-to-market is critical and you want the fastest path from a web React team to published mobile apps
+
+**When NOT to use React Native:**
+- Your app requires extremely complex, custom animations at 60fps with pixel-perfect rendering — Flutter's Impeller rendering engine has a consistent edge here, especially for game-like interfaces
+- Your app needs deep native platform integration with platform-specific APIs (ARKit, HealthKit, advanced Bluetooth) where native modules add significant complexity
+- Your team has no JavaScript/TypeScript experience and is starting fresh — Flutter's Dart is equally approachable and Flutter's tooling may be simpler for a team with no existing JS ecosystem investment

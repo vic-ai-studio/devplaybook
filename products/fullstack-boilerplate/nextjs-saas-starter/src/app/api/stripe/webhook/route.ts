@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
+import { sendPaymentFailedEmail } from "@/lib/email";
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -181,8 +182,13 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
     data: { status: "PAST_DUE" },
   });
 
-  // TODO: Send payment failed email to user
-  console.log(`Payment failed for user ${user.email}`);
+  if (user.email) {
+    try {
+      await sendPaymentFailedEmail(user.email, user.name);
+    } catch (err) {
+      console.error(`Failed to send payment-failed email to ${user.email}:`, err);
+    }
+  }
 }
 
 function getPlanFromPriceId(priceId: string): "FREE" | "PRO" | "ENTERPRISE" {

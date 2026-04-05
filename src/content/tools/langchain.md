@@ -118,3 +118,24 @@ vectorstore = FAISS.from_documents(chunks, OpenAIEmbeddings())
 ## LangSmith: Observability for LLM Apps
 
 LangSmith is LangChain's tracing and evaluation platform. Set `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` in your environment, and every chain invocation is automatically logged with inputs, outputs, token counts, and latency. This is invaluable for debugging prompt quality issues or unexpected agent behavior in production.
+
+## Concrete Use Case: Building an Internal Documentation Q&A Bot for a 200-Person Engineering Team
+
+A platform team at a mid-size fintech company maintains over 800 pages of internal engineering documentation: ADRs (Architecture Decision Records), runbooks, API reference, and incident post-mortems spread across Confluence and a GitHub Pages static site. Engineers waste significant time searching for answers buried in documents — the average response time in the `#ask-platform` Slack channel is 45 minutes because someone has to dig through Confluence. The team decides to build an internal Q&A bot using LangChain that answers questions grounded in actual documentation with source citations.
+
+The pipeline is built in Python using LangChain's document loading and RAG primitives. Confluence pages are exported weekly via the Confluence API and loaded using `ConfluenceLoader`. GitHub Pages content is pulled via `DirectoryLoader`. Both corpora are chunked with `RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)` to preserve section context. Embeddings are computed using `OpenAIEmbeddings` and stored in a Pinecone vector store with metadata tags for document type (`runbook`, `adr`, `api-ref`), team ownership, and last-modified date. The retrieval chain uses a `MultiQueryRetriever` — it rewrites the user's question into three alternative phrasings before querying the vector store, dramatically improving recall for questions phrased differently than documentation titles. Responses are generated with `gpt-4o` via LCEL: the chain retrieves six chunks, formats them with source URLs, and instructs the model to cite every claim with the source document name.
+
+The bot is deployed as a Slack app. Engineers ask questions by mentioning `@platform-bot` and receive an answer with two to three source links within four seconds. LangSmith traces every chain invocation with the full prompt, retrieved chunks, token counts, and latency — giving the platform team visibility into which questions are answered poorly and which documents are missing from the corpus. After two months, the team curates 40 frequently-missed question/answer pairs as LangSmith evaluation datasets and uses them to catch retrieval regressions when updating the chunking strategy or embedding model. Average response latency in the Slack channel drops from 45 minutes to under one minute for documentation-answerable questions.
+
+## When to Use LangChain
+
+**Use LangChain when:**
+- You are building a RAG application that needs document loading, chunking, embedding, vector retrieval, and LLM response generation as a composable pipeline — LangChain's integrations eliminate weeks of glue code
+- Your project needs to swap LLM providers (OpenAI → Anthropic → local Ollama) without rewriting application logic — LCEL's provider-agnostic abstractions make this nearly transparent
+- You are building multi-agent workflows where agents use tools, hand off to other agents, or require persistent state — LangGraph provides the stateful graph execution needed for these patterns
+- You want observability into LLM call chains (token usage, latency, prompt quality) via LangSmith, especially for debugging retrieval quality in production
+
+**When NOT to use LangChain:**
+- You are making a single LLM API call — calling the Anthropic or OpenAI SDK directly is simpler and adds no unnecessary abstraction overhead
+- Your team is building in a language LangChain doesn't support well (Go, Java, Rust) — use native SDKs or lighter-weight alternatives designed for those ecosystems
+- You need very fine-grained control over how every prompt is constructed and sent — LangChain's abstractions can make it harder to inspect and tune the exact prompt format

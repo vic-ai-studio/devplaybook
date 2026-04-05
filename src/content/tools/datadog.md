@@ -162,3 +162,24 @@ browser_test = api.Synthetics.create_test(
 | Correlation | Best-in-class | Requires config | Good |
 
 Datadog is the right choice when: you need immediate productivity, engineering time is more expensive than licensing, and you want the best-in-class UX for incident investigation.
+
+## Concrete Use Case: Unifying Observability Across 8 Microservices After a 4-Hour Incident
+
+An engineering team at an e-commerce platform runs 8 Node.js microservices on AWS ECS: storefront, search, inventory, cart, checkout, payments, notifications, and analytics. A 4-hour production incident reveals the root cause: a slow database connection in the inventory service caused cascading timeouts in cart and checkout — visible to users as blank product pages and failed checkouts. Engineers lost critical minutes jumping between CloudWatch Metrics, CloudWatch Logs, and manual `ecs exec` sessions. The postmortem decision: adopt Datadog for unified observability.
+
+The migration runs over two weeks. The Datadog Agent is deployed as a sidecar container in every ECS task definition, configured to collect host metrics, container metrics, and forward logs. APM is enabled via `ddtrace-run` wrapping each Node.js service with `DD_SERVICE`, `DD_ENV`, and `DD_VERSION` environment variables set to the service name, deployment environment, and Git SHA respectively. Trace-to-log correlation is configured by injecting the Datadog trace ID into structured JSON log lines — engineers can jump from a slow trace in APM directly to the exact log lines generated during that request. Service topology maps are immediately available: the team can see in real time that the inventory service's upstream PostgreSQL calls are driving P99 latency above 2 seconds, and clicking through shows the RDS instance CPU pinned at 95%.
+
+The team configures monitors for three key SLIs: checkout error rate (alert at 0.5%, critical at 1%), cart API P95 latency (alert at 800ms), and inventory database query duration (alert at 500ms). Alerts route to PagerDuty for critical thresholds and Slack for warnings, with message templates including the exact metric value, affected service, and a deep-link to the APM service dashboard. Synthetic monitoring is added for the checkout flow — a browser test running every 60 seconds from three AWS regions verifies the full add-to-cart and checkout sequence completes in under 3 seconds. Six months after the migration, mean time to diagnose (MTTD) drops from 47 minutes to 11 minutes. The cost — approximately $4,200/month across all 8 services with APM and logs — is justified against the estimated $180,000 in GMV lost during the original 4-hour incident.
+
+## When to Use Datadog
+
+**Use Datadog when:**
+- Your engineering team needs immediate productivity with a fully integrated observability platform — Datadog's 600+ out-of-the-box integrations and automatic service topology maps reduce time-to-value versus assembling a Grafana LGTM stack
+- You are running microservices and need APM distributed tracing with automatic correlation to infrastructure metrics and log lines — Datadog's trace-to-log correlation is best-in-class and requires minimal manual configuration
+- You need synthetic monitoring (scheduled browser/API tests) alongside infrastructure and application observability in one platform with one alert routing system
+- Engineering time is more expensive than licensing and you cannot afford to spend weeks building and maintaining open-source observability infrastructure
+
+**When NOT to use Datadog:**
+- Your log volume is high (100GB+/day) and Datadog's $0.10/GB ingestion pricing would create a significant monthly bill — Grafana Loki with S3 storage is 10-50x cheaper at scale
+- You have a strong preference for open standards (OpenTelemetry, Prometheus) and want to avoid vendor lock-in that prevents migrating dashboards, alert rules, and instrumentation to another platform
+- You are a small team (fewer than 5 engineers, one or two services) where Datadog's pricing and configuration complexity outweighs a simpler solution like Sentry + Uptime Kuma

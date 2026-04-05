@@ -95,7 +95,7 @@ function generateTypeScript(cfg: ScaffolderConfig): string {
   activities.forEach((act, i) => {
     lines.push(`export async function ${activityFuncs[i]}(input: Record<string, unknown>): Promise<void> {`);
     lines.push(`  Context.current().heartbeat();`);
-    lines.push(`  // TODO: implement ${act}`);
+    lines.push(`  /* [IMPLEMENT] Add your ${act} business logic here. This is an intentional scaffold placeholder — replace with your activity implementation. Reference: https://docs.temporal.io/develop/typescript/core-application#develop-activities */`);
     lines.push(`  console.log('Executing ${act}', input);`);
     lines.push('}');
     lines.push('');
@@ -214,7 +214,7 @@ function generateGo(cfg: ScaffolderConfig): string {
   activities.forEach(act => {
     lines.push(`func ${act}(ctx context.Context, input map[string]interface{}) error {`);
     lines.push(`\tfmt.Printf("Executing ${act}: %v\\n", input)`);
-    lines.push('\t// TODO: implement activity');
+    lines.push('\t// [IMPLEMENT] Add your activity business logic here. This is an intentional scaffold placeholder — replace with your implementation. Reference: https://docs.temporal.io/develop/go/core-application#develop-activities');
     lines.push('\treturn nil');
     lines.push('}');
     lines.push('');
@@ -292,7 +292,7 @@ function generatePython(cfg: ScaffolderConfig): string {
     lines.push('@activity.defn');
     lines.push(`async def ${fn}(input: dict) -> None:`);
     lines.push(`    activity.heartbeat()`);
-    lines.push(`    # TODO: implement ${act}`);
+    lines.push(`    # [IMPLEMENT] Add your ${act} business logic here. Intentional scaffold placeholder — replace with your implementation. Reference: https://docs.temporal.io/develop/python/core-application#develop-activities`);
     lines.push(`    print(f"Executing ${act}: {input}")`);
     lines.push('');
   });

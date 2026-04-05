@@ -149,3 +149,24 @@ jobs:
 - **Use `if: always()` on artifact uploads and notification steps.** Without it, a test failure will skip your coverage upload or Slack notification, leaving you without the artifacts you need to diagnose the failure.
 
 - **Store secrets in GitHub Environments, not repo-level secrets.** Environments let you require manual approval before a job can access production credentials, add deployment protection rules, and get per-environment audit logs. This is especially important for production deploy jobs.
+
+## Concrete Use Case: Building a Multi-Stage Release Pipeline with Deployment Gates for a SaaS Platform
+
+A DevOps team at a B2B SaaS company is replacing an aging Jenkins setup with GitHub Actions. Their existing CI pipeline runs tests sequentially (45 minutes end-to-end) with no parallel stages, no deployment gates, and no automated rollback. The new pipeline needs to run lint/type-check in parallel with tests, gate production deploys behind a staging verification step, require manual approval for production, and auto-rollback on health check failure — all against their existing AWS ECS Fargate infrastructure.
+
+The team builds a three-workflow system. The `ci.yml` workflow runs on every PR: lint and type-checking run as one job, unit tests as a second parallel job split across four runners using a matrix strategy, and integration tests as a third job requiring the first two to pass. Total runtime drops from 45 minutes to 14 minutes. For deploys, a separate `deploy.yml` triggers on merge to `main`. It uses OIDC to authenticate to AWS without storing static credentials (`aws-actions/configure-aws-credentials@v4` with a role ARN), builds and pushes the Docker image to ECR, deploys to staging ECS, then runs a health-check job that polls the staging load balancer for five minutes. Only after the staging health check passes does the workflow surface a manual approval gate using GitHub Environments with a required reviewer — the on-call engineer must approve before the workflow continues to the production deploy job.
+
+The rollback mechanism uses a `workflow_dispatch` trigger with a `version` input: the on-call engineer triggers a rollback from the GitHub Actions UI in 90 seconds by entering the previous image tag. The team also adds `concurrency: { group: deploy-production, cancel-in-progress: false }` to prevent concurrent production deploys when multiple PRs merge quickly. Within the first month, two incidents that previously required manual AWS console intervention are resolved via the rollback workflow without waking up a second engineer.
+
+## When to Use GitHub Actions
+
+**Use GitHub Actions when:**
+- Your source code is hosted on GitHub and you want zero-friction CI/CD with no separate account setup, webhook configuration, or auth management
+- You need a large library of pre-built integrations — the 20,000+ marketplace actions cover AWS, GCP, Azure, Docker, Kubernetes, Slack, and virtually every tool in the modern stack
+- Your team wants matrix builds to test against multiple runtime versions in parallel, reducing CI time without managing separate CI configuration
+- You want keyless cloud authentication via OIDC, eliminating the need to store long-lived cloud credentials as GitHub secrets
+
+**When NOT to use GitHub Actions:**
+- Your code lives on GitLab, Bitbucket, or an on-premises VCS — GitLab CI or Jenkins will integrate more naturally
+- You need complex cross-repository pipeline orchestration — Tekton or dedicated pipeline orchestrators handle this more cleanly
+- Strict compliance requirements mandate that CI/CD infrastructure runs on self-hosted, airgapped runners with full audit control over every execution environment
