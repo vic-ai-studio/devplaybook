@@ -103,3 +103,26 @@ LIMIT 100;
 | Best for | High-concurrency dashboards | Ad-hoc analytics, JOINs |
 
 Druid is overkill for most companies. Use ClickHouse first — it handles most real-time analytics needs with less complexity. Evaluate Druid when you need extremely high query concurrency (1000+ concurrent dashboard queries) or roll-up compression is essential for storage costs.
+
+## Concrete Use Case: Real-Time Ad Campaign Dashboards at Scale
+
+An ad-tech platform processes 4 billion impression events per day across 200,000 active campaigns. Each event carries 15+ dimensions: campaign ID, creative variant, publisher, geo (country/state/city), device type, OS, browser, ad format, bid price, and conversion flags. Campaign managers need dashboards that answer questions like "show me CTR by creative variant in Germany over the last 6 hours, broken down by device type" — and they need answers in under one second, even during peak traffic when 500 managers are querying simultaneously.
+
+Before Druid, the platform used PostgreSQL with materialized views refreshed every 15 minutes. Queries on recent data took 8-30 seconds, and the 15-minute staleness meant campaign managers couldn't react to underperforming creatives in real time. Moving to a Spark SQL cluster reduced query times to 3-5 seconds but couldn't handle the concurrency — queries queued when more than 50 users were active. The materialized view approach also required careful pre-computation of every dimension combination, making ad-hoc exploration impossible.
+
+With Apache Druid, impression events stream from Kafka and become queryable within 2-3 seconds of arrival. Roll-up at minute granularity compresses 4 billion daily rows to approximately 80 million segments, reducing storage costs by 50x while preserving the ability to drill down on any dimension combination. Druid's segment-level parallelism and bitmap indexes on high-cardinality dimensions (like campaign ID) keep p99 query latency under 800ms even at 500 concurrent users. Campaign managers can now spot a creative underperforming in a specific region, pause it, and reallocate budget — all within minutes instead of hours.
+
+## When to Use Apache Druid
+
+**Use Apache Druid when:**
+- You need sub-second query latency on billions of event rows with high-cardinality dimensions (100K+ unique values per column)
+- Your workload demands high query concurrency — hundreds or thousands of simultaneous dashboard users hitting the same cluster
+- Data arrives as a continuous event stream (from Kafka, Kinesis, or similar) and must be queryable within seconds
+- Roll-up at ingestion time provides meaningful compression — your events have repeating dimension combinations that can be pre-aggregated
+- You are building always-on operational dashboards where consistent low-latency matters more than ad-hoc query flexibility
+
+**When NOT to use Apache Druid:**
+- Your dataset is under 100 million rows — PostgreSQL, ClickHouse, or DuckDB will handle this with far less operational burden
+- You need complex JOINs between multiple tables or transactional write patterns — Druid's JOIN support is limited and it has no UPDATE/DELETE semantics
+- Your team lacks dedicated infrastructure engineers — Druid's multi-node architecture (Coordinator, Broker, Historical, MiddleManager, Router) requires significant operational expertise to deploy, tune, and maintain
+- Ad-hoc exploratory SQL is the primary use case — ClickHouse or a data warehouse like BigQuery provides a more complete SQL experience with lower complexity

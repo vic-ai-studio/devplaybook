@@ -133,3 +133,23 @@ npm run deploy  # Uses gh-pages branch
 - **Use the `@docusaurus/plugin-ideal-image`** for documentation with screenshots or diagrams. It automatically generates responsive images with lazy loading, dramatically reducing page weight for docs-heavy sites. Install it once and add `![]` image tags as normal — the optimization is automatic.
 
 - **Swap Algolia for local search on private or intranet docs.** Algolia DocSearch requires your site to be publicly crawlable. For internal documentation, use `@easyops-cn/docusaurus-search-local` instead — it generates a client-side search index at build time with no external service dependency.
+
+## Best For
+
+- **Open-source projects** needing professional documentation with versioning, search, and internationalization — Meta uses it for React, Redux, and dozens of other major projects
+- **Developer tools and SDKs** that need to document multiple API versions simultaneously and let users switch between them
+- **Multilingual documentation** — Docusaurus i18n support is production-ready and used by projects serving global developer communities
+- **Teams comfortable with React** who want to embed interactive demos, live code editors, or custom React components directly in documentation pages
+
+## Docusaurus vs. Alternatives
+
+| | Docusaurus | MkDocs | GitBook | Nextra |
+|--|-----------|--------|---------|--------|
+| Framework | React | Python (mkdocs) | SaaS | Next.js |
+| Versioning | ✅ Built-in | ✗ (plugin) | ✅ | ✗ |
+| MDX/React | ✅ | ✗ | ✗ | ✅ |
+| Search | Algolia/local | Algolia/local | ✅ Built-in | Algolia |
+| Self-hosted | ✅ | ✅ | Optional ($) | ✅ |
+| Best for | Open-source, OSS SDKs | Python projects | Non-technical teams | Next.js sites |
+
+Docusaurus is the best choice for technical documentation that needs versioning and React integration. Use MkDocs for Python projects. Use GitBook for non-technical writers who don't want to manage Markdown and GitHub.

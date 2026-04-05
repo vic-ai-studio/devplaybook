@@ -180,3 +180,22 @@ echo "Your database is ready!"
 ```
 
 The Neon CLI enables the most developer-friendly database workflow available — every branch, PR, and developer gets their own isolated PostgreSQL database in seconds.
+
+## Best For
+
+- **Full-stack developers on Vercel or Railway** who want serverless PostgreSQL that scales to zero and eliminates idle database costs
+- **Feature branch workflows** — create an isolated database branch per PR, run migrations and tests against it, then discard — identical to how you branch code
+- **Teams using database branching** to safely test schema migrations without affecting production or shared development databases
+- **Startups wanting zero-infrastructure-management PostgreSQL** — Neon handles connection pooling (via PgBouncer), backups, and scaling automatically
+
+## Neon vs. Alternatives
+
+| | Neon | Supabase | PlanetScale | Railway Postgres |
+|--|------|----------|-------------|-----------------|
+| Database | PostgreSQL | PostgreSQL | MySQL (Vitess) | PostgreSQL |
+| Branching | ✅ | ✗ | ✅ (deploy requests) | ✗ |
+| Scale to zero | ✅ | Partial (Pro) | ✅ | ✗ |
+| Free tier | 0.5 CU, 512MB | 500MB | 5GB | $5 credit/mo |
+| Best for | Branch-per-PR workflows | Full-stack app backend | MySQL/multi-tenancy | Simple Postgres |
+
+Neon's branch-per-PR workflow is its differentiator. For teams that need a full backend-as-a-service (auth, storage, real-time), Supabase is a better fit.

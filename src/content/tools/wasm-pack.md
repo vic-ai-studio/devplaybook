@@ -168,3 +168,23 @@ const a = new Matrix(3, 3);
 const stats = compute_stats(new Float64Array([1, 2, 3, 4, 5]));
 console.log(stats.mean);  // 3
 ```
+
+## Best For
+
+- **Rust developers** who want to expose performance-critical Rust libraries to JavaScript/TypeScript applications without writing manual FFI bindings
+- **CPU-intensive browser tasks** — cryptography, image processing, video encoding, compression, physics simulations — where JavaScript is too slow
+- **Sharing core logic** between a Rust backend and a TypeScript frontend in a monorepo (compile once to WASM, use in browser)
+- **npm library authors** who want to publish high-performance packages that run in any JavaScript environment without native addons
+
+## wasm-pack vs. Alternatives
+
+| | wasm-pack (Rust) | AssemblyScript | Emscripten (C/C++) | Wasmtime (server) |
+|--|-----------------|----------------|-------------------|-----------------|
+| Language | Rust | TypeScript-like | C/C++ | Rust/Go/Python |
+| TS bindings | Auto-generated | Manual | Manual | N/A |
+| npm publishing | ✅ Built-in | Manual | Manual | N/A |
+| Learning curve | High (Rust) | Low | High | Medium |
+| Runtime target | Browser/Node | Browser/Node | Browser/Node | Server |
+| Best for | Max performance + types | TS devs needing WASM | Existing C/C++ codebases | Server-side sandboxing |
+
+Use wasm-pack when you're writing new Rust code for browser performance. Use AssemblyScript if your team knows TypeScript and can't afford the Rust learning curve. Use Emscripten only if you have existing C/C++ code to port.

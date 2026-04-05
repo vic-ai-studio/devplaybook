@@ -205,3 +205,24 @@ export class UsersService {
 ```
 
 TypeORM remains the go-to ORM for NestJS applications and enterprise systems that benefit from its mature feature set, despite newer alternatives offering better performance.
+
+## Best For
+
+- **NestJS applications** — TypeORM is the most common ORM in NestJS and is deeply integrated into NestJS modules and dependency injection
+- **Enterprise TypeScript projects** needing Active Record or Data Mapper patterns with full decorator support
+- **Legacy MySQL/PostgreSQL projects** migrating from plain SQL queries to an ORM while needing a migration system
+- **Teams comfortable with a large, mature ecosystem** with 30k+ GitHub stars and extensive documentation
+
+## TypeORM vs. Alternatives
+
+| | TypeORM | Prisma | Drizzle ORM | MikroORM |
+|--|---------|--------|-------------|---------|
+| Type safety | Good | Excellent | Excellent | Good |
+| Performance | Medium | Medium | Fast | Medium |
+| Migration | ✅ Built-in | ✅ | ✅ | ✅ |
+| Bundle size | Large | Medium | Small | Medium |
+| Active Record | ✅ | ✗ | ✗ | ✗ |
+| NestJS | First-class | Good | Growing | Good |
+| Best for | NestJS, enterprise | Type-safe queries, Next.js | Raw SQL feel + types | Domain-driven design |
+
+Prisma and Drizzle offer better type safety and developer experience for new projects. TypeORM remains the right choice when NestJS integration depth or Active Record pattern is needed.

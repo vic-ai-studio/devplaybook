@@ -132,3 +132,24 @@ ALTER TABLE orders ALTER COLUMN total_amount TYPE DECIMAL(12,2);
 | Best for | Multi-cloud, multi-engine | Databricks-centric stacks |
 
 For Databricks-centric organizations, Delta Lake is simpler. For multi-cloud or multi-engine architectures, Iceberg's open standard and broader engine support make it the better long-term choice.
+
+## Best For
+
+- **Multi-engine data architectures** where different teams use Spark, Trino, Flink, and Athena to query the same data — Iceberg's open spec ensures compatibility across all engines
+- **Multi-cloud organizations** who need to read data from S3, GCS, and Azure Blob with a single table format that doesn't lock them into one cloud
+- **Teams adopting a lakehouse** with AWS Glue, Snowflake, or BigQuery as the catalog — all natively support Iceberg as a first-class table format
+- **Data mesh architectures** where each domain team publishes data products as Iceberg tables consumable by any engine across the organization
+
+## Apache Iceberg vs. Delta Lake vs. Apache Hudi
+
+| | Apache Iceberg | Delta Lake | Apache Hudi |
+|--|---------------|-----------|-------------|
+| Multi-engine support | Excellent | Growing | Partial |
+| Databricks native | Supported | ✅ Native | Supported |
+| AWS Athena native | ✅ | Via manifest | ✗ |
+| Snowflake native | ✅ | ✗ | ✗ |
+| BigQuery native | ✅ | ✗ | ✗ |
+| Streaming writes | ✅ | ✅ | ✅ (specialty) |
+| Best for | Multi-cloud, multi-engine | Databricks-centric | Record-level CDC at scale |
+
+If your stack is Databricks-only, Delta Lake is the simpler choice. Choose Iceberg for multi-engine or multi-cloud architectures where open standards and broad engine compatibility matter most.

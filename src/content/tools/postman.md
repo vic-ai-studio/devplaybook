@@ -1,6 +1,6 @@
 ---
 title: "Postman"
-description: "The industry-standard API platform — design, test, document, and share APIs with a GUI client, automated testing, mock servers, and team workspaces."
+description: "The industry-standard API platform — design, test, document, and share APIs with a GUI client, automated testing, mock servers, team workspaces, and CI/CD integration via Newman CLI."
 category: "API Testing & CI/CD"
 pricing: "Freemium"
 pricingDetail: "Free for individuals; Basic $14/user/month; Professional $29/user/month; Enterprise custom"

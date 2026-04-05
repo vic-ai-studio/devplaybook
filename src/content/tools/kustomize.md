@@ -1,6 +1,6 @@
 ---
 title: "Kustomize — Template-Free Kubernetes Configuration Management"
-description: "Template-free Kubernetes configuration management using layered overlays and strategic merge patches"
+description: "Template-free Kubernetes configuration management using layered overlays and strategic merge patches — customize base manifests per environment without Helm charts or templating languages."
 category: "cloud-native"
 tags: ["kubernetes", "devops", "configuration", "cloud", "gitops", "cloud-native", "k8s", "infrastructure"]
 pricing: "Open Source"

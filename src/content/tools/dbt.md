@@ -157,3 +157,24 @@ with DAG('dbt_pipeline') as dag:
         execution_config=ExecutionConfig(execution_mode=ExecutionMode.LOCAL)
     )
 ```
+
+## Best For
+
+- **Analytics engineers** working in SQL-native warehouses (Snowflake, BigQuery, Redshift, DuckDB) who want software engineering practices (version control, testing, documentation) applied to data transformations
+- **Teams using the ELT pattern** — data is loaded raw into the warehouse first, then dbt transforms it in-place, which is now the dominant pattern with cheap cloud storage
+- **dbt + Airflow/Dagster pipelines** — dbt handles the SQL layer while Python orchestrators handle ingestion, API calls, and ML tasks
+- **Organizations that need data documentation** — dbt auto-generates a data catalog from model descriptions, column definitions, and test results
+- **Teams adopting medallion architecture** — dbt's ref() system enforces dependencies between bronze/silver/gold layers and prevents circular dependencies
+
+## dbt vs. Alternatives
+
+| | dbt | SQLMesh | Dataform | Hand-written SQL |
+|--|-----|---------|----------|-----------------|
+| Dependency management | ✅ `ref()` | ✅ | ✅ | Manual |
+| Testing | ✅ Built-in | ✅ | Partial | Manual |
+| Documentation | ✅ Auto-generated | Partial | Partial | None |
+| Incremental models | ✅ | ✅ (better) | Partial | Manual |
+| Python models | ✅ (experimental) | ✅ | ✗ | N/A |
+| Best for | Most teams, large ecosystem | Advanced incremental/CI needs | GCP/BigQuery teams | Simple one-off scripts |
+
+dbt is the default choice for SQL-based data transformation. Consider SQLMesh if you need more sophisticated state-aware incremental processing or better CI/CD for warehouse changes.

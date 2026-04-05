@@ -1,6 +1,6 @@
 ---
 title: "Jenkins — Open-Source Automation Server for CI/CD"
-description: "The original open-source CI/CD automation server — self-hosted, infinitely configurable, with 1,800+ plugins covering every integration imaginable."
+description: "The original open-source CI/CD automation server — self-hosted, infinitely configurable, with 1,800+ plugins covering every integration imaginable. Supports declarative and scripted pipelines."
 category: "API Testing & CI/CD"
 pricing: "Free"
 pricingDetail: "Open source (MIT) — you pay only for infrastructure to run it"

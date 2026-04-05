@@ -157,3 +157,22 @@ buildkite-agent artifact upload test-results.xml
 ```
 
 Buildkite Test Analytics tracks test duration trends, flaky tests, and which tests fail most — helping prioritize stability work.
+
+## Best For
+
+- **Large engineering organizations** that need to run thousands of builds per day on their own hardware (Mac minis for iOS, GPU servers for ML, bare metal for performance testing) without paying cloud CI per-minute rates
+- **Security-sensitive industries** (finance, healthcare, defense) where source code and build artifacts cannot leave the company's own infrastructure
+- **Mobile teams** running iOS and Android builds on self-hosted Mac agents that other CI platforms charge a premium for or don't support well
+- **Teams with specialized build hardware** — custom GPU machines, FPGAs, or lab equipment that must run build agents on-site
+
+## Buildkite vs. Alternatives
+
+| | Buildkite | GitHub Actions | CircleCI | Jenkins |
+|--|-----------|----------------|----------|---------|
+| Infrastructure | Bring your own | GitHub-hosted or self-hosted | Cloud or self-hosted | Self-hosted |
+| Orchestration | Cloud (Buildkite) | Cloud (GitHub) | Cloud (CircleCI) | Self-hosted |
+| Cost model | Per-seat, flat | Per-minute (hosted) | Per-minute | Free (infra cost) |
+| Plugins | YAML-based ecosystem | Action marketplace | Orbs | 1,800+ plugins |
+| Best for | Large orgs, custom hardware, security | GitHub projects, open source | Mid-size teams | Legacy enterprise |
+
+Buildkite's hybrid model (their cloud orchestrates, your agents run) hits the sweet spot between Jenkins (all self-hosted, high ops burden) and GitHub Actions (easy but expensive at scale). It's the right choice when you need to own your build infrastructure without owning the CI control plane.

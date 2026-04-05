@@ -1,6 +1,6 @@
 ---
 title: "Hoppscotch — Open-Source API Development & Testing Platform"
-description: "Open-source, web-based API testing tool — test REST, GraphQL, WebSocket, and gRPC APIs directly in the browser without installing desktop software."
+description: "Open-source, web-based API testing tool — test REST, GraphQL, WebSocket, and gRPC APIs directly in the browser without installing desktop software. Self-hostable with team collaboration."
 category: "API Testing & CI/CD"
 pricing: "Free"
 pricingDetail: "Open source (MIT); Hoppscotch Enterprise self-hosted from $19/user/month"

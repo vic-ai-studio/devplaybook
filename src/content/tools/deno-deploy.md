@@ -129,3 +129,26 @@ for await (const entry of iter) {
 | npm packages | npm: prefix | node_modules |
 | Pricing | $20/mo paid | $5/mo paid |
 | Best for | Deno-native projects, simple APIs | Production apps needing SQL/Durable Objects |
+
+## Concrete Use Case: Global API Gateway with Geo-Routing for a Multi-Region SaaS Application
+
+A B2B SaaS company serving customers across North America, Europe, and Asia-Pacific needed to deploy an API gateway that routes requests to the nearest regional backend while enforcing authentication, rate limiting, and request transformation at the edge. Their existing setup funneled all traffic through a single US-East origin server, resulting in 300-400ms latency for APAC customers and periodic timeout failures during peak hours in overlapping business zones.
+
+By deploying a Deno Deploy edge function as the gateway layer, the team wrote a single TypeScript file that inspects incoming requests, validates JWT tokens using the Web Crypto API, and routes traffic to the closest regional backend based on the `DENO_REGION` environment variable. Deno KV stores the rate-limiting counters and tenant configuration at the edge, eliminating round trips to a central database for every request. The gateway also performs request/response transformation — converting legacy XML payloads from older enterprise clients into JSON before forwarding to the modern backend services.
+
+The result was sub-50ms gateway latency globally, with the entire routing layer deployed via a single `deployctl deploy` command. Because Deno Deploy natively runs TypeScript without a build step, the team iterates on routing rules by pushing to GitHub and getting automatic deployments in seconds. The total infrastructure cost dropped from $800/month (a fleet of NGINX instances across three cloud regions) to under $50/month on Deno Deploy's Pro plan, while also eliminating the operational burden of managing and patching gateway servers.
+
+## When to Use Deno Deploy
+
+**Use Deno Deploy when:**
+- You are building lightweight API endpoints, webhooks, or edge functions in TypeScript and want zero-config deployments without Docker or build pipelines
+- Your project already uses Deno or you want native TypeScript execution without transpilation overhead
+- You need simple key-value persistence at the edge via Deno KV and do not require relational database queries
+- You want GitHub-integrated automatic deployments where every push to a branch creates a preview deployment
+- Your use case fits within edge computing patterns such as API gateways, URL shorteners, form handlers, or server-side rendering at the edge
+
+**When NOT to use Deno Deploy:**
+- You need SQL databases at the edge (Cloudflare D1 or traditional server deployments are better suited for relational data requirements)
+- Your application depends on npm packages that are not yet compatible with Deno's npm compatibility layer
+- You require presence in 100+ edge locations for ultra-low-latency content delivery (Cloudflare Workers covers 300+ locations compared to Deno Deploy's 35+)
+- Your workload involves long-running background jobs, WebSocket-heavy applications, or compute tasks that exceed edge function execution time limits

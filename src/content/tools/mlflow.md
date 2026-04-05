@@ -1,6 +1,6 @@
 ---
 title: "MLflow — Open-Source Platform for the ML Lifecycle"
-description: "Open-source MLOps platform for experiment tracking, model registry, and deployment — works with any ML library and runs locally or on-premise."
+description: "Open-source MLOps platform for experiment tracking, model registry, and deployment — works with any ML library, runs locally or on-premise, and integrates with major cloud providers."
 category: "AI/ML Dev Tools"
 pricing: "Free"
 pricingDetail: "Open source; Databricks Managed MLflow available as a hosted service"

@@ -1,6 +1,6 @@
 ---
 title: "Istio — Service Mesh for Kubernetes Microservices"
-description: "Feature-rich service mesh for Kubernetes providing traffic management, observability, and security for microservices"
+description: "Feature-rich service mesh for Kubernetes providing traffic management, observability, and zero-trust security for microservices — with canary deployments, circuit breaking, and distributed tracing."
 category: "cloud-native"
 tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security", "cloud-native", "observability"]
 pricing: "Open Source"

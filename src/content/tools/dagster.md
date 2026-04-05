@@ -130,3 +130,11 @@ def test_full_pipeline():
 | Best for | Data platform teams, observability | Simple Python pipelines | Enterprise integrations |
 
 Dagster is the best choice when data asset lineage, observability, and testability are first-class requirements — typically at companies building a data platform serving many teams.
+
+## Best For
+
+- **Data platform teams** building a centralized lakehouse or warehouse serving multiple business units where lineage and ownership matter
+- **ML engineering** — Dagster's asset model maps naturally to feature tables, training datasets, and model artifacts as tracked data products
+- **dbt + Python hybrid pipelines** — Dagster integrates natively with dbt for SQL transforms while handling Python-heavy steps (ML training, API calls)
+- **Teams that need testable pipelines** — Dagster's `materialize()` and resource injection make unit testing data transformations straightforward
+- **Organizations requiring observable data** — the visual asset graph makes it easy for non-engineers to understand data flow and freshness

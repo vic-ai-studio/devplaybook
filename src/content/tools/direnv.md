@@ -129,3 +129,26 @@ direnv: error .envrc is blocked. Run `direnv allow` to approve its content.
 This prevents malicious `.envrc` files in repositories from automatically executing. After reviewing the contents, run `direnv allow` to trust it.
 
 **Never commit `.envrc` files that contain actual secrets.** Use `.env` (gitignored) loaded via `dotenv .env` in the `.envrc`.
+
+## Concrete Use Case: Managing Five Microservices with Different AWS Profiles and Node Versions
+
+A backend team maintains five microservices: an API gateway (Node 20, AWS staging profile), a billing service (Node 18, AWS production profile with restricted IAM), a notification worker (Node 20, AWS staging profile plus SendGrid keys), an analytics pipeline (Python 3.11, AWS data-lake profile), and a legacy admin panel (Node 16, its own AWS profile with a different region). Without direnv, developers constantly run `nvm use`, `export AWS_PROFILE=...`, and `source .venv/bin/activate` manually — or worse, they forget and deploy with the wrong credentials.
+
+The team creates an `.envrc` file in each service's repository root. The API gateway's `.envrc` runs `use nvm 20` and sets `AWS_PROFILE=gateway-staging` plus `AWS_REGION=us-east-1`. The billing service's `.envrc` uses `use nvm 18`, sets `AWS_PROFILE=billing-prod`, and loads sensitive Stripe keys from a gitignored `.env.local` via `dotenv_if_exists .env.local`. The analytics pipeline's `.envrc` runs `layout python3` to auto-activate a virtualenv and sets the data-lake AWS profile. Each developer runs `direnv allow` once per repo after cloning, and from that point forward, switching between services is just `cd ../billing-service` — the correct Node version activates, the right AWS profile loads, and the appropriate environment variables appear. No manual steps, no wrong-profile incidents.
+
+The result is measurable: the team eliminates an entire class of "deployed to wrong environment" incidents that had occurred roughly once per quarter. Onboarding new developers drops from a half-day of environment setup per service to a single `direnv allow` command. The `.envrc` files are committed to each repository (containing only non-secret configuration like AWS profile names and Node versions), while actual secrets live in gitignored `.env.local` files that developers populate from the team's password manager.
+
+## When to Use direnv
+
+**Use direnv when:**
+- You work across multiple projects that require different environment variables, SDK versions, or cloud profiles
+- Your team frequently encounters "works on my machine" issues caused by mismatched environment configurations
+- You want to automatically activate Python virtualenvs, Node versions (via nvm/mise), or Nix development shells per project
+- You need a lightweight, shell-native solution that does not require a daemon, Docker, or heavy tooling
+- You want to keep secrets out of shell history by loading them from files rather than typing `export` commands
+
+**When NOT to use direnv:**
+- You need centralized, audited secrets management across a team — use HashiCorp Vault, Doppler, or a cloud secrets manager instead
+- Your project already uses Docker or Nix flakes as the sole development environment and all configuration is handled there
+- You need to manage environment variables for non-shell contexts like GUI applications or IDE run configurations
+- You require encrypted secret storage — direnv loads plaintext files and provides no encryption layer itself

@@ -136,3 +136,46 @@ The same `devcontainer.json` powers GitHub Codespaces — a full VS Code environ
 ```
 
 This means contributors never need to install anything locally — they open a Codespace and start coding immediately.
+
+## Best For
+
+- **Teams with complex local setup** — projects requiring specific Node/Python versions, databases, Redis, or external services that take hours to set up manually
+- **Open-source projects** wanting zero-friction contributor onboarding — add a devcontainer and contributors start coding in minutes, not hours
+- **Enterprise teams on Windows** where inconsistent WSL setups cause "works on my machine" problems
+- **Bootcamps and courses** — students all get identical environments without debugging 10 different laptop configurations
+- **Regulated environments** where exact dependency versions must be auditable and reproducible
+
+## Dev Containers vs. Alternatives
+
+| | Dev Containers | Docker + Makefile | Nix | Vagrant |
+|--|----------------|-------------------|-----|---------|
+| IDE integration | Deep (VS Code, JetBrains) | Manual | Partial | Manual |
+| Setup speed | Fast (pull image) | Medium | Slow (first build) | Slow |
+| GitHub Codespaces | ✅ Native | ✗ | ✗ | ✗ |
+| Learning curve | Low | Low | High | Medium |
+| Best for | VS Code teams, OSS projects | Any CI setup | NixOS users, reproducibility purists | Multi-VM setups |
+
+Dev Containers have the best IDE integration and Codespaces support. For projects that need reproducible builds in CI but not local dev, a plain Dockerfile + Makefile is simpler.
+
+## Concrete Use Case: Onboarding 10 Engineers in One Week with Zero Setup Friction
+
+A growing fintech startup needed to onboard 10 new backend engineers in a single week. Their stack — a Python 3.12 monorepo with FastAPI, PostgreSQL 16, Redis, and Celery — required installing 14 tools locally, configuring database schemas, seeding test data, and setting up three `.env` files. Previous onboarding averaged 1.5 days per engineer, with at least one "works on my machine" blocker per person (usually a mismatched PostgreSQL version or missing system-level C library for a Python dependency). The engineering lead decided to invest one day building a Dev Container configuration before the cohort arrived.
+
+The `.devcontainer/` directory included a `docker-compose.yml` spinning up the app container (based on `mcr.microsoft.com/devcontainers/python:3.12`), PostgreSQL 16, and Redis 7. The `devcontainer.json` used `postCreateCommand` to run `pip install -e ".[dev]" && alembic upgrade head && python scripts/seed_test_data.py`, ensuring that by the time VS Code opened, the database was migrated and seeded. Features pulled in the AWS CLI, GitHub CLI, and Docker-in-Docker for running integration tests. VS Code settings auto-installed the Python, Pylance, and GitLens extensions with the team's shared `settings.json` for consistent formatting and type-checking behavior.
+
+On day one, each new engineer cloned the repo, opened it in VS Code, clicked "Reopen in Container," and had a fully working environment in under 4 minutes. The engineers using GitHub Codespaces (two were on company-issued Chromebooks) got the same experience in the browser. Zero setup tickets were filed that week. The Dev Container config became a living document — when the team later added a Kafka dependency, they added a Kafka service to the compose file, and every developer got it on their next container rebuild. The total onboarding time dropped from 1.5 days to 15 minutes, and "works on my machine" incidents dropped to zero for the quarter.
+
+## When to Use Dev Containers
+
+**Use Dev Containers when:**
+- Your project has complex environment requirements (specific language versions, databases, system libraries) that are painful to install manually
+- You onboard new team members frequently and want to eliminate setup documentation that goes stale
+- Your team works across different operating systems (Windows, macOS, Linux) and you need consistent behavior everywhere
+- You want to enforce identical tooling versions across the team (linter versions, formatter configs, CLI tools) without relying on each developer to maintain them
+- You use GitHub Codespaces and want the same environment locally and in the cloud
+
+**When NOT to use Dev Containers:**
+- Your project is a single-file script or simple CLI tool with no external dependencies — the Docker overhead is not justified
+- Your team works exclusively on high-performance native development (game engines, GPU-intensive ML training) where Docker's I/O and GPU passthrough limitations are deal-breakers
+- Developers on your team have low-spec machines (under 8GB RAM) where running Docker Desktop alongside an IDE causes constant swapping
+- Your organization prohibits Docker on developer workstations for security policy reasons and does not use GitHub Codespaces

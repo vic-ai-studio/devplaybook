@@ -156,3 +156,22 @@ public class FraudDetectionFunction
 | Best for | Low-latency, stateful | Batch + streaming unified |
 
 Choose Flink when sub-second latency and complex stateful event processing are requirements. Use Spark Streaming when you want a unified batch + streaming platform with a larger ecosystem.
+
+## Best For
+
+- **Low-latency event processing** (fraud detection, real-time recommendations, alerting) where millisecond response matters and Spark Streaming's micro-batch approach is too slow
+- **Complex stateful stream processing** — session windows, pattern matching (CEP), and long-running state that must survive failures
+- **Kafka + Flink pipelines** — Flink's native Kafka integration makes it the standard for processing high-volume event streams
+- **Financial services and telco** with exactly-once processing guarantees and regulatory requirements for correctness
+
+## Apache Flink vs. Alternatives
+
+| | Apache Flink | Spark Streaming | Kafka Streams | Apache Storm |
+|--|-------------|-----------------|---------------|-------------|
+| Processing model | True streaming | Micro-batch | Embedded library | Micro-batch |
+| Latency | ~ms | ~100ms–1s | ~ms | ~ms |
+| State management | Advanced (RocksDB) | Structured Streaming | In-memory | Stateless |
+| Operational complexity | High | High (Spark cluster) | Low (library) | Medium |
+| Best for | Complex stateful streaming | Unified batch+stream | Kafka-native microservices | Legacy low-latency |
+
+For Kafka-native services that don't need a separate cluster, Kafka Streams (embedded library) is simpler. For complex event processing requiring millisecond latency, Flink is the standard.

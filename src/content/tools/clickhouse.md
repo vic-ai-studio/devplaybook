@@ -136,3 +136,17 @@ client.execute(
 | Storage (1B rows) | ~500GB | ~50GB |
 
 ClickHouse isn't a PostgreSQL replacement — use PostgreSQL for transactional data and ClickHouse for analytics. Many architectures sync PostgreSQL → ClickHouse via Kafka or ClickHouse's PostgreSQL integration.
+
+## Best For
+
+- **Real-time analytics dashboards** where queries on billions of rows must return in under a second — ClickHouse's columnar storage and vectorized execution are purpose-built for this
+- **Time-series data** — metrics, events, logs, and IoT data with time-based aggregations (hourly, daily, monthly rollups)
+- **Log analytics** replacing Elasticsearch for cost-sensitive teams — ClickHouse can store 10x more data in the same storage space and query it faster
+- **Product analytics** computing user funnels, retention cohorts, and session analytics across hundreds of millions of events
+- **Ad-tech and gaming** with extremely high-volume event ingestion (millions of inserts/second) and fast aggregation queries for reporting
+
+## When NOT to Use ClickHouse
+
+- **Transactional workloads** (frequent updates, deletes, row-level inserts) — use PostgreSQL; ClickHouse's MergeTree engine is optimized for append-heavy patterns
+- **Complex JOINs across many tables** — ClickHouse JOIN performance degrades for wide joins; denormalize data or use a different OLAP database
+- **Very small datasets** — the operational complexity isn't worth it under 10M rows; PostgreSQL or DuckDB serve these cases better

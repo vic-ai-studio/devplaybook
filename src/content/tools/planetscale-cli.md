@@ -169,3 +169,23 @@ jobs:
 ```
 
 The PlanetScale CLI is the foundation of a database-as-code workflow where schema changes are reviewed, tested, and deployed just like application code.
+
+## Best For
+
+- **Teams with frequent schema changes** who need to review, test, and deploy database schema changes with the same rigor as application code
+- **High-traffic MySQL workloads** needing horizontal scaling — PlanetScale's Vitess-based sharding handles hundreds of billions of rows without manual sharding
+- **Multi-tenant SaaS** where tenant isolation and database-per-tenant branching maps well to PlanetScale's branch model
+- **Organizations treating schema migrations as code** — deploy requests give DBAs and tech leads a reviewable, stageable process for schema changes
+
+## PlanetScale vs. Alternatives
+
+| | PlanetScale | Neon | Supabase | AWS RDS |
+|--|------------|------|----------|---------|
+| Database | MySQL (Vitess) | PostgreSQL | PostgreSQL | MySQL/PostgreSQL |
+| Schema branching | ✅ Deploy requests | ✅ | ✗ | ✗ |
+| Horizontal scale | ✅ (Vitess sharding) | Vertical only | Vertical only | Read replicas |
+| Prisma integration | ✅ | ✅ | ✅ | ✅ |
+| Free tier | 5GB, 1B reads/mo | 0.5 CU | 500MB | None |
+| Best for | MySQL at scale, schema workflows | PostgreSQL branching | Full-stack backend | Enterprise RDS |
+
+PlanetScale is the best choice for teams that need MySQL's ecosystem with branching-based schema deployment. For PostgreSQL with branching, Neon is the equivalent. For a complete backend-as-a-service, Supabase includes auth, storage, and real-time.

@@ -84,3 +84,26 @@ Once in the session, type natural language instructions. Aider shows a diff befo
 **Exploration with cheap models**: Use a fast, cheap model (GPT-4o mini or Claude Haiku) for initial scaffolding or boilerplate generation, then switch to a smarter model for the tricky logic. Aider's `--model` flag makes swapping trivial.
 
 **Working without an IDE**: On remote servers, in Docker containers, or in environments where installing VS Code extensions isn't practical, Aider provides full AI-assisted coding from a plain SSH session. It's the most practical AI coding tool for server-side work.
+
+## Concrete Use Case: Refactoring a Legacy Express.js Codebase to Modern Async Patterns
+
+A solo developer inherits a 15,000-line Express.js application built in 2018. The codebase uses callback-based patterns throughout — nested callbacks for database queries, file I/O wrapped in manual Promise constructors, and error handling scattered across try/catch blocks mixed with `.catch()` chains. There are 45 route handlers across 12 files, each following slightly different patterns. The developer needs to modernize the entire codebase to async/await, replace the callback-based `pg` client with connection pooling, and update all error handling to use a centralized Express error middleware — without breaking the API contract for existing consumers.
+
+The developer starts Aider with the route files added to context: `aider src/routes/*.js src/middleware/*.js src/db/*.js`. The repo-map feature automatically includes an understanding of the project structure — how routes reference database helpers, which middleware functions are shared across routes, and where error types are defined. The developer begins with a targeted instruction: "Refactor src/db/client.js from callback-based pg queries to async/await with a connection pool, and update the exported interface." Aider modifies the database layer and then, when asked to "update all route handlers in src/routes/ to use the new async database client and async/await instead of callbacks," it processes all 12 route files in a single pass, maintaining consistency in error handling patterns across files it can see in the repo map.
+
+Each change is automatically committed to git with a descriptive message, creating a clean refactoring history. When a transformation introduces a subtle bug — an early return that skips the connection release — the developer spots it in the diff output, types "that last change has a bug: the connection isn't released when validation fails on line 34 of users.js," and Aider fixes it with a follow-up commit. The entire refactoring takes a day instead of the estimated week, and the git history shows a clear progression of atomic changes that can be reviewed individually. The developer uses `git diff main..refactor-async` to verify no API behavior changed, and runs the existing integration test suite to confirm all 120 tests still pass.
+
+## When to Use Aider
+
+**Use Aider when:**
+- You prefer terminal-based workflows and want AI code assistance without installing IDE plugins or switching to a different editor
+- You need to perform large-scale refactors across multiple files simultaneously — Aider's repo-map gives the LLM structural awareness that single-file tools lack
+- You want automatic git commits for every AI-generated change, creating a clean audit trail that can be reviewed, cherry-picked, or reverted independently
+- You are working on a remote server or inside a Docker container via SSH where GUI-based AI coding tools are impractical or unavailable
+- You want flexibility to switch between LLM providers (OpenAI, Anthropic, Google, local Ollama models) based on task complexity and cost
+
+**When NOT to use Aider:**
+- You prefer visual diffs and inline code suggestions — GUI tools like Cursor or GitHub Copilot in VS Code provide a more visual, integrated experience for developers who think in terms of highlighted code rather than terminal output
+- Your codebase is very large (100K+ lines) and you frequently need the LLM to understand deep cross-module dependencies — the repo-map indexing can become slow, and context window limits may truncate important structural information
+- You are new to AI-assisted coding and want a guided, low-friction introduction — Aider's terminal interface and manual file management have a steeper learning curve than tools with automatic context detection
+- Your team uses a shared IDE configuration (VS Code workspace settings, shared extensions) and you need the AI tool to integrate with linting, formatting, and debugging workflows already configured in the editor

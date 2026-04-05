@@ -152,3 +152,23 @@ export default async (req: Request, context: Context) => {
   return response;
 };
 ```
+
+## Best For
+
+- **Netlify-hosted sites and apps** wanting to add edge logic without leaving the Netlify ecosystem — same CLI, same deploy commands, no separate worker configuration
+- **A/B testing and feature flags at the edge** — intercept requests, modify HTML, and set cookies before the response reaches the user
+- **Auth middleware** — validate JWT tokens or session cookies at the CDN edge to protect dashboard routes without origin round-trips
+- **Geo-personalization** — serve localized content, redirect to region-specific pricing pages, or block access by country using Netlify's built-in geo context
+- **Header manipulation** — add security headers (CSP, HSTS, X-Frame-Options) globally across all routes without modifying the origin server
+
+## Netlify Edge Functions vs. Alternatives
+
+| | Netlify Edge Functions | Cloudflare Workers | Vercel Edge Functions |
+|--|------------------------|-------------------|----------------------|
+| Runtime | Deno | V8 isolates (JS/WASM) | V8 isolates |
+| Ecosystem lock-in | Netlify only | Cloudflare only | Vercel only |
+| Edge locations | Netlify's network | 300+ | Vercel's network |
+| Execution limit | 50ms soft | 10-50ms CPU | 25ms CPU |
+| Best for | Netlify teams, Deno users | Complex edge apps, large scale | Next.js on Vercel |
+
+If you're already on Netlify, Edge Functions are the natural choice for adding edge middleware. For platform-agnostic edge logic or if you need 300+ PoPs, Cloudflare Workers offers a more mature platform.

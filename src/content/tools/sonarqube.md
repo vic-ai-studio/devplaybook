@@ -155,3 +155,24 @@ Catch issues in your IDE before pushing:
 ```
 
 SonarLint in connected mode uses your project's custom rule profiles, ensuring local analysis matches CI results.
+
+## Best For
+
+- **Enterprise engineering teams** that need a self-hosted code quality solution with SOC 2/ISO 27001 compliance (data stays on-premises)
+- **Java/.NET/PHP monoliths** where SonarQube's deep language analysis catches subtle bugs that ESLint/Pylint miss
+- **Teams targeting ISO 25010 / CISQ quality standards** — SonarQube's metrics map directly to these standards
+- **CI/CD gates** — block merges automatically when coverage drops or new security vulnerabilities are introduced
+- **Security-conscious teams** who want OWASP Top 10 and CWE vulnerability detection integrated into every PR
+
+## SonarQube vs. Alternatives
+
+| | SonarQube | CodeClimate | Semgrep | ESLint/Pylint |
+|--|-----------|-------------|---------|---------------|
+| Languages | 30+ | 10+ | Any (custom rules) | Language-specific |
+| Self-hosted | ✅ | ✗ | ✅ | ✅ |
+| Security rules | OWASP/CWE built-in | Limited | Excellent (SAST) | Limited |
+| PR decoration | ✅ | ✅ | ✅ | Via GitHub Actions |
+| Coverage tracking | ✅ | ✅ | ✗ | ✗ |
+| Best for | Enterprise, multi-language | SaaS-only teams | Custom security rules | Quick linting |
+
+SonarQube is the standard for enterprises requiring comprehensive code quality + security in one platform. For security-focused analysis only, Semgrep's SAST rules are more flexible. For open-source projects, SonarCloud provides most features for free.

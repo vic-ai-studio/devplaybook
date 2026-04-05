@@ -1,6 +1,6 @@
 ---
 title: "KEDA — Kubernetes Event-Driven Autoscaler"
-description: "Kubernetes event-driven autoscaler that scales workloads based on external metrics from queues, databases, and cloud services"
+description: "Kubernetes event-driven autoscaler that scales workloads to and from zero based on external metrics from queues, databases, cloud services, and custom Prometheus queries."
 category: "cloud-native"
 tags: ["kubernetes", "devops", "autoscaling", "cloud", "event-driven", "cloud-native", "serverless", "k8s"]
 pricing: "Open Source"

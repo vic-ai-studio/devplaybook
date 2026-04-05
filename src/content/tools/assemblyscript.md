@@ -104,3 +104,26 @@ Choose Rust (wasm-pack) when:
 - You need the full Rust ecosystem (crypto, image codecs, etc.)
 - You want maximum performance and safety guarantees
 - Your team has Rust experience
+
+## Concrete Use Case: Building a Client-Side Image Processing Library for a Web App
+
+A product team at a photo-sharing startup needs to add client-side image filters — blur, sharpen, grayscale, sepia, and brightness adjustment — directly in the browser before upload. The goal is to reduce server load and give users instant preview feedback without round-tripping images to a backend. The frontend team is entirely JavaScript/TypeScript developers with no Rust or C++ experience.
+
+The team evaluates three options: pure JavaScript using Canvas API pixel manipulation, Rust compiled to WASM via `wasm-pack`, and AssemblyScript. Pure JavaScript handles simple filters but struggles with 4K images — a Gaussian blur on a 3840x2160 image takes over 2 seconds and blocks the main thread. Rust would deliver the best performance, but the team estimates a 4-6 week ramp-up to become productive. AssemblyScript hits the sweet spot: the team writes image kernel functions using familiar TypeScript-like syntax, and the compiled WASM module processes the same 4K Gaussian blur in 180ms. The module is 45KB gzipped, loads in under 50ms, and runs in a Web Worker to keep the UI thread responsive.
+
+The final implementation exposes five filter functions from a single `.wasm` module. The JavaScript host passes raw pixel data via shared memory (using `Float32Array` for HDR-aware processing) and receives the processed buffer back. The team ships the feature in two weeks instead of the estimated six for a Rust-based approach. The only friction points are AssemblyScript's stricter type system compared to TypeScript (no `any`, no union types, explicit numeric types like `f32` and `i32`) and manual memory management for large image buffers — but these are well-documented patterns in the AssemblyScript cookbook.
+
+## When to Use AssemblyScript
+
+**Use AssemblyScript when:**
+- Your team is proficient in TypeScript but has no experience with Rust or C++, and you need WASM performance gains quickly
+- You are building a contained, CPU-intensive algorithm (image processing, audio DSP, physics simulation, hashing) that benefits from WASM's predictable performance
+- You want to ship a small, self-contained `.wasm` module without pulling in a large Rust toolchain or Emscripten build system
+- You need deterministic execution without garbage collection pauses for real-time or latency-sensitive workloads
+- You are prototyping a WASM module and want fast iteration with a familiar syntax before potentially rewriting in Rust later
+
+**When NOT to use AssemblyScript:**
+- You need access to a broad ecosystem of libraries — AssemblyScript cannot use npm packages or the TypeScript/JavaScript standard library
+- Your task is I/O-bound or DOM-heavy, where WASM provides no meaningful speedup over plain JavaScript
+- You require advanced memory safety guarantees or complex data structures that benefit from Rust's ownership model
+- You are building a server-side WASM module that needs full WASI support — Rust and Go have more mature WASI toolchains

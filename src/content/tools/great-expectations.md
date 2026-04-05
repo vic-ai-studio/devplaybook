@@ -1,6 +1,6 @@
 ---
 title: "Great Expectations — Data Quality Validation & Testing Framework"
-description: "Data quality testing framework — define expectations about your data, validate them in pipelines, and generate data documentation automatically."
+description: "Data quality testing framework — define expectations about your data, validate them in pipelines, and generate data documentation automatically. Integrates with Spark, pandas, and SQL databases."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source; GX Cloud (managed) from $500/month"
@@ -128,3 +128,23 @@ validate_orders = GreatExpectationsOperator(
 ## When to Add Data Validation
 
 Add Great Expectations at: ingestion from external sources, after major transformations, before loading to production tables. Skip it for intermediate scratch tables. The goal is to catch data problems at the source, not after they've propagated through your warehouse.
+
+## Best For
+
+- **Data engineering teams** building ETL/ELT pipelines that ingest from external APIs, third-party vendors, or upstream teams
+- **dbt users** who want to complement dbt tests with richer statistical expectations (row counts, distributions, value ranges)
+- **Regulated industries** (finance, healthcare) where data quality audits and documentation are compliance requirements
+- **ML teams** detecting training data drift — validate that production data matches the distribution your model was trained on
+- **Data platform teams** who want auto-generated data quality dashboards shared with business stakeholders
+
+## Great Expectations vs. Alternatives
+
+| | Great Expectations | dbt tests | Pandera | Soda |
+|--|-------------------|-----------|---------|------|
+| Expectation types | 100+ built-in | Basic (not null, unique, ref) | Python schema validation | SQL + cloud |
+| Auto data docs | ✅ | Partial | ✗ | ✅ |
+| Pipeline integration | Airflow, Dagster, Prefect | dbt only | Python code | Any |
+| Learning curve | High | Low | Medium | Medium |
+| Best for | Complex validation + docs | dbt-native testing | Python dataframes | SQL-heavy stacks |
+
+Use Great Expectations when you need rich, reusable expectation suites with stakeholder-facing data quality reports. Use dbt tests for simpler SQL-layer validation within a dbt project.

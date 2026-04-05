@@ -103,3 +103,25 @@ scenarios:
             orderId: "{{ orderId }}"
             amount: "{{ amount }}"
 ```
+
+## Concrete Use Case: Load Testing a Checkout API Before Black Friday
+
+An e-commerce platform needed to validate that their new checkout microservice could handle Black Friday traffic — historically 15x their normal throughput. The service handled a multi-step flow: cart validation, inventory reservation, payment processing via Stripe, and order confirmation. The team needed to find the exact breaking point and verify their Kubernetes HPA auto-scaling thresholds before the event, not during it.
+
+The team wrote an Artillery test scenario that modeled the real checkout funnel. A JavaScript processor generated realistic cart payloads with 1-8 items, valid test Stripe tokens, and randomized shipping addresses. The YAML config defined three phases: a 5-minute warm-up at 20 requests/second to fill caches and connection pools, a 10-minute ramp from 20 to 300 requests/second simulating the traffic surge as the sale goes live, and a 15-minute sustained phase at 300 requests/second to verify stability under peak load. The `expect` plugin asserted that every response returned a 200 or 201 status, the `latency.p99` stayed under 2 seconds, and the response body contained a valid `orderId`. They ran this against their staging environment, which mirrored production's Kubernetes configuration.
+
+The first run revealed that the service hit a PostgreSQL connection pool ceiling at 180 requests/second — p99 latency spiked to 8 seconds and error rates jumped to 12%. The team increased the pool size from 20 to 50 connections, added a Redis cache layer for inventory checks, and adjusted the HPA to scale at 60% CPU instead of 80%. The second Artillery run showed clean results up to 350 requests/second with p99 under 800ms. They committed the test scenario to the repo and added it as a GitHub Actions workflow that runs on every release candidate tag against staging. On Black Friday, the checkout service handled 280 requests/second at peak with zero downtime — the exact scenario Artillery had validated two weeks prior.
+
+## When to Use Artillery
+
+**Use Artillery when:**
+- You need to load test HTTP APIs, WebSocket servers, or gRPC services with realistic multi-step scenarios that model actual user flows
+- Your team prefers YAML-based test definitions that are easy to read, review in pull requests, and version-control alongside application code
+- You want built-in support for phased load patterns (ramp-up, spike, soak) without writing custom scripting logic
+- You need to integrate load tests into CI/CD pipelines as automated performance gates that block deployments when latency thresholds are exceeded
+- You are testing real-time applications (WebSocket, Socket.io) and need a tool with native protocol support rather than HTTP-only testing
+
+**When NOT to use Artillery:**
+- You need to generate extremely high virtual user counts (50,000+) from a single machine — k6 (written in Go) is more resource-efficient for very high concurrency
+- You need a full browser-based performance testing suite as your primary use case — while Artillery supports Playwright, dedicated tools like Lighthouse CI or WebPageTest are better for web vitals
+- Your team prefers writing tests in a general-purpose programming language (Go, Python, Java) rather than YAML with JavaScript hooks — consider k6, Locust, or Gatling instead

@@ -122,3 +122,34 @@ prefect deployment run 'daily-etl/production' \
 | Best for | Python teams, modern stacks | Enterprise ETL, complex integrations |
 
 Prefect is the better default for new Python data engineering projects. Use Airflow when you need its extensive operator ecosystem or are joining an existing enterprise Airflow environment.
+
+## Best For
+
+- **Python-first data teams** who find Airflow's operator model and DAG syntax awkward — Prefect flows feel like normal Python
+- **ML engineers** orchestrating training pipelines, feature engineering, and model evaluation with async concurrency
+- **Startups and small teams** who need managed orchestration without the ops burden of running Airflow infrastructure
+- **Projects with dynamic workflows** — Prefect's conditional logic and dynamic task mapping are more natural than Airflow's branching operators
+- **Teams needing retries and caching** — `@task(retries=3, cache_key_fn=...)` with zero boilerplate
+
+## Concrete Use Case: Orchestrating a Daily ML Feature Pipeline with Multi-Source Ingestion
+
+A machine learning team at an e-commerce company needed to compute daily feature vectors for their product recommendation model. The pipeline pulled data from five separate sources: a PostgreSQL transactional database, a Snowflake analytics warehouse, a third-party product catalog API, a Redis cache containing real-time click-stream aggregates, and an S3 bucket with historical user behavior parquet files. Each source had different reliability characteristics — the third-party API had intermittent rate limiting, the Snowflake queries occasionally timed out during peak hours, and the S3 bucket was in a different AWS region with variable latency. The team needed retry logic per source, concurrent extraction where possible, data validation between stages, and Slack alerts when any stage failed or when the entire pipeline completed.
+
+The team implemented the pipeline as a Prefect flow with five `@task`-decorated extraction functions, each configured with source-appropriate retry policies. The API extractor used `retries=5, retry_delay_seconds=[30, 60, 120, 240, 480]` with exponential backoff to handle rate limiting. The Snowflake task used `retries=3, retry_delay_seconds=300` to wait out timeout periods. All five extraction tasks were submitted concurrently using `task.submit()`, and Prefect's native async support meant the pipeline did not block waiting for the slowest source. After extraction, a transformation task joined the five datasets, computed feature vectors using pandas and scikit-learn preprocessing, and validated the output shape and null percentages. A Slack notification block sent alerts on failure with the specific task name, error message, and a link to the Prefect Cloud run log. On success, it posted a summary with row counts from each source and the total feature computation time.
+
+The pipeline was deployed to Prefect Cloud with a `CronSchedule` running at 4:00 AM UTC daily, early enough that the ML training pipeline (a separate Prefect flow triggered as a subflow) could consume the fresh features before business hours. Prefect Cloud's UI gave the team visibility into every run: which tasks succeeded, which retried and how many times, total duration trends over weeks, and parameter history. When the third-party API changed its rate limit policy, the team adjusted the retry configuration in Python and redeployed in seconds — no YAML editing, no DAG recompilation, no scheduler restart. The entire pipeline definition, including all five extractors, transformations, validations, and notifications, fit in a single 180-line Python file that any data scientist on the team could read and modify.
+
+## When to Use Prefect
+
+**Use Prefect when:**
+- You are building data pipelines in Python and want to define workflows as decorated functions with automatic dependency inference rather than manually constructing DAG objects
+- Your pipeline requires per-task retry policies, concurrency controls, and timeout settings that differ across tasks within the same workflow
+- You want a managed orchestration UI (Prefect Cloud) that provides run history, log aggregation, scheduling, and alerting without self-hosting a scheduler, metadata database, and web server
+- Your team values rapid iteration — Prefect flows can be tested locally with a simple function call and deployed to production without changing the code structure
+- You need to compose workflows from subflows, allowing complex pipelines to be built from reusable, independently testable components
+
+**When NOT to use Prefect:**
+- Your organization has an established Apache Airflow deployment with custom operators, and the cost of migrating existing DAGs outweighs the ergonomic benefits of Prefect
+- You need access to Airflow's extensive operator ecosystem (600+ operators) for integrations with enterprise systems like SAP, Oracle, or Salesforce that Prefect does not have pre-built connectors for
+- Your workflow orchestration needs are simple enough that a cron job with a shell script or a managed service like AWS Step Functions would suffice without the overhead of a Python orchestration framework
+- You are working in a language other than Python — Prefect is Python-only, and teams using JVM-based or polyglot pipelines should consider alternatives like Dagster, Temporal, or Apache Beam

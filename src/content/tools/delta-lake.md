@@ -130,3 +130,24 @@ orders_with_new_field.write \
 ```
 
 Delta Lake is now part of the Linux Foundation as an open standard, competing with Apache Iceberg and Apache Hudi. Databricks natively supports all three, but Delta Lake has the widest Spark ecosystem adoption.
+
+## Best For
+
+- **Databricks users** — Delta Lake is the native table format in Databricks and gets the best optimization (Auto Optimize, Z-Ordering, Liquid Clustering)
+- **PySpark pipelines** replacing plain Parquet with ACID reliability and upsert support
+- **CDC (Change Data Capture) pipelines** — streaming Kafka events into lakehouse tables with MERGE idempotently
+- **Teams needing data rollback** — time travel lets you fix bad data loads by restoring to a previous version without reloading from source
+- **Lakehouse architectures** building a bronze/silver/gold medallion architecture on cloud object storage
+
+## Delta Lake vs. Apache Iceberg vs. Apache Hudi
+
+| | Delta Lake | Apache Iceberg | Apache Hudi |
+|--|-----------|----------------|-------------|
+| Best ecosystem | Spark, Databricks | Spark, Flink, Trino | Spark, Flink |
+| Non-Spark reads | delta-rs (Python/Rust) | Native | Partial |
+| Streaming writes | ✅ | ✅ | ✅ (optimized) |
+| Upsert/MERGE | ✅ | ✅ | ✅ (specialty) |
+| Schema evolution | ✅ | ✅ | ✅ |
+| Primary driver | Databricks | Netflix/Apple/AWS | Uber |
+
+Choose Delta Lake for Databricks workloads or the widest Spark community. Choose Iceberg for multi-engine support (Trino/Athena + Spark). Choose Hudi when your main use case is high-frequency record-level upserts (CDC at scale).

@@ -126,3 +126,24 @@ export const handler = async (event) => {
 AWS offers two edge compute options:
 - **Lambda@Edge**: Full Node.js runtime, up to 30s, all four trigger points. Use for complex logic.
 - **CloudFront Functions**: 1ms max, JavaScript only, viewer triggers only. Use for simple URL rewrites, header manipulation (free tier included).
+
+## Best For
+
+- **Request/response transformation at the CDN edge** — modify headers, rewrite URLs, redirect based on geo or device type before content reaches viewers
+- **Authentication at the edge** — validate JWT tokens or session cookies in Lambda@Edge to protect CloudFront-served content without hitting the origin
+- **A/B testing with CloudFront** — serve different content variants by modifying origin or request based on cookies/headers at the viewer-request stage
+- **Dynamic image optimization** — resize and format images based on device type and Accept headers at the origin-response stage, then cache the result
+
+## Lambda@Edge vs. CloudFront Functions
+
+| | Lambda@Edge | CloudFront Functions |
+|--|------------|---------------------|
+| Max execution time | 30s (origin), 5s (viewer) | 1ms |
+| Memory | Up to 10GB | 2MB |
+| Runtime | Node.js | JavaScript (ES5.1) |
+| Network access | ✅ | ✗ |
+| Trigger points | All 4 | Viewer request/response only |
+| Cost | ~$0.60/1M | ~$0.10/1M |
+| Best for | Complex logic, API calls, auth | Simple header/URL rewrites |
+
+Use Lambda@Edge when your logic requires network calls, large dependencies, or complex computation. Use CloudFront Functions for simple, sub-millisecond transformations like header injection or URL normalization — it's 6x cheaper and has no cold start.

@@ -1,6 +1,6 @@
 ---
 title: "Linkerd — Ultralight Service Mesh for Kubernetes"
-description: "Lightweight, security-first service mesh for Kubernetes with minimal overhead and operational simplicity"
+description: "Lightweight, security-first service mesh for Kubernetes with minimal resource overhead and operational simplicity — automatic mTLS, traffic splitting, and golden metrics out of the box."
 category: "cloud-native"
 tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security", "cloud-native", "mtls"]
 pricing: "Open Source"

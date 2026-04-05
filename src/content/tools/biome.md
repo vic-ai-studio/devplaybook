@@ -153,3 +153,26 @@ rm .eslintrc.js .eslintignore .prettierrc .prettierignore
 | TypeScript rules | Built-in | Via `@typescript-eslint` |
 
 Biome is the right choice for most greenfield TypeScript projects. Stick with ESLint if you depend on specific plugins (custom rules, framework-specific rules not yet in Biome).
+
+## Concrete Use Case: Migrating a 500-File TypeScript Monorepo from ESLint + Prettier to Biome
+
+A platform engineering team maintained a TypeScript monorepo with 12 packages and over 500 source files. Their CI pipeline ran ESLint and Prettier as separate steps, and the lint-plus-format check took 4 minutes and 20 seconds on every pull request. The ESLint configuration alone spanned three config files with 15 plugins (`@typescript-eslint`, `eslint-plugin-react`, `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, and others), and dependency conflicts between plugin versions had become a recurring maintenance burden — the last `@typescript-eslint` upgrade broke two other plugins and took a full day to resolve. The team decided to migrate to Biome to consolidate tooling, reduce dependencies, and cut CI time.
+
+The migration started with Biome's built-in migration commands: `npx @biomejs/biome migrate eslint --write` read the existing `.eslintrc.js` across all packages and generated equivalent rules in a root `biome.json`. The team then ran `npx @biomejs/biome migrate prettier --write` to port the Prettier configuration (single quotes, trailing commas, 100-character line width). After reviewing the generated config, they ran `npx biome check --apply .` across the entire monorepo to auto-fix formatting differences. The resulting diff was large (Biome's formatter has minor whitespace differences from Prettier in edge cases), so they committed it as a single "chore: migrate to biome formatting" commit to keep `git blame` clean with a `.git-blame-ignore-revs` entry.
+
+The results were immediate: `biome ci .` completed the full monorepo lint and format check in 10 seconds — down from 4 minutes 20 seconds, a 26x improvement. The `package.json` `devDependencies` shrank from 22 lint-related packages to one (`@biomejs/biome`). The team removed `.eslintrc.js`, `.eslintignore`, `.prettierrc`, and `.prettierignore` across all 12 packages. Two ESLint plugins had no Biome equivalent (`eslint-plugin-jsx-a11y` and a custom internal plugin), so the team kept those as a separate `eslint` step that runs only on changed files — but this takes under 5 seconds since it no longer handles formatting or TypeScript type-aware rules. CI feedback loops dropped from "push and wait 5 minutes" to "push and get results in under 30 seconds," which noticeably improved developer velocity across the team.
+
+## When to Use Biome
+
+**Use Biome when:**
+- You want to replace both ESLint and Prettier with a single tool and a single configuration file, eliminating plugin version conflicts and config drift
+- CI speed matters to your team and you need lint and format checks to complete in seconds rather than minutes, especially in monorepos with hundreds of files
+- You are starting a new TypeScript or JavaScript project and want sensible defaults without configuring a dozen ESLint plugins
+- You want auto-fixable lint rules and formatting applied in a single `biome check --apply` command rather than running two separate tools
+- Your team values minimal dependencies — Biome is a single Rust binary with zero transitive JavaScript dependencies
+
+**When NOT to use Biome:**
+- You depend on specific ESLint plugins that have no Biome equivalent (e.g., `eslint-plugin-jsx-a11y`, `eslint-plugin-tailwindcss`, or custom internal plugins with complex AST rules)
+- You need 100% Prettier formatting compatibility — Biome is 97%+ compatible, but the remaining edge cases in whitespace and line-breaking decisions may cause churn if your team has strict formatting requirements
+- You are working in a language Biome does not yet support — as of 2026, Biome covers JavaScript, TypeScript, JSX, TSX, JSON, and CSS, but not Python, Go, or other languages
+- Your organization has invested heavily in a custom ESLint rule set with dozens of project-specific rules that would need to be rewritten as Biome analyzer rules

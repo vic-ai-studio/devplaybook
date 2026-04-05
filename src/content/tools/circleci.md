@@ -174,3 +174,22 @@ npm test -- --reporter verbose
 ```
 
 This is CircleCI's killer debugging feature — no other major CI/CD platform offers this as cleanly.
+
+## Best For
+
+- **Teams that debug CI failures frequently** — CircleCI's SSH-into-container feature is unmatched for reproducing flaky tests or mysterious build failures
+- **Organizations wanting fine-grained resource classes** — CircleCI offers GPU runners, Arm runners, and custom machine sizes so you pay only for the compute your job actually needs
+- **Monorepo teams** using path filtering to run only the pipelines affected by changed files, cutting build times significantly
+- **Companies needing full OIDC integration** — CircleCI's OIDC token support lets jobs authenticate to AWS, GCP, and Azure without storing long-lived credentials as secrets
+
+## CircleCI vs. Alternatives
+
+| | CircleCI | GitHub Actions | GitLab CI | Buildkite |
+|--|---------|----------------|-----------|-----------|
+| SSH debugging | ✅ Native | ✗ | ✗ (web terminal) | ✗ |
+| Free tier | 6,000 min/month | 2,000 min/month | 400 min/month | 500 jobs/month |
+| Self-hosted runners | Paid | Free | Free | Free (bring infra) |
+| Docker-first | ✅ | Partial | Partial | ✅ |
+| Best for | Teams needing debug access, Docker workflows | GitHub-native projects | GitLab monorepos | Large scale, custom infra |
+
+CircleCI's free tier and SSH debugging make it the best choice for small-to-medium teams. For GitHub-native projects with simple workflows, GitHub Actions is simpler. For very high build volume with custom hardware, Buildkite offers better infrastructure flexibility.

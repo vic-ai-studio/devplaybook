@@ -84,3 +84,26 @@ Connections are saved locally and can be exported as JSON for team sharing.
 **Cross-platform team standardization**: When a team includes macOS, Windows, and Linux developers, Beekeeper is one of the few GUI tools that works well on all three. Everyone gets the same interface, so sharing saved queries or troubleshooting steps is frictionless.
 
 **SQLite development**: For local-first apps, embedded databases, or tools like Datasette, Beekeeper provides the best SQLite GUI experience on any OS — a category where most paid tools (including TablePlus) have weaker support.
+
+## Concrete Use Case: Managing 8 Client Databases as a Freelance Developer
+
+A freelance full-stack developer maintains web applications for 8 different clients. The technology mix is heterogeneous: three clients run PostgreSQL on AWS RDS, two use MySQL on DigitalOcean, one has a legacy SQL Server instance on Azure, and two mobile app projects use local SQLite databases. Each project requires occasional data inspection, ad-hoc queries for debugging, and schema reviews during feature development. Previously, the developer juggled pgAdmin for Postgres, MySQL Workbench for MySQL, Azure Data Studio for SQL Server, and DB Browser for SQLite — four separate tools with different interfaces, keyboard shortcuts, and saved query locations.
+
+After switching to Beekeeper Studio, all eight connections live in a single sidebar. The developer opens the app each morning and connects to whichever client database needs attention. SSH tunnel configurations for the three AWS RDS instances are saved alongside the connection details, so connecting to a private VPC database requires a single click instead of opening a separate SSH session first. Saved queries are organized by client name — common diagnostic queries like "show recent orders with failed payments" or "list users created in the last 7 days" are always one click away, regardless of which database engine backs that particular client.
+
+The real productivity gain comes from context-switching speed. When a client reports a bug at 2 PM and a different client needs a data export at 2:30 PM, the developer switches between a PostgreSQL tab and a MySQL tab without closing anything. The inline row editor handles quick fixes — updating a misspelled product name or toggling a feature flag — without writing raw UPDATE statements that risk typos in a WHERE clause. For a solo developer billing by the hour, the 15-20 minutes saved daily on tooling friction adds up to meaningful recovered time over a month.
+
+## When to Use Beekeeper Studio
+
+**Use Beekeeper Studio when:**
+- You work with multiple database engines (PostgreSQL, MySQL, SQLite, SQL Server) and want a single unified interface instead of separate tools for each
+- You are on Linux and need a polished database GUI — Beekeeper is one of the few high-quality options that runs natively on Linux
+- You want a free, open-source database client that covers core needs (querying, table browsing, inline editing, SSH tunneling) without a subscription
+- Your workflow involves frequent context-switching between different database connections throughout the day
+- You need to connect to private databases behind SSH tunnels or firewalls and want that configuration saved with the connection profile
+
+**When NOT to use Beekeeper Studio:**
+- You need advanced database administration features — backup/restore, user management, performance tuning dashboards, or query plan visualization are limited or require the paid Ultimate edition
+- You work exclusively on macOS and want the most polished native experience — TablePlus has tighter macOS integration and more advanced features for power users
+- Your primary need is data visualization, charting, or BI-style dashboards — Beekeeper has no built-in visualization; use a dedicated tool like Metabase or Grafana instead
+- You are querying very large result sets (millions of rows) interactively — the Electron-based UI can become sluggish compared to native database clients or CLI tools
