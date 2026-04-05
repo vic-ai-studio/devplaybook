@@ -1,5 +1,5 @@
 ---
-title: "Linkerd"
+title: "Linkerd — Ultralight Service Mesh for Kubernetes"
 description: "Lightweight, security-first service mesh for Kubernetes with minimal overhead and operational simplicity"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security", "cloud-native", "mtls"]

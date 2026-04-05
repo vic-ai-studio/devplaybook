@@ -1,5 +1,5 @@
 ---
-title: "Dagster"
+title: "Dagster — Data Orchestrator for Machine Learning & Analytics"
 description: "Data orchestration platform with an asset-centric model — define, observe, and test data assets instead of just scheduling tasks."
 category: "Data Engineering & Pipeline"
 pricing: "Free"

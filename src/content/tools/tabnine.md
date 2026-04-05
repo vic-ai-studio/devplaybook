@@ -1,5 +1,5 @@
 ---
-title: "Tabnine"
+title: "Tabnine — AI Code Completion for Every IDE"
 description: "AI code completion tool with a focus on privacy — runs models locally or in a private cloud, with team-learning from your codebase without sending code externally."
 category: "AI/ML Dev Tools"
 pricing: "Freemium"

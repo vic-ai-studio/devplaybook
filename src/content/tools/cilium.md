@@ -1,5 +1,5 @@
 ---
-title: "Cilium"
+title: "Cilium — eBPF-Powered Networking & Security for Kubernetes"
 description: "eBPF-powered networking, observability, and security for Kubernetes with high performance and deep kernel-level visibility"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "networking", "security", "ebpf", "cloud", "cloud-native", "service-mesh"]

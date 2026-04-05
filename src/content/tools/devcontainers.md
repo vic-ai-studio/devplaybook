@@ -1,5 +1,5 @@
 ---
-title: "Dev Containers"
+title: "Dev Containers — Reproducible Development Environments in Docker"
 description: "VS Code's container-based development environment spec — define your entire dev environment in a JSON file, run it in Docker, and get identical environments across your whole team."
 category: "Documentation & DX Tools"
 pricing: "Free"

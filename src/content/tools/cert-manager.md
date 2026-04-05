@@ -1,5 +1,5 @@
 ---
-title: "cert-manager"
+title: "cert-manager — Automated TLS Certificate Management for Kubernetes"
 description: "Automates TLS certificate provisioning, renewal, and management for Kubernetes workloads, supporting Let's Encrypt, Vault, and custom CAs"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "tls", "security", "cloud", "certificates", "cloud-native", "pki"]

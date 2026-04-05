@@ -1,5 +1,5 @@
 ---
-title: "wasm-pack"
+title: "wasm-pack — Build & Publish Rust-Generated WebAssembly Packages"
 description: "Build Rust packages targeting WebAssembly — generates npm packages with TypeScript bindings, enabling seamless integration between Rust performance and JavaScript ecosystems."
 category: "WebAssembly & Edge Computing"
 pricing: "Free"

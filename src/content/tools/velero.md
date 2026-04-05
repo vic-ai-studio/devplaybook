@@ -1,5 +1,5 @@
 ---
-title: "Velero"
+title: "Velero — Backup & Disaster Recovery for Kubernetes"
 description: "Backup, restore, and migrate Kubernetes cluster resources and persistent volumes with schedule-based automation"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "backup", "disaster-recovery", "cloud", "cloud-native", "k8s", "storage"]

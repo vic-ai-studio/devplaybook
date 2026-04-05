@@ -1,5 +1,5 @@
 ---
-title: "Deno Deploy"
+title: "Deno Deploy — Serverless Edge Runtime for Deno Applications"
 description: "Global edge runtime for Deno scripts — deploy TypeScript functions to 35+ regions with zero configuration, built-in npm compatibility, and instant deployments from GitHub."
 category: "WebAssembly & Edge Computing"
 pricing: "Freemium"

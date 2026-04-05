@@ -1,5 +1,5 @@
 ---
-title: "Apache Druid"
+title: "Apache Druid — Real-Time Analytics Database for Sub-Second Queries"
 description: "Real-time analytics database designed for sub-second queries on high-cardinality event data — powers dashboards and drill-down analytics at Airbnb, Netflix, Lyft scale."
 category: "Data Engineering & Pipeline"
 pricing: "Free"

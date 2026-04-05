@@ -1,5 +1,5 @@
 ---
-title: "Oxlint"
+title: "Oxlint — Blazingly Fast JavaScript & TypeScript Linter"
 description: "Ultra-fast JavaScript/TypeScript linter written in Rust — 50-100x faster than ESLint, with 500+ rules and zero configuration required to get started."
 category: "Documentation & DX Tools"
 pricing: "Free"

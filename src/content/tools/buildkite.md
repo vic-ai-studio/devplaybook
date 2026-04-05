@@ -1,5 +1,5 @@
 ---
-title: "Buildkite"
+title: "Buildkite — Scalable CI/CD on Your Own Infrastructure"
 description: "Hybrid CI/CD platform — Buildkite manages the orchestration and UI in the cloud, while your own infrastructure runs the build agents, giving you speed without cloud vendor lock-in."
 category: "API Testing & CI/CD"
 pricing: "Freemium"

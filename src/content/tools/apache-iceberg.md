@@ -1,5 +1,5 @@
 ---
-title: "Apache Iceberg"
+title: "Apache Iceberg — Open Table Format for Huge Analytic Datasets"
 description: "Open table format for huge analytic datasets — ACID transactions, schema evolution, hidden partitioning, and time travel on data lakes."
 category: "Data Engineering & Pipeline"
 pricing: "Free"

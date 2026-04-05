@@ -1,5 +1,5 @@
 ---
-title: "Lagon"
+title: "Lagon — Open-Source Serverless Edge Runtime (Archived)"
 description: "Open-source serverless edge runtime — self-host a Cloudflare Workers-like platform on your own infrastructure with V8 isolates, TypeScript support, and a deployment dashboard."
 category: "WebAssembly & Edge Computing"
 pricing: "Free"

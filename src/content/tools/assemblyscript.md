@@ -1,5 +1,5 @@
 ---
-title: "AssemblyScript"
+title: "AssemblyScript — TypeScript-to-WebAssembly Compiler"
 description: "TypeScript-like language that compiles to WebAssembly — write familiar TypeScript syntax, get near-native WASM performance without learning Rust or C++."
 category: "WebAssembly & Edge Computing"
 pricing: "Free"

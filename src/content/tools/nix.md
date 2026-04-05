@@ -1,5 +1,5 @@
 ---
-title: "Nix"
+title: "Nix — Reproducible Builds & Declarative System Configuration"
 description: "Purely functional package manager and OS configuration system — create fully reproducible development environments where every dependency is pinned to the exact same version on every machine."
 category: "Documentation & DX Tools"
 pricing: "Free"

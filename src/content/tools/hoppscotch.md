@@ -1,5 +1,5 @@
 ---
-title: "Hoppscotch"
+title: "Hoppscotch — Open-Source API Development & Testing Platform"
 description: "Open-source, web-based API testing tool — test REST, GraphQL, WebSocket, and gRPC APIs directly in the browser without installing desktop software."
 category: "API Testing & CI/CD"
 pricing: "Free"

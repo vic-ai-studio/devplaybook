@@ -1,5 +1,5 @@
 ---
-title: "Backstage"
+title: "Backstage — Open-Source Developer Portal by Spotify"
 description: "Spotify's open-source developer portal — centralize service catalogs, documentation, scaffolding, and tooling into one internal developer platform for large engineering orgs."
 category: "Documentation & DX Tools"
 pricing: "Free"

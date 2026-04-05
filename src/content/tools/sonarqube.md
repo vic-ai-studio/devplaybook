@@ -1,5 +1,5 @@
 ---
-title: "SonarQube"
+title: "SonarQube — Continuous Code Quality & Security Analysis"
 description: "Static code analysis and code quality platform — detect bugs, security vulnerabilities, and code smells across 30+ languages with quality gates that block bad code from merging."
 category: "API Testing & CI/CD"
 pricing: "Freemium"

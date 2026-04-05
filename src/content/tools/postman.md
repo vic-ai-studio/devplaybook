@@ -4,7 +4,7 @@ description: "The industry-standard API platform — design, test, document, and
 category: "API Testing & CI/CD"
 pricing: "Freemium"
 pricingDetail: "Free for individuals; Basic $14/user/month; Professional $29/user/month; Enterprise custom"
-website: "https://postman.com"
+website: "https://www.postman.com"
 github: ""
 tags: [api-testing, rest, graphql, grpc, http, testing, developer-tools]
 pros:

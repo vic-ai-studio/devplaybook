@@ -1,5 +1,5 @@
 ---
-title: "AWS Lambda@Edge"
+title: "AWS Lambda@Edge — Run Code at CloudFront Edge Locations"
 description: "Run Lambda functions at CloudFront edge locations — customize CDN behavior, implement A/B testing, add authentication, and transform requests/responses without a central origin."
 category: "WebAssembly & Edge Computing"
 pricing: "Paid"

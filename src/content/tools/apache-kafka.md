@@ -1,5 +1,5 @@
 ---
-title: "Apache Kafka"
+title: "Apache Kafka — Distributed Event Streaming Platform"
 description: "Distributed event streaming platform — high-throughput, fault-tolerant message queue for real-time data pipelines, event-driven architectures, and stream processing."
 category: "Data Engineering & Pipeline"
 pricing: "Free"

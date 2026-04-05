@@ -1,5 +1,5 @@
 ---
-title: "Tekton"
+title: "Tekton — Cloud-Native CI/CD Pipeline Framework for Kubernetes"
 description: "Cloud-native CI/CD framework for Kubernetes that defines pipelines as reusable, composable building blocks"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "ci-cd", "cloud", "pipelines", "cloud-native", "continuous-delivery", "build-automation"]

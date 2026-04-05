@@ -1,5 +1,5 @@
 ---
-title: "LangChain"
+title: "LangChain — Framework for Building LLM-Powered Applications"
 description: "Build LLM apps with chains, agents, and memory in Python/JS — LangChain's ecosystem spans 100+ LLM providers, vector stores, and LangGraph for stateful multi-agent workflows."
 category: "AI/ML Dev Tools"
 pricing: "Free"

@@ -1,5 +1,5 @@
 ---
-title: "Helm"
+title: "Helm — The Package Manager for Kubernetes"
 description: "The package manager for Kubernetes that simplifies deploying, versioning, and managing complex applications using reusable, parameterized charts"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "package-manager", "cloud", "deployment", "helm", "cloud-native", "infrastructure"]

@@ -1,5 +1,5 @@
 ---
-title: "Vercel Edge Functions"
+title: "Vercel Edge Functions — Serverless Compute at the CDN Edge"
 description: "Run JavaScript/TypeScript at Vercel's global edge network — sub-millisecond cold starts, Web standard APIs, middleware for authentication and A/B testing in Next.js applications."
 category: "WebAssembly & Edge Computing"
 pricing: "Freemium"

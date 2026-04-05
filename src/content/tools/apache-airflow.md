@@ -1,5 +1,5 @@
 ---
-title: "Apache Airflow"
+title: "Apache Airflow — Workflow Orchestration Platform for Data Pipelines"
 description: "Open-source workflow orchestration platform — define, schedule, and monitor data pipelines as Python DAGs with a web UI and rich operator ecosystem."
 category: "Data Engineering & Pipeline"
 pricing: "Free"

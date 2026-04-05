@@ -1,5 +1,5 @@
 ---
-title: "Netlify Edge Functions"
+title: "Netlify Edge Functions — Serverless Functions at the CDN Edge"
 description: "Deno-powered edge functions on Netlify's global CDN — intercept requests, transform responses, and run custom logic at the edge without leaving the Netlify workflow."
 category: "WebAssembly & Edge Computing"
 pricing: "Freemium"

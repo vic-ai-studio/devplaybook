@@ -4,7 +4,7 @@ description: "Electron packages Node.js + Chromium to build cross-platform deskt
 category: "Desktop"
 pricing: "Open Source"
 pricingDetail: "Free and open source. No licensing fees."
-website: "https://electronjs.org"
+website: "https://www.electronjs.org"
 github: "https://github.com/electron/electron"
 tags: ["desktop", "javascript", "nodejs", "chromium", "cross-platform", "electron", "gui", "web-technologies"]
 pros:

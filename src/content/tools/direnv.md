@@ -1,5 +1,5 @@
 ---
-title: "direnv"
+title: "direnv — Automatic Environment Variables per Directory"
 description: "Shell environment switcher — automatically load and unload environment variables, secrets, and PATH changes when you cd into a project directory."
 category: "Documentation & DX Tools"
 pricing: "Free"

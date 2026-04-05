@@ -1,5 +1,5 @@
 ---
-title: "Biome"
+title: "Biome — Fast Formatter & Linter for JavaScript & TypeScript"
 description: "Blazing-fast JavaScript/TypeScript linter and formatter in one tool — written in Rust, replaces ESLint + Prettier with a single binary that runs 25x faster."
 category: "API Testing & CI/CD"
 pricing: "Free"

@@ -1,5 +1,5 @@
 ---
-title: "CircleCI"
+title: "CircleCI — Cloud-Native CI/CD Platform"
 description: "Cloud-native CI/CD platform — fast pipelines with Docker-first workflows, parallelism, test splitting, and deep GitHub/Bitbucket integration with a generous free tier."
 category: "API Testing & CI/CD"
 pricing: "Freemium"

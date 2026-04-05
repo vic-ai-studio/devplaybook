@@ -1,5 +1,5 @@
 ---
-title: "Istio"
+title: "Istio — Service Mesh for Kubernetes Microservices"
 description: "Feature-rich service mesh for Kubernetes providing traffic management, observability, and security for microservices"
 category: "cloud-native"
 tags: ["kubernetes", "devops", "service-mesh", "cloud", "microservices", "security", "cloud-native", "observability"]

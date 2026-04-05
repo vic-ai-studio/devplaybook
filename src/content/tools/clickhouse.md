@@ -1,5 +1,5 @@
 ---
-title: "ClickHouse"
+title: "ClickHouse — Fast Open-Source Columnar Database for Analytics"
 description: "Column-oriented OLAP database — blazing-fast analytics queries on billions of rows, real-time data ingestion, and efficient compression."
 category: "Data Engineering & Pipeline"
 pricing: "Free"

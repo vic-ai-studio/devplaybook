@@ -1,5 +1,5 @@
 ---
-title: "Wasmtime"
+title: "Wasmtime — Fast & Secure WebAssembly Runtime"
 description: "Fast, secure WebAssembly runtime for server-side WASM execution — the leading implementation of the WebAssembly System Interface (WASI) for running WASM outside the browser."
 category: "WebAssembly & Edge Computing"
 pricing: "Free"

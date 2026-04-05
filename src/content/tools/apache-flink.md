@@ -1,5 +1,5 @@
 ---
-title: "Apache Flink"
+title: "Apache Flink — Stream & Batch Processing for Real-Time Data"
 description: "Stateful stream processing framework — true event-time processing, exactly-once semantics, and low-latency real-time analytics at scale."
 category: "Data Engineering & Pipeline"
 pricing: "Free"

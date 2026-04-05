@@ -1,5 +1,5 @@
 ---
-title: "Nextra"
+title: "Nextra — Next.js-Based Static Site Generator for Documentation"
 description: "Nextra brings file-system routing and full React ecosystem to docs — minimal config, built-in search, and the same Next.js stack your app already uses."
 category: "Documentation & DX Tools"
 pricing: "Free"

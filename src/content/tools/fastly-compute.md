@@ -1,5 +1,5 @@
 ---
-title: "Fastly Compute"
+title: "Fastly Compute — High-Performance Edge Computing Platform"
 description: "WebAssembly-powered edge compute platform — run Rust, JavaScript, Go, or any WASM-compiled language at Fastly's global CDN with near-zero cold starts and streaming responses."
 category: "WebAssembly & Edge Computing"
 pricing: "Paid"

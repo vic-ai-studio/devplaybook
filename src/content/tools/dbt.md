@@ -1,10 +1,10 @@
 ---
-title: "dbt (data build tool)"
+title: "dbt — SQL-First Data Transformation Framework"
 description: "SQL-first data transformation framework — write SELECT statements, dbt handles the ETL mechanics, testing, documentation, and lineage graph."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "dbt Core is open source; dbt Cloud (hosted) from $50/developer/month"
-website: "https://getdbt.com"
+website: "https://www.getdbt.com"
 github: "https://github.com/dbt-labs/dbt-core"
 tags: [data-engineering, sql, transformation, analytics, elt, warehouse, testing]
 pros:

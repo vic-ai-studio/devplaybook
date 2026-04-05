@@ -1,5 +1,5 @@
 ---
-title: "Delta Lake"
+title: "Delta Lake — Open-Source Storage Layer for Reliable Data Lakes"
 description: "Open-source ACID transaction layer for data lakes — brings reliability, schema enforcement, and time travel to Parquet files on cloud object storage."
 category: "Data Engineering & Pipeline"
 pricing: "Free"

@@ -1,5 +1,5 @@
 ---
-title: "Great Expectations"
+title: "Great Expectations — Data Quality Validation & Testing Framework"
 description: "Data quality testing framework — define expectations about your data, validate them in pipelines, and generate data documentation automatically."
 category: "Data Engineering & Pipeline"
 pricing: "Free"

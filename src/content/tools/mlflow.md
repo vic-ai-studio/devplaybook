@@ -1,5 +1,5 @@
 ---
-title: "MLflow"
+title: "MLflow — Open-Source Platform for the ML Lifecycle"
 description: "Open-source MLOps platform for experiment tracking, model registry, and deployment — works with any ML library and runs locally or on-premise."
 category: "AI/ML Dev Tools"
 pricing: "Free"

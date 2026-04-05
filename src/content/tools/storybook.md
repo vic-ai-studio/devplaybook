@@ -1,5 +1,5 @@
 ---
-title: "Storybook"
+title: "Storybook — UI Component Development & Testing Workshop"
 description: "The standard UI component development environment — build, document, and test components in isolation, with addons for accessibility, visual testing, and design system docs."
 category: "Documentation & DX Tools"
 pricing: "Free"

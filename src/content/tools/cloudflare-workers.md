@@ -1,5 +1,5 @@
 ---
-title: "Cloudflare Workers"
+title: "Cloudflare Workers — Serverless JavaScript at the Edge"
 description: "Edge serverless platform running JavaScript/TypeScript and WebAssembly at 300+ global PoPs — sub-millisecond cold starts, KV storage, D1 database, R2 object storage, and Durable Objects."
 category: "WebAssembly & Edge Computing"
 pricing: "Freemium"

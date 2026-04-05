@@ -1,10 +1,10 @@
 ---
-title: "Prefect"
+title: "Prefect — Modern Workflow Orchestration for Data Engineers"
 description: "Modern Python workflow orchestration — write workflows as Python functions, deploy to cloud or self-hosted, with a clean UI and first-class async support."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
 pricingDetail: "Open source (Prefect Core); Prefect Cloud free tier (5 workspaces); Pro from $500/month"
-website: "https://prefect.io"
+website: "https://www.prefect.io"
 github: "https://github.com/PrefectHQ/prefect"
 tags: [data-engineering, orchestration, workflow, python, etl, pipeline, scheduling]
 pros:

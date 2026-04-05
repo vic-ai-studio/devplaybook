@@ -1,5 +1,5 @@
 ---
-title: "ArgoCD"
+title: "ArgoCD — Declarative GitOps Continuous Delivery for Kubernetes"
 description: "ArgoCD enforces GitOps on Kubernetes with a polished web dashboard — visualizes sync status, supports multi-cluster management, and enables one-click rollbacks via Git history."
 category: "cloud-native"
 pricing: "Open Source"

@@ -1,5 +1,5 @@
 ---
-title: "Apache Spark"
+title: "Apache Spark — Unified Engine for Large-Scale Data Processing"
 description: "Unified analytics engine for large-scale data processing — batch ETL, SQL, streaming, and ML on datasets too large for single machines."
 category: "Data Engineering & Pipeline"
 pricing: "Free"
